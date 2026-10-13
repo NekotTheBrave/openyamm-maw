@@ -1,0 +1,83 @@
+id: mod_runtime.stat_events
+title: Stat events change the values the game computes for a character
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 0
+      food: 1
+      members:
+      - name: Subject
+        class: Knight
+        level: 5
+        might: 20
+        luck: 11
+        skills:
+        - name: Sword
+          level: 4
+          mastery: 2
+        equipment:
+          main_hand: 1
+# Baseline, before any handler exists. Statistic ids are MMExtension's for MM8: 0 Might, 6 Luck, 7 HP, 9 Armor Class.
+- mod_lua:
+    code: |
+      local p = Party[0]
+      Base = {
+        might = p:GetMight(), luck = p:GetLuck(), hp = p:GetFullHP(), ac = p:GetArmorClass(),
+        sword = p:GetSkill(1),
+      }
+      return Base.might, Base.luck, Base.hp > 0, Base.sword == JoinSkill(4, 2)
+    expect: "20\t11\ttrue\ttrue"
+- mod_lua:
+    code: |
+      Seen = {}
+      function events.CalcStatBonusByItems(t)
+        Seen.player = t.Player == Party[0] and t.PlayerIndex == Party[0]:GetIndex()
+        if t.Stat == 0 then
+          t.Result = t.Result + 30
+        elseif t.Stat == 7 then
+          t.Result = 111
+        elseif t.Stat == 9 then
+          t.Result = t.Result + 40
+        end
+      end
+      function events.CalcStatBonusByMagic(t)
+        if t.Stat == 6 then
+          t.Result = 9
+        end
+      end
+      function events.GetSkill(t)
+        if t.Skill == 1 then
+          t.Result = t.Result + 5
+        end
+      end
+      Party.RefreshBonuses()
+      local p = Party[0]
+      local level, mastery = SplitSkill(p:GetSkill(1))
+      return Seen.player, p:GetMight() - Base.might, p:GetLuck() - Base.luck, p:GetFullHP() - Base.hp,
+        p:GetArmorClass() - Base.ac, level, mastery
+    expect: "true\t30\t9\t111\t40\t9\t2"
+# The events run again on every rebuild, each time from the engine's own values: nothing accumulates.
+- mod_lua:
+    code: |
+      Party.RefreshBonuses()
+      Party.RefreshBonuses()
+      local p = Party[0]
+      return p:GetMight() - Base.might, p:GetFullHP() - Base.hp, (SplitSkill(p:GetSkill(1)))
+    expect: "30\t111\t9"
+# A handler may read other computed values of the same character while the event runs.
+- mod_lua:
+    code: |
+      function events.CalcStatBonusByItems(t)
+        if t.Stat == 9 then
+          t.Result = t.Result + t.Player:GetMight()
+        end
+      end
+      Party.RefreshBonuses()
+      local p = Party[0]
+      return p:GetArmorClass() - Base.ac == 40 + p:GetMight(), p:GetMight()
+    expect: "true\t50"

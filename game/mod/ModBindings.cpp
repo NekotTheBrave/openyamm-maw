@@ -1,6 +1,7 @@
 #include "game/mod/ModBindings.h"
 
 #include "game/data/GameDataLoader.h"
+#include "game/gameplay/GameMechanics.h"
 #include "game/gameplay/GameplayRuntimeInterfaces.h"
 #include "game/mod/ModHost.h"
 #include "game/party/Party.h"
@@ -83,6 +84,24 @@ constexpr uint16_t ModIndexVariableTag = 0xFFEE;
 
 int64_t modIndexOf(Party &party, Character &character)
 {
+    return ensureModCharacterIndex(party, character);
+}
+}
+
+const char *mergeSkillName(size_t skillId)
+{
+    static const char *const names[MergeSkillCount] = {
+        "Staff", "Sword", "Dagger", "Axe", "Spear", "Bow", "Mace", "Blaster", "Shield", "Leather", "Chain", "Plate",
+        "Fire", "Air", "Water", "Earth", "Spirit", "Mind", "Body", "Light", "Dark", "DarkElfAbility",
+        "VampireAbility", "DragonAbility", "IdentifyItem", "Merchant", "Repair", "Bodybuilding", "Meditation",
+        "Perception", "Regeneration", "DisarmTraps", "Dodging", "Unarmed", "IdentifyMonster", "Armsmaster",
+        "Stealing", "Alchemy", "Learning",
+    };
+    return skillId < MergeSkillCount ? names[skillId] : nullptr;
+}
+
+int64_t ensureModCharacterIndex(Party &party, Character &character)
+{
     const std::unordered_map<uint16_t, int32_t>::const_iterator existing =
         character.eventVariables.find(ModIndexVariableTag);
 
@@ -126,6 +145,8 @@ int64_t modIndexOf(Party &party, Character &character)
     return -1;
 }
 
+namespace
+{
 Character *playerArgument(lua_State *pLuaState, int index)
 {
     Party *pParty = partyFromHost(pLuaState);
@@ -327,6 +348,122 @@ int nativePlayerGet(lua_State *pLuaState)
         return 1;
     }
 
+    // Computed values, as the original engine's Get* functions return them.
+    if (field == "GetMight" || field == "GetIntellect" || field == "GetPersonality" || field == "GetEndurance"
+        || field == "GetAccuracy" || field == "GetSpeed" || field == "GetLuck")
+    {
+        const CharacterStatBonuses &permanent = pCharacter->permanentBonuses;
+        const CharacterStatBonuses &magical = pCharacter->magicalBonuses;
+        int value = 0;
+
+        if (field == "GetMight")
+        {
+            value = static_cast<int>(pCharacter->might) + permanent.might + magical.might;
+        }
+        else if (field == "GetIntellect")
+        {
+            value = static_cast<int>(pCharacter->intellect) + permanent.intellect + magical.intellect;
+        }
+        else if (field == "GetPersonality")
+        {
+            value = static_cast<int>(pCharacter->personality) + permanent.personality + magical.personality;
+        }
+        else if (field == "GetEndurance")
+        {
+            value = static_cast<int>(pCharacter->endurance) + permanent.endurance + magical.endurance;
+        }
+        else if (field == "GetAccuracy")
+        {
+            value = static_cast<int>(pCharacter->accuracy) + permanent.accuracy + magical.accuracy;
+        }
+        else if (field == "GetSpeed")
+        {
+            value = static_cast<int>(pCharacter->speed) + permanent.speed + magical.speed;
+        }
+        else
+        {
+            value = static_cast<int>(pCharacter->luck) + permanent.luck + magical.luck;
+        }
+
+        lua_pushinteger(pLuaState, value);
+        return 1;
+    }
+
+    if (field == "GetFullHP" || field == "GetFullSP")
+    {
+        const Party *pParty = partyFromHost(pLuaState);
+        const ClassMultiplierTable *pClassMultiplierTable =
+            pParty != nullptr ? pParty->classMultiplierTable() : nullptr;
+        lua_pushinteger(
+            pLuaState,
+            field == "GetFullHP"
+                ? GameMechanics::calculateEffectiveCharacterMaxHealth(*pCharacter, pClassMultiplierTable)
+                : GameMechanics::calculateEffectiveCharacterMaxSpellPoints(*pCharacter, pClassMultiplierTable));
+        return 1;
+    }
+
+    if (field == "GetArmorClass")
+    {
+        const Party *pParty = partyFromHost(pLuaState);
+
+        if (pParty == nullptr)
+        {
+            return 0;
+        }
+
+        const CharacterSheetSummary summary = GameMechanics::buildCharacterSheetSummary(
+            *pCharacter,
+            pParty->itemTable(),
+            pParty->standardItemEnchantTable(),
+            pParty->specialItemEnchantTable());
+        lua_pushinteger(pLuaState, summary.armorClass.actual);
+        return 1;
+    }
+
+    if (field == "GetMeleeDamageMin" || field == "GetMeleeDamageMax" || field == "GetMeleeAttack"
+        || field == "GetRangedDamageMin" || field == "GetRangedDamageMax" || field == "GetRangedAttack")
+    {
+        const Party *pParty = partyFromHost(pLuaState);
+        const GameDataLoader *pData = dataFromHost(pLuaState);
+
+        if (pParty == nullptr)
+        {
+            return 0;
+        }
+
+        const CharacterAttackProfile profile = GameMechanics::buildCharacterAttackProfile(
+            *pCharacter,
+            pParty->itemTable(),
+            pData != nullptr ? &pData->getSpellTable() : nullptr);
+
+        if (field == "GetMeleeDamageMin")
+        {
+            lua_pushinteger(pLuaState, profile.meleeMinDamage);
+        }
+        else if (field == "GetMeleeDamageMax")
+        {
+            lua_pushinteger(pLuaState, profile.meleeMaxDamage);
+        }
+        else if (field == "GetMeleeAttack")
+        {
+            lua_pushinteger(pLuaState, profile.meleeAttackBonus);
+        }
+        else if (field == "GetRangedDamageMin")
+        {
+            lua_pushinteger(pLuaState, profile.rangedMinDamage);
+        }
+        else if (field == "GetRangedDamageMax")
+        {
+            lua_pushinteger(pLuaState, profile.rangedMaxDamage);
+        }
+        else
+        {
+            lua_pushinteger(pLuaState, profile.rangedAttackBonus.value_or(0));
+        }
+
+        return 1;
+    }
+
     if (field == "ModIndex")
     {
         Party *pParty = partyFromHost(pLuaState);
@@ -408,7 +545,22 @@ int nativePlayerSkillGet(lua_State *pLuaState)
 
     lua_pushinteger(pLuaState, static_cast<lua_Integer>(pSkill->level));
     lua_pushinteger(pLuaState, static_cast<lua_Integer>(pSkill->mastery));
-    return 2;
+    lua_pushinteger(pLuaState, pCharacter->skillBonus(skillName));
+    return 3;
+}
+
+// Recomputes every member's bonuses now, which runs the stat events (mods call this after changing what the
+// events depend on; the game itself does it whenever equipment or buffs change).
+int nativePartyRefreshBonuses(lua_State *pLuaState)
+{
+    Party *pParty = partyFromHost(pLuaState);
+
+    if (pParty != nullptr)
+    {
+        pParty->rebuildMagicalBonusesFromBuffs();
+    }
+
+    return 0;
 }
 
 int nativePlayerSkillSet(lua_State *pLuaState)
@@ -949,6 +1101,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"playerSet", nativePlayerSet},
         {"playerSkillGet", nativePlayerSkillGet},
         {"playerSkillSet", nativePlayerSkillSet},
+        {"partyRefreshBonuses", nativePartyRefreshBonuses},
         {"itemGet", nativeItemGet},
         {"itemSet", nativeItemSet},
         {"itemTxtGet", nativeItemTxtGet},

@@ -50,12 +50,17 @@ public:
     bool isActive() const;
     // Game state the bindings may reach. Set once, before initialize().
     void setHost(ModHost host);
+    const ModHost &host() const;
 
     // Mod state that belongs to a save (Lua vars and mapvars). An empty string restores a clean state.
     std::string captureState();
     void restoreState(const std::string &state);
 
     int calcDamageToMonster(const ModDamageToMonsterEvent &event) override;
+    void adjustCharacterBonuses(
+        Party &party,
+        size_t memberIndex,
+        const CharacterStatBonuses &buffBonuses) override;
 
     void fireEvent(const std::string &eventName);
     void tick(float deltaSeconds);
@@ -96,7 +101,7 @@ private:
     std::vector<std::filesystem::path> m_readRoots;
     std::ofstream m_logFile;
     int m_dispatchReference = -1;
-    int m_tracebackIndex = 0;
+    bool m_adjustingBonuses = false;
     bool m_enabled = false;
     bool m_configured = false;
     bool m_active = false;

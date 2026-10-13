@@ -3,6 +3,8 @@
 #include "engine/ApplicationConfig.h"
 #include "engine/AssetFileSystem.h"
 #include "game/mod/ModBindings.h"
+#include "game/party/Party.h"
+#include "game/party/SkillData.h"
 
 #include <SDL3/SDL.h>
 #include <lua.hpp>
@@ -275,6 +277,78 @@ int nativeDataPath(lua_State *pLuaState)
     const std::string text = fullPath.generic_string();
     lua_pushlstring(pLuaState, text.data(), text.size());
     return 1;
+}
+
+// const.Stats in MMExtension's numbering for MM8, for the statistics OpenYAMM keeps a bonus for.
+struct ModStatField
+{
+    int statId;
+    int CharacterStatBonuses::*pField;
+    int CharacterResistanceSet::*pResistance;
+};
+
+constexpr ModStatField ModStatFields[] = {
+    {0, &CharacterStatBonuses::might, nullptr},
+    {1, &CharacterStatBonuses::intellect, nullptr},
+    {2, &CharacterStatBonuses::personality, nullptr},
+    {3, &CharacterStatBonuses::endurance, nullptr},
+    {4, &CharacterStatBonuses::accuracy, nullptr},
+    {5, &CharacterStatBonuses::speed, nullptr},
+    {6, &CharacterStatBonuses::luck, nullptr},
+    {7, &CharacterStatBonuses::maxHealth, nullptr},
+    {8, &CharacterStatBonuses::maxSpellPoints, nullptr},
+    {9, &CharacterStatBonuses::armorClass, nullptr},
+    {10, nullptr, &CharacterResistanceSet::fire},
+    {11, nullptr, &CharacterResistanceSet::air},
+    {12, nullptr, &CharacterResistanceSet::water},
+    {13, nullptr, &CharacterResistanceSet::earth},
+    {14, nullptr, &CharacterResistanceSet::mind},
+    {15, nullptr, &CharacterResistanceSet::body},
+    {25, &CharacterStatBonuses::meleeAttack, nullptr},
+    {26, &CharacterStatBonuses::meleeDamage, nullptr},
+    {29, &CharacterStatBonuses::rangedAttack, nullptr},
+    {30, &CharacterStatBonuses::rangedDamage, nullptr},
+};
+
+int &statBonusField(CharacterStatBonuses &bonuses, const ModStatField &field)
+{
+    return field.pField != nullptr ? bonuses.*field.pField : bonuses.resistances.*field.pResistance;
+}
+
+int statBonusValue(const CharacterStatBonuses &bonuses, const ModStatField &field)
+{
+    return field.pField != nullptr ? bonuses.*field.pField : bonuses.resistances.*field.pResistance;
+}
+
+// While a character's bonuses are being rebuilt, each statistic's total is stored as soon as its events have run, so
+// a handler for a later statistic that asks for an earlier one (armor class asking for speed) gets the new value,
+// as it would from the original engine, which computes on demand.
+int nativeSetStatBonus(lua_State *pLuaState)
+{
+    ModRuntime *pRuntime = runtimeFromUpvalue(pLuaState);
+    const lua_Integer memberIndex = luaL_checkinteger(pLuaState, 1);
+    const lua_Integer statId = luaL_checkinteger(pLuaState, 2);
+    const lua_Number value = luaL_checknumber(pLuaState, 3);
+    const ModHost &host = pRuntime->host();
+    Party *pParty = host.party ? host.party() : nullptr;
+    Character *pMember = pParty != nullptr && memberIndex >= 0 ? pParty->member(static_cast<size_t>(memberIndex)) : nullptr;
+
+    if (pMember == nullptr)
+    {
+        return 0;
+    }
+
+    for (const ModStatField &field : ModStatFields)
+    {
+        if (field.statId == statId)
+        {
+            statBonusField(pMember->magicalBonuses, field) =
+                static_cast<int>(std::clamp<lua_Number>(value, -2000000000.0, 2000000000.0));
+            break;
+        }
+    }
+
+    return 0;
 }
 
 int nativeClock(lua_State *pLuaState)
@@ -550,6 +624,7 @@ void ModRuntime::registerNatives()
         {"listDirectory", nativeListDirectory},
         {"writeReport", nativeWriteReport},
         {"dataPath", nativeDataPath},
+        {"setStatBonus", nativeSetStatBonus},
         {"clock", nativeClock},
     };
 
@@ -809,8 +884,9 @@ bool ModRuntime::beginDispatch(const char *pKind)
         return false;
     }
 
+    // Dispatches nest (a handler may call back into the game, which raises another event), so nothing about a
+    // dispatch is kept in members: endDispatch finds its traceback function from the stack.
     lua_pushcfunction(m_pLuaState, luaTraceback);
-    m_tracebackIndex = lua_gettop(m_pLuaState);
     lua_rawgeti(m_pLuaState, LUA_REGISTRYINDEX, m_dispatchReference);
     lua_pushstring(m_pLuaState, pKind);
     return true;
@@ -818,23 +894,30 @@ bool ModRuntime::beginDispatch(const char *pKind)
 
 bool ModRuntime::endDispatch(int argumentCount, int resultCount)
 {
-    const int status = lua_pcall(m_pLuaState, argumentCount + 1, resultCount, m_tracebackIndex);
+    // Stack: traceback, dispatch function, kind, arguments...
+    const int tracebackIndex = lua_gettop(m_pLuaState) - argumentCount - 2;
+    const int status = lua_pcall(m_pLuaState, argumentCount + 1, resultCount, tracebackIndex);
 
     if (status != LUA_OK)
     {
         const char *pMessage = lua_tostring(m_pLuaState, -1);
         writeLog("error", std::string("dispatch failed: ") + (pMessage != nullptr ? pMessage : "unknown"));
-        lua_settop(m_pLuaState, m_tracebackIndex - 1);
+        lua_settop(m_pLuaState, tracebackIndex - 1);
         return false;
     }
 
-    lua_remove(m_pLuaState, m_tracebackIndex);
+    lua_remove(m_pLuaState, tracebackIndex);
     return true;
 }
 
 void ModRuntime::setHost(ModHost host)
 {
     m_host = std::move(host);
+}
+
+const ModHost &ModRuntime::host() const
+{
+    return m_host;
 }
 
 std::string ModRuntime::captureState()
@@ -914,6 +997,120 @@ int ModRuntime::calcDamageToMonster(const ModDamageToMonsterEvent &event)
         : static_cast<lua_Number>(event.resolvedDamage);
     lua_pop(m_pLuaState, 1);
     return static_cast<int>(std::clamp<lua_Number>(result, 0.0, 2000000000.0));
+}
+
+void ModRuntime::adjustCharacterBonuses(
+    Party &party,
+    size_t memberIndex,
+    const CharacterStatBonuses &buffBonuses)
+{
+    Character *pMember = party.member(memberIndex);
+
+    // A handler may ask for the bonuses to be rebuilt; the rebuild in progress already covers it.
+    if (pMember == nullptr || m_adjustingBonuses || !m_active)
+    {
+        return;
+    }
+
+    m_adjustingBonuses = true;
+    ensureModCharacterIndex(party, *pMember);
+
+    // --- statistics: item part and magic part ------------------------------------------------------------------------
+    if (beginDispatch("characterBonuses"))
+    {
+        lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(memberIndex));
+        lua_newtable(m_pLuaState);
+        lua_Integer position = 0;
+
+        for (const ModStatField &field : ModStatFields)
+        {
+            const int total = statBonusValue(pMember->magicalBonuses, field);
+            const int fromMagic = statBonusValue(buffBonuses, field);
+            lua_pushinteger(m_pLuaState, field.statId);
+            lua_rawseti(m_pLuaState, -2, ++position);
+            lua_pushinteger(m_pLuaState, total - fromMagic);
+            lua_rawseti(m_pLuaState, -2, ++position);
+            lua_pushinteger(m_pLuaState, fromMagic);
+            lua_rawseti(m_pLuaState, -2, ++position);
+        }
+
+        if (endDispatch(2, 1))
+        {
+            if (lua_istable(m_pLuaState, -1))
+            {
+                lua_Integer resultIndex = 0;
+
+                for (const ModStatField &field : ModStatFields)
+                {
+                    lua_rawgeti(m_pLuaState, -1, ++resultIndex);
+
+                    if (lua_isnumber(m_pLuaState, -1))
+                    {
+                        statBonusField(pMember->magicalBonuses, field) = static_cast<int>(
+                            std::clamp<lua_Number>(lua_tonumber(m_pLuaState, -1), -2000000000.0, 2000000000.0));
+                    }
+
+                    lua_pop(m_pLuaState, 1);
+                }
+            }
+
+            lua_pop(m_pLuaState, 1);
+        }
+    }
+
+    // --- skills ------------------------------------------------------------------------------------------------------
+    if (beginDispatch("characterSkills"))
+    {
+        lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(memberIndex));
+        lua_newtable(m_pLuaState);
+        lua_Integer position = 0;
+
+        for (size_t skillId = 0; skillId < MergeSkillCount; ++skillId)
+        {
+            const std::string skillName = canonicalSkillName(mergeSkillName(skillId));
+            const CharacterSkill *pSkill = pMember->findSkillByCanonicalName(skillName);
+            lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(skillId));
+            lua_rawseti(m_pLuaState, -2, ++position);
+            lua_pushinteger(m_pLuaState, pSkill != nullptr ? static_cast<lua_Integer>(pSkill->level) : 0);
+            lua_rawseti(m_pLuaState, -2, ++position);
+            lua_pushinteger(m_pLuaState, pSkill != nullptr ? static_cast<lua_Integer>(pSkill->mastery) : 0);
+            lua_rawseti(m_pLuaState, -2, ++position);
+            lua_pushinteger(m_pLuaState, pMember->skillBonus(skillName));
+            lua_rawseti(m_pLuaState, -2, ++position);
+        }
+
+        if (endDispatch(2, 1))
+        {
+            if (lua_istable(m_pLuaState, -1))
+            {
+                for (size_t skillId = 0; skillId < MergeSkillCount; ++skillId)
+                {
+                    lua_rawgeti(m_pLuaState, -1, static_cast<lua_Integer>(skillId + 1));
+
+                    if (lua_isnumber(m_pLuaState, -1))
+                    {
+                        const std::string skillName = canonicalSkillName(mergeSkillName(skillId));
+                        const int wanted = static_cast<int>(
+                            std::clamp<lua_Number>(lua_tonumber(m_pLuaState, -1), -100000.0, 100000.0));
+                        const int current = pMember->skillBonus(skillName);
+
+                        if (wanted != current)
+                        {
+                            // skillBonus sums every entry whose canonical name matches, plus hired NPC bonuses;
+                            // the difference goes into the canonical entry.
+                            pMember->itemSkillBonuses[skillName] += wanted - current;
+                        }
+                    }
+
+                    lua_pop(m_pLuaState, 1);
+                }
+            }
+
+            lua_pop(m_pLuaState, 1);
+        }
+    }
+
+    m_adjustingBonuses = false;
 }
 
 void ModRuntime::fireEvent(const std::string &eventName)

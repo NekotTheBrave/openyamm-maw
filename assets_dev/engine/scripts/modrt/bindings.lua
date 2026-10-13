@@ -312,10 +312,38 @@ local function playerObject(playerIndex)
             GetIndex = function()
                 return modrt.playerGet(playerIndex, "ModIndex")
             end,
-            -- Base skill value for now; item and effect bonuses arrive with the GetSkill event.
+            -- Skill value including bonuses, as left by the GetSkill event at the last bonus rebuild.
             GetSkill = function(_, id)
-                return skills[id]
+                local name = skillName(id)
+
+                if not name then
+                    return 0
+                end
+
+                local level, mastery, bonus = modrt.playerSkillGet(playerIndex, name)
+
+                if not level or level == 0 then
+                    return 0
+                end
+
+                return JoinSkill(level + (bonus or 0), mastery)
             end,
+            GetMight = function() return modrt.playerGet(playerIndex, "GetMight") end,
+            GetIntellect = function() return modrt.playerGet(playerIndex, "GetIntellect") end,
+            GetPersonality = function() return modrt.playerGet(playerIndex, "GetPersonality") end,
+            GetEndurance = function() return modrt.playerGet(playerIndex, "GetEndurance") end,
+            GetAccuracy = function() return modrt.playerGet(playerIndex, "GetAccuracy") end,
+            GetSpeed = function() return modrt.playerGet(playerIndex, "GetSpeed") end,
+            GetLuck = function() return modrt.playerGet(playerIndex, "GetLuck") end,
+            GetFullHP = function() return modrt.playerGet(playerIndex, "GetFullHP") end,
+            GetFullSP = function() return modrt.playerGet(playerIndex, "GetFullSP") end,
+            GetArmorClass = function() return modrt.playerGet(playerIndex, "GetArmorClass") end,
+            GetMeleeAttack = function() return modrt.playerGet(playerIndex, "GetMeleeAttack") end,
+            GetMeleeDamageMin = function() return modrt.playerGet(playerIndex, "GetMeleeDamageMin") end,
+            GetMeleeDamageMax = function() return modrt.playerGet(playerIndex, "GetMeleeDamageMax") end,
+            GetRangedAttack = function() return modrt.playerGet(playerIndex, "GetRangedAttack") end,
+            GetRangedDamageMin = function() return modrt.playerGet(playerIndex, "GetRangedDamageMin") end,
+            GetRangedDamageMax = function() return modrt.playerGet(playerIndex, "GetRangedDamageMax") end,
         },
     })
 end
@@ -362,6 +390,12 @@ Party = boundObject("Party", {
 
         return modrt.partyGet(key)
     end,
+    methods = {
+        -- Not part of MMExtension: recomputes every member's bonuses now, running the stat events.
+        RefreshBonuses = function()
+            modrt.partyRefreshBonuses()
+        end,
+    },
     set = function(key, value)
         return modrt.partySet(key, value)
     end,

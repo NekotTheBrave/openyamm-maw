@@ -9,6 +9,7 @@
 #include "game/items/ItemEnchantTables.h"
 #include "game/items/ItemGenerator.h"
 #include "game/items/ItemRuntime.h"
+#include "game/mod/ModHooks.h"
 #include "game/tables/ItemTable.h"
 #include "game/tables/CharacterDollTable.h"
 #include "game/tables/JournalQuestTable.h"
@@ -6982,6 +6983,19 @@ void Party::rebuildMagicalBonusesFromBuffs()
                 member);
         };
 
+    // Mods distinguish bonuses from items and bonuses from magic; from here on the two are summed together.
+    std::vector<CharacterStatBonuses> modBuffBonuses;
+
+    if (activeModHooks() != nullptr)
+    {
+        modBuffBonuses.reserve(m_members.size());
+
+        for (const Character &member : m_members)
+        {
+            modBuffBonuses.push_back(member.magicalBonuses);
+        }
+    }
+
     if (m_pItemTable != nullptr)
     {
         for (Character &member : m_members)
@@ -7095,6 +7109,14 @@ void Party::rebuildMagicalBonusesFromBuffs()
             {
                 member.magicalBonuses.endurance -= 40;
             }
+        }
+    }
+
+    if (IModHooks *pModHooks = activeModHooks(); pModHooks != nullptr && modBuffBonuses.size() == m_members.size())
+    {
+        for (size_t memberIndex = 0; memberIndex < m_members.size(); ++memberIndex)
+        {
+            pModHooks->adjustCharacterBonuses(*this, memberIndex, modBuffBonuses[memberIndex]);
         }
     }
 

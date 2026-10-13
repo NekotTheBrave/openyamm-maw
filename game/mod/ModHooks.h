@@ -24,12 +24,22 @@ struct ModDamageToMonsterEvent
     bool melee = true;
 };
 
+class Party;
+
 class IModHooks
 {
 public:
     virtual ~IModHooks() = default;
 
     virtual int calcDamageToMonster(const ModDamageToMonsterEvent &event) = 0;
+
+    // Called at the end of Party::rebuildMagicalBonusesFromBuffs for each member. At that point the member's
+    // magicalBonuses holds buffs plus equipped items and itemSkillBonuses holds item skill bonuses; `buffBonuses`
+    // is the buffs-only part. The mod may replace the item part, the magic part and the skill bonuses.
+    virtual void adjustCharacterBonuses(
+        Party &party,
+        size_t memberIndex,
+        const CharacterStatBonuses &buffBonuses) = 0;
 };
 
 IModHooks *activeModHooks();

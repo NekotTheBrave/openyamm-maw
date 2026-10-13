@@ -108,6 +108,7 @@ loadRuntimeScript("mem.lua")
 loadRuntimeScript("bindings.lua")
 loadRuntimeScript("state.lua")
 loadRuntimeScript("combat.lua")
+loadRuntimeScript("stats.lua")
 loadRuntimeScript("loader.lua")
 loadRuntimeScript("report.lua")
 loadRuntimeScript("selftest.lua")
@@ -218,6 +219,10 @@ function ModRT.dispatch(kind, ...)
         return ModRT.Loader.loadSessionScripts()
     elseif kind == "damageToMonster" then
         return ModRT.Combat.damageToMonster(...)
+    elseif kind == "characterBonuses" then
+        return ModRT.Stats.characterBonuses(...)
+    elseif kind == "characterSkills" then
+        return ModRT.Stats.characterSkills(...)
     end
 
     error("unknown dispatch kind " .. tostring(kind))
