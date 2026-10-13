@@ -7116,6 +7116,12 @@ void Party::rebuildMagicalBonusesFromBuffs()
     {
         for (size_t memberIndex = 0; memberIndex < m_members.size(); ++memberIndex)
         {
+            // The stored base hit and spell points include a skill's share (Bodybuilding, Meditation), which a mod
+            // may replace; they are otherwise only recomputed on level and skill changes.
+            Character &member = m_members[memberIndex];
+            member.maxHealth = GameMechanics::calculateBaseCharacterMaxHealth(member, m_pClassMultiplierTable);
+            member.maxSpellPoints =
+                GameMechanics::calculateBaseCharacterMaxSpellPoints(member, m_pClassMultiplierTable);
             pModHooks->adjustCharacterBonuses(*this, memberIndex, modBuffBonuses[memberIndex]);
         }
     }

@@ -14,10 +14,31 @@ local type = type
 local floor = math.floor
 
 -- spec.get(key) returns nil for a field it does not know; spec.set(key, value) returns true when it took the value.
+-- spec.range() returns the first and last index of an array, which makes the object iterable the MMExtension way:
+-- `for index, value in Party do`.
 local function boundObject(path, spec)
     local fallback = Stubs.new(path)
+    local call = nil
+
+    if spec.range then
+        call = function(self, _, control)
+            local low, high = spec.range()
+            local index = control == nil and low or control + 1
+
+            if index > high then
+                return nil
+            end
+
+            return index, self[index]
+        end
+    elseif spec.next then
+        call = function(_, _, control)
+            return spec.next(control)
+        end
+    end
 
     return setmetatable({}, {
+        __call = call,
         __index = function(_, key)
             if type(key) == "number" then
                 if spec.index then
@@ -245,6 +266,7 @@ local function itemsObject(playerIndex, path)
             return nil
         end,
         get = sizeFields(function() return MaxItemRecords end),
+        range = function() return 1, MaxItemRecords end,
     })
 end
 
@@ -309,6 +331,63 @@ end
 local OriginalPlayerArrayAddress = 0xB2187C
 local OriginalPlayerSize = 0x1D28
 
+-- const.Condition, which is also the engine's own order. A condition reads as the game time it set in at, 0 when
+-- the character does not have it; writing 0 lifts it.
+local conditionIds = {
+    Cursed = 0, Weak = 1, Asleep = 2, Afraid = 3, Drunk = 4, Insane = 5, Poison1 = 6, Disease1 = 7, Poison2 = 8,
+    Disease2 = 9, Poison3 = 10, Disease3 = 11, Paralyzed = 12, Unconscious = 13, Dead = 14, Stoned = 15,
+    Eradicated = 16, Zombie = 17,
+}
+local ConditionCount = 18
+
+-- const.Damage numbers the entries of Player.Resistances; 4 and 5 are unused slots in the original structure.
+local resistanceNames = {
+    [0] = "Fire", [1] = "Air", [2] = "Water", [3] = "Earth", [4] = "Physical", [5] = "Magic", [6] = "Spirit",
+    [7] = "Mind", [8] = "Body", [9] = "Light", [10] = "Dark",
+}
+
+-- const.Stats numbers the entries of Player.Stats.
+local statNames = {
+    [0] = "Might", [1] = "Intellect", [2] = "Personality", [3] = "Endurance", [4] = "Speed", [5] = "Accuracy",
+    [6] = "Luck",
+}
+
+-- An array of {Base, Bonus} pairs over the character's plain fields: Resistances[0].Base is FireResistanceBase.
+local function baseBonusArray(playerIndex, path, names, middle)
+    local entry = cached(function(index)
+        local name = names[index]
+
+        return boundObject(path .. "[]", {
+            get = function(key)
+                if key == "Base" or key == "Bonus" then
+                    return modrt.playerGet(playerIndex, name .. middle .. key)
+                end
+
+                return nil
+            end,
+            set = function(key, value)
+                if key == "Base" or key == "Bonus" then
+                    return modrt.playerSet(playerIndex, name .. middle .. key, value)
+                end
+
+                return false
+            end,
+        })
+    end)
+
+    return boundObject(path, {
+        index = function(index)
+            if names[index] then
+                return entry(index)
+            end
+
+            return nil
+        end,
+        get = sizeFields(function() return #names + 1 end),
+        range = function() return 0, #names end,
+    })
+end
+
 local function playerObject(playerIndex)
     local path = "Party[]"
     local skills = skillsObject(playerIndex, path .. ".Skills")
@@ -331,6 +410,19 @@ local function playerObject(playerIndex)
         get = sizeFields(function() return EquipmentSlotCount end),
     })
 
+    local conditions = boundObject(path .. ".Conditions", {
+        index = function(condition)
+            return modrt.playerConditionGet(playerIndex, floor(condition))
+        end,
+        newindex = function(condition, value)
+            return modrt.playerConditionSet(playerIndex, floor(condition), tonumber(value) or 0)
+        end,
+        get = sizeFields(function() return ConditionCount end),
+        range = function() return 0, ConditionCount - 1 end,
+    })
+    local resistances = baseBonusArray(playerIndex, path .. ".Resistances", resistanceNames, "Resistance")
+    local stats = baseBonusArray(playerIndex, path .. ".Stats", statNames, "")
+
     return boundObject(path, {
         get = function(key)
             if key == "Skills" then
@@ -339,6 +431,14 @@ local function playerObject(playerIndex)
                 return items
             elseif key == "EquippedItems" then
                 return equipped
+            elseif key == "Conditions" then
+                return conditions
+            elseif key == "Resistances" then
+                return resistances
+            elseif key == "Stats" then
+                return stats
+            elseif conditionIds[key] then
+                return modrt.playerConditionGet(playerIndex, conditionIds[key])
             elseif key == "?ptr" then
                 -- Scripts derive a character's index from its address in the original player array. Nothing lives
                 -- at this address here; it only has to give that arithmetic the right answer.
@@ -349,9 +449,17 @@ local function playerObject(playerIndex)
             return modrt.playerGet(playerIndex, key)
         end,
         set = function(key, value)
+            if conditionIds[key] then
+                return modrt.playerConditionSet(playerIndex, conditionIds[key], tonumber(value) or 0)
+            end
+
             return modrt.playerSet(playerIndex, key, value)
         end,
         methods = {
+            -- The condition shown on the portrait (const.Condition); 18, Good, when there is none.
+            GetMainCondition = function()
+                return modrt.playerGet(playerIndex, "MainCondition")
+            end,
             -- A number of the character's own, stable across party reordering (MMExtension: its roster index).
             GetIndex = function()
                 return modrt.playerGet(playerIndex, "ModIndex")
@@ -409,6 +517,10 @@ local function playerObject(playerIndex)
             GetRangedAttack = function() return modrt.playerGet(playerIndex, "GetRangedAttack") end,
             GetRangedDamageMin = function() return modrt.playerGet(playerIndex, "GetRangedDamageMin") end,
             GetRangedDamageMax = function() return modrt.playerGet(playerIndex, "GetRangedDamageMax") end,
+            -- Recovery after an attack in ticks: pl:GetAttackDelay() for the main hand, (true) for the bow.
+            GetAttackDelay = function(_, ranged)
+                return modrt.playerGet(playerIndex, ranged and "GetAttackDelayRanged" or "GetAttackDelay")
+            end,
         },
     })
 end
@@ -434,6 +546,26 @@ local playersArray = boundObject("Party.PlayersArray", {
 
         return nil
     end,
+    -- Iteration visits the characters that exist, in the order of their indexes.
+    next = function(control)
+        local best = nil
+        local bestSlot = nil
+
+        for slot = 0, partyCount() - 1 do
+            local index = modrt.playerGet(slot, "ModIndex")
+
+            if index and (control == nil or index > control) and (best == nil or index < best) then
+                best = index
+                bestSlot = slot
+            end
+        end
+
+        if best == nil then
+            return nil
+        end
+
+        return best, playerAt(bestSlot)
+    end,
 })
 
 Party = boundObject("Party", {
@@ -444,6 +576,7 @@ Party = boundObject("Party", {
 
         return nil
     end,
+    range = function() return 0, partyCount() - 1 end,
     get = function(key)
         local size = sizeFields(partyCount)(key)
 
@@ -466,11 +599,43 @@ Party = boundObject("Party", {
     end,
 })
 
-local function tableRow(path, getter)
+-- Rows of the game's tables. A write goes to the engine's table where `setter` can make it. For the fields it
+-- cannot change yet, what a script writes is kept with the row here: scripts read it back, but the game goes on
+-- using its own value. Bindings.tableWrites counts those writes for the report, so that they are not mistaken for
+-- working.
+Bindings.tableWrites = {}
+
+local function tableRow(path, getter, setter)
     return cached(function(id)
+        local written = nil
+
         return boundObject(path, {
             get = function(key)
+                if written then
+                    local value = written[key]
+
+                    if value ~= nil then
+                        return value
+                    end
+                end
+
                 return getter(id, key)
+            end,
+            set = function(key, value)
+                -- Only fields the row has; anything else is recorded as a missing binding.
+                if value == nil or getter(id, key) == nil then
+                    return false
+                end
+
+                if setter and setter(id, key, value) then
+                    return true
+                end
+
+                written = written or {}
+                written[key] = value
+                local name = path .. "." .. key
+                Bindings.tableWrites[name] = (Bindings.tableWrites[name] or 0) + 1
+                return true
             end,
         })
     end)
@@ -495,7 +660,29 @@ function GetRace(player, playerIndex)
     return player.RaceId
 end
 
-local itemRow = tableRow("Game.ItemsTxt[]", modrt.itemTxtGet)
+local mapStatsRow = tableRow("Game.MapStats[]", modrt.mapStatsGet)
+
+-- Scripts walk this table from 0 or 1 to High and expect a row at every index, as in the original array, so
+-- an index without a map still yields a row (its fields fall through to stand-ins).
+local mapStats = boundObject("Game.MapStats", {
+    index = function(id)
+        if id < 0 or id >= (modrt.mapStatsGet(0, "#") or 0) then
+            return nil
+        end
+
+        return mapStatsRow(id)
+    end,
+    get = sizeFields(function() return modrt.mapStatsGet(0, "#") or 0 end),
+    range = function() return 0, (modrt.mapStatsGet(0, "#") or 0) - 1 end,
+})
+
+local itemRow = tableRow("Game.ItemsTxt[]", modrt.itemTxtGet, function(id, key, value)
+    if type(value) == "number" then
+        value = floor(value)
+    end
+
+    return modrt.itemTxtSet(id, key, value)
+end)
 local monsterRow = tableRow("Game.MonstersTxt[]", modrt.monsterTxtGet)
 
 local itemsTxt = boundObject("Game.ItemsTxt", {
@@ -519,6 +706,11 @@ local monstersTxt = boundObject("Game.MonstersTxt", {
     end,
 })
 
+-- Game.GetStatisticEffect(value): what a statistic's value is worth (13 gives 0, 15 gives 1, ...).
+local function getStatisticEffect(value)
+    return modrt.statisticEffect(floor(tonumber(value) or 0))
+end
+
 Game = boundObject("Game", {
     get = function(key)
         if key == "ItemsTxt" then
@@ -527,6 +719,8 @@ Game = boundObject("Game", {
             return monstersTxt
         elseif key == "CharacterPortraits" then
             return characterPortraits
+        elseif key == "MapStats" then
+            return mapStats
         elseif key == "CurrentPlayer" then
             return modrt.partyGet("CurrentPlayer")
         elseif key == "Time" then
@@ -540,6 +734,11 @@ Game = boundObject("Game", {
     methods = {
         ShowStatusText = function(text)
             modrt.showStatusText(text)
+        end,
+        GetStatisticEffect = getStatisticEffect,
+        -- The engine's random number: 0 to 32767.
+        Rand = function()
+            return math.random(0, 32767)
         end,
     },
 })
@@ -568,6 +767,7 @@ local mapMonsters = boundObject("Map.Monsters", {
         return nil
     end,
     get = sizeFields(monsterCount),
+    range = function() return 0, monsterCount() - 1 end,
 })
 
 Map = boundObject("Map", {
@@ -576,6 +776,8 @@ Map = boundObject("Map", {
             return mapMonsters
         elseif key == "Name" then
             return modrt.gameGet("MapFileName")
+        elseif key == "MapStatsIndex" then
+            return modrt.gameGet("MapStatsIndex")
         end
 
         return nil

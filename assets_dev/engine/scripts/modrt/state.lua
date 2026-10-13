@@ -99,6 +99,8 @@ end
 
 -- True between a new game or a load and the first map the scripts are told about.
 State.freshSession = true
+-- True until the scripts have been told that a new game began (BeforeNewGameAutosave).
+State.newGamePending = true
 local syncing = false
 
 -- Notices that the party is on a different map than the scripts last knew: switches `mapvars` to that map's
@@ -129,6 +131,9 @@ function State.syncMap()
         State.mapVarsByMap[State.currentMap] = mapvars
     end
 
+    ModRT.Merge.clearTimers()
+    ModRT.Merge.ensureSessionState()
+
     State.currentMap = mapName
     State.freshSession = false
     mapvars = State.mapVarsByMap[mapName] or {}
@@ -147,6 +152,7 @@ function State.syncMap()
 end
 
 function State.capture()
+    ModRT.fire("BeforeSaveGame")
     State.dropped = 0
 
     if State.currentMap then
@@ -179,5 +185,6 @@ function State.restore(text)
     State.mapVarsByMap = data and type(data.mapvars) == "table" and data.mapvars or {}
     State.currentMap = nil
     State.freshSession = true
+    State.newGamePending = data == nil
     mapvars = {}
 end

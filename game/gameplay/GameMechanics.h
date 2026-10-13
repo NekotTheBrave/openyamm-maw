@@ -119,6 +119,8 @@ struct CharacterAttackProfile
     int rangedSpellId = 0;
     float meleeRecoverySeconds = 1.0f;
     float rangedRecoverySeconds = 1.0f;
+    int meleeRecoveryTicks = 0;
+    int rangedRecoveryTicks = 0;
 };
 
 struct CharacterAttackResult
@@ -280,6 +282,8 @@ public:
         std::mt19937 &rng);
     static std::optional<CharacterCondition> displayedCondition(const Character &character);
     static bool canAct(const Character &character);
+    // The effect of a statistic's value on what it governs (13 gives 0, 15 gives 1, ...).
+    static int statisticEffect(int value);
     static int resolveCharacterPerceptionValue(const Character &character);
     static int resolvePartyPerceptionValue(const Party &party);
     static int resolveCharacterDisarmTrapValue(const Character &character);

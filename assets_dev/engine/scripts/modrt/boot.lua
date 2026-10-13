@@ -109,6 +109,7 @@ loadRuntimeScript("bindings.lua")
 loadRuntimeScript("state.lua")
 loadRuntimeScript("combat.lua")
 loadRuntimeScript("stats.lua")
+loadRuntimeScript("merge.lua")
 loadRuntimeScript("loader.lua")
 loadRuntimeScript("report.lua")
 loadRuntimeScript("selftest.lua")
@@ -134,7 +135,17 @@ function ModRT.ensureSession()
         ModRT.Loader.loadSessionScripts()
     end
 
-    ModRT.State.syncMap()
+    local State = ModRT.State
+
+    -- A game that starts without saved mod state is a new game as far as the scripts are concerned. They hear
+    -- about it once the first map is ready, before that map's own events.
+    if State.newGamePending and modrt.gameGet("MapReady") then
+        State.newGamePending = false
+        ModRT.Merge.ensureSessionState()
+        ModRT.fire("BeforeNewGameAutosave")
+    end
+
+    State.syncMap()
 end
 
 -- Functions queued by RunNextTick, run once at the start of the next tick.
@@ -169,6 +180,7 @@ function ModRT.tick(deltaSeconds)
         end
     end
 
+    ModRT.Merge.runTimers()
     local errorsBefore = ModRT.totalErrorCount
     ModRT.fire("Tick")
 
@@ -244,6 +256,12 @@ function ModRT.dispatch(kind, ...)
         return ModRT.Stats.characterBonuses(...)
     elseif kind == "characterSkills" then
         return ModRT.Stats.characterSkills(...)
+    elseif kind == "statisticEffect" then
+        return ModRT.Stats.statisticEffect(...)
+    elseif kind == "attackDelay" then
+        return ModRT.Stats.attackDelay(...)
+    elseif kind == "skillStatBonus" then
+        return ModRT.Stats.skillStatBonus(...)
     end
 
     error("unknown dispatch kind " .. tostring(kind))

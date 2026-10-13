@@ -42,6 +42,10 @@ steps:
         t.Result = 1234
       end
       function ProbeRound()
+        -- Healing alone is not enough: a character knocked out, put to sleep or paralysed stays that way.
+        for condition = 0, Party[0].Conditions.High do
+          Party[0].Conditions[condition] = 0
+        end
         Party[0].HP = Party[0].FullHPBase
         local placed = 0
         for i = 0, Map.Monsters.High do
@@ -73,7 +77,9 @@ steps:
 - mod_lua:
     code: |
       local h = ProbeHits[1]
-      if not h then return "no hit; party HP " .. tostring(Party[0].HP) end
+      if not h then
+        return "no hit; party HP " .. tostring(Party[0].HP) .. ", condition " .. tostring(Party[0]:GetMainCondition())
+      end
       local after = Map.Monsters[h.monsterIndex].HP
       return h.kind, h.byPlayer, h.melee, h.playerIndex == Party[0]:GetIndex(), h.samePlayer,
         h.monsterIndex == h.targetIndex, h.rawPositive, (h.hpBefore - after) % 1234

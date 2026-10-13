@@ -132,3 +132,40 @@ function Stats.characterSkills(slot, flat)
 
     return bonuses
 end
+
+-- The effect of a statistic's value; `effect` is the engine's answer. Asked for constantly, from anywhere in the
+-- engine, so this does nothing but run the event.
+function Stats.statisticEffect(value, effect)
+    local event = {Value = value, Result = effect}
+    ModRT.fire("GetStatisticEffect", event)
+    return wholeNumber(event.Result, effect)
+end
+
+-- Recovery after an attack in ticks; `ticks` is the engine's answer.
+function Stats.attackDelay(slot, ranged, ticks)
+    ModRT.ensureSession()
+    local player = Party[slot]
+
+    if not player then
+        return ticks
+    end
+
+    local event = {Ranged = ranged, Result = ticks, Player = player, PlayerIndex = player:GetIndex()}
+    ModRT.fire("GetAttackDelay", event)
+    return wholeNumber(event.Result, ticks)
+end
+
+-- What a character's skills add to one statistic (HP, SP, armor class, attack, damage); `bonus` is the engine's
+-- answer.
+function Stats.skillStatBonus(slot, stat, bonus)
+    ModRT.ensureSession()
+    local player = Party[slot]
+
+    if not player then
+        return bonus
+    end
+
+    local event = {Stat = stat, Result = bonus, Player = player, PlayerIndex = player:GetIndex()}
+    ModRT.fire("CalcStatBonusBySkills", event)
+    return wholeNumber(event.Result, bonus)
+end

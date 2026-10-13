@@ -124,6 +124,13 @@ function ModRT.buildReport()
         end
     end
 
+    -- table writes
+    section("GAME TABLE FIELDS written by mods (kept for the scripts; the game does not use the new values yet)")
+
+    for _, row in ipairs(sortedByCount(ModRT.Bindings and ModRT.Bindings.tableWrites or {})) do
+        line(("%-70s x%d"):format(row.name, row.count))
+    end
+
     -- undefined globals
     section("UNDEFINED GLOBALS read by mods (helpers the Merge base or MMExtension would have defined)")
 

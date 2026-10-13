@@ -104,16 +104,49 @@ local function isSkipped(mod, relativePath)
     return nil
 end
 
+-- The port folder's version of a mod script, if there is one.
+function Loader.portPath(mod, relativePath)
+    if mod.port and mod.port ~= "" then
+        local candidate = mod.port .. "/Scripts/" .. relativePath
+
+        if modrt.fileExists(candidate) then
+            return candidate
+        end
+    end
+
+    return nil
+end
+
+-- Maps a path inside a mod's Scripts folder to its port version, so dofile and require pick ports up too.
+function Loader.portPathForFile(fullPath)
+    fullPath = normalizeSlashes(fullPath)
+
+    for _, mod in ipairs(config.mods) do
+        local prefix = mod.path .. "/Scripts/"
+
+        if fullPath:sub(1, #prefix):lower() == prefix:lower() then
+            return Loader.portPath(mod, fullPath:sub(#prefix + 1))
+        end
+    end
+
+    return nil
+end
+
 local function runFile(mod, relativePath)
     local displayName = mod.id .. ":" .. relativePath
-    local skipReason = isSkipped(mod, relativePath)
+    local portPath = Loader.portPath(mod, relativePath)
+    local skipReason = not portPath and isSkipped(mod, relativePath) or nil
 
     if skipReason then
         noteFile(displayName, "skipped", skipReason)
         return
     end
 
-    local source, readError = modrt.readFile(mod.path .. "/Scripts/" .. relativePath)
+    local source, readError = modrt.readFile(portPath or (mod.path .. "/Scripts/" .. relativePath))
+
+    if portPath then
+        displayName = mod.id .. "+port:" .. relativePath
+    end
 
     if not source then
         noteFile(displayName, "error", "cannot read: " .. tostring(readError))
@@ -142,7 +175,29 @@ end
 
 local function runFolder(folder)
     for _, mod in ipairs(config.mods) do
-        for _, name in ipairs(listLuaFiles(mod.path .. "/Scripts/" .. folder)) do
+        local names = listLuaFiles(mod.path .. "/Scripts/" .. folder)
+
+        -- Scripts that exist only in the port folder join the same sorted order.
+        if mod.port and mod.port ~= "" then
+            local present = {}
+
+            for _, name in ipairs(names) do
+                present[name:lower()] = true
+            end
+
+            for _, name in ipairs(listLuaFiles(mod.port .. "/Scripts/" .. folder)) do
+                if not present[name:lower()] then
+                    names[#names + 1] = name
+                end
+            end
+
+            table.sort(names, function(left, right)
+                local lowerLeft, lowerRight = left:lower(), right:lower()
+                return lowerLeft == lowerRight and left < right or lowerLeft < lowerRight
+            end)
+        end
+
+        for _, name in ipairs(names) do
             runFile(mod, folder .. "/" .. name)
         end
     end
@@ -154,10 +209,11 @@ local function installModuleSearcher()
         local relativePath = "Modules/" .. moduleName:gsub("%.", "/") .. ".lua"
 
         for _, mod in ipairs(config.mods) do
-            local fullPath = mod.path .. "/Scripts/" .. relativePath
+            local portPath = Loader.portPath(mod, relativePath)
+            local fullPath = portPath or (mod.path .. "/Scripts/" .. relativePath)
 
             if modrt.fileExists(fullPath) then
-                local displayName = mod.id .. ":" .. relativePath
+                local displayName = mod.id .. (portPath and "+port:" or ":") .. relativePath
                 local source = modrt.readFile(fullPath)
                 local chunk, loadError = load(Loader.prepareSource(source), "@" .. displayName)
 

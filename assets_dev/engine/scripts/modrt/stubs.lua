@@ -85,6 +85,13 @@ stubMeta.__newindex = function(self, key, value)
 end
 
 stubMeta.__call = function(self, ...)
+    -- MMExtension arrays are iterated directly: `for i, v in Map.Sprites do`. The loop calls the array with two
+    -- nils to start; a stand-in for an array is empty, so the loop ends there.
+    if select("#", ...) == 2 and (...) == nil and select(2, ...) == nil then
+        record(rawget(self, PathKey) .. " (iterated)")
+        return nil
+    end
+
     local path = rawget(self, PathKey) .. "()"
     record(path)
     local result = rawget(self, "()")

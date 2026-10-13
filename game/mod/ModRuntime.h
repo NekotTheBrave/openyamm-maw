@@ -7,6 +7,8 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <utility>
+#include <unordered_map>
 #include <vector>
 
 struct lua_State;
@@ -32,6 +34,11 @@ public:
         std::filesystem::path assetsPath;
         std::string baseOverrides = "skip";
         std::vector<std::string> skippedScripts;
+        // Optional folder shaped like the mod (Scripts/...): a script there replaces the mod's script of the same
+        // path, or is added to the load order. For OpenYAMM versions of files that cannot run as shipped.
+        std::filesystem::path portPath;
+        // Free-form values from mods.yml, handed to the scripts as ModSettings.
+        std::vector<std::pair<std::string, std::string>> settings;
     };
 
     ModRuntime();
@@ -61,6 +68,9 @@ public:
         Party &party,
         size_t memberIndex,
         const CharacterStatBonuses &buffBonuses) override;
+    int statisticEffect(int value, int engineEffect) override;
+    int attackDelay(const Character &character, bool ranged, int engineTicks) override;
+    int skillStatBonus(const Character &character, int statId, int engineBonus) override;
 
     void fireEvent(const std::string &eventName);
     void tick(float deltaSeconds);
@@ -102,6 +112,11 @@ private:
     std::ofstream m_logFile;
     int m_dispatchReference = -1;
     bool m_adjustingBonuses = false;
+    // Statistic effects already asked of the scripts this frame. The engine asks for the same few values many
+    // times while drawing one frame, and the scripts answer from a formula.
+    std::unordered_map<int, int> m_statisticEffects;
+    int m_attackDelayDepth = 0;
+    int m_skillStatDepth = 0;
     bool m_enabled = false;
     bool m_configured = false;
     bool m_active = false;

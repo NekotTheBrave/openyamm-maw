@@ -40,6 +40,20 @@ public:
         Party &party,
         size_t memberIndex,
         const CharacterStatBonuses &buffBonuses) = 0;
+
+    // The effect of a statistic's value on what it governs (the engine's threshold table: 13 gives 0, 15 gives 1,
+    // ...). `engineEffect` is the table's answer; the hook returns the effect to use.
+    virtual int statisticEffect(int value, int engineEffect) = 0;
+
+    // Recovery after an attack, in the original engine's ticks (100 is an unarmed swing, 30 its floor for melee).
+    // `ranged` is true for the bow slot and false for whatever the main hand does. `engineTicks` is the engine's
+    // answer; the hook returns the ticks to use.
+    virtual int attackDelay(const Character &character, bool ranged, int engineTicks) = 0;
+
+    // The part of a statistic that comes from the character's skills: Bodybuilding in hit points, the armor
+    // skills in armor class, the weapon skills in attack and damage. `statId` is the original engine's statistic
+    // number (7 HP, 8 SP, 9 armor class, 25 melee attack, 26 melee damage, 29 ranged attack, 30 ranged damage).
+    virtual int skillStatBonus(const Character &character, int statId, int engineBonus) = 0;
 };
 
 IModHooks *activeModHooks();

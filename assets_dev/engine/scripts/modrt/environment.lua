@@ -53,6 +53,12 @@ function Env.resolvePath(path)
     path = normalizeSlashes(path)
 
     if isAbsolute(path) then
+        local port = ModRT.Loader and ModRT.Loader.portPathForFile(path)
+
+        if port then
+            return port
+        end
+
         return modrt.fileExists(path) and path or nil
     end
 
@@ -211,6 +217,15 @@ offsets = {MMVersion = 8}
 events = Events.new("events")
 vars = {}
 mapvars = {}
+
+-- The `settings:` of every enabled mod in mods.yml, as strings.
+ModSettings = {}
+
+for _, mod in ipairs(config.mods) do
+    for name, value in pairs(mod.settings or {}) do
+        ModSettings[name] = value
+    end
+end
 
 Stubs.installRoot("Game")
 Stubs.installRoot("Party")

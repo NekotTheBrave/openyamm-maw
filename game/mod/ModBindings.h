@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 struct lua_State;
 
@@ -13,6 +14,8 @@ struct ModHost;
 
 // The character's index as mods see it (GetIndex); assigned on first use. -1 when none is free.
 int64_t ensureModCharacterIndex(Party &party, Character &character);
+// The party slot of a character the engine handed over by reference: the member itself or a copy of one.
+std::optional<size_t> findModPartySlot(const Party &party, const Character &character);
 
 // Skill names in Merge's numbering, 0..MergeSkillCount-1.
 constexpr size_t MergeSkillCount = 39;

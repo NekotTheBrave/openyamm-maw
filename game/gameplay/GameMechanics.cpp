@@ -2,6 +2,7 @@
 
 #include "game/gameplay/NpcFollowerRuntime.h"
 #include "game/items/ItemEnchantRuntime.h"
+#include "game/mod/ModHooks.h"
 #include "game/party/SpellIds.h"
 #include "game/party/SkillData.h"
 #include "game/tables/CharacterDollTable.h"
@@ -259,15 +260,42 @@ bool tryParseSpellIdToken(const std::string &text, int &spellId)
 
 int parameterBonus(int value)
 {
+    int bonus = ParameterBonusValues[std::size(ParameterBonusValues) - 1];
+
     for (size_t index = 0; index < std::size(ParameterBonusThresholds); ++index)
     {
         if (value >= ParameterBonusThresholds[index])
         {
-            return ParameterBonusValues[index];
+            bonus = ParameterBonusValues[index];
+            break;
         }
     }
 
-    return ParameterBonusValues[std::size(ParameterBonusValues) - 1];
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        return pModHooks->statisticEffect(value, bonus);
+    }
+
+    return bonus;
+}
+
+// Statistic numbers of the original engine, which is how mods name the statistic a skill bonus belongs to.
+constexpr int ModStatHitPoints = 7;
+constexpr int ModStatSpellPoints = 8;
+constexpr int ModStatArmorClass = 9;
+constexpr int ModStatMeleeAttack = 25;
+constexpr int ModStatMeleeDamage = 26;
+constexpr int ModStatRangedAttack = 29;
+constexpr int ModStatRangedDamage = 30;
+
+int modSkillStatBonus(const Character &character, int statId, int bonus)
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        return pModHooks->skillStatBonus(character, statId, bonus);
+    }
+
+    return bonus;
 }
 
 std::optional<ClassMultiplierEntry> classMultiplierForClassName(
@@ -1248,7 +1276,7 @@ std::optional<int> resolveRangedAttack(const Character &character, const Equippe
         + character.magicalBonuses.accuracy;
     const int attack = parameterBonus(accuracy)
         + itemDamageModifier(*equippedItems.pBow)
-        + resolveRangedAttackSkillBonus(character, equippedItems)
+        + modSkillStatBonus(character, ModStatRangedAttack, resolveRangedAttackSkillBonus(character, equippedItems))
         + character.permanentBonuses.rangedAttack
         + character.magicalBonuses.rangedAttack;
     return attack;
@@ -1601,7 +1629,7 @@ std::string resolveConditionText(const Character &character)
     return "Good";
 }
 
-float resolveAttackRecoverySeconds(
+int resolveAttackRecoveryTicks(
     const Character &character,
     const EquippedItems &equippedItems,
     const SpellTable *pSpellTable,
@@ -1767,7 +1795,17 @@ float resolveAttackRecoverySeconds(
         minimumRecoveryTicks = OeMinimumRangedRecoveryTicks;
     }
 
-    return ticksToRecoverySeconds(std::max(recoveryTicks, minimumRecoveryTicks));
+    int ticks = std::max(recoveryTicks, minimumRecoveryTicks);
+
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        // The original engine has one recovery routine with a "bow" switch; a blaster or wand in the main hand
+        // goes through its melee side.
+        const bool ranged = mode == CharacterAttackMode::Bow || mode == CharacterAttackMode::DragonBreath;
+        ticks = std::max(0, pModHooks->attackDelay(character, ranged, ticks));
+    }
+
+    return ticks;
 }
 
 int randomInclusive(std::mt19937 &rng, int minimumValue, int maximumValue)
@@ -1969,7 +2007,10 @@ int GameMechanics::calculateBaseCharacterMaxHealth(
     const int enduranceBonus = parameterBonus(static_cast<int>(character.endurance));
     const int healthByLevel =
         multiplier->healthPerLevel * levelWithBonus(std::max(character.level, 1u), enduranceBonus);
-    const int healthBySkill = resourceSkillBonus(character, "Bodybuilding", multiplier->healthPerLevel);
+    const int healthBySkill = modSkillStatBonus(
+        character,
+        ModStatHitPoints,
+        resourceSkillBonus(character, "Bodybuilding", multiplier->healthPerLevel));
     return std::max(0, multiplier->baseHealth + healthByLevel + healthBySkill);
 }
 
@@ -2019,7 +2060,10 @@ int GameMechanics::calculateBaseCharacterMaxSpellPoints(
 
     const int manaByLevel =
         multiplier->manaPerLevel * levelWithBonus(std::max(character.level, 1u), statBonus);
-    const int manaBySkill = resourceSkillBonus(character, "Meditation", multiplier->manaPerLevel);
+    const int manaBySkill = modSkillStatBonus(
+        character,
+        ModStatSpellPoints,
+        resourceSkillBonus(character, "Meditation", multiplier->manaPerLevel));
     return std::max(0, multiplier->baseMana + manaByLevel + manaBySkill);
 }
 
@@ -2224,7 +2268,7 @@ CharacterSheetSummary GameMechanics::buildCharacterSheetSummary(
         : 0;
     const int armorBase = parameterBonus(actualSpeed)
         + resolvePassiveArmorBonus(equippedItems)
-        + resolveArmorSkillBonus(character, equippedItems)
+        + modSkillStatBonus(character, ModStatArmorClass, resolveArmorSkillBonus(character, equippedItems))
         + dragonArmorBonus
         + character.permanentBonuses.armorClass;
     const int armorActual = std::max(0, armorBase + character.magicalBonuses.armorClass);
@@ -2325,7 +2369,7 @@ CharacterSheetSummary GameMechanics::buildCharacterSheetSummary(
 
     const int meleeAttack = parameterBonus(actualAccuracy)
         + resolveMeleeAttackItemBonus(equippedItems)
-        + resolveMeleeAttackSkillBonus(character, equippedItems)
+        + modSkillStatBonus(character, ModStatMeleeAttack, resolveMeleeAttackSkillBonus(character, equippedItems))
         + character.permanentBonuses.meleeAttack
         + character.magicalBonuses.meleeAttack;
     summary.combat.attack = meleeAttack;
@@ -2336,7 +2380,10 @@ CharacterSheetSummary GameMechanics::buildCharacterSheetSummary(
         1,
         meleeMightBonus
             + resolveMeleeMinDamageItemBonus(equippedItems)
-            + resolveMeleeDamageSkillBonus(character, equippedItems, attackTuning)
+            + modSkillStatBonus(
+                character,
+                ModStatMeleeDamage,
+                resolveMeleeDamageSkillBonus(character, equippedItems, attackTuning))
             + character.weaponEnchantmentDamageBonus
             + character.permanentBonuses.meleeDamage
             + character.magicalBonuses.meleeDamage);
@@ -2344,7 +2391,10 @@ CharacterSheetSummary GameMechanics::buildCharacterSheetSummary(
         1,
         meleeMightBonus
             + resolveMeleeMaxDamageItemBonus(equippedItems)
-            + resolveMeleeDamageSkillBonus(character, equippedItems, attackTuning)
+            + modSkillStatBonus(
+                character,
+                ModStatMeleeDamage,
+                resolveMeleeDamageSkillBonus(character, equippedItems, attackTuning))
             + character.weaponEnchantmentDamageBonus
             + character.permanentBonuses.meleeDamage
             + character.magicalBonuses.meleeDamage);
@@ -2383,7 +2433,10 @@ CharacterSheetSummary GameMechanics::buildCharacterSheetSummary(
         const int rangedSkillDamageBonus =
             bowIsBlaster
                 ? resolveBlasterDamageSkillBonus(character, attackTuning)
-                : resolveRangedDamageSkillBonus(character, equippedItems, attackTuning);
+                : modSkillStatBonus(
+                    character,
+                    ModStatRangedDamage,
+                    resolveRangedDamageSkillBonus(character, equippedItems, attackTuning));
         const int rangedFlatDamageBonus =
             bowIsBlaster
                 ? 0
@@ -2467,18 +2520,20 @@ CharacterAttackProfile GameMechanics::buildCharacterAttackProfile(
         rangedRecoveryMode = CharacterAttackMode::Wand;
     }
 
-    profile.meleeRecoverySeconds = resolveAttackRecoverySeconds(
+    profile.meleeRecoveryTicks = resolveAttackRecoveryTicks(
         character,
         equippedItems,
         pSpellTable,
         CharacterAttackMode::Melee,
         attackTuning);
-    profile.rangedRecoverySeconds = resolveAttackRecoverySeconds(
+    profile.rangedRecoveryTicks = resolveAttackRecoveryTicks(
         character,
         equippedItems,
         pSpellTable,
         rangedRecoveryMode,
         attackTuning);
+    profile.meleeRecoverySeconds = ticksToRecoverySeconds(profile.meleeRecoveryTicks);
+    profile.rangedRecoverySeconds = ticksToRecoverySeconds(profile.rangedRecoveryTicks);
 
     const int actualMight = static_cast<int>(character.might)
         + character.permanentBonuses.might
@@ -2488,7 +2543,10 @@ CharacterAttackProfile GameMechanics::buildCharacterAttackProfile(
         1,
         meleeMightBonus
             + resolveMeleeMinDamageItemBonus(equippedItems)
-            + resolveMeleeDamageSkillBonus(character, equippedItems, attackTuning)
+            + modSkillStatBonus(
+                character,
+                ModStatMeleeDamage,
+                resolveMeleeDamageSkillBonus(character, equippedItems, attackTuning))
             + character.weaponEnchantmentDamageBonus
             + character.permanentBonuses.meleeDamage
             + character.magicalBonuses.meleeDamage);
@@ -2496,7 +2554,10 @@ CharacterAttackProfile GameMechanics::buildCharacterAttackProfile(
         1,
         meleeMightBonus
             + resolveMeleeMaxDamageItemBonus(equippedItems)
-            + resolveMeleeDamageSkillBonus(character, equippedItems, attackTuning)
+            + modSkillStatBonus(
+                character,
+                ModStatMeleeDamage,
+                resolveMeleeDamageSkillBonus(character, equippedItems, attackTuning))
             + character.weaponEnchantmentDamageBonus
             + character.permanentBonuses.meleeDamage
             + character.magicalBonuses.meleeDamage);
@@ -2576,14 +2637,20 @@ CharacterAttackProfile GameMechanics::buildCharacterAttackProfile(
         }
         profile.rangedMinDamage = std::max(
             0,
-            resolveRangedDamageSkillBonus(character, equippedItems, attackTuning)
+            modSkillStatBonus(
+                character,
+                ModStatRangedDamage,
+                resolveRangedDamageSkillBonus(character, equippedItems, attackTuning))
                 + (equippedItems.pBow != nullptr ? weaponMinDamage(*equippedItems.pBow) : 0)
                 + character.weaponEnchantmentDamageBonus
                 + character.permanentBonuses.rangedDamage
                 + character.magicalBonuses.rangedDamage);
         profile.rangedMaxDamage = std::max(
             profile.rangedMinDamage,
-            resolveRangedDamageSkillBonus(character, equippedItems, attackTuning)
+            modSkillStatBonus(
+                character,
+                ModStatRangedDamage,
+                resolveRangedDamageSkillBonus(character, equippedItems, attackTuning))
                 + (equippedItems.pBow != nullptr ? weaponMaxDamage(*equippedItems.pBow) : 0)
                 + character.weaponEnchantmentDamageBonus
                 + character.permanentBonuses.rangedDamage
@@ -3283,6 +3350,11 @@ bool GameMechanics::canAct(const Character &character)
         && !hasCondition(character, CharacterCondition::Dead)
         && !hasCondition(character, CharacterCondition::Petrified)
         && !hasCondition(character, CharacterCondition::Eradicated);
+}
+
+int GameMechanics::statisticEffect(int value)
+{
+    return parameterBonus(value);
 }
 
 int GameMechanics::resolveCharacterPerceptionValue(const Character &character)

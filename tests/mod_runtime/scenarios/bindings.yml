@@ -38,9 +38,15 @@ steps:
 - mod_lua:
     code: local it = Party[0].Items[2] return it.Number, it:T().Name, it.Charges, it.Identified
     expect: "1\tIron Longsword\t0\ttrue"
+# A mod may have rewritten a monster's level by now (MAW does, for every monster), so the row is checked against the
+# engine's own value only when nothing wrote to it.
 - mod_lua:
-    code: return Game.ItemsTxt[1].Name, Game.ItemsTxt[1].Value, Game.MonstersTxt[1].Name, Game.MonstersTxt[1].Level
-    expect: "Iron Longsword\t20\tLizardman Peasant\t4"
+    code: |
+      local row = Game.MonstersTxt[1]
+      local written = ModRT.Bindings.tableWrites["Game.MonstersTxt[].Level"] ~= nil
+      return Game.ItemsTxt[1].Name, Game.ItemsTxt[1].Value, row.Name, modrt.monsterTxtGet(1, "Level"),
+        written or row.Level == 4
+    expect: "Iron Longsword\t20\tLizardman Peasant\t4\ttrue"
 - mod_lua:
     code: return Map.Name, Map.Monsters.Count > 0, Map.Monsters[0].HP > 0, Map.Monsters[0].HP <= Map.Monsters[0].FullHP
     expect: "out01.odm\ttrue\ttrue\ttrue"

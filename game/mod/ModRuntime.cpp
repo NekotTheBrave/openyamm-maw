@@ -11,6 +11,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 #include <chrono>
 #include <exception>
@@ -537,6 +538,37 @@ bool ModRuntime::loadConfig(const std::filesystem::path &configPath, std::string
                     }
                 }
 
+                if (modNode["port"] && modNode["port"].IsScalar())
+                {
+                    mod.portPath = pathFromUtf8(modNode["port"].as<std::string>());
+
+                    if (mod.portPath.is_relative())
+                    {
+                        mod.portPath = configPath.parent_path() / mod.portPath;
+                    }
+
+                    if (!std::filesystem::is_directory(mod.portPath, errorCode))
+                    {
+                        error = "mods.yml: mod '" + mod.id + "' port is not a directory: " + mod.portPath.string();
+                        return false;
+                    }
+
+                    m_readRoots.push_back(mod.portPath);
+                }
+
+                if (modNode["settings"] && modNode["settings"].IsMap())
+                {
+                    for (const auto &setting : modNode["settings"])
+                    {
+                        if (setting.first.IsScalar() && setting.second.IsScalar())
+                        {
+                            mod.settings.emplace_back(
+                                setting.first.as<std::string>(),
+                                setting.second.as<std::string>());
+                        }
+                    }
+                }
+
                 if (!std::filesystem::is_directory(mod.rootPath, errorCode))
                 {
                     error = "mods.yml: mod '" + mod.id + "' path is not a directory: " + mod.rootPath.string();
@@ -671,6 +703,18 @@ void ModRuntime::pushConfig()
         }
 
         lua_setfield(m_pLuaState, -2, "skip");
+        const std::string portPath = mod.portPath.generic_string();
+        lua_pushlstring(m_pLuaState, portPath.data(), portPath.size());
+        lua_setfield(m_pLuaState, -2, "port");
+        lua_newtable(m_pLuaState);
+
+        for (const std::pair<std::string, std::string> &setting : mod.settings)
+        {
+            lua_pushlstring(m_pLuaState, setting.second.data(), setting.second.size());
+            lua_setfield(m_pLuaState, -2, setting.first.c_str());
+        }
+
+        lua_setfield(m_pLuaState, -2, "settings");
         lua_rawseti(m_pLuaState, -2, ++modIndex);
     }
 
@@ -936,6 +980,9 @@ std::string ModRuntime::captureState()
 
 void ModRuntime::restoreState(const std::string &state)
 {
+    // Whatever runs next may add or change handlers.
+    m_statisticEffects.clear();
+
     if (!beginDispatch("restoreState"))
     {
         return;
@@ -1115,6 +1162,9 @@ void ModRuntime::adjustCharacterBonuses(
 
 void ModRuntime::fireEvent(const std::string &eventName)
 {
+    // Whatever runs next may add or change handlers.
+    m_statisticEffects.clear();
+
     if (!beginDispatch("event"))
     {
         return;
@@ -1124,8 +1174,134 @@ void ModRuntime::fireEvent(const std::string &eventName)
     endDispatch(1, 0);
 }
 
+int ModRuntime::statisticEffect(int value, int engineEffect)
+{
+    if (!m_active)
+    {
+        return engineEffect;
+    }
+
+    const std::unordered_map<int, int>::const_iterator cached = m_statisticEffects.find(value);
+
+    if (cached != m_statisticEffects.end())
+    {
+        return cached->second;
+    }
+
+    int effect = engineEffect;
+
+    if (beginDispatch("statisticEffect"))
+    {
+        lua_pushinteger(m_pLuaState, value);
+        lua_pushinteger(m_pLuaState, engineEffect);
+
+        if (endDispatch(2, 1))
+        {
+            if (lua_isnumber(m_pLuaState, -1))
+            {
+                effect = static_cast<int>(
+                    std::clamp<lua_Number>(std::floor(lua_tonumber(m_pLuaState, -1)), -100000.0, 100000.0));
+            }
+
+            lua_pop(m_pLuaState, 1);
+        }
+    }
+
+    m_statisticEffects.emplace(value, effect);
+    return effect;
+}
+
+int ModRuntime::attackDelay(const Character &character, bool ranged, int engineTicks)
+{
+    // A handler may ask for the other attack's recovery (a disabled bow falls back to the melee value); anything
+    // deeper than that is a loop.
+    if (!m_active || m_attackDelayDepth >= 3 || !m_host.party)
+    {
+        return engineTicks;
+    }
+
+    Party *pParty = m_host.party();
+
+    if (pParty == nullptr)
+    {
+        return engineTicks;
+    }
+
+    const std::optional<size_t> slot = findModPartySlot(*pParty, character);
+
+    if (!slot || !beginDispatch("attackDelay"))
+    {
+        return engineTicks;
+    }
+
+    ++m_attackDelayDepth;
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(*slot));
+    lua_pushboolean(m_pLuaState, ranged);
+    lua_pushinteger(m_pLuaState, engineTicks);
+    int ticks = engineTicks;
+
+    if (endDispatch(3, 1))
+    {
+        if (lua_isnumber(m_pLuaState, -1))
+        {
+            ticks = static_cast<int>(
+                std::clamp<lua_Number>(std::floor(lua_tonumber(m_pLuaState, -1) + 0.5), 0.0, 100000.0));
+        }
+
+        lua_pop(m_pLuaState, 1);
+    }
+
+    --m_attackDelayDepth;
+    return ticks;
+}
+
+int ModRuntime::skillStatBonus(const Character &character, int statId, int engineBonus)
+{
+    // A handler that asks for the statistic it is computing would come straight back here.
+    if (!m_active || m_skillStatDepth >= 4 || !m_host.party)
+    {
+        return engineBonus;
+    }
+
+    Party *pParty = m_host.party();
+
+    if (pParty == nullptr)
+    {
+        return engineBonus;
+    }
+
+    const std::optional<size_t> slot = findModPartySlot(*pParty, character);
+
+    if (!slot || !beginDispatch("skillStatBonus"))
+    {
+        return engineBonus;
+    }
+
+    ++m_skillStatDepth;
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(*slot));
+    lua_pushinteger(m_pLuaState, statId);
+    lua_pushinteger(m_pLuaState, engineBonus);
+    int bonus = engineBonus;
+
+    if (endDispatch(3, 1))
+    {
+        if (lua_isnumber(m_pLuaState, -1))
+        {
+            bonus = static_cast<int>(
+                std::clamp<lua_Number>(std::floor(lua_tonumber(m_pLuaState, -1)), -2000000000.0, 2000000000.0));
+        }
+
+        lua_pop(m_pLuaState, 1);
+    }
+
+    --m_skillStatDepth;
+    return bonus;
+}
+
 void ModRuntime::tick(float deltaSeconds)
 {
+    m_statisticEffects.clear();
+
     if (!beginDispatch("tick"))
     {
         return;
@@ -1152,6 +1328,9 @@ void ModRuntime::keyEvent(bool pressed, int32_t sdlKeycode, bool repeat)
 
 bool ModRuntime::executeConsole(const std::string &code, std::string &output)
 {
+    // Whatever runs next may add or change handlers.
+    m_statisticEffects.clear();
+
     if (!beginDispatch("console"))
     {
         output = statusDescription();

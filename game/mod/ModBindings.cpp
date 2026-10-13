@@ -9,6 +9,7 @@
 #include "game/tables/CharacterDollTable.h"
 #include "game/tables/ClassSkillTable.h"
 #include "game/tables/ItemTable.h"
+#include "game/tables/MapStats.h"
 #include "game/tables/MonsterTable.h"
 
 #include <lua.hpp>
@@ -16,6 +17,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <exception>
 #include <cstdint>
 #include <limits>
@@ -101,6 +103,40 @@ const char *mergeSkillName(size_t skillId)
         "Stealing", "Alchemy", "Learning",
     };
     return skillId < MergeSkillCount ? names[skillId] : nullptr;
+}
+
+std::optional<size_t> findModPartySlot(const Party &party, const Character &character)
+{
+    const std::vector<Character> &members = party.members();
+
+    for (size_t slot = 0; slot < members.size(); ++slot)
+    {
+        if (&members[slot] == &character)
+        {
+            return slot;
+        }
+    }
+
+    const std::unordered_map<uint16_t, int32_t>::const_iterator tag =
+        character.eventVariables.find(ModIndexVariableTag);
+
+    if (tag == character.eventVariables.end() || tag->second <= 0)
+    {
+        return std::nullopt;
+    }
+
+    for (size_t slot = 0; slot < members.size(); ++slot)
+    {
+        const std::unordered_map<uint16_t, int32_t>::const_iterator other =
+            members[slot].eventVariables.find(ModIndexVariableTag);
+
+        if (other != members[slot].eventVariables.end() && other->second == tag->second)
+        {
+            return slot;
+        }
+    }
+
+    return std::nullopt;
 }
 
 int64_t ensureModCharacterIndex(Party &party, Character &character)
@@ -287,7 +323,75 @@ constexpr PlayerSignedField PlayerSignedFields[] = {
     {"FullHPBase", &Character::maxHealth},
     {"FullSPBase", &Character::maxSpellPoints},
     {"Voice", &Character::voiceId},
+    {"LevelBonus", &Character::levelModifier},
 };
+
+// The original engine keeps two numbers per primary statistic and per resistance: the base value and a temporary
+// bonus (wells, shrines, potions) that rest clears. In OpenYAMM those bonuses are temporaryEventBonuses.
+struct PlayerStatBonusField
+{
+    const char *pName;
+    int CharacterStatBonuses::*pMember;
+};
+
+constexpr PlayerStatBonusField PlayerStatBonusFields[] = {
+    {"MightBonus", &CharacterStatBonuses::might},
+    {"IntellectBonus", &CharacterStatBonuses::intellect},
+    {"PersonalityBonus", &CharacterStatBonuses::personality},
+    {"EnduranceBonus", &CharacterStatBonuses::endurance},
+    {"SpeedBonus", &CharacterStatBonuses::speed},
+    {"AccuracyBonus", &CharacterStatBonuses::accuracy},
+    {"LuckBonus", &CharacterStatBonuses::luck},
+};
+
+struct PlayerResistanceField
+{
+    const char *pName;
+    int CharacterResistanceSet::*pMember;
+};
+
+constexpr PlayerResistanceField PlayerResistanceFields[] = {
+    {"Fire", &CharacterResistanceSet::fire},
+    {"Air", &CharacterResistanceSet::air},
+    {"Water", &CharacterResistanceSet::water},
+    {"Earth", &CharacterResistanceSet::earth},
+    {"Spirit", &CharacterResistanceSet::spirit},
+    {"Mind", &CharacterResistanceSet::mind},
+    {"Body", &CharacterResistanceSet::body},
+    {"Light", &CharacterResistanceSet::light},
+    {"Dark", &CharacterResistanceSet::dark},
+    {"Physical", &CharacterResistanceSet::physical},
+    {"Magic", &CharacterResistanceSet::magic},
+};
+
+// "FireResistanceBase" or "FireResistanceBonus": the field of the character that name stands for, or null.
+int *playerResistanceField(Character &character, const std::string &field)
+{
+    static const std::string baseSuffix = "ResistanceBase";
+    static const std::string bonusSuffix = "ResistanceBonus";
+
+    for (const PlayerResistanceField &entry : PlayerResistanceFields)
+    {
+        const std::string name = entry.pName;
+
+        if (field == name + baseSuffix)
+        {
+            return &(character.baseResistances.*entry.pMember);
+        }
+
+        if (field == name + bonusSuffix)
+        {
+            return &(character.temporaryEventBonuses.resistances.*entry.pMember);
+        }
+    }
+
+    return nullptr;
+}
+
+const int *playerResistanceField(const Character &character, const std::string &field)
+{
+    return playerResistanceField(const_cast<Character &>(character), field);
+}
 
 int nativePlayerGet(lua_State *pLuaState)
 {
@@ -315,6 +419,29 @@ int nativePlayerGet(lua_State *pLuaState)
             lua_pushinteger(pLuaState, pCharacter->*entry.pMember);
             return 1;
         }
+    }
+
+    for (const PlayerStatBonusField &entry : PlayerStatBonusFields)
+    {
+        if (field == entry.pName)
+        {
+            lua_pushinteger(pLuaState, pCharacter->temporaryEventBonuses.*entry.pMember);
+            return 1;
+        }
+    }
+
+    if (const int *pResistance = playerResistanceField(*pCharacter, field))
+    {
+        lua_pushinteger(pLuaState, *pResistance);
+        return 1;
+    }
+
+    // The condition that shows on the portrait, as a const.Condition number; 18 is Good.
+    if (field == "MainCondition")
+    {
+        const std::optional<CharacterCondition> condition = GameMechanics::displayedCondition(*pCharacter);
+        lua_pushinteger(pLuaState, condition ? static_cast<lua_Integer>(*condition) : lua_Integer(18));
+        return 1;
     }
 
     if (field == "Name")
@@ -424,7 +551,8 @@ int nativePlayerGet(lua_State *pLuaState)
     }
 
     if (field == "GetMeleeDamageMin" || field == "GetMeleeDamageMax" || field == "GetMeleeAttack"
-        || field == "GetRangedDamageMin" || field == "GetRangedDamageMax" || field == "GetRangedAttack")
+        || field == "GetRangedDamageMin" || field == "GetRangedDamageMax" || field == "GetRangedAttack"
+        || field == "GetAttackDelay" || field == "GetAttackDelayRanged")
     {
         const Party *pParty = partyFromHost(pLuaState);
         const GameDataLoader *pData = dataFromHost(pLuaState);
@@ -458,6 +586,14 @@ int nativePlayerGet(lua_State *pLuaState)
         else if (field == "GetRangedDamageMax")
         {
             lua_pushinteger(pLuaState, profile.rangedMaxDamage);
+        }
+        else if (field == "GetAttackDelay")
+        {
+            lua_pushinteger(pLuaState, profile.meleeRecoveryTicks);
+        }
+        else if (field == "GetAttackDelayRanged")
+        {
+            lua_pushinteger(pLuaState, profile.rangedRecoveryTicks);
         }
         else
         {
@@ -515,6 +651,23 @@ int nativePlayerSet(lua_State *pLuaState)
         }
     }
 
+    for (const PlayerStatBonusField &entry : PlayerStatBonusFields)
+    {
+        if (field == entry.pName)
+        {
+            pCharacter->temporaryEventBonuses.*entry.pMember = clampedInteger<int>(integerArgument(pLuaState, 3));
+            lua_pushboolean(pLuaState, true);
+            return 1;
+        }
+    }
+
+    if (int *pResistance = playerResistanceField(*pCharacter, field))
+    {
+        *pResistance = clampedInteger<int>(integerArgument(pLuaState, 3));
+        lua_pushboolean(pLuaState, true);
+        return 1;
+    }
+
     if (field == "Name")
     {
         pCharacter->name = luaL_checkstring(pLuaState, 3);
@@ -523,6 +676,63 @@ int nativePlayerSet(lua_State *pLuaState)
     }
 
     lua_pushboolean(pLuaState, false);
+    return 1;
+}
+
+// modrt.playerConditionGet(player, condition): the game time (MMExtension ticks) at which the condition set in, 0
+// when the character does not have it. Conditions are numbered as in const.Condition, which is the engine's order.
+int nativePlayerConditionGet(lua_State *pLuaState)
+{
+    const Character *pCharacter = playerArgument(pLuaState, 1);
+    const int64_t condition = integerArgument(pLuaState, 2);
+
+    if (pCharacter == nullptr || condition < 0 || condition >= static_cast<int64_t>(CharacterConditionCount))
+    {
+        return 0;
+    }
+
+    const size_t index = static_cast<size_t>(condition);
+
+    if (!pCharacter->conditions.test(index))
+    {
+        lua_pushinteger(pLuaState, 0);
+        return 1;
+    }
+
+    // A condition that set in at time 0 must still read as present.
+    const double ticks = std::floor(static_cast<double>(pCharacter->conditionStartGameMinutes[index]) * 256.0);
+    lua_pushinteger(pLuaState, std::max<lua_Integer>(1, static_cast<lua_Integer>(ticks)));
+    return 1;
+}
+
+// modrt.playerConditionSet(player, condition, time): 0 lifts the condition, anything else gives it. As in the
+// original engine this is a plain write: immunities are not consulted.
+int nativePlayerConditionSet(lua_State *pLuaState)
+{
+    Character *pCharacter = playerArgument(pLuaState, 1);
+    const int64_t condition = integerArgument(pLuaState, 2);
+    const lua_Number ticks = luaL_optnumber(pLuaState, 3, 0.0);
+
+    if (pCharacter == nullptr || condition < 0 || condition >= static_cast<int64_t>(CharacterConditionCount))
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    const size_t index = static_cast<size_t>(condition);
+
+    if (ticks == 0.0)
+    {
+        pCharacter->conditions.reset(index);
+        pCharacter->conditionStartGameMinutes[index] = 0.0f;
+    }
+    else
+    {
+        pCharacter->conditions.set(index);
+        pCharacter->conditionStartGameMinutes[index] = static_cast<float>(std::max(0.0, ticks / 256.0));
+    }
+
+    lua_pushboolean(pLuaState, true);
     return 1;
 }
 
@@ -897,6 +1107,8 @@ int mm8ItemSkill(const std::string &skillGroup)
 }
 
 // "2d3" -> 2 and 3; anything else -> 0 and 0.
+// The item table's "Mod1" column as the original engine reads it: "3d4" is three four-sided dice, a bare number
+// (an armor's armor class) is that many one-sided dice, and a spell reference ("S12") is no dice at all.
 void parseDice(const std::string &text, int &count, int &sides)
 {
     count = 0;
@@ -905,6 +1117,20 @@ void parseDice(const std::string &text, int &count, int &sides)
 
     if (separator == std::string::npos || separator == 0)
     {
+        if (!text.empty() && text[0] != 's' && text[0] != 'S')
+        {
+            try
+            {
+                count = std::stoi(text);
+                sides = 1;
+            }
+            catch (const std::exception &)
+            {
+                count = 0;
+                sides = 0;
+            }
+        }
+
         return;
     }
 
@@ -1045,6 +1271,86 @@ int nativeItemTxtGet(lua_State *pLuaState)
     return 1;
 }
 
+// modrt.itemTxtSet(item, field, value): changes the game's item table, for every item of that kind and until the
+// game is closed, which is what a write to Game.ItemsTxt[] does in the original. Returns false for a field that
+// cannot be changed here yet.
+int nativeItemTxtSet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t itemId = integerArgument(pLuaState, 1);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+    const ItemDefinition *pConstItem =
+        pData != nullptr && itemId >= 0 ? pData->getItemTable().get(static_cast<uint32_t>(itemId)) : nullptr;
+
+    if (pConstItem == nullptr)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    // The table belongs to the game's data loader, which hands it out read-only; it is not a constant object.
+    ItemDefinition &item = const_cast<ItemDefinition &>(*pConstItem);
+    bool applied = true;
+
+    if (field == "Name")
+    {
+        item.name = luaL_checkstring(pLuaState, 3);
+    }
+    else if (field == "NotIdentifiedName")
+    {
+        item.unidentifiedName = luaL_checkstring(pLuaState, 3);
+    }
+    else if (field == "Notes")
+    {
+        item.notes = luaL_checkstring(pLuaState, 3);
+    }
+    else if (field == "Value")
+    {
+        item.value = clampedInteger<int>(integerArgument(pLuaState, 3));
+    }
+    else if (field == "Mod2")
+    {
+        item.mod2 = std::to_string(clampedInteger<int>(integerArgument(pLuaState, 3)));
+    }
+    else if (field == "Mod1DiceCount" || field == "Mod1DiceSides")
+    {
+        int count = 0;
+        int sides = 0;
+        parseDice(item.mod1, count, sides);
+
+        if (sides == 0)
+        {
+            // A spell reference; there are no dice to change.
+            applied = false;
+        }
+        else
+        {
+            const int value = std::max(0, clampedInteger<int>(integerArgument(pLuaState, 3)));
+
+            if (field == "Mod1DiceCount")
+            {
+                count = value;
+            }
+            else
+            {
+                sides = value;
+            }
+
+            const bool written = item.mod1.find_first_of("dD") != std::string::npos;
+            item.mod1 = written || sides != 1
+                ? std::to_string(count) + "d" + std::to_string(sides)
+                : std::to_string(count);
+        }
+    }
+    else
+    {
+        applied = false;
+    }
+
+    lua_pushboolean(pLuaState, applied);
+    return 1;
+}
+
 int nativeMonsterTxtGet(lua_State *pLuaState)
 {
     const GameDataLoader *pData = dataFromHost(pLuaState);
@@ -1086,6 +1392,130 @@ int nativeMonsterTxtGet(lua_State *pLuaState)
     }
     else
     {
+        return 0;
+    }
+
+    return 1;
+}
+
+int nativeMapStatsGet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t mapId = integerArgument(pLuaState, 1);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+
+    if (pData == nullptr)
+    {
+        return 0;
+    }
+
+    const MapStats &mapStats = pData->getMapStats();
+
+    if (field == "#")
+    {
+        int highestId = 0;
+
+        for (const MapStatsEntry &entry : mapStats.getEntries())
+        {
+            highestId = std::max(highestId, entry.id);
+        }
+
+        lua_pushinteger(pLuaState, highestId + 1);
+        return 1;
+    }
+
+    const MapStatsEntry *pEntry = mapId >= 0 ? mapStats.findById(static_cast<uint32_t>(mapId)) : nullptr;
+
+    if (pEntry == nullptr)
+    {
+        return 0;
+    }
+
+    if (field == "Name")
+    {
+        pushString(pLuaState, pEntry->name);
+    }
+    else if (field == "FileName")
+    {
+        pushString(pLuaState, pEntry->fileName);
+    }
+    else if (field == "WorldId")
+    {
+        pushString(pLuaState, pEntry->worldId);
+    }
+    else if (field == "RefillDays")
+    {
+        lua_pushinteger(pLuaState, pEntry->respawnIntervalDays);
+    }
+    else if (field == "Per")
+    {
+        lua_pushinteger(pLuaState, pEntry->perceptionDifficulty);
+    }
+    else if (field == "StealPerm")
+    {
+        lua_pushinteger(pLuaState, pEntry->baseStealingFine);
+    }
+    else if (field == "Lock")
+    {
+        lua_pushinteger(pLuaState, pEntry->disarmDifficulty);
+    }
+    else if (field == "Trap")
+    {
+        lua_pushinteger(pLuaState, pEntry->trapDamageD20DiceCount);
+    }
+    else if (field == "Tres")
+    {
+        lua_pushinteger(pLuaState, pEntry->treasureLevel);
+    }
+    else if (field == "EncounterChance")
+    {
+        lua_pushinteger(pLuaState, pEntry->encounterChance);
+    }
+    else if (field == "RedbookTrack")
+    {
+        lua_pushinteger(pLuaState, pEntry->redbookTrack);
+    }
+    else
+    {
+        // The three random encounters: Monster1Pic, Mon1Dif, Mon1Low, Mon1Hi, EncounterChanceM1, and so on.
+        const MapEncounterInfo *const encounters[3] = {&pEntry->encounter1, &pEntry->encounter2, &pEntry->encounter3};
+
+        for (int number = 1; number <= 3; ++number)
+        {
+            const MapEncounterInfo &encounter = *encounters[number - 1];
+            const std::string digit = std::to_string(number);
+
+            if (field == "Monster" + digit + "Pic")
+            {
+                pushString(pLuaState, encounter.pictureName);
+                return 1;
+            }
+
+            if (field == "Mon" + digit + "Dif")
+            {
+                lua_pushinteger(pLuaState, encounter.difficulty);
+                return 1;
+            }
+
+            if (field == "Mon" + digit + "Low")
+            {
+                lua_pushinteger(pLuaState, encounter.minCount);
+                return 1;
+            }
+
+            if (field == "Mon" + digit + "Hi")
+            {
+                lua_pushinteger(pLuaState, encounter.maxCount);
+                return 1;
+            }
+
+            if (field == "EncounterChanceM" + digit)
+            {
+                lua_pushinteger(pLuaState, encounter.chance);
+                return 1;
+            }
+        }
+
         return 0;
     }
 
@@ -1214,6 +1644,21 @@ int nativeGameGet(lua_State *pLuaState)
         return 1;
     }
 
+    if (field == "MapStatsIndex" && pHost->currentMapFileName)
+    {
+        const GameDataLoader *pData = dataFromHost(pLuaState);
+        const MapStatsEntry *pEntry =
+            pData != nullptr ? pData->getMapStats().findByFileName(pHost->currentMapFileName()) : nullptr;
+
+        if (pEntry == nullptr)
+        {
+            return 0;
+        }
+
+        lua_pushinteger(pLuaState, pEntry->id);
+        return 1;
+    }
+
     if (field == "GameMinutes" && pHost->gameMinutes)
     {
         lua_pushnumber(pLuaState, pHost->gameMinutes());
@@ -1250,6 +1695,15 @@ int nativeShowStatusText(lua_State *pLuaState)
 
     return 0;
 }
+
+// modrt.statisticEffect(value): the effect of a statistic's value, as the game computes it (mods included).
+int nativeStatisticEffect(lua_State *pLuaState)
+{
+    lua_pushinteger(
+        pLuaState,
+        GameMechanics::statisticEffect(static_cast<int>(luaL_optinteger(pLuaState, 1, 0))));
+    return 1;
+}
 }
 
 void registerModBindings(lua_State *pLuaState, const ModHost &host)
@@ -1265,18 +1719,23 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"partySet", nativePartySet},
         {"playerGet", nativePlayerGet},
         {"playerSet", nativePlayerSet},
+        {"playerConditionGet", nativePlayerConditionGet},
+        {"playerConditionSet", nativePlayerConditionSet},
         {"playerSkillGet", nativePlayerSkillGet},
         {"playerSkillSet", nativePlayerSkillSet},
         {"partyRefreshBonuses", nativePartyRefreshBonuses},
         {"itemGet", nativeItemGet},
         {"itemSet", nativeItemSet},
         {"itemTxtGet", nativeItemTxtGet},
+        {"itemTxtSet", nativeItemTxtSet},
         {"monsterTxtGet", nativeMonsterTxtGet},
         {"portraitGet", nativePortraitGet},
+        {"mapStatsGet", nativeMapStatsGet},
         {"mapMonsterGet", nativeMapMonsterGet},
         {"mapMonsterSet", nativeMapMonsterSet},
         {"gameGet", nativeGameGet},
         {"showStatusText", nativeShowStatusText},
+        {"statisticEffect", nativeStatisticEffect},
     };
 
     lua_getglobal(pLuaState, "modrt");

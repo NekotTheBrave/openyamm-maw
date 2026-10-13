@@ -1,0 +1,161 @@
+id: mod_runtime.stat_hooks
+title: Statistic effect, attack recovery and skill bonus events; arrays iterate the MMExtension way
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 0
+      food: 1
+      members:
+      - name: Subject
+        class: Knight
+        level: 5
+        might: 20
+        skills:
+        - name: Sword
+          level: 4
+          mastery: 2
+        equipment:
+          main_hand: 1
+      - name: Other
+        class: Cleric
+        level: 3
+        skills:
+        - name: Mace
+          level: 1
+          mastery: 1
+        equipment: {}
+# Baseline, before any handler exists. The engine's table gives 11 for a statistic of 100 and 0 for 13.
+- mod_lua:
+    code: |
+      local p = Party[0]
+      Base = {
+        attack = p:GetMeleeAttack(), hp = p:GetFullHP(), delay = p:GetAttackDelay(), bow = p:GetAttackDelay(true),
+      }
+      return Game.GetStatisticEffect(100), Game.GetStatisticEffect(13), Base.delay >= 30, Base.bow > 0
+    expect: "11\t0\ttrue\ttrue"
+# GetStatisticEffect: the handler's answer is what the game uses from then on.
+- mod_lua:
+    code: |
+      function events.GetStatisticEffect(t)
+        if t.Value >= 25 then
+          t.Result = math.floor(t.Value / 5)
+        end
+      end
+      return Game.GetStatisticEffect(100), Game.GetStatisticEffect(200), Game.GetStatisticEffect(13)
+    expect: "20\t40\t0"
+# GetAttackDelay: one event for both attacks, told apart by Ranged. A handler may ask for the other one.
+- mod_lua:
+    code: |
+      Seen = {}
+      function events.GetAttackDelay(t)
+        Seen.player = t.Player == Party[0] and t.PlayerIndex == Party[0]:GetIndex()
+        Seen.engine = Seen.engine or t.Result
+        if t.Ranged then
+          t.Result = t.Player:GetAttackDelay() + 5
+        else
+          t.Result = 77
+        end
+      end
+      local p = Party[0]
+      return p:GetAttackDelay(), p:GetAttackDelay(true), Seen.player, Seen.engine == Base.delay
+    expect: "77\t82\ttrue\ttrue"
+# CalcStatBonusBySkills: the part of hit points, attack and so on that comes from skills.
+- mod_lua:
+    code: |
+      Skills = {}
+      function events.CalcStatBonusBySkills(t)
+        if t.PlayerIndex ~= Party[0]:GetIndex() then
+          return
+        end
+        Skills[t.Stat] = true
+        if t.Stat == 25 then
+          t.Result = t.Result + 13
+        elseif t.Stat == 7 then
+          t.Result = t.Result + 7
+        end
+      end
+      -- Attack is computed when asked for; hit points are stored and follow at the next rebuild.
+      Party.RefreshBonuses()
+      local p = Party[0]
+      return p:GetMeleeAttack() - Base.attack, p:GetFullHP() - Base.hp, Skills[25], Skills[7]
+    expect: "13\t7\ttrue\ttrue"
+# Arrays are iterated directly, without pairs.
+- mod_lua:
+    code: |
+      local members, names = 0, {}
+      for index, player in Party do
+        members = members + 1
+        names[#names + 1] = index .. player.Name
+      end
+      local roster = true
+      local rosterCount = 0
+      for index, player in Party.PlayersArray do
+        rosterCount = rosterCount + 1
+        roster = roster and player:GetIndex() == index
+      end
+      local monsters = 0
+      for index, monster in Map.Monsters do
+        monsters = monsters + 1
+      end
+      local unbound = 0
+      for index, sprite in Map.Sprites do
+        unbound = unbound + 1
+      end
+      return members, table.concat(names, ","), rosterCount, roster, monsters == Map.Monsters.Count, unbound
+    expect: "2\t0Subject,1Other\t2\ttrue\ttrue\t0"
+# The map table's encounter fields. A write is kept for the scripts (the game does not use it yet).
+- mod_lua:
+    code: |
+      local map = Game.MapStats[Map.MapStatsIndex]
+      local refill = map.RefillDays
+      local kinds = type(refill) .. type(map.Mon1Low) .. type(map.Mon1Hi) .. type(map.Monster1Pic)
+      map.RefillDays = refill + 1000
+      local roll = Game.Rand()
+      return kinds, Game.MapStats[Map.MapStatsIndex].RefillDays - refill, roll >= 0 and roll <= 32767
+    expect: "numbernumbernumberstring\t1000\ttrue"
+# Conditions read as the time they set in at and 0 when absent; base and temporary bonus of statistics and
+# resistances are plain fields, also reachable as Stats[] and Resistances[] (numbered by const.Stats, const.Damage).
+- mod_lua:
+    code: |
+      local p = Party[1]
+      local before = p.Weak + p.Dead + p:GetMainCondition()
+      p.Weak = Game.Time
+      local weak = p.Weak > 0 and p.Conditions[1] == p.Weak and p:GetMainCondition() == 1
+      p.Conditions[1] = 0
+      p.FireResistanceBase = 15
+      p.Resistances[7].Bonus = 4
+      p.MightBonus = 6
+      p.LevelBonus = 2
+      local count = 0
+      for index, value in p.Conditions do
+        count = count + 1
+      end
+      return before, weak, p.Weak, p.Resistances[0].Base, p.MindResistanceBonus, p.Stats[0].Bonus, p.LevelBonus, count
+    expect: "18\ttrue\t0\t15\t4\t6\t2\t18"
+# A write to the item table changes the game's own table: the sword in hand does more damage at once.
+- mod_lua:
+    code: |
+      local p = Party[0]
+      local row = Game.ItemsTxt[1]
+      local count, sides, value, name = row.Mod1DiceCount, row.Mod1DiceSides, row.Value, row.Name
+      local low, high = p:GetMeleeDamageMin(), p:GetMeleeDamageMax()
+      row.Mod1DiceCount = count + 2
+      row.Mod1DiceSides = sides + 3
+      row.Value = value + 5
+      row.Name = "Probe Sword"
+      local result = {
+        p:GetMeleeDamageMin() - low == 2,
+        p:GetMeleeDamageMax() - high == (count + 2) * (sides + 3) - count * sides,
+        Game.ItemsTxt[1].Value - value,
+        p:GetActiveItem(1):T().Name,
+        ModRT.Bindings.tableWrites["Game.ItemsTxt[].Value"] == nil,
+      }
+      row.Mod1DiceCount, row.Mod1DiceSides, row.Value, row.Name = count, sides, value, name
+      result[#result + 1] = p:GetMeleeDamageMax() == high
+      return table.unpack(result)
+    expect: "true\ttrue\t5\tProbe Sword\ttrue\ttrue"

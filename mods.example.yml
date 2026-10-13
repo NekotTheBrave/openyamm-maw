@@ -11,6 +11,12 @@ mods:
     # Optional folder mounted over the engine assets, laid out like assets_dev (engine/data_tables/...).
     # Relative paths are resolved against this file. Build it with tools/maw/convert_tables.py.
     assets: mods/maw/assets
+    # Optional folder shaped like the mod (Scripts/...). A script there replaces the mod's script of the same
+    # path, or is added to the load order. tools/maw/port holds OpenYAMM versions of MAW files.
+    port: tools/maw/port
+    # Values handed to the scripts as ModSettings. MAW: difficulty of a new game.
+    settings:
+      difficulty: MAW     # Easy | Normal | MAW | Hard | Hell | Nightmare
     # skip (default): do not run files that override Merge base scripts.  load: run them too.
     base_overrides: skip
     # Scripts to leave out, relative to the mod's Scripts folder. A trailing slash skips a folder.
