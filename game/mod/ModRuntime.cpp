@@ -1252,6 +1252,42 @@ bool ModRuntime::allowBadThingToPlayer(size_t partyMemberIndex, std::optional<si
     return allowed;
 }
 
+bool ModRuntime::deferBonusRebuild()
+{
+    if (!m_adjustingBonuses)
+    {
+        return false;
+    }
+
+    m_bonusRebuildPending = true;
+    return true;
+}
+
+void ModRuntime::ensureBonusesCurrent()
+{
+    if (!m_active || m_adjustingBonuses || !m_host.party)
+    {
+        return;
+    }
+
+    // A rebuild may itself leave one pending (the scripts' map handlers ask for one); a few passes settle it.
+    for (int pass = 0; pass < 3; ++pass)
+    {
+        Party *pParty = m_host.party();
+
+        if (pParty == nullptr
+            || (!m_bonusRebuildPending && pParty->modBonusRebuildToken == m_bonusRebuildToken))
+        {
+            return;
+        }
+
+        m_bonusRebuildPending = false;
+        pParty->rebuildMagicalBonusesFromBuffs();
+        // A party without members asks the scripts nothing; it is current all the same.
+        pParty->modBonusRebuildToken = m_bonusRebuildToken;
+    }
+}
+
 void ModRuntime::setCharacterStatAnswer(size_t memberIndex, int statId, double itemsAnswer, double magicAnswer)
 {
     Party *pParty = m_host.party ? m_host.party() : nullptr;
@@ -1343,13 +1379,29 @@ void ModRuntime::adjustCharacterBonuses(
 {
     Character *pMember = party.member(memberIndex);
 
-    // A handler may ask for the bonuses to be rebuilt; the rebuild in progress already covers it.
-    if (pMember == nullptr || m_adjustingBonuses || !m_active)
+    if (pMember == nullptr || !m_active)
     {
         return;
     }
 
+    // The scripts see the game's party and nothing else. A party being put together somewhere else (a new game's
+    // party before it becomes the game's, a scenario fixture, a preview) is left to the engine; when it becomes
+    // the game's party its token will not match and ensureBonusesCurrent rebuilds it with the scripts.
+    if (!m_host.party || m_host.party() != &party)
+    {
+        return;
+    }
+
+    // A rebuild that runs while the scripts are answering one (a script wrote a buff, an event handler changed
+    // equipment) cannot ask them again; it is redone when they are finished.
+    if (m_adjustingBonuses)
+    {
+        m_bonusRebuildPending = true;
+        return;
+    }
+
     m_adjustingBonuses = true;
+    party.modBonusRebuildToken = ++m_bonusRebuildToken;
     ensureModCharacterIndex(party, *pMember);
 
     // The scripts are asked about each statistic in turn and answer through setCharacterStatAnswer. What the
@@ -1461,6 +1513,7 @@ void ModRuntime::fireEvent(const std::string &eventName)
 {
     // Whatever runs next may add or change handlers.
     m_statisticEffects.clear();
+    ensureBonusesCurrent();
 
     if (!beginDispatch("event"))
     {
@@ -1598,6 +1651,7 @@ int ModRuntime::skillStatBonus(const Character &character, int statId, int engin
 void ModRuntime::tick(float deltaSeconds)
 {
     m_statisticEffects.clear();
+    ensureBonusesCurrent();
 
     if (!beginDispatch("tick"))
     {
@@ -1606,6 +1660,8 @@ void ModRuntime::tick(float deltaSeconds)
 
     lua_pushnumber(m_pLuaState, deltaSeconds);
     endDispatch(1, 0);
+    // What the scripts did may have put a rebuild off.
+    ensureBonusesCurrent();
 }
 
 void ModRuntime::keyEvent(bool pressed, int32_t sdlKeycode, bool repeat)
@@ -1627,6 +1683,7 @@ bool ModRuntime::executeConsole(const std::string &code, std::string &output)
 {
     // Whatever runs next may add or change handlers.
     m_statisticEffects.clear();
+    ensureBonusesCurrent();
 
     if (!beginDispatch("console"))
     {
@@ -1647,6 +1704,7 @@ bool ModRuntime::executeConsole(const std::string &code, std::string &output)
     const char *pText = lua_tolstring(m_pLuaState, -1, &length);
     output = pText != nullptr ? std::string(pText, length) : std::string();
     lua_pop(m_pLuaState, 2);
+    ensureBonusesCurrent();
     return success;
 }
 

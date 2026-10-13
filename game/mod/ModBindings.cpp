@@ -1016,8 +1016,10 @@ int nativePlayerSkillGet(lua_State *pLuaState)
 int nativePartyRefreshBonuses(lua_State *pLuaState)
 {
     Party *pParty = partyFromHost(pLuaState);
+    IModHooks *pModHooks = activeModHooks();
 
-    if (pParty != nullptr)
+    // Asked for from inside a rebuild, it is put off until that one is done.
+    if (pParty != nullptr && (pModHooks == nullptr || !pModHooks->deferBonusRebuild()))
     {
         pParty->rebuildMagicalBonusesFromBuffs();
     }

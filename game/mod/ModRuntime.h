@@ -81,6 +81,7 @@ public:
         Party &party,
         size_t memberIndex,
         const CharacterStatBonuses &buffBonuses) override;
+    bool deferBonusRebuild() override;
     int statisticEffect(int value, int engineEffect) override;
     int attackDelay(const Character &character, bool ranged, int engineTicks) override;
     int skillStatBonus(const Character &character, int statId, int engineBonus) override;
@@ -128,6 +129,11 @@ private:
     std::ofstream m_logFile;
     int m_dispatchReference = -1;
     bool m_adjustingBonuses = false;
+    // Rebuilds the game's party's bonuses when they do not carry this runtime's answers: the party was replaced
+    // (a new game, a load, a copy of a party built elsewhere) or a rebuild ran while the scripts were busy.
+    void ensureBonusesCurrent();
+    bool m_bonusRebuildPending = false;
+    uint64_t m_bonusRebuildToken = 0;
     // The engine's own figures for the member whose bonuses are being rebuilt, kept while the scripts answer.
     struct BonusRebuild
     {

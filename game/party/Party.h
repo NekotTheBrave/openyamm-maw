@@ -591,6 +591,10 @@ public:
     bool hasDispellableBuffs() const;
     bool hasPartyBuff(PartyBuffId buffId) const;
     bool hasCharacterBuff(size_t memberIndex, CharacterBuffId buffId) const;
+    // Set by a mod runtime when it has taken part in a rebuild of this party's bonuses, and copied with the party.
+    // The runtime compares it with its own record to tell whether the game's party carries its answers.
+    uint64_t modBonusRebuildToken = 0;
+
     const PartyBuffState *partyBuff(PartyBuffId buffId) const;
     const CharacterBuffState *characterBuff(size_t memberIndex, CharacterBuffId buffId) const;
     // The buff records themselves, running or not, for the mod runtime: scripts read and overwrite them field by

@@ -3784,6 +3784,7 @@ char resolveEncounterTierLetter(
 uint32_t resolveEncounterSpawnCount(
     const MapStatsEntry &map,
     int encounterSlot,
+    char fixedTier,
     uint32_t countOverride,
     uint32_t sessionSeed,
     uint32_t salt
@@ -3799,6 +3800,13 @@ uint32_t resolveEncounterSpawnCount(
     if (pEncounter == nullptr)
     {
         return 0;
+    }
+
+    // A spawn point that names its tier holds a single monster in the original engine, not a group. Mods count on
+    // that (MAW sets the size of groups by difficulty), so it holds whenever a mod runtime is present.
+    if (fixedTier != '\0' && activeModHooks() != nullptr)
+    {
+        return 1;
     }
 
     const int minCount = std::max(0, std::min(pEncounter->minCount, pEncounter->maxCount));
@@ -5196,6 +5204,7 @@ void OutdoorWorldRuntime::initialize(
                 const uint32_t resolvedCount = resolveEncounterSpawnCount(
                     m_map,
                     spawn.encounterSlot,
+                    spawn.fixedTier,
                     0,
                     m_sessionChestSeed,
                     static_cast<uint32_t>(spawnIndex));
@@ -15287,6 +15296,7 @@ bool OutdoorWorldRuntime::debugSpawnEncounterFromSpawnPoint(size_t spawnIndex, u
     const uint32_t resolvedCount = resolveEncounterSpawnCount(
         m_map,
         spawn.encounterSlot,
+        spawn.fixedTier,
         countOverride,
         m_sessionChestSeed,
         static_cast<uint32_t>(spawnIndex));

@@ -119,6 +119,10 @@ public:
         size_t memberIndex,
         const CharacterStatBonuses &buffBonuses) = 0;
 
+    // True while the mod is answering a bonus rebuild. A rebuild asked for in the middle of that would run without
+    // the mod and overwrite what it has already answered, so the caller skips it; the runtime runs one afterwards.
+    virtual bool deferBonusRebuild() = 0;
+
     // The effect of a statistic's value on what it governs (the engine's threshold table: 13 gives 0, 15 gives 1,
     // ...). `engineEffect` is the table's answer; the hook returns the effect to use.
     virtual int statisticEffect(int value, int engineEffect) = 0;

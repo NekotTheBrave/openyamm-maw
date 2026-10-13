@@ -1,0 +1,89 @@
+id: mod_runtime.maw.parity_new_sorpigal_monsters
+title: MAW's numbers for the monsters of New Sorpigal match the real game
+world: mm6
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# The monsters around a level 1 Knight on arriving in New Sorpigal, read from a real install of the same MAW
+# (Desktop/MAW5) with tools/maw/parity/ParityDump.lua on 2026-10-13: difficulty MAW, free progression, no mode.
+# Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Valerie
+        class: Knight
+        level: 1
+        might: 18
+        intellect: 9
+        personality: 9
+        endurance: 15
+        accuracy: 15
+        speed: 15
+        luck: 11
+        skills:
+        - name: Axe
+          level: 1
+          mastery: 1
+        - name: Bow
+          level: 1
+          mastery: 1
+        - name: Sword
+          level: 1
+          mastery: 1
+        - name: Plate
+          level: 1
+          mastery: 1
+        equipment:
+          main_hand: 11
+          armor: 94
+          bow: 849
+# Per kind: level and MAW's level, hit points, armor class, experience, speed, first attack, second spell and its
+# chance, fire resistance. The Guard is a named monster: its level is the 11 stored on it in the map, not the 13
+# of MAW's table (zMaw-NamedMonsterLevels.lua).
+- mod_lua:
+    code: |
+      local wanted = {[550] = true, [551] = true, [553] = true, [595] = true, [597] = true, [607] = true, [608] = true}
+      local out, seen = {}, {}
+      for i = 0, Map.Monsters.High do
+        local m = Map.Monsters[i]
+        if wanted[m.Id] and not seen[m.Id] then
+          seen[m.Id] = true
+          out[#out + 1] = string.format("%d %s %s/%s hp %s ac %s exp %s speed %s %sd%s+%s spell %s/%s res %s",
+            m.Id, Game.MonstersTxt[m.Id].Name, tostring(m.Level), tostring(getMonsterLevel(m)), tostring(m.FullHP),
+            tostring(m.ArmorClass), tostring(m.Experience), tostring(m.MoveSpeed),
+            tostring(m.Attack1.DamageDiceCount), tostring(m.Attack1.DamageDiceSides), tostring(m.Attack1.DamageAdd),
+            tostring(m.Spell), tostring(m.SpellChance), tostring(m.Resistances[0]))
+        end
+      end
+      table.sort(out)
+      return table.concat(out, "; ")
+    expect: >-
+      550 Goblin 2/2 hp 21 ac 4 exp 46 speed 160 1d9+0 spell 0/0 res 0;
+      551 Goblin Shaman 4/4 hp 34 ac 8 exp 97 speed 170 1d9+2 spell 2/10 res 0;
+      553 Guard 11/11 hp 104 ac 17 exp 447 speed 200 3d3+10 spell 0/0 res 5;
+      595 Peasant 2/2 hp 19 ac 3 exp 42 speed 140 2d2+0 spell 0/0 res 0;
+      597 Peasant 4/4 hp 48 ac 7 exp 90 speed 140 2d2+0 spell 0/0 res 0;
+      607 Peasant 2/2 hp 19 ac 3 exp 42 speed 140 2d2+0 spell 0/0 res 0;
+      608 Peasant 3/3 hp 32 ac 5 exp 65 speed 140 2d2+0 spell 0/0 res 0
+# How many there are. The map has 43 placed monsters, 40 spawn points for a group (3 to 5 each here) and 16 for a
+# single monster of the third tier (8 Goblin Kings, 8 Mages): 179 to 259, about 219, which is what the real game
+# had. A group gives a third tier monster 2 times in 100, so the third tiers stay near 8 each; they were about 32
+# each while single spawn points gave a group.
+- mod_lua:
+    code: |
+      local alive, kings, mages = 0, 0, 0
+      for i = 0, Map.Monsters.High do
+        local m = Map.Monsters[i]
+        if m.HP > 0 then
+          alive = alive + 1
+          kings = kings + (m.Id == 552 and 1 or 0)
+          mages = mages + (m.Id == 612 and 1 or 0)
+        end
+      end
+      return alive >= 179 and alive <= 259, kings >= 8 and kings <= 20, mages >= 8 and mages <= 20
+    expect: "true\ttrue\ttrue"

@@ -1198,6 +1198,7 @@ char resolveIndoorEncounterTierLetter(
 uint32_t resolveIndoorEncounterSpawnCount(
     const MapStatsEntry &map,
     int encounterSlot,
+    char fixedTier,
     uint32_t sessionSeed,
     uint32_t salt)
 {
@@ -1206,6 +1207,13 @@ uint32_t resolveIndoorEncounterSpawnCount(
     if (pEncounter == nullptr)
     {
         return 0;
+    }
+
+    // A spawn point that names its tier holds a single monster in the original engine, not a group. Mods count on
+    // that (MAW sets the size of groups by difficulty), so it holds whenever a mod runtime is present.
+    if (fixedTier != '\0' && activeModHooks() != nullptr)
+    {
+        return 1;
     }
 
     const int minCount = std::max(0, std::min(pEncounter->minCount, pEncounter->maxCount));
@@ -17580,6 +17588,7 @@ void IndoorWorldRuntime::materializeInitialMonsterSpawns()
         const uint32_t count = resolveIndoorEncounterSpawnCount(
             *m_map,
             descriptor.encounterSlot,
+            descriptor.fixedTier,
             m_sessionChestSeed,
             static_cast<uint32_t>(spawnIndex));
 

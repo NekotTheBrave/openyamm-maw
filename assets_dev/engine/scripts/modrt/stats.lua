@@ -6,6 +6,11 @@
 -- what it worked out natively per statistic; the events run with those values as the default result, and what they
 -- leave behind is what the game uses.
 
+-- None of these start the session (the per-game scripts and the map events). They are called from the middle of
+-- the engine's own calculations, and a map's handlers must not run halfway through a bonus rebuild: MAW builds its
+-- item table in AfterLoadMap from the characters' skills, which a rebuild in progress has not answered yet. The
+-- session starts from the calls the game makes between its own work (a tick, an event, a console command).
+
 local ModRT = ModRT
 local modrt = modrt
 local Stats = {}
@@ -56,7 +61,6 @@ end
 -- flat = {statId, fromItems, fromMagic, statId, fromItems, fromMagic, ...}; returns the total bonus per statistic,
 -- in the same order.
 function Stats.characterBonuses(slot, flat)
-    ModRT.ensureSession()
     local player = Party[slot]
     local totals = {}
 
@@ -102,7 +106,6 @@ end
 -- flat = {skillId, baseLevel, mastery, bonus, ...}; returns the level bonus per skill, in the same order.
 -- GetSkill's result is the packed skill value including bonuses; only its level part can change here.
 function Stats.characterSkills(slot, flat)
-    ModRT.ensureSession()
     local player = Party[slot]
     local bonuses = {}
 
@@ -144,7 +147,6 @@ end
 
 -- Recovery after an attack in ticks; `ticks` is the engine's answer.
 function Stats.attackDelay(slot, ranged, ticks)
-    ModRT.ensureSession()
     local player = Party[slot]
 
     if not player then
@@ -159,7 +161,6 @@ end
 -- What a character's skills add to one statistic (HP, SP, armor class, attack, damage); `bonus` is the engine's
 -- answer.
 function Stats.skillStatBonus(slot, stat, bonus)
-    ModRT.ensureSession()
     local player = Party[slot]
 
     if not player then
