@@ -245,6 +245,11 @@ public:
     const MonsterDisplayNameEntry *findDisplayEntryById(int id) const;
     std::optional<std::string> findDisplayNameByInternalName(const std::string &internalName) const;
     std::optional<std::string> getUniqueName(int32_t uniqueNameIndex) const;
+    // For the mod runtime: mods rewrite monster statistics and the names of placed monsters while the game runs,
+    // and add names of their own past the end of the list.
+    MonsterStatsEntry *modStatsById(int16_t monsterId);
+    bool setUniqueName(int32_t uniqueNameIndex, const std::string &name);
+    size_t uniqueNameCount() const;
     int getRelationToParty(int16_t monsterId) const;
     int getRelationBetweenMonsters(int16_t leftMonsterId, int16_t rightMonsterId) const;
     bool isHostileToParty(int16_t monsterId) const;

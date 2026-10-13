@@ -92,6 +92,15 @@ end
 function ClearConsoleEvents()
 end
 
+-- The Merge's way of catching the objects a piece of engine code creates (a monster's drops, a spell's missiles):
+-- BeginGrabObjects() before, GrabObjects() after returns them. Objects on the map are not bound yet, so nothing is
+-- caught and scripts that go on to adjust the objects find none.
+function BeginGrabObjects()
+end
+
+function GrabObjects()
+end
+
 ---------------------------------------------------------------------------------------------------------------------
 -- continents: Merge numbers them 1 Jadame (MM8), 2 Antagarich (MM7), 3 Enroth (MM6), 4 everything in between.
 

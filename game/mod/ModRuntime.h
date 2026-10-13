@@ -66,6 +66,7 @@ public:
     int calcDamageToMonster(const ModDamageToMonsterEvent &event) override;
     int calcDamageToPlayer(const ModDamageToPlayerEvent &event) override;
     void monsterKilled(size_t actorIndex) override;
+    uint32_t monsterKillExperience(size_t actorIndex, uint32_t engineExperience) override;
     void playerAttacked(ModPlayerAttackedEvent &event) override;
     void playerCastSpell(ModPlayerCastSpellEvent &event) override;
     bool allowBadThingToPlayer(size_t partyMemberIndex, std::optional<size_t> actorIndex, int thing) override;

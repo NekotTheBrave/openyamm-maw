@@ -992,31 +992,6 @@ void ModRuntime::restoreState(const std::string &state)
     endDispatch(1, 0);
 }
 
-namespace
-{
-// const.Damage in MMExtension's numbering for MM8.
-int mm8DamageKind(CombatDamageType damageType)
-{
-    switch (damageType)
-    {
-        case CombatDamageType::Fire: return 0;
-        case CombatDamageType::Air: return 1;
-        case CombatDamageType::Water: return 2;
-        case CombatDamageType::Earth: return 3;
-        case CombatDamageType::Physical: return 4;
-        case CombatDamageType::Spirit: return 6;
-        case CombatDamageType::Mind: return 7;
-        case CombatDamageType::Body: return 8;
-        case CombatDamageType::Light: return 9;
-        case CombatDamageType::Dark: return 10;
-        case CombatDamageType::Energy: return 12;
-        case CombatDamageType::Irresistible: return 12;
-    }
-
-    return 4;
-}
-}
-
 int ModRuntime::calcDamageToMonster(const ModDamageToMonsterEvent &event)
 {
     if (!beginDispatch("damageToMonster"))
@@ -1089,6 +1064,28 @@ void ModRuntime::monsterKilled(size_t actorIndex)
 
     lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(actorIndex));
     endDispatch(1, 0);
+}
+
+uint32_t ModRuntime::monsterKillExperience(size_t actorIndex, uint32_t engineExperience)
+{
+    if (!beginDispatch("monsterKillExperience"))
+    {
+        return engineExperience;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(actorIndex));
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(engineExperience));
+
+    if (!endDispatch(2, 1))
+    {
+        return engineExperience;
+    }
+
+    const lua_Number result = lua_isnumber(m_pLuaState, -1)
+        ? lua_tonumber(m_pLuaState, -1)
+        : static_cast<lua_Number>(engineExperience);
+    lua_pop(m_pLuaState, 1);
+    return static_cast<uint32_t>(std::clamp<lua_Number>(result, 0.0, 4000000000.0));
 }
 
 void ModRuntime::playerAttacked(ModPlayerAttackedEvent &event)

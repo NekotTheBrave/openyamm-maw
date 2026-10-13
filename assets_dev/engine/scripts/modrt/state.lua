@@ -135,6 +135,10 @@ function State.syncMap()
     ModRT.Merge.clearTimers()
     ModRT.Merge.ensureSessionState()
 
+    if ModRT.Bindings and ModRT.Bindings.resetMapMonsters then
+        ModRT.Bindings.resetMapMonsters()
+    end
+
     State.currentMap = mapName
     State.freshSession = false
     mapvars = State.mapVarsByMap[mapName] or {}

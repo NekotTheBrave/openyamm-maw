@@ -14002,6 +14002,8 @@ bool OutdoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField
         case GameplayModActorField::Y: value = pActor->y; return true;
         case GameplayModActorField::Z: value = pActor->z; return true;
         case GameplayModActorField::Group: value = pActor->group; return true;
+        case GameplayModActorField::UniqueNameId: value = pActor->uniqueNameId; return true;
+        case GameplayModActorField::Ally: value = pActor->ally; return true;
     }
 
     return false;
@@ -14043,6 +14045,22 @@ bool OutdoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFi
             return true;
         case GameplayModActorField::Group:
             actor.group = static_cast<uint32_t>(std::clamp<int64_t>(value, 0, UINT32_MAX));
+            return true;
+        case GameplayModActorField::UniqueNameId:
+        {
+            actor.uniqueNameId = static_cast<uint32_t>(std::clamp<int64_t>(value, 0, UINT32_MAX));
+            const MonsterTable::MonsterStatsEntry *pStats =
+                m_pMonsterTable != nullptr ? m_pMonsterTable->findStatsById(actor.monsterId) : nullptr;
+
+            if (pStats != nullptr)
+            {
+                actor.displayName = resolveSpawnedMapActorName(*m_pMonsterTable, *pStats, actor.uniqueNameId);
+            }
+
+            return true;
+        }
+        case GameplayModActorField::Ally:
+            actor.ally = static_cast<uint32_t>(std::clamp<int64_t>(value, 0, UINT32_MAX));
             return true;
         case GameplayModActorField::MonsterId:
             return false;
@@ -14895,13 +14913,21 @@ bool OutdoorWorldRuntime::applyReflectedDamageToActor(
             {
                 applyMonsterKillReputationPenalty(*this, pStats, actor.group);
 
-                if (m_pParty != nullptr && pStats->experience > 0)
+                if (m_pParty != nullptr)
                 {
-                    m_pParty->grantSharedExperience(
-                        gameplayBolsterExperienceReward(
-                            pStats->experience,
-                            pStats->hitPoints,
-                            actor.bolsterRewardMultiplier));
+                    const uint32_t experience = modKillExperience(
+                        actorIndex,
+                        pStats->experience > 0
+                            ? gameplayBolsterExperienceReward(
+                                pStats->experience,
+                                pStats->hitPoints,
+                                actor.bolsterRewardMultiplier)
+                            : 0u);
+
+                    if (experience > 0)
+                    {
+                        m_pParty->grantSharedExperience(experience);
+                    }
                 }
 
                 pushOutdoorMonsterSound(actorIndex, pStats->deathSoundId, "monster_death");
@@ -15892,14 +15918,21 @@ bool OutdoorWorldRuntime::applyPartyAttackToMapActor(
             {
                 applyMonsterKillReputationPenalty(*this, pStats, actor.group);
 
-                if (m_pParty != nullptr && pStats->experience > 0)
+                if (m_pParty != nullptr)
                 {
-                    experienceReward = static_cast<int>(
-                        gameplayBolsterExperienceReward(
-                            pStats->experience,
-                            pStats->hitPoints,
-                            actor.bolsterRewardMultiplier));
-                    m_pParty->grantSharedExperience(static_cast<uint32_t>(experienceReward));
+                    experienceReward = static_cast<int>(modKillExperience(
+                        actorIndex,
+                        pStats->experience > 0
+                            ? gameplayBolsterExperienceReward(
+                                pStats->experience,
+                                pStats->hitPoints,
+                                actor.bolsterRewardMultiplier)
+                            : 0u));
+
+                    if (experienceReward > 0)
+                    {
+                        m_pParty->grantSharedExperience(static_cast<uint32_t>(experienceReward));
+                    }
                 }
 
                 pushOutdoorMonsterSound(actorIndex, pStats->deathSoundId, "monster_death");

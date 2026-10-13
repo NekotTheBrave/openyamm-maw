@@ -849,7 +849,143 @@ local itemRow = tableRow("Game.ItemsTxt[]", modrt.itemTxtGet, function(id, key, 
 
     return modrt.itemTxtSet(id, key, value)
 end)
-local monsterRow = tableRow("Game.MonstersTxt[]", modrt.monsterTxtGet)
+---------------------------------------------------------------------------------------------------------------------
+-- monster records
+--
+-- The original has one record layout for a row of the monster table and for a monster on the map (each map
+-- monster carries its own copy of its kind's row). Here a kind's row is the engine's table, and a map monster
+-- has only a few fields of its own (position, hit points, the name it goes by); everything else it reads from
+-- its kind's row. What a script writes to a field the engine cannot take is kept with the record for scripts to
+-- read back, and counted in Bindings.tableWrites.
+
+local resistanceKindByField = {
+    FireResistance = 0, AirResistance = 1, WaterResistance = 2, EarthResistance = 3, PhysResistance = 4,
+    SpiritResistance = 6, MindResistance = 7, BodyResistance = 8, LightResistance = 9, DarkResistance = 10,
+}
+local MonsterResistanceCount = 11
+
+-- read(field) returns nil for a field the record does not have; write(field, value) returns true when the engine
+-- took the value. Fields are flat for both: Attack1.Type is "Attack1Type", Resistances[3] is "Resistance3".
+local function monsterRecord(path, read, write, methods)
+    local written = nil
+
+    local function get(field)
+        if written then
+            local value = written[field]
+
+            if value ~= nil then
+                return value
+            end
+        end
+
+        return read(field)
+    end
+
+    local function set(field, value)
+        if value == nil then
+            return false
+        end
+
+        if write(field, type(value) == "number" and floor(value) or value) then
+            if written then
+                written[field] = nil
+            end
+
+            return true
+        end
+
+        -- Only fields the record has; anything else is recorded as a missing binding.
+        if read(field) == nil then
+            return false
+        end
+
+        written = written or {}
+        written[field] = value
+        local name = path .. "." .. field
+        Bindings.tableWrites[name] = (Bindings.tableWrites[name] or 0) + 1
+        return true
+    end
+
+    local function attack(name)
+        return boundObject(path .. "." .. name, {
+            get = function(key)
+                return get(name .. key)
+            end,
+            set = function(key, value)
+                return set(name .. key, value)
+            end,
+        })
+    end
+
+    local attack1, attack2 = attack("Attack1"), attack("Attack2")
+    -- Numbered by const.Damage; the original has no magic resistance for monsters (5), which reads as 0.
+    local resistances = boundObject(path .. ".Resistances", {
+        index = function(kind)
+            kind = floor(kind)
+
+            if kind < 0 or kind >= MonsterResistanceCount then
+                return nil
+            end
+
+            return get("Resistance" .. kind) or 0
+        end,
+        newindex = function(kind, value)
+            kind = floor(kind)
+
+            if kind < 0 or kind >= MonsterResistanceCount then
+                return false
+            end
+
+            return set("Resistance" .. kind, value) or true
+        end,
+        get = sizeFields(function() return MonsterResistanceCount end),
+        range = function() return 0, MonsterResistanceCount - 1 end,
+    })
+
+    local function skill(prefix)
+        local level = get(prefix .. "Level")
+
+        if level == nil then
+            return nil
+        end
+
+        return JoinSkill(level, get(prefix .. "Mastery") or 0)
+    end
+
+    return boundObject(path, {
+        get = function(key)
+            if key == "Attack1" then
+                return attack1
+            elseif key == "Attack2" then
+                return attack2
+            elseif key == "Resistances" then
+                return resistances
+            elseif key == "SpellSkill" or key == "Spell2Skill" then
+                return skill(key)
+            elseif resistanceKindByField[key] then
+                return get("Resistance" .. resistanceKindByField[key])
+            end
+
+            return get(key)
+        end,
+        set = function(key, value)
+            if resistanceKindByField[key] then
+                return set("Resistance" .. resistanceKindByField[key], value)
+            end
+
+            return set(key, value)
+        end,
+        methods = methods,
+    })
+end
+
+local monsterRow = cached(function(id)
+    return monsterRecord("Game.MonstersTxt[]", function(field)
+        return modrt.monsterTxtGet(id, field)
+    end, function(field, value)
+        return modrt.monsterTxtSet(id, field, value)
+    end)
+end)
 
 local itemsTxt = boundObject("Game.ItemsTxt", {
     index = function(id)
@@ -862,14 +998,69 @@ local itemsTxt = boundObject("Game.ItemsTxt", {
     get = sizeFields(function() return modrt.itemTxtGet(0, "#") or 0 end),
 })
 
+-- Rows are numbered from 1, as monsters are. Scripts walk the table from 1 to High and expect a row at every
+-- number, so High is the end of the unbroken run from 1: the Merge's monsters. OpenYAMM numbers a few monsters
+-- of its own far above them; those rows can be reached by number but are not part of the walk.
+local monsterKinds = nil
+
+local function monsterKindCount()
+    if monsterKinds == nil then
+        local last = 0
+
+        while modrt.monsterTxtGet(last + 1, "Name") ~= nil do
+            last = last + 1
+        end
+
+        if last == 0 then
+            return 0
+        end
+
+        monsterKinds = last + 1
+    end
+
+    return monsterKinds
+end
+
+-- Row 0 is an empty record in the original, and scripts that walk the table from 0 read it: every field row 1
+-- has is there, blank or zero. What a script writes to it is kept for scripts.
+local blankMonsterRow = monsterRecord("Game.MonstersTxt[0]", function(field)
+    local sample = modrt.monsterTxtGet(1, field)
+
+    if type(sample) == "string" then
+        return ""
+    elseif sample ~= nil then
+        return 0
+    end
+
+    return nil
+end, function()
+    return false
+end)
+
 local monstersTxt = boundObject("Game.MonstersTxt", {
     index = function(id)
-        if modrt.monsterTxtGet(id, "Name") == nil then
+        if id == 0 then
+            return blankMonsterRow
+        elseif modrt.monsterTxtGet(id, "Name") == nil then
             return nil
         end
 
         return monsterRow(id)
     end,
+    get = sizeFields(monsterKindCount),
+    range = function() return 0, monsterKindCount() - 1 end,
+})
+
+-- The names placed monsters go by (Map.Monsters[i].NameId points here; 0 is none). Mods add names of their own.
+local placeMonTxt = boundObject("Game.PlaceMonTxt", {
+    index = function(index)
+        return modrt.placeMonGet(floor(index))
+    end,
+    newindex = function(index, value)
+        return modrt.placeMonSet(floor(index), tostring(value))
+    end,
+    get = sizeFields(function() return modrt.placeMonGet("#") or 0 end),
+    range = function() return 0, (modrt.placeMonGet("#") or 0) - 1 end,
 })
 
 -- Game.GetStatisticEffect(value): what a statistic's value is worth (13 gives 0, 15 gives 1, ...).
@@ -887,6 +1078,8 @@ Game = boundObject("Game", {
             return characterPortraits
         elseif key == "MapStats" then
             return mapStats
+        elseif key == "PlaceMonTxt" then
+            return placeMonTxt
         elseif key == "CurrentPlayer" then
             return modrt.partyGet("CurrentPlayer")
         elseif key == "Time" then
@@ -913,16 +1106,39 @@ local function monsterCount()
     return modrt.mapMonsterGet(0, "#") or 0
 end
 
-local mapMonster = cached(function(index)
-    return boundObject("Map.Monsters[]", {
-        get = function(key)
-            return modrt.mapMonsterGet(index, key)
-        end,
-        set = function(key, value)
-            return modrt.mapMonsterSet(index, key, value)
-        end,
-    })
-end)
+-- A monster on the map: its own fields first, then its kind's row.
+local mapMonsterCache = {}
+
+local function mapMonster(index)
+    local monster = mapMonsterCache[index]
+
+    if monster == nil then
+        monster = monsterRecord("Map.Monsters[]", function(field)
+            local value = modrt.mapMonsterGet(index, field)
+
+            if value ~= nil then
+                return value
+            end
+
+            local kind = modrt.mapMonsterGet(index, "Id")
+            return kind and modrt.monsterTxtGet(kind, field) or nil
+        end, function(field, value)
+            return modrt.mapMonsterSet(index, field, value)
+        end, {
+            GetIndex = function()
+                return index
+            end,
+        })
+        mapMonsterCache[index] = monster
+    end
+
+    return monster
+end
+
+-- What scripts wrote to the monsters of one map does not carry over to the next.
+function Bindings.resetMapMonsters()
+    mapMonsterCache = {}
+end
 
 local mapMonsters = boundObject("Map.Monsters", {
     index = function(index)

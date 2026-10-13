@@ -1,0 +1,163 @@
+id: mod_runtime.monster_records
+title: Monster table rows and map monsters read and write as the original's records, and the game uses the table
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 100
+      food: 5
+      members:
+      - name: Striker
+        class: Knight
+        level: 60
+        might: 30
+        endurance: 3000
+        accuracy: 200
+        skills:
+        - name: Sword
+          level: 6
+          mastery: 2
+        equipment:
+          main_hand: 1
+# A row of the monster table: plain fields, the two attacks, resistances numbered by const.Damage (0 fire, 4
+# physical; 5, magic, does not exist for monsters and reads 0). Row 1 is the Lizardman Peasant; row 0 is an empty
+# record, as in the original.
+- mod_lua:
+    code: |
+      local row = Game.MonstersTxt[1]
+      local rows = 0
+      for id, other in Game.MonstersTxt do
+        if other then rows = rows + 1 end
+      end
+      return row.Name, row.Level, row.FullHP > 0, row.Experience == row.Exp, row.Attack1.Type,
+        row.Attack1.DamageDiceCount > 0, row.Attack1.Missile, row.Resistances[5], row.Resistances.Count,
+        row.FireResistance == row.Resistances[0], rows == Game.MonstersTxt.Count,
+        Game.MonstersTxt[0].Name .. "/" .. Game.MonstersTxt[0].Level
+    expect: "Lizardman Peasant\t4\ttrue\ttrue\t4\ttrue\t0\t0\t11\ttrue\ttrue\t/0"
+# Writes go to the game's own table.
+- mod_lua:
+    code: |
+      local row = Game.MonstersTxt[1]
+      row.Level = 9
+      row.ArmorClass = 31
+      row.Resistances[0] = 77
+      row.Attack1.DamageAdd = 6
+      row.MindResistance = 12
+      local kept = 0
+      for name in pairs(ModRT.Bindings.tableWrites) do
+        if name:find("MonstersTxt", 1, true) then kept = kept + 1 end
+      end
+      return row.Level, modrt.monsterTxtGet(1, "ArmorClass"), row.FireResistance, row.Attack1.DamageAdd,
+        row.Resistances[7], kept
+    expect: "9\t31\t77\t6\t12\t0"
+# A monster on the map has a few fields of its own and reads the rest from its kind's row. What a script writes to
+# one monster's copy stays with that monster.
+- mod_lua:
+    code: |
+      local first, second = nil, nil
+      for index, monster in Map.Monsters do
+        if monster.Id == 1 then
+          if not first then first = monster elseif not second then second = monster end
+        end
+      end
+      if not second then return "fewer than two peasants on the map" end
+      local shared = first.Level == 9 and first.Resistances[0] == 77 and first.Attack1.DamageAdd == 6
+      first.Resistances[0] = 5
+      first.Level = 40
+      return shared, first.Resistances[0], first.Level, second.Resistances[0], second.Level,
+        Game.MonstersTxt[1].FireResistance, first:GetIndex() ~= second:GetIndex(),
+        ModRT.Bindings.tableWrites["Map.Monsters[].Level"]
+    expect: "true\t5\t40\t77\t9\t77\ttrue\t1"
+# The names placed monsters go by: mods add their own and point a monster at one.
+- mod_lua:
+    code: |
+      local monster = Map.Monsters[0]
+      local before = monster.NameId
+      Game.PlaceMonTxt[900] = "Probe Warlord"
+      monster.NameId = 900
+      return before, monster.NameId, Game.PlaceMonTxt[900], Game.PlaceMonTxt[0], Game.PlaceMonTxt.Count >= 901
+    expect: "0\t900\tProbe Warlord\t\ttrue"
+# The game takes experience from the table: every kind is made worth 1000, the party's blows are made lethal, and
+# the experience gained is 1000 for each of its kills.
+- mod_lua:
+    code: |
+      for id = 1, Game.MonstersTxt.High do
+        Game.MonstersTxt[id].Experience = 1000
+      end
+      PartyKills = 0
+      function events.CalcDamageToMonster(t)
+        if t.Player then t.Result = 30000 end
+      end
+      function events.MonsterKilled(monster, index, callDefault, killer)
+        if killer and killer.Player == Party[0] then PartyKills = PartyKills + 1 end
+      end
+      function ProbeRound()
+        for condition = 0, Party[0].Conditions.High do
+          Party[0].Conditions[condition] = 0
+        end
+        Party[0].HP = Party[0].FullHPBase
+        local placed = 0
+        for i = 0, Map.Monsters.High do
+          local m = Map.Monsters[i]
+          if placed < 12 and m.Hostile and not m.IsDead then
+            local angle = placed * math.pi / 6
+            m.X = math.floor(Party.X + math.cos(angle) * 130)
+            m.Y = math.floor(Party.Y + math.sin(angle) * 130)
+            m.Z = Party.Z
+            placed = placed + 1
+          end
+        end
+        return placed
+      end
+      ExperienceBefore = Party[0].Experience
+      return ProbeRound()
+    expect: "12"
+- press_action: {action: attack, seconds: 3}
+- mod_lua: {code: "return ProbeRound() >= 0", expect: "true"}
+- press_action: {action: attack, seconds: 3}
+- mod_lua: {code: "return ProbeRound() >= 0", expect: "true"}
+- press_action: {action: attack, seconds: 3}
+- mod_lua: {code: "return ProbeRound() >= 0", expect: "true"}
+- press_action: {action: attack, seconds: 3}
+- mod_lua:
+    code: |
+      local gained = Party[0].Experience - ExperienceBefore
+      if PartyKills == 0 or gained ~= 1000 * PartyKills then
+        return "gained " .. gained .. " for " .. PartyKills .. " kills"
+      end
+      return "matches"
+    expect: matches
+# In the original the experience for a kill comes from the monster's own record. A value given to single monsters
+# wins over their kind's, and MonsterKillExp may change it: 250 each, doubled by the handler.
+- mod_lua:
+    code: |
+      for index, monster in Map.Monsters do
+        monster.Experience = 250
+      end
+      function events.MonsterKillExp(t)
+        KillExpSeen = t.Monster == Map.Monsters[t.MonsterIndex] and t.Exp == 250
+        t.Exp = t.Exp * 2
+      end
+      PartyKills = 0
+      ExperienceBefore = Party[0].Experience
+      return ProbeRound() >= 0
+    expect: "true"
+- press_action: {action: attack, seconds: 3}
+- mod_lua: {code: "return ProbeRound() >= 0", expect: "true"}
+- press_action: {action: attack, seconds: 3}
+- mod_lua: {code: "return ProbeRound() >= 0", expect: "true"}
+- press_action: {action: attack, seconds: 3}
+- mod_lua: {code: "return ProbeRound() >= 0", expect: "true"}
+- press_action: {action: attack, seconds: 3}
+- mod_lua:
+    code: |
+      local gained = Party[0].Experience - ExperienceBefore
+      if PartyKills == 0 or gained ~= 500 * PartyKills or not KillExpSeen then
+        return "gained " .. gained .. " for " .. PartyKills .. " kills; event " .. tostring(KillExpSeen)
+      end
+      return "matches"
+    expect: matches

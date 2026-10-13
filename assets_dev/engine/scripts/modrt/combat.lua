@@ -320,3 +320,31 @@ function Combat.playerCastSpell(slot, spellId, manaCost, skill, mastery, targetA
 
     return event.Handled and true or false, floor(newSkill), floor(newMastery)
 end
+
+-- The experience for a monster the party has just killed. In the original it comes from the monster's own record,
+-- not from its kind's row, so a value a script gave this one monster wins over the engine's answer. Handlers may
+-- change t.Exp or set t.Handled to give none.
+function Combat.monsterKillExperience(actorIndex, experience)
+    ModRT.ensureSession()
+    local monster = Map.Monsters[actorIndex]
+
+    if not monster then
+        return experience
+    end
+
+    local own = monster.Experience
+    local kind = monster.Id and Game.MonstersTxt[monster.Id]
+
+    if type(own) == "number" and kind and own ~= kind.Experience then
+        experience = own
+    end
+
+    local event = {Exp = experience, Handled = false, Monster = monster, MonsterIndex = actorIndex}
+    ModRT.fire("MonsterKillExp", event)
+
+    if event.Handled or type(event.Exp) ~= "number" or event.Exp ~= event.Exp or event.Exp <= 0 then
+        return 0
+    end
+
+    return floor(event.Exp)
+end

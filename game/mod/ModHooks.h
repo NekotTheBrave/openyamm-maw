@@ -88,6 +88,10 @@ public:
     // A map actor has just died, whatever killed it.
     virtual void monsterKilled(size_t actorIndex) = 0;
 
+    // The experience the party gets for a monster it has just killed; `engineExperience` is the engine's answer
+    // from the monster table. Mods give single monsters an experience value of their own.
+    virtual uint32_t monsterKillExperience(size_t actorIndex, uint32_t engineExperience) = 0;
+
     virtual void playerAttacked(ModPlayerAttackedEvent &event) = 0;
     virtual void playerCastSpell(ModPlayerCastSpellEvent &event) = 0;
 
@@ -122,9 +126,15 @@ public:
 IModHooks *activeModHooks();
 void setActiveModHooks(IModHooks *pModHooks);
 
+// const.Damage: the original engine's number for a kind of damage, which is how mods name it.
+int mm8DamageKind(CombatDamageType damageType);
+
 // Runs the mod's event for damage to a party member and returns the damage to apply, which is
 // event.resolvedDamage when no mod runtime is present.
 int modDamageToPlayer(const ModDamageToPlayerEvent &event);
+
+// The experience to grant for a kill: the mod's answer, or `engineExperience` when no mod runtime is present.
+uint32_t modKillExperience(size_t actorIndex, uint32_t engineExperience);
 
 // The party's missile or spell hits a map actor: runs the mod's damage event and returns the damage to apply, which
 // is `resolvedDamage` when no mod runtime is present. `spellId` is 0 for an arrow or a blaster shot.

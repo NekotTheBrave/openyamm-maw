@@ -91,13 +91,11 @@ unset OPENYAMM_DISABLE_MODS
 if [ -f mods.yml ]; then
     maw_load
 
+    # The arena scenario is not run with MAW: the game picks arena monsters by their level in the monster table,
+    # which MAW rewrites, and MAW has arena rules of its own that are not ported (see MAW_PORT_PLAN.md, M6).
     for name in bindings bindings_indoor; do
         scenario "$name (MAW)" "$tests/scenarios/$name.yml"
     done
-
-    if [ "$mode" != "quick" ]; then
-        scenario "arena/mm8_challenge (MAW)" "tests/scenarios/arena/mm8_challenge.yml"
-    fi
 else
     echo "mods.yml not found: MAW checks skipped"
 fi

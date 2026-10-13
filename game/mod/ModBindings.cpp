@@ -3,6 +3,7 @@
 #include "game/data/GameDataLoader.h"
 #include "game/gameplay/GameMechanics.h"
 #include "game/gameplay/GameplayRuntimeInterfaces.h"
+#include "game/mod/ModHooks.h"
 #include "game/mod/ModHost.h"
 #include "game/party/Party.h"
 #include "game/party/PartySpellSystem.h"
@@ -1552,6 +1553,189 @@ int nativeItemTxtSet(lua_State *pLuaState)
     return 1;
 }
 
+// --- monsters --------------------------------------------------------------------------------------------------------
+//
+// A row of the monster table, under the field names of the original's record. Nested parts are flattened for the
+// natives and put back together by the scripts' side: Attack1.Type is "Attack1Type", Resistances[kind] is
+// "Resistance<kind>" with kind numbered by const.Damage.
+
+// The resistance of a row for a const.Damage number, or null: the original has no magic or energy resistance for
+// monsters.
+template <typename StatsType>
+auto monsterResistanceField(StatsType &stats, int64_t kind) -> decltype(&stats.fireResistance)
+{
+    switch (kind)
+    {
+        case 0: return &stats.fireResistance;
+        case 1: return &stats.airResistance;
+        case 2: return &stats.waterResistance;
+        case 3: return &stats.earthResistance;
+        case 4: return &stats.physicalResistance;
+        case 6: return &stats.spiritResistance;
+        case 7: return &stats.mindResistance;
+        case 8: return &stats.bodyResistance;
+        case 9: return &stats.lightResistance;
+        case 10: return &stats.darkResistance;
+        default: return nullptr;
+    }
+}
+
+// The plain whole-number fields a script may both read and write.
+template <typename StatsType>
+auto monsterNumberField(StatsType &stats, const std::string &field) -> decltype(&stats.level)
+{
+    static const std::string resistancePrefix = "Resistance";
+
+    if (field == "Level")
+    {
+        return &stats.level;
+    }
+
+    if (field == "FullHP" || field == "FullHitPoints" || field == "HP" || field == "HitPoints")
+    {
+        return &stats.hitPoints;
+    }
+
+    if (field == "ArmorClass")
+    {
+        return &stats.armorClass;
+    }
+
+    if (field == "Experience" || field == "Exp")
+    {
+        return &stats.experience;
+    }
+
+    if (field == "MoveSpeed")
+    {
+        return &stats.speed;
+    }
+
+    if (field == "RecoveryTime")
+    {
+        return &stats.recovery;
+    }
+
+    if (field == "HostileType")
+    {
+        return &stats.hostility;
+    }
+
+    if (field == "BonusMul")
+    {
+        return &stats.specialAttackLevel;
+    }
+
+    if (field == "Attack1DamageDiceCount")
+    {
+        return &stats.attack1Damage.diceRolls;
+    }
+
+    if (field == "Attack1DamageDiceSides")
+    {
+        return &stats.attack1Damage.diceSides;
+    }
+
+    if (field == "Attack1DamageAdd")
+    {
+        return &stats.attack1Damage.bonus;
+    }
+
+    if (field == "Attack2DamageDiceCount")
+    {
+        return &stats.attack2Damage.diceRolls;
+    }
+
+    if (field == "Attack2DamageDiceSides")
+    {
+        return &stats.attack2Damage.diceSides;
+    }
+
+    if (field == "Attack2DamageAdd")
+    {
+        return &stats.attack2Damage.bonus;
+    }
+
+    if (field == "Attack2Chance")
+    {
+        return &stats.attack2Chance;
+    }
+
+    if (field == "SpellChance")
+    {
+        return &stats.spell1UseChance;
+    }
+
+    if (field == "Spell2Chance")
+    {
+        return &stats.spell2UseChance;
+    }
+
+    if (field == "TreasureDiceCount")
+    {
+        return &stats.loot.goldDiceRolls;
+    }
+
+    if (field == "TreasureDiceSides")
+    {
+        return &stats.loot.goldDiceSides;
+    }
+
+    if (field == "TreasureItemPercent")
+    {
+        return &stats.loot.itemChance;
+    }
+
+    if (field == "TreasureItemLevel")
+    {
+        return &stats.loot.itemLevel;
+    }
+
+    if (field.compare(0, resistancePrefix.size(), resistancePrefix) == 0)
+    {
+        try
+        {
+            return monsterResistanceField(stats, std::stoll(field.substr(resistancePrefix.size())));
+        }
+        catch (const std::exception &)
+        {
+            return nullptr;
+        }
+    }
+
+    return nullptr;
+}
+
+int monsterBonusNumber(MonsterSpecialAttackKind kind)
+{
+    switch (kind)
+    {
+        case MonsterSpecialAttackKind::Curse: return 1;
+        case MonsterSpecialAttackKind::Weak: return 2;
+        case MonsterSpecialAttackKind::Sleep: return 3;
+        case MonsterSpecialAttackKind::Drunk: return 4;
+        case MonsterSpecialAttackKind::Insane: return 5;
+        case MonsterSpecialAttackKind::PoisonWeak: return 6;
+        case MonsterSpecialAttackKind::PoisonMedium: return 7;
+        case MonsterSpecialAttackKind::PoisonSevere: return 8;
+        case MonsterSpecialAttackKind::DiseaseWeak: return 9;
+        case MonsterSpecialAttackKind::DiseaseMedium: return 10;
+        case MonsterSpecialAttackKind::DiseaseSevere: return 11;
+        case MonsterSpecialAttackKind::Paralyze: return 12;
+        case MonsterSpecialAttackKind::Unconscious: return 13;
+        case MonsterSpecialAttackKind::Dead: return 14;
+        case MonsterSpecialAttackKind::Petrify: return 15;
+        case MonsterSpecialAttackKind::Eradicate: return 16;
+        case MonsterSpecialAttackKind::BreakAny: return 17;
+        case MonsterSpecialAttackKind::BreakArmor: return 18;
+        case MonsterSpecialAttackKind::BreakWeapon: return 19;
+        case MonsterSpecialAttackKind::Aging: return 21;
+        case MonsterSpecialAttackKind::ManaDrain: return 22;
+        case MonsterSpecialAttackKind::Fear: return 23;
+        default: return 0;
+    }
+}
+
 int nativeMonsterTxtGet(lua_State *pLuaState)
 {
     const GameDataLoader *pData = dataFromHost(pLuaState);
@@ -1563,39 +1747,187 @@ int nativeMonsterTxtGet(lua_State *pLuaState)
         return 0;
     }
 
-    const MonsterTable::MonsterStatsEntry *pStats =
-        pData->getMonsterTable().findStatsById(clampedInteger<int16_t>(monsterId));
+    const MonsterTable &monsterTable = pData->getMonsterTable();
+
+    if (field == "#")
+    {
+        int highestId = 0;
+
+        for (const std::pair<const int, MonsterTable::MonsterStatsEntry> &entry : monsterTable.statsEntries())
+        {
+            highestId = std::max(highestId, entry.first);
+        }
+
+        lua_pushinteger(pLuaState, highestId + 1);
+        return 1;
+    }
+
+    const MonsterTable::MonsterStatsEntry *pStats = monsterTable.findStatsById(clampedInteger<int16_t>(monsterId));
 
     if (pStats == nullptr)
     {
         return 0;
     }
 
+    if (const int *pNumber = monsterNumberField(*pStats, field))
+    {
+        lua_pushinteger(pLuaState, *pNumber);
+        return 1;
+    }
+
+    const auto spellNumber =
+        [pData](const std::string &spellName) -> lua_Integer
+        {
+            const SpellEntry *pSpell = !spellName.empty() ? pData->getSpellTable().findByName(spellName) : nullptr;
+            return pSpell != nullptr ? pSpell->id : 0;
+        };
+
     if (field == "Name")
     {
         pushString(pLuaState, pStats->name);
     }
-    else if (field == "Level")
+    else if (field == "Picture")
     {
-        lua_pushinteger(pLuaState, pStats->level);
+        pushString(pLuaState, pStats->pictureName);
     }
-    else if (field == "FullHP" || field == "FullHitPoints")
+    else if (field == "Id")
     {
-        lua_pushinteger(pLuaState, pStats->hitPoints);
+        lua_pushinteger(pLuaState, pStats->id);
     }
-    else if (field == "ArmorClass")
+    else if (field == "AIType")
     {
-        lua_pushinteger(pLuaState, pStats->armorClass);
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(pStats->aiType));
     }
-    else if (field == "Experience")
+    else if (field == "Fly")
     {
-        lua_pushinteger(pLuaState, pStats->experience);
+        lua_pushinteger(pLuaState, pStats->canFly ? 1 : 0);
+    }
+    else if (field == "Prefers")
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(pStats->attackPreferences));
+    }
+    else if (field == "Bonus")
+    {
+        lua_pushinteger(pLuaState, monsterBonusNumber(pStats->specialAttackKind));
+    }
+    else if (field == "Attack1Type")
+    {
+        lua_pushinteger(pLuaState, mm8DamageKind(GameMechanics::parseCombatDamageType(pStats->attack1Type)));
+    }
+    else if (field == "Attack2Type")
+    {
+        lua_pushinteger(pLuaState, mm8DamageKind(GameMechanics::parseCombatDamageType(pStats->attack2Type)));
+    }
+    else if (field == "Attack1Missile")
+    {
+        // The original holds the missile's kind here; scripts ask whether there is one.
+        lua_pushinteger(pLuaState, pStats->attack1HasMissile ? 1 : 0);
+    }
+    else if (field == "Attack2Missile")
+    {
+        lua_pushinteger(pLuaState, pStats->attack2HasMissile ? 1 : 0);
+    }
+    else if (field == "Spell")
+    {
+        lua_pushinteger(pLuaState, pStats->hasSpell1 ? spellNumber(pStats->spell1Name) : 0);
+    }
+    else if (field == "Spell2")
+    {
+        lua_pushinteger(pLuaState, pStats->hasSpell2 ? spellNumber(pStats->spell2Name) : 0);
+    }
+    else if (field == "SpellSkillLevel")
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(pStats->spell1SkillLevel));
+    }
+    else if (field == "SpellSkillMastery")
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(pStats->spell1SkillMastery));
+    }
+    else if (field == "Spell2SkillLevel")
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(pStats->spell2SkillLevel));
+    }
+    else if (field == "Spell2SkillMastery")
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(pStats->spell2SkillMastery));
+    }
+    else if (field == "TreasureItemType")
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(pStats->loot.itemKind));
     }
     else
     {
         return 0;
     }
 
+    return 1;
+}
+
+// modrt.monsterTxtSet(monster, field, value): changes the game's monster table, for every monster of that kind
+// and until the game is closed, as a write to Game.MonstersTxt[] does in the original. The engine reads level,
+// armor class, experience, resistances and attack dice from the table whenever it needs them; hit points are
+// taken from it when a monster appears. Returns false for a field that cannot be changed here.
+int nativeMonsterTxtSet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t monsterId = integerArgument(pLuaState, 1);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+    // The table belongs to the game's data loader, which hands it out read-only; it is not a constant object.
+    MonsterTable::MonsterStatsEntry *pStats = pData != nullptr
+        ? const_cast<MonsterTable &>(pData->getMonsterTable()).modStatsById(clampedInteger<int16_t>(monsterId))
+        : nullptr;
+    int *pNumber = pStats != nullptr ? monsterNumberField(*pStats, field) : nullptr;
+
+    if (pNumber != nullptr)
+    {
+        *pNumber = clampedInteger<int>(integerArgument(pLuaState, 3));
+    }
+    else if (pStats != nullptr && field == "AIType")
+    {
+        // Read when a monster appears on a map; monsters already there keep the behaviour they have.
+        pStats->aiType =
+            static_cast<MonsterTable::MonsterAiType>(std::clamp<int64_t>(integerArgument(pLuaState, 3), 0, 3));
+        lua_pushboolean(pLuaState, true);
+        return 1;
+    }
+
+    lua_pushboolean(pLuaState, pNumber != nullptr);
+    return 1;
+}
+
+// modrt.placeMonGet(index): the name a placed monster goes by, "" when the index has none; with "#", how many
+// there are.
+int nativePlaceMonGet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+
+    if (pData == nullptr)
+    {
+        return 0;
+    }
+
+    if (lua_type(pLuaState, 1) == LUA_TSTRING)
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(pData->getMonsterTable().uniqueNameCount()));
+        return 1;
+    }
+
+    const std::optional<std::string> name =
+        pData->getMonsterTable().getUniqueName(clampedInteger<int32_t>(integerArgument(pLuaState, 1)));
+    pushString(pLuaState, name.value_or(std::string()));
+    return 1;
+}
+
+int nativePlaceMonSet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t index = integerArgument(pLuaState, 1);
+    size_t length = 0;
+    const char *pName = luaL_checklstring(pLuaState, 2, &length);
+    const bool written = pData != nullptr
+        && const_cast<MonsterTable &>(pData->getMonsterTable())
+            .setUniqueName(clampedInteger<int32_t>(index), std::string(pName, length));
+    lua_pushboolean(pLuaState, written);
     return 1;
 }
 
@@ -1766,6 +2098,8 @@ std::optional<GameplayModActorField> actorFieldFromName(const std::string &field
         {"Y", GameplayModActorField::Y},
         {"Z", GameplayModActorField::Z},
         {"Group", GameplayModActorField::Group},
+        {"NameId", GameplayModActorField::UniqueNameId},
+        {"Ally", GameplayModActorField::Ally},
     };
     const std::unordered_map<std::string, GameplayModActorField>::const_iterator it = fields.find(field);
     return it != fields.end() ? std::optional<GameplayModActorField>(it->second) : std::nullopt;
@@ -1973,6 +2307,9 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"itemTxtGet", nativeItemTxtGet},
         {"itemTxtSet", nativeItemTxtSet},
         {"monsterTxtGet", nativeMonsterTxtGet},
+        {"monsterTxtSet", nativeMonsterTxtSet},
+        {"placeMonGet", nativePlaceMonGet},
+        {"placeMonSet", nativePlaceMonSet},
         {"portraitGet", nativePortraitGet},
         {"mapStatsGet", nativeMapStatsGet},
         {"mapMonsterGet", nativeMapMonsterGet},

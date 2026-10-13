@@ -11002,6 +11002,8 @@ bool IndoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField 
         case GameplayModActorField::Y: value = actor.y; return true;
         case GameplayModActorField::Z: value = actor.z; return true;
         case GameplayModActorField::Group: value = actor.group; return true;
+        case GameplayModActorField::UniqueNameId: value = actor.uniqueNameIndex; return true;
+        case GameplayModActorField::Ally: value = actor.ally; return true;
     }
 
     return false;
@@ -11018,17 +11020,59 @@ bool IndoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFie
 
     MapDeltaActor &actor = pMapDeltaData->actors[actorIndex];
 
+    // An actor's position is also kept, with its sector, in the AI state that movement and targeting work from;
+    // a moved actor is put there too, and into the sector it now stands in.
+    const auto actorMoved =
+        [this, &actor, actorIndex]()
+        {
+            if (m_pIndoorMapData != nullptr && !m_pIndoorMapData->vertices.empty())
+            {
+                RuntimeGeometryCache &runtimeGeometry = runtimeGeometryCache();
+                actor.sectorId = resolveIndoorPointSector(
+                    m_pIndoorMapData,
+                    runtimeGeometry.vertices,
+                    &runtimeGeometry.geometryCache,
+                    {static_cast<float>(actor.x), static_cast<float>(actor.y), static_cast<float>(actor.z) + 16.0f},
+                    actor.sectorId);
+            }
+
+            if (actorIndex < m_mapActorAiStates.size())
+            {
+                MapActorAiState &aiState = m_mapActorAiStates[actorIndex];
+                aiState.preciseX = static_cast<float>(actor.x);
+                aiState.preciseY = static_cast<float>(actor.y);
+                aiState.preciseZ = static_cast<float>(actor.z);
+                aiState.sectorId = actor.sectorId;
+                aiState.eyeSectorId = actor.sectorId;
+            }
+        };
+
     switch (field)
     {
         case GameplayModActorField::CurrentHp:
             // Indoor actors keep the original 16-bit hit point field.
             actor.hp = static_cast<int16_t>(std::clamp<int64_t>(value, INT16_MIN, INT16_MAX));
             return true;
-        case GameplayModActorField::X: actor.x = static_cast<int>(value); return true;
-        case GameplayModActorField::Y: actor.y = static_cast<int>(value); return true;
-        case GameplayModActorField::Z: actor.z = static_cast<int>(value); return true;
+        case GameplayModActorField::X:
+            actor.x = static_cast<int>(value);
+            actorMoved();
+            return true;
+        case GameplayModActorField::Y:
+            actor.y = static_cast<int>(value);
+            actorMoved();
+            return true;
+        case GameplayModActorField::Z:
+            actor.z = static_cast<int>(value);
+            actorMoved();
+            return true;
         case GameplayModActorField::Group:
             actor.group = static_cast<uint32_t>(std::clamp<int64_t>(value, 0, UINT32_MAX));
+            return true;
+        case GameplayModActorField::UniqueNameId:
+            actor.uniqueNameIndex = static_cast<int32_t>(std::clamp<int64_t>(value, 0, INT32_MAX));
+            return true;
+        case GameplayModActorField::Ally:
+            actor.ally = static_cast<uint32_t>(std::clamp<int64_t>(value, 0, UINT32_MAX));
             return true;
         case GameplayModActorField::MonsterId:
         case GameplayModActorField::MaxHp:
@@ -11672,13 +11716,21 @@ bool IndoorWorldRuntime::applyReflectedDamageToActor(
 
         applyMonsterKillReputationPenalty(*this, pStats, actor.group);
 
-        if (pStats != nullptr && pStats->experience > 0 && m_pParty != nullptr)
+        if (pStats != nullptr && m_pParty != nullptr)
         {
-            m_pParty->grantSharedExperience(
-                gameplayBolsterExperienceReward(
-                    pStats->experience,
-                    pStats->hitPoints,
-                    aiState.bolsterRewardMultiplier));
+            const uint32_t experience = modKillExperience(
+                actorIndex,
+                pStats->experience > 0
+                    ? gameplayBolsterExperienceReward(
+                        pStats->experience,
+                        pStats->hitPoints,
+                        aiState.bolsterRewardMultiplier)
+                    : 0u);
+
+            if (experience > 0)
+            {
+                m_pParty->grantSharedExperience(experience);
+            }
         }
     }
     else if (previousHp > 0 && nextHp > 0 && nextHp < previousHp)
@@ -13888,14 +13940,21 @@ bool IndoorWorldRuntime::applyPartyAttackMeleeDamage(
 
         applyMonsterKillReputationPenalty(*this, pStats, actor.group);
 
-        if (pStats != nullptr && pStats->experience > 0)
+        if (pStats != nullptr)
         {
             const float rewardMultiplier = actorIndex < m_mapActorAiStates.size()
                 ? m_mapActorAiStates[actorIndex].bolsterRewardMultiplier
                 : 1.0f;
-            experienceReward = static_cast<int>(
-                gameplayBolsterExperienceReward(pStats->experience, pStats->hitPoints, rewardMultiplier));
-            m_pParty->grantSharedExperience(static_cast<uint32_t>(experienceReward));
+            experienceReward = static_cast<int>(modKillExperience(
+                actorIndex,
+                pStats->experience > 0
+                    ? gameplayBolsterExperienceReward(pStats->experience, pStats->hitPoints, rewardMultiplier)
+                    : 0u));
+
+            if (experienceReward > 0)
+            {
+                m_pParty->grantSharedExperience(static_cast<uint32_t>(experienceReward));
+            }
         }
     }
 

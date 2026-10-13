@@ -1293,6 +1293,37 @@ std::optional<std::string> MonsterTable::findDisplayNameByInternalName(const std
     return m_displayNames[iterator->second].displayName;
 }
 
+MonsterTable::MonsterStatsEntry *MonsterTable::modStatsById(int16_t monsterId)
+{
+    const std::unordered_map<int, MonsterStatsEntry>::iterator it = m_statsById.find(monsterId);
+    return it != m_statsById.end() ? &it->second : nullptr;
+}
+
+bool MonsterTable::setUniqueName(int32_t uniqueNameIndex, const std::string &name)
+{
+    constexpr int32_t MaxUniqueNames = 4096;
+
+    if (uniqueNameIndex <= 0 || uniqueNameIndex >= MaxUniqueNames)
+    {
+        return false;
+    }
+
+    const size_t index = static_cast<size_t>(uniqueNameIndex);
+
+    if (index >= m_uniqueNames.size())
+    {
+        m_uniqueNames.resize(index + 1);
+    }
+
+    m_uniqueNames[index] = name;
+    return true;
+}
+
+size_t MonsterTable::uniqueNameCount() const
+{
+    return m_uniqueNames.size();
+}
+
 std::optional<std::string> MonsterTable::getUniqueName(int32_t uniqueNameIndex) const
 {
     if (uniqueNameIndex <= 0)

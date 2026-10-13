@@ -127,6 +127,9 @@ enum class GameplayModActorField : uint8_t
     Y,
     Z,
     Group,
+    // Which placed-monster name the actor goes by; 0 is its kind's own name.
+    UniqueNameId,
+    Ally,
 };
 
 struct GameplayRuntimeActorState
