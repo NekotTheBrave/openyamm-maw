@@ -159,3 +159,21 @@ steps:
       result[#result + 1] = p:GetMeleeDamageMax() == high
       return table.unpack(result)
     expect: "true\ttrue\t5\tProbe Sword\ttrue\ttrue"
+# The class table: hit and spell points per level and their base, as parallel arrays indexed by class. A write
+# changes the game's table, and the character's hit points follow at the next rebuild.
+- mod_lua:
+    code: |
+      local p = Party[0]
+      local class = p.Class
+      local factor, base = Game.Classes.HPFactor[class], Game.Classes.HPBase[class]
+      Party.RefreshBonuses()
+      local before = p:GetFullHP()
+      Game.Classes.HPFactor[class] = factor + 3
+      Party.RefreshBonuses()
+      local gained = p:GetFullHP() - before
+      local expected = 3 * (p.LevelBase + Game.GetStatisticEffect(p:GetEndurance()))
+      Game.Classes.HPFactor[class] = factor
+      Party.RefreshBonuses()
+      return class == const.Class.Knight, factor, base, gained == expected, p:GetFullHP() == before,
+        Game.Classes.Skills[class][const.Skills.Fire], Game.ClassNames[class]
+    expect: "true\t5\t35\ttrue\ttrue\t0\tKnight"

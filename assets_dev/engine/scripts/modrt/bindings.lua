@@ -754,7 +754,11 @@ local playersArray = boundObject("Party.PlayersArray", {
 
 Party = boundObject("Party", {
     owned = "Party",
-    bound = {Gold = true, Food = true, BankGold = true, Count = true, count = true, High = true, high = true, CurrentPlayer = true, X = true, Y = true, Z = true, YawRadians = true, PlayersArray = true, SpellBuffs = true},
+    bound = {
+        Gold = true, Food = true, BankGold = true, Count = true, count = true, High = true, high = true,
+        CurrentPlayer = true, X = true, Y = true, Z = true, YawRadians = true, PlayersArray = true,
+        SpellBuffs = true,
+    },
     index = function(index)
         if index >= 0 and index < partyCount() then
             return playerAt(index)
@@ -862,18 +866,42 @@ local mapStatsRow = tableRow("Game.MapStats[]", modrt.mapStatsGet, function(id, 
     return modrt.mapStatsSet(id, key, value)
 end)
 
--- Scripts walk this table from 0 or 1 to High and expect a row at every index, as in the original array, so
--- an index without a map still yields a row (its fields fall through to stand-ins).
+-- Scripts walk this table from 0 or 1 to High and expect a row at every index. High is the end of the unbroken
+-- run of maps from 1: the Merge's maps. OpenYAMM numbers maps of its own far above them (from 9001); those rows
+-- are reached by number (Map.MapStatsIndex on such a map) but are not part of the walk. Row 0 is an empty row,
+-- as in the original; its fields fall through to stand-ins.
+local mergeMapCount = nil
+
+local function mapStatsCount()
+    if mergeMapCount == nil then
+        local last = 0
+
+        while modrt.mapStatsGet(last + 1, "FileName") ~= nil do
+            last = last + 1
+        end
+
+        if last == 0 then
+            return 0
+        end
+
+        mergeMapCount = last + 1
+    end
+
+    return mergeMapCount
+end
+
 local mapStats = boundObject("Game.MapStats", {
     index = function(id)
-        if id < 0 or id >= (modrt.mapStatsGet(0, "#") or 0) then
+        if id < 0 then
+            return nil
+        elseif id >= mapStatsCount() and modrt.mapStatsGet(id, "FileName") == nil then
             return nil
         end
 
         return mapStatsRow(id)
     end,
-    get = sizeFields(function() return modrt.mapStatsGet(0, "#") or 0 end),
-    range = function() return 0, (modrt.mapStatsGet(0, "#") or 0) - 1 end,
+    get = sizeFields(mapStatsCount),
+    range = function() return 0, mapStatsCount() - 1 end,
 })
 
 local itemRow = tableRow("Game.ItemsTxt[]", modrt.itemTxtGet, function(id, key, value)
@@ -1097,6 +1125,97 @@ local placeMonTxt = boundObject("Game.PlaceMonTxt", {
     range = function() return 0, (modrt.placeMonGet("#") or 0) - 1 end,
 })
 
+---------------------------------------------------------------------------------------------------------------------
+-- classes: Game.Classes.HPFactor[class] and its sibling arrays, Game.Classes.Skills[class][skill] (the highest
+-- mastery the class can reach), Game.ClassNames[class], Game.ClassesExtra[class].Kind/.Step.
+
+local function classCount()
+    return modrt.classGet(0, "#") or 0
+end
+
+local function classArray(path, field, writable)
+    return boundObject(path, {
+        index = function(class)
+            return modrt.classGet(floor(class), field)
+        end,
+        newindex = writable and function(class, value)
+            if type(value) ~= "number" then
+                return false
+            end
+
+            return modrt.classSet(floor(class), field, floor(value))
+        end or nil,
+        get = sizeFields(classCount),
+        range = function() return 0, classCount() - 1 end,
+    })
+end
+
+local classSkills = cached(function(class)
+    return boundObject("Game.Classes.Skills[]", {
+        index = function(skill)
+            local name = skillName(floor(skill))
+            return name and modrt.classSkillGet(class, name) or nil
+        end,
+        get = sizeFields(function() return 39 end),
+        range = function() return 0, 38 end,
+    })
+end)
+
+local classParts = {
+    HPFactor = classArray("Game.Classes.HPFactor", "HPFactor", true),
+    HPBase = classArray("Game.Classes.HPBase", "HPBase", true),
+    SPFactor = classArray("Game.Classes.SPFactor", "SPFactor", true),
+    SPBase = classArray("Game.Classes.SPBase", "SPBase", true),
+    SPStats = classArray("Game.Classes.SPStats", "SPStats", true),
+    Skills = boundObject("Game.Classes.Skills", {
+        index = function(class)
+            class = floor(class)
+
+            if class < 0 or class >= classCount() then
+                return nil
+            end
+
+            return classSkills(class)
+        end,
+        get = sizeFields(classCount),
+        range = function() return 0, classCount() - 1 end,
+    }),
+}
+
+local classes = boundObject("Game.Classes", {
+    get = function(key)
+        return classParts[key]
+    end,
+})
+
+local classNames = classArray("Game.ClassNames", "Name", false)
+
+local classExtraRow = cached(function(class)
+    return boundObject("Game.ClassesExtra[]", {
+        get = function(key)
+            if key == "Kind" or key == "Step" then
+                return modrt.classGet(class, key)
+            end
+
+            return nil
+        end,
+    })
+end)
+
+local classesExtra = boundObject("Game.ClassesExtra", {
+    index = function(class)
+        class = floor(class)
+
+        if class < 0 or class >= classCount() then
+            return nil
+        end
+
+        return classExtraRow(class)
+    end,
+    get = sizeFields(classCount),
+    range = function() return 0, classCount() - 1 end,
+})
+
 -- Game.GetStatisticEffect(value): what a statistic's value is worth (13 gives 0, 15 gives 1, ...).
 local function getStatisticEffect(value)
     return modrt.statisticEffect(floor(tonumber(value) or 0))
@@ -1104,7 +1223,10 @@ end
 
 Game = boundObject("Game", {
     owned = "Game",
-    bound = {ItemsTxt = true, MonstersTxt = true, CharacterPortraits = true, MapStats = true, PlaceMonTxt = true, CurrentPlayer = true, Time = true},
+    bound = {
+        ItemsTxt = true, MonstersTxt = true, CharacterPortraits = true, MapStats = true, PlaceMonTxt = true,
+        CurrentPlayer = true, Time = true, Classes = true, ClassNames = true, ClassesExtra = true,
+    },
     get = function(key)
         if key == "ItemsTxt" then
             return itemsTxt
@@ -1116,6 +1238,12 @@ Game = boundObject("Game", {
             return mapStats
         elseif key == "PlaceMonTxt" then
             return placeMonTxt
+        elseif key == "Classes" then
+            return classes
+        elseif key == "ClassNames" then
+            return classNames
+        elseif key == "ClassesExtra" then
+            return classesExtra
         elseif key == "CurrentPlayer" then
             return modrt.partyGet("CurrentPlayer")
         elseif key == "Time" then
@@ -1190,7 +1318,7 @@ local mapMonsters = boundObject("Map.Monsters", {
 
 Map = boundObject("Map", {
     owned = "Map",
-    bound = {Monsters = true, Name = true, MapStatsIndex = true},
+    bound = {Monsters = true, Name = true, MapStatsIndex = true, IndoorOrOutdoor = true},
     get = function(key)
         if key == "Monsters" then
             return mapMonsters
@@ -1198,8 +1326,32 @@ Map = boundObject("Map", {
             return modrt.gameGet("MapFileName")
         elseif key == "MapStatsIndex" then
             return modrt.gameGet("MapStatsIndex")
+        elseif key == "IndoorOrOutdoor" then
+            -- the original's numbers: 1 indoor, 2 outdoor
+            local indoor = modrt.gameGet("IsIndoor")
+
+            if indoor == nil then
+                return nil
+            end
+
+            return indoor and 1 or 2
         end
 
         return nil
     end,
+    methods = {
+        -- Called without the object, as functions: Map.IsIndoor().
+        IsIndoor = function()
+            return modrt.gameGet("IsIndoor") == true
+        end,
+        IsIndoors = function()
+            return modrt.gameGet("IsIndoor") == true
+        end,
+        IsOutdoor = function()
+            return modrt.gameGet("IsIndoor") == false
+        end,
+        IsOutdoors = function()
+            return modrt.gameGet("IsIndoor") == false
+        end,
+    },
 })

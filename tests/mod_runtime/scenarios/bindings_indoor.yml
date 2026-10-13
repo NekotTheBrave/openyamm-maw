@@ -36,3 +36,6 @@ steps:
 - mod_lua:
     code: return Map.Monsters[0].HP, mapvars.indoor
     expect: "2\tseen"
+- mod_lua:
+    code: return Map.IsOutdoor(), Map.IsIndoor(), Map.IndoorOrOutdoor
+    expect: "false\ttrue\t1"

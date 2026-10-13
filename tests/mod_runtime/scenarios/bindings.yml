@@ -107,3 +107,11 @@ steps:
       local t = vars.modTest
       return t.answer, #t.list, t.list[3], t.name, t.ratio, tostring(vars.afterSave), tostring(mapvars.visited)
     expect: "42\t3\t3\tkept\t0.5\tnil\ttrue"
+
+# --- the map: indoor or outdoor, and the bounds of the map table -----------------------------------------------------
+# The table's High ends at the Merge's maps; OpenYAMM's own maps, numbered from 9001, are reached by number.
+- mod_lua:
+    code: |
+      return Map.IsOutdoor(), Map.IsIndoor(), Map.IndoorOrOutdoor, Game.MapStats.High,
+        Game.MapStats[9001].Name, tostring(Game.MapStats[208])
+    expect: "true\tfalse\t2\t207\tThjorgard City\tnil"

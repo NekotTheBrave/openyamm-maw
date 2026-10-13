@@ -9,6 +9,7 @@
 #include "game/party/PartySpellSystem.h"
 #include "game/party/SkillData.h"
 #include "game/tables/CharacterDollTable.h"
+#include "game/tables/ClassMultiplierTable.h"
 #include "game/tables/ClassSkillTable.h"
 #include "game/tables/ItemTable.h"
 #include "game/tables/MapStats.h"
@@ -2152,6 +2153,168 @@ int nativeMapStatsSet(lua_State *pLuaState)
     return 1;
 }
 
+// --- classes ---------------------------------------------------------------------------------------------------------
+//
+// The original keeps a class's hit and spell points in parallel arrays indexed by class (Game.Classes.HPFactor[],
+// HPBase[], SPFactor[], SPBase[], SPStats[]); here they are fields of one row per class, found by the class's
+// number.
+
+const ClassMultiplierEntry *classEntryById(const GameDataLoader &data, int64_t classId)
+{
+    if (classId < 0)
+    {
+        return nullptr;
+    }
+
+    const std::optional<std::string> className =
+        data.getClassSkillTable().classNameForId(static_cast<uint32_t>(classId));
+    return className ? data.getClassMultiplierTable().get(*className) : nullptr;
+}
+
+template <typename EntryType>
+auto classNumberField(EntryType &entry, const std::string &field) -> decltype(&entry.baseHealth)
+{
+    if (field == "HPFactor")
+    {
+        return &entry.healthPerLevel;
+    }
+
+    if (field == "HPBase")
+    {
+        return &entry.baseHealth;
+    }
+
+    if (field == "SPFactor")
+    {
+        return &entry.manaPerLevel;
+    }
+
+    if (field == "SPBase")
+    {
+        return &entry.baseMana;
+    }
+
+    return nullptr;
+}
+
+// modrt.classGet(class, field); with "#" as the field, one more than the highest class number.
+int nativeClassGet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t classId = integerArgument(pLuaState, 1);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+
+    if (pData == nullptr)
+    {
+        return 0;
+    }
+
+    if (field == "#")
+    {
+        uint32_t highestId = 0;
+        bool any = false;
+
+        for (const std::pair<const std::string, ClassMultiplierEntry> &entry :
+             pData->getClassMultiplierTable().entries())
+        {
+            if (pData->getClassSkillTable().classIdForName(entry.first))
+            {
+                highestId = std::max(highestId, *pData->getClassSkillTable().classIdForName(entry.first));
+                any = true;
+            }
+        }
+
+        lua_pushinteger(pLuaState, any ? static_cast<lua_Integer>(highestId) + 1 : 0);
+        return 1;
+    }
+
+    const ClassMultiplierEntry *pEntry = classEntryById(*pData, classId);
+
+    if (pEntry == nullptr)
+    {
+        return 0;
+    }
+
+    if (const int *pNumber = classNumberField(*pEntry, field))
+    {
+        lua_pushinteger(pLuaState, *pNumber);
+    }
+    else if (field == "SPStats")
+    {
+        // 0 none, 1 intellect, 2 personality, 3 both, as in the original.
+        lua_pushinteger(pLuaState, std::min<lua_Integer>(static_cast<lua_Integer>(pEntry->manaMode), 3));
+    }
+    else if (field == "Name")
+    {
+        pushString(pLuaState, pEntry->displayName.empty() ? pEntry->className : pEntry->displayName);
+    }
+    else if (field == "Kind")
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(pEntry->classKind));
+    }
+    else if (field == "Step")
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(pEntry->promotionStep));
+    }
+    else
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+// modrt.classSet(class, field, value): changes the game's class table, as a write to Game.Classes does in the
+// original. A character's base hit and spell points follow at the next bonus rebuild.
+int nativeClassSet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+    // The table belongs to the game's data loader, which hands it out read-only; it is not a constant object.
+    ClassMultiplierEntry *pEntry = pData != nullptr
+        ? const_cast<ClassMultiplierEntry *>(classEntryById(*pData, integerArgument(pLuaState, 1)))
+        : nullptr;
+    bool written = false;
+
+    if (pEntry != nullptr)
+    {
+        if (int *pNumber = classNumberField(*pEntry, field))
+        {
+            *pNumber = clampedInteger<int>(integerArgument(pLuaState, 3));
+            written = true;
+        }
+        else if (field == "SPStats")
+        {
+            pEntry->manaMode = static_cast<ClassManaMode>(std::clamp<int64_t>(integerArgument(pLuaState, 3), 0, 3));
+            written = true;
+        }
+    }
+
+    lua_pushboolean(pLuaState, written);
+    return 1;
+}
+
+// modrt.classSkillGet(class, skillName): the highest mastery the class can reach in the skill, 0 for none.
+int nativeClassSkillGet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t classId = integerArgument(pLuaState, 1);
+    const std::string skillName = canonicalSkillName(luaL_checkstring(pLuaState, 2));
+    const std::optional<std::string> className = pData != nullptr && classId >= 0
+        ? pData->getClassSkillTable().classNameForId(static_cast<uint32_t>(classId))
+        : std::nullopt;
+
+    if (!className)
+    {
+        return 0;
+    }
+
+    lua_pushinteger(
+        pLuaState,
+        static_cast<lua_Integer>(pData->getClassSkillTable().getClassCap(*className, skillName)));
+    return 1;
+}
+
 int nativePortraitGet(lua_State *pLuaState)
 {
     const GameDataLoader *pData = dataFromHost(pLuaState);
@@ -2303,6 +2466,19 @@ int nativeGameGet(lua_State *pLuaState)
         return 1;
     }
 
+    if (field == "IsIndoor")
+    {
+        const IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+
+        if (pWorld == nullptr)
+        {
+            return 0;
+        }
+
+        lua_pushboolean(pLuaState, pWorld->isIndoorMap());
+        return 1;
+    }
+
     if (field == "MapReady")
     {
         lua_pushboolean(
@@ -2408,6 +2584,9 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"placeMonGet", nativePlaceMonGet},
         {"placeMonSet", nativePlaceMonSet},
         {"portraitGet", nativePortraitGet},
+        {"classGet", nativeClassGet},
+        {"classSet", nativeClassSet},
+        {"classSkillGet", nativeClassSkillGet},
         {"mapStatsGet", nativeMapStatsGet},
         {"mapStatsSet", nativeMapStatsSet},
         {"mapMonsterGet", nativeMapMonsterGet},
