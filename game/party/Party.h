@@ -578,6 +578,10 @@ public:
     bool hasCharacterBuff(size_t memberIndex, CharacterBuffId buffId) const;
     const PartyBuffState *partyBuff(PartyBuffId buffId) const;
     const CharacterBuffState *characterBuff(size_t memberIndex, CharacterBuffId buffId) const;
+    // The buff records themselves, running or not, for the mod runtime: scripts read and overwrite them field by
+    // field, as they do with the original engine's records. Whoever changes one rebuilds the bonuses afterwards.
+    PartyBuffState &modPartyBuff(PartyBuffId buffId);
+    CharacterBuffState *modCharacterBuff(size_t memberIndex, CharacterBuffId buffId);
     bool blockConditionWithProtectionFromMagic(CharacterCondition condition);
     bool applyMemberCondition(size_t memberIndex, CharacterCondition condition, float gameMinutes = 0.0f);
     bool clearMemberCondition(size_t memberIndex, CharacterCondition condition);

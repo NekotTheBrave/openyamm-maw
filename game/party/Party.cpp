@@ -6278,6 +6278,21 @@ const PartyBuffState *Party::partyBuff(PartyBuffId buffId) const
     return buff.active() ? &buff : nullptr;
 }
 
+PartyBuffState &Party::modPartyBuff(PartyBuffId buffId)
+{
+    return m_partyBuffs[static_cast<size_t>(buffId)];
+}
+
+CharacterBuffState *Party::modCharacterBuff(size_t memberIndex, CharacterBuffId buffId)
+{
+    if (memberIndex >= m_members.size() || memberIndex >= m_characterBuffs.size())
+    {
+        return nullptr;
+    }
+
+    return &m_characterBuffs[memberIndex][static_cast<size_t>(buffId)];
+}
+
 const CharacterBuffState *Party::characterBuff(size_t memberIndex, CharacterBuffId buffId) const
 {
     if (memberIndex >= m_members.size() || memberIndex >= m_characterBuffs.size())

@@ -736,6 +736,175 @@ int nativePlayerConditionSet(lua_State *pLuaState)
     return 1;
 }
 
+// --- spell buffs ---------------------------------------------------------------------------------------------------
+//
+// Scripts number buffs as the original engine does (const.PartyBuff, const.PlayerBuff). Every party buff has a
+// counterpart here. Of the per-character ones only some do; the rest (the potion buffs: temporary statistics,
+// single-character resistances, Haste, Heroism, Shield, Stoneskin) have no record in OpenYAMM, and the natives
+// answer nothing for them so that the scripts' side can keep its own.
+
+constexpr PartyBuffId ModPartyBuffIds[] = {
+    PartyBuffId::AirResistance, PartyBuffId::BodyResistance, PartyBuffId::DayOfGods, PartyBuffId::DetectLife,
+    PartyBuffId::EarthResistance, PartyBuffId::FeatherFall, PartyBuffId::FireResistance, PartyBuffId::Fly,
+    PartyBuffId::Haste, PartyBuffId::Heroism, PartyBuffId::Immolation, PartyBuffId::Invisibility,
+    PartyBuffId::MindResistance, PartyBuffId::ProtectionFromMagic, PartyBuffId::Shield, PartyBuffId::Stoneskin,
+    PartyBuffId::TorchLight, PartyBuffId::WaterResistance, PartyBuffId::WaterWalk, PartyBuffId::WizardEye,
+};
+
+std::optional<CharacterBuffId> modCharacterBuffId(int64_t playerBuff)
+{
+    switch (playerBuff)
+    {
+        case 1: return CharacterBuffId::Bless;
+        case 4: return CharacterBuffId::Fate;
+        case 6: return CharacterBuffId::Hammerhands;
+        case 10: return CharacterBuffId::PainReflection;
+        case 11: return CharacterBuffId::Preservation;
+        case 12: return CharacterBuffId::Regeneration;
+        case 24: return CharacterBuffId::Glamour;
+        case 26: return CharacterBuffId::Mistform;
+        default: return std::nullopt;
+    }
+}
+
+float hostGameMinutes(lua_State *pLuaState)
+{
+    const ModHost *pHost = hostFromUpvalue(pLuaState);
+    return pHost != nullptr && pHost->gameMinutes ? pHost->gameMinutes() : 0.0f;
+}
+
+// OpenYAMM counts a buff down in game seconds; scripts see the game time (256 ticks to the minute) it runs out at,
+// 0 for a buff that is not running.
+template <typename BuffState>
+int pushBuffField(lua_State *pLuaState, const BuffState &buff, const std::string &field)
+{
+    if (field == "ExpireTime")
+    {
+        if (!buff.active())
+        {
+            lua_pushinteger(pLuaState, 0);
+            return 1;
+        }
+
+        const double minutes = static_cast<double>(hostGameMinutes(pLuaState)) + buff.remainingSeconds / 60.0;
+        lua_pushinteger(pLuaState, std::max<lua_Integer>(1, static_cast<lua_Integer>(std::floor(minutes * 256.0))));
+    }
+    else if (field == "Power")
+    {
+        lua_pushinteger(pLuaState, buff.power);
+    }
+    else if (field == "SkillLevel")
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(buff.skillLevel));
+    }
+    else if (field == "SkillMastery")
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(buff.skillMastery));
+    }
+    else if (field == "Caster")
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(buff.casterMemberIndex));
+    }
+    else
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+template <typename BuffState>
+bool setBuffField(lua_State *pLuaState, BuffState &buff, const std::string &field, int valueIndex)
+{
+    if (field == "ExpireTime")
+    {
+        const double minutes = luaL_checknumber(pLuaState, valueIndex) / 256.0;
+        const double remainingSeconds = (minutes - static_cast<double>(hostGameMinutes(pLuaState))) * 60.0;
+        buff.remainingSeconds = static_cast<float>(std::clamp(remainingSeconds, 0.0, 4.0e9));
+    }
+    else if (field == "Power")
+    {
+        buff.power = clampedInteger<int>(integerArgument(pLuaState, valueIndex));
+    }
+    else if (field == "SkillLevel")
+    {
+        buff.skillLevel = clampedInteger<uint32_t>(integerArgument(pLuaState, valueIndex));
+    }
+    else if (field == "SkillMastery")
+    {
+        buff.skillMastery =
+            static_cast<SkillMastery>(std::clamp<int64_t>(integerArgument(pLuaState, valueIndex), 0, 4));
+    }
+    else if (field == "Caster")
+    {
+        buff.casterMemberIndex = clampedInteger<uint32_t>(integerArgument(pLuaState, valueIndex));
+    }
+    else
+    {
+        return false;
+    }
+
+    return true;
+}
+
+// modrt.buffGet(player, buff, field): player is a party slot, or -1 for the party's own buffs.
+int nativeBuffGet(lua_State *pLuaState)
+{
+    Party *pParty = partyFromHost(pLuaState);
+    const int64_t owner = integerArgument(pLuaState, 1);
+    const int64_t buffId = integerArgument(pLuaState, 2);
+    const std::string field = luaL_checkstring(pLuaState, 3);
+
+    if (pParty == nullptr)
+    {
+        return 0;
+    }
+
+    if (owner < 0)
+    {
+        if (buffId < 0 || buffId >= static_cast<int64_t>(std::size(ModPartyBuffIds)))
+        {
+            return 0;
+        }
+
+        return pushBuffField(pLuaState, pParty->modPartyBuff(ModPartyBuffIds[buffId]), field);
+    }
+
+    const std::optional<CharacterBuffId> characterBuffId = modCharacterBuffId(buffId);
+    const CharacterBuffState *pBuff =
+        characterBuffId ? pParty->modCharacterBuff(static_cast<size_t>(owner), *characterBuffId) : nullptr;
+    return pBuff != nullptr ? pushBuffField(pLuaState, *pBuff, field) : 0;
+}
+
+// modrt.buffSet(player, buff, field, value): true when the buff has a record here and the field was written. The
+// bonuses are not rebuilt; the scripts' side does that once after a run of writes.
+int nativeBuffSet(lua_State *pLuaState)
+{
+    Party *pParty = partyFromHost(pLuaState);
+    const int64_t owner = integerArgument(pLuaState, 1);
+    const int64_t buffId = integerArgument(pLuaState, 2);
+    const std::string field = luaL_checkstring(pLuaState, 3);
+    bool written = false;
+
+    if (pParty != nullptr && owner < 0)
+    {
+        if (buffId >= 0 && buffId < static_cast<int64_t>(std::size(ModPartyBuffIds)))
+        {
+            written = setBuffField(pLuaState, pParty->modPartyBuff(ModPartyBuffIds[buffId]), field, 4);
+        }
+    }
+    else if (pParty != nullptr)
+    {
+        const std::optional<CharacterBuffId> characterBuffId = modCharacterBuffId(buffId);
+        CharacterBuffState *pBuff =
+            characterBuffId ? pParty->modCharacterBuff(static_cast<size_t>(owner), *characterBuffId) : nullptr;
+        written = pBuff != nullptr && setBuffField(pLuaState, *pBuff, field, 4);
+    }
+
+    lua_pushboolean(pLuaState, written);
+    return 1;
+}
+
 // Skills are addressed by their Merge name; OpenYAMM stores them under its own canonical name.
 int nativePlayerSkillGet(lua_State *pLuaState)
 {
@@ -1719,6 +1888,8 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"partySet", nativePartySet},
         {"playerGet", nativePlayerGet},
         {"playerSet", nativePlayerSet},
+        {"buffGet", nativeBuffGet},
+        {"buffSet", nativeBuffSet},
         {"playerConditionGet", nativePlayerConditionGet},
         {"playerConditionSet", nativePlayerConditionSet},
         {"playerSkillGet", nativePlayerSkillGet},

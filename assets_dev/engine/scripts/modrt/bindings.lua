@@ -188,6 +188,37 @@ function Bindings.ensureConstants()
         rawset(constants, "Skills", skills)
     end
 
+    -- The rest of what the bindings themselves are numbered by, for a run without the Merge base's constants.
+    local function fallback(name, value)
+        local existing = rawget(constants, name)
+
+        if existing == nil or Stubs.isStub(existing) then
+            rawset(constants, name, value)
+        end
+    end
+
+    fallback("Minute", 256)
+    fallback("Hour", 256 * 60)
+    fallback("Day", 256 * 60 * 24)
+    fallback("PartyBuff", {
+        AirResistance = 0, BodyResistance = 1, DayOfGods = 2, DetectLife = 3, EarthResistance = 4, FeatherFall = 5,
+        FireResistance = 6, Fly = 7, Haste = 8, Heroism = 9, Immolation = 10, Invisibility = 11,
+        MindResistance = 12, ProtectionFromMagic = 13, Shield = 14, Stoneskin = 15, TorchLight = 16,
+        WaterResistance = 17, WaterWalk = 18, WizardEye = 19,
+    })
+    fallback("PlayerBuff", {
+        AirResistance = 0, Bless = 1, BodyResistance = 2, EarthResistance = 3, Fate = 4, FireResistance = 5,
+        Hammerhands = 6, Haste = 7, Heroism = 8, MindResistance = 9, PainReflection = 10, Preservation = 11,
+        Regeneration = 12, Shield = 13, Stoneskin = 14, TempAccuracy = 15, TempEndurance = 16, TempIntellect = 17,
+        TempLuck = 18, TempMight = 19, TempPersonality = 20, TempSpeed = 21, WaterResistance = 22,
+        WaterBreathing = 23, Glamour = 24, Levitate = 25, Misform = 26,
+    })
+    fallback("Condition", {
+        Cursed = 0, Weak = 1, Asleep = 2, Afraid = 3, Drunk = 4, Insane = 5, Poison1 = 6, Disease1 = 7,
+        Poison2 = 8, Disease2 = 9, Poison3 = 10, Disease3 = 11, Paralyzed = 12, Unconscious = 13, Dead = 14,
+        Stoned = 15, Eradicated = 16, Zombie = 17, Good = 18,
+    })
+
     -- MMExtension's constants describe plain MM8. Merge renumbers races, classes and monster kinds in scripts
     -- that are not run here (they patch the original executable), so its numbering is restated.
     rawset(constants, "Race", {
@@ -331,6 +362,127 @@ end
 local OriginalPlayerArrayAddress = 0xB2187C
 local OriginalPlayerSize = 0x1D28
 
+---------------------------------------------------------------------------------------------------------------------
+-- spell buffs
+--
+-- A buff record as scripts see it: ExpireTime (the game time it runs out at, 0 when it is not running), Power,
+-- Skill (level and mastery packed), Caster, OverlayId, Bits. Where OpenYAMM has the buff, ExpireTime, Power, Skill
+-- and Caster are its own record. The other buffs, and the other fields, are kept by the runtime in the save: the
+-- scripts see what they wrote, the game does nothing with it.
+
+local PartyBuffCount = 20
+local PlayerBuffCount = 27
+local buffFields = {ExpireTime = true, Power = true, Skill = true, Caster = true, OverlayId = true, Bits = true}
+local bonusesDirty = false
+
+-- Buff writes come in runs (time, power, skill); the bonuses are rebuilt once, when the scripts hand control back.
+function Bindings.flushBonuses()
+    if bonusesDirty then
+        bonusesDirty = false
+        modrt.partyRefreshBonuses()
+    end
+end
+
+local function spellBuff(owner, id, path, storeKey)
+    local function read(field)
+        if field == "Skill" then
+            local level = modrt.buffGet(owner, id, "SkillLevel")
+
+            if level ~= nil then
+                return JoinSkill(level, modrt.buffGet(owner, id, "SkillMastery") or 0)
+            end
+        elseif field == "ExpireTime" or field == "Power" or field == "Caster" then
+            local value = modrt.buffGet(owner, id, field)
+
+            if value ~= nil then
+                return value
+            end
+        end
+
+        local buffs = ModRT.State.runtime.buffs
+        local record = buffs and buffs[storeKey()]
+        return record and record[field] or 0
+    end
+
+    local function write(field, value)
+        value = tonumber(value) or 0
+        local taken = false
+
+        if field == "Skill" then
+            local level, mastery = SplitSkill(floor(value))
+            taken = modrt.buffSet(owner, id, "SkillLevel", level)
+                and modrt.buffSet(owner, id, "SkillMastery", mastery)
+        elseif field == "ExpireTime" then
+            taken = modrt.buffSet(owner, id, field, value)
+        elseif field == "Power" or field == "Caster" then
+            taken = modrt.buffSet(owner, id, field, floor(value))
+        end
+
+        if taken then
+            bonusesDirty = true
+            return true
+        end
+
+        local runtime = ModRT.State.runtime
+        runtime.buffs = runtime.buffs or {}
+        local key = storeKey()
+        runtime.buffs[key] = runtime.buffs[key] or {}
+        runtime.buffs[key][field] = value
+        return true
+    end
+
+    return boundObject(path, {
+        get = function(key)
+            if buffFields[key] then
+                return read(key)
+            end
+
+            return nil
+        end,
+        set = function(key, value)
+            if buffFields[key] then
+                return write(key, value)
+            end
+
+            return false
+        end,
+        methods = {
+            -- buff:Set(expireTime, skill, power, overlayId, caster), as MMExtension has it.
+            Set = function(_, time, skill, power, overlay, caster)
+                write("ExpireTime", time)
+                write("Skill", skill or 1)
+                write("Power", power or 1)
+                write("OverlayId", overlay or 0)
+                write("Caster", caster or 0)
+            end,
+        },
+    })
+end
+
+local function spellBuffArray(owner, count, path, storeKey)
+    local entry = cached(function(id)
+        return spellBuff(owner, id, path .. "[]", function() return storeKey(id) end)
+    end)
+
+    return boundObject(path, {
+        index = function(id)
+            id = floor(id)
+
+            if id >= 0 and id < count then
+                return entry(id)
+            end
+
+            return nil
+        end,
+        get = sizeFields(function() return count end),
+        range = function() return 0, count - 1 end,
+    })
+end
+
+local partySpellBuffs = spellBuffArray(-1, PartyBuffCount, "Party.SpellBuffs", function(id)
+    return "party:" .. id
+end)
+
 -- const.Condition, which is also the engine's own order. A condition reads as the game time it set in at, 0 when
 -- the character does not have it; writing 0 lifts it.
 local conditionIds = {
@@ -421,6 +573,10 @@ local function playerObject(playerIndex)
         range = function() return 0, ConditionCount - 1 end,
     })
     local resistances = baseBonusArray(playerIndex, path .. ".Resistances", resistanceNames, "Resistance")
+    -- A character's own records follow the character, not the party slot it stands in.
+    local spellBuffs = spellBuffArray(playerIndex, PlayerBuffCount, path .. ".SpellBuffs", function(id)
+        return (modrt.playerGet(playerIndex, "ModIndex") or -1) .. ":" .. id
+    end)
     local stats = baseBonusArray(playerIndex, path .. ".Stats", statNames, "")
 
     return boundObject(path, {
@@ -435,6 +591,8 @@ local function playerObject(playerIndex)
                 return conditions
             elseif key == "Resistances" then
                 return resistances
+            elseif key == "SpellBuffs" then
+                return spellBuffs
             elseif key == "Stats" then
                 return stats
             elseif conditionIds[key] then
@@ -584,6 +742,8 @@ Party = boundObject("Party", {
             return size
         elseif key == "PlayersArray" then
             return playersArray
+        elseif key == "SpellBuffs" then
+            return partySpellBuffs
         end
 
         return modrt.partyGet(key)

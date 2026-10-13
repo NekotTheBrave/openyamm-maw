@@ -9,6 +9,7 @@ local State = {}
 ModRT.State = State
 
 State.mapVarsByMap = {}
+State.runtime = {}
 State.currentMap = nil
 State.dropped = 0
 
@@ -158,7 +159,7 @@ function State.capture()
     if State.currentMap then
         State.mapVarsByMap[State.currentMap] = mapvars
     end
-    local text = State.serialize({version = 1, vars = vars, mapvars = State.mapVarsByMap})
+    local text = State.serialize({version = 1, vars = vars, mapvars = State.mapVarsByMap, runtime = State.runtime})
 
     if State.dropped > 0 then
         ModRT.log("warn", State.dropped .. " values in vars/mapvars are not plain data and were not saved")
@@ -183,6 +184,9 @@ function State.restore(text)
 
     replaceContents(vars, data and type(data.vars) == "table" and data.vars or {})
     State.mapVarsByMap = data and type(data.mapvars) == "table" and data.mapvars or {}
+    -- What the runtime itself keeps in the save, apart from the mods' vars: records the original engine has in its
+    -- own save data and OpenYAMM has no place for (see spell buffs in bindings.lua).
+    State.runtime = data and type(data.runtime) == "table" and data.runtime or {}
     State.currentMap = nil
     State.freshSession = true
     State.newGamePending = data == nil

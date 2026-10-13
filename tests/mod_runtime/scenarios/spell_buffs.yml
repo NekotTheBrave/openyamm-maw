@@ -1,0 +1,98 @@
+id: mod_runtime.spell_buffs
+title: Spell buffs read and write as the original engine's records, and the game acts on the ones it has
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 0
+      food: 1
+      members:
+      - name: Subject
+        class: Knight
+        level: 5
+        skills:
+        - name: Sword
+          level: 4
+          mastery: 2
+        equipment:
+          main_hand: 1
+# Nothing is running at the start. Buffs are numbered by const.PartyBuff and const.PlayerBuff.
+- mod_lua:
+    code: |
+      local p = Party[0]
+      Base = {ac = p:GetArmorClass(), attack = p:GetMeleeAttack()}
+      local running = 0
+      for id, buff in Party.SpellBuffs do
+        if buff.ExpireTime ~= 0 then running = running + 1 end
+      end
+      for id, buff in p.SpellBuffs do
+        if buff.ExpireTime ~= 0 then running = running + 1 end
+      end
+      return Party.SpellBuffs.Count, p.SpellBuffs.Count, running, const.PartyBuff.Stoneskin, const.PlayerBuff.Bless
+    expect: "20\t27\t0\t15\t1"
+# A party buff written field by field. The record reads back at once; the game's numbers follow when the scripts
+# hand control back, which here is the end of the step.
+- mod_lua:
+    code: |
+      local buff = Party.SpellBuffs[const.PartyBuff.Stoneskin]
+      buff.ExpireTime = Game.Time + const.Hour
+      buff.Power = 20
+      buff.Skill = JoinSkill(5, 3)
+      local level, mastery = SplitSkill(buff.Skill)
+      local left = buff.ExpireTime - Game.Time
+      return buff.Power, level, mastery, left > const.Hour - 8 and left <= const.Hour
+    expect: "20\t5\t3\ttrue"
+- mod_lua:
+    code: return Party[0]:GetArmorClass() - Base.ac
+    expect: "20"
+# Writing 0 to ExpireTime ends the buff.
+- mod_lua:
+    code: |
+      Party.SpellBuffs[const.PartyBuff.Stoneskin].ExpireTime = 0
+      return Party.SpellBuffs[const.PartyBuff.Stoneskin].ExpireTime
+    expect: "0"
+- mod_lua:
+    code: return Party[0]:GetArmorClass() - Base.ac
+    expect: "0"
+# A character's buff, set in one call.
+- mod_lua:
+    code: |
+      local buff = Party[0].SpellBuffs[const.PlayerBuff.Bless]
+      buff:Set(Game.Time + const.Hour, JoinSkill(4, 2), 9)
+      return buff.Power, buff.ExpireTime > Game.Time
+    expect: "9\ttrue"
+- mod_lua:
+    code: return Party[0]:GetMeleeAttack() - Base.attack
+    expect: "9"
+# A buff OpenYAMM has no record for is the scripts' own: it reads back and is saved, and the game ignores it.
+- mod_lua:
+    code: |
+      local buff = Party[0].SpellBuffs[const.PlayerBuff.TempMight]
+      Expire = Game.Time + const.Day
+      buff.ExpireTime = Expire
+      buff.Power = 33
+      Party.SpellBuffs[const.PartyBuff.Haste].Bits = 5
+      return buff.Power, buff.ExpireTime == Expire, Party[0]:GetMight()
+    expect: "33\ttrue\t15"
+- save_game: mod_spell_buffs
+- mod_lua:
+    code: |
+      local kept = Expire
+      local buff = Party[0].SpellBuffs[const.PlayerBuff.TempMight]
+      buff.ExpireTime = 0
+      buff.Power = 0
+      Party[0].SpellBuffs[const.PlayerBuff.Bless].ExpireTime = 0
+      return buff.Power
+    expect: "0"
+- load_game: mod_spell_buffs
+- mod_lua:
+    code: |
+      local buff = Party[0].SpellBuffs[const.PlayerBuff.TempMight]
+      local bless = Party[0].SpellBuffs[const.PlayerBuff.Bless]
+      return buff.Power, buff.ExpireTime > Game.Time, Party.SpellBuffs[const.PartyBuff.Haste].Bits,
+        bless.Power, bless.ExpireTime > Game.Time
+    expect: "33\ttrue\t5\t9\ttrue"

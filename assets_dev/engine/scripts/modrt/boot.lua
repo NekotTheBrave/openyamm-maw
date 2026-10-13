@@ -233,7 +233,7 @@ function ModRT.start()
     ModRT.Loader.loadStartupScripts()
 end
 
-function ModRT.dispatch(kind, ...)
+local function dispatchKind(kind, ...)
     if kind == "tick" then
         return ModRT.tick(...)
     elseif kind == "event" then
@@ -265,4 +265,25 @@ function ModRT.dispatch(kind, ...)
     end
 
     error("unknown dispatch kind " .. tostring(kind))
+end
+
+-- The calls after which the scripts have handed control back to the game, as opposed to those the engine makes in
+-- the middle of computing something (a statistic, a recovery time, the bonuses themselves).
+local settlingKinds = {tick = true, event = true, key = true, console = true}
+local dispatchDepth = 0
+
+function ModRT.dispatch(kind, ...)
+    dispatchDepth = dispatchDepth + 1
+    local results = table.pack(xpcall(dispatchKind, debug.traceback, kind, ...))
+    dispatchDepth = dispatchDepth - 1
+
+    if dispatchDepth == 0 and settlingKinds[kind] and ModRT.Bindings then
+        ModRT.Bindings.flushBonuses()
+    end
+
+    if not results[1] then
+        error(results[2], 0)
+    end
+
+    return table.unpack(results, 2, results.n)
 end
