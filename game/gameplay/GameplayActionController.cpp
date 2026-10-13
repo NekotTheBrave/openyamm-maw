@@ -751,7 +751,8 @@ GameplayActionController::PartyAttackExecutionResult GameplayActionController::e
             target->effectiveArmorClass,
             targetDistance,
             rng,
-            attackTuning);
+            attackTuning,
+            target->actorIndex);
     }
     else if (attackMode == CharacterAttackMode::Melee && worldTargetInMeleeRange)
     {

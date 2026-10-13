@@ -13,12 +13,23 @@ ModRT.Bindings = Bindings
 local type = type
 local floor = math.floor
 
+-- Fields of the engine's root objects that the mods' own scripts assign somewhere (Game.RandomizerMode = true).
+-- Mods keep flags of their own on these objects. Such a field is the mod's: until a script sets it, it reads as
+-- nil, as in the original, and not as a stand-in, which a script's `if Game.SomeMode then` would take for "on".
+-- The loader fills this in from the scripts' text before any of them runs.
+Bindings.ownedFields = {Game = {}, Party = {}, Map = {}, Mouse = {}}
+
 -- spec.get(key) returns nil for a field it does not know; spec.set(key, value) returns true when it took the value.
+-- spec.owned names the root object (a key of Bindings.ownedFields) whose mod-owned fields live on this object;
+-- spec.bound lists the fields spec.get answers, which stay the engine's even while they have no value (before a
+-- game is in progress).
 -- spec.range() returns the first and last index of an array, which makes the object iterable the MMExtension way:
 -- `for index, value in Party do`.
 local function boundObject(path, spec)
     local fallback = Stubs.new(path)
     local call = nil
+    local owned = spec.owned and Bindings.ownedFields[spec.owned] or nil
+    local ownedValues = owned and {} or nil
 
     if spec.range then
         call = function(self, _, control)
@@ -66,6 +77,10 @@ local function boundObject(path, spec)
                 end
             end
 
+            if owned and owned[key] and not (spec.bound and spec.bound[key]) then
+                return ownedValues[key]
+            end
+
             return fallback[key]
         end,
         __newindex = function(_, key, value)
@@ -74,6 +89,11 @@ local function boundObject(path, spec)
                     return
                 end
             elseif type(key) == "string" and spec.set and spec.set(key, value) then
+                return
+            end
+
+            if owned and owned[key] and not (spec.bound and spec.bound[key]) then
+                ownedValues[key] = value
                 return
             end
 
@@ -733,6 +753,8 @@ local playersArray = boundObject("Party.PlayersArray", {
 })
 
 Party = boundObject("Party", {
+    owned = "Party",
+    bound = {Gold = true, Food = true, BankGold = true, Count = true, count = true, High = true, high = true, CurrentPlayer = true, X = true, Y = true, Z = true, YawRadians = true, PlayersArray = true, SpellBuffs = true},
     index = function(index)
         if index >= 0 and index < partyCount() then
             return playerAt(index)
@@ -771,6 +793,11 @@ Party = boundObject("Party", {
 -- working.
 Bindings.tableWrites = {}
 
+local function isPlainValue(value)
+    local kind = type(value)
+    return kind == "number" or kind == "string" or kind == "boolean"
+end
+
 local function tableRow(path, getter, setter)
     return cached(function(id)
         local written = nil
@@ -793,7 +820,8 @@ local function tableRow(path, getter, setter)
                     return false
                 end
 
-                if setter and setter(id, key, value) then
+                -- Only plain values go to the engine; a script may also park a stand-in or a table here.
+                if setter and isPlainValue(value) and setter(id, key, value) then
                     return true
                 end
 
@@ -826,7 +854,13 @@ function GetRace(player, playerIndex)
     return player.RaceId
 end
 
-local mapStatsRow = tableRow("Game.MapStats[]", modrt.mapStatsGet)
+local mapStatsRow = tableRow("Game.MapStats[]", modrt.mapStatsGet, function(id, key, value)
+    if type(value) == "number" then
+        value = floor(value)
+    end
+
+    return modrt.mapStatsSet(id, key, value)
+end)
 
 -- Scripts walk this table from 0 or 1 to High and expect a row at every index, as in the original array, so
 -- an index without a map still yields a row (its fields fall through to stand-ins).
@@ -886,7 +920,7 @@ local function monsterRecord(path, read, write, methods)
             return false
         end
 
-        if write(field, type(value) == "number" and floor(value) or value) then
+        if isPlainValue(value) and write(field, type(value) == "number" and floor(value) or value) then
             if written then
                 written[field] = nil
             end
@@ -1069,6 +1103,8 @@ local function getStatisticEffect(value)
 end
 
 Game = boundObject("Game", {
+    owned = "Game",
+    bound = {ItemsTxt = true, MonstersTxt = true, CharacterPortraits = true, MapStats = true, PlaceMonTxt = true, CurrentPlayer = true, Time = true},
     get = function(key)
         if key == "ItemsTxt" then
             return itemsTxt
@@ -1153,6 +1189,8 @@ local mapMonsters = boundObject("Map.Monsters", {
 })
 
 Map = boundObject("Map", {
+    owned = "Map",
+    bound = {Monsters = true, Name = true, MapStatsIndex = true},
     get = function(key)
         if key == "Monsters" then
             return mapMonsters

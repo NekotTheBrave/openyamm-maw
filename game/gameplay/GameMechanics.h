@@ -238,7 +238,9 @@ public:
         int targetArmorClass,
         float targetDistance,
         std::mt19937 &rng,
-        CharacterAttackTuning attackTuning = {});
+        CharacterAttackTuning attackTuning = {},
+        // The map actor attacked, when there is one: a mod may then decide whether a blow lands.
+        std::optional<size_t> targetActorIndex = std::nullopt);
     static SoundId resolveCharacterAttackSoundId(
         const Character &character,
         const ItemTable *pItemTable,

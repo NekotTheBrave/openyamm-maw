@@ -1,0 +1,112 @@
+id: mod_runtime.hit_rolls
+title: The two rolls that decide whether an attack lands can be decided by a mod; map table writes reach the game
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 100
+      food: 5
+      members:
+      - name: Striker
+        class: Knight
+        level: 60
+        might: 30
+        endurance: 3000
+        accuracy: 200
+        skills:
+        - name: Sword
+          level: 6
+          mastery: 2
+        equipment:
+          main_hand: 1
+# Both rolls are made to fail. The rolls are still made, and nothing lands in either direction.
+- mod_lua:
+    code: |
+      PartyRolls, MonsterRolls, PartyHits, MonsterHits = {}, {}, 0, 0
+      Lands = false
+      function events.PlayerHitOrMiss(t)
+        PartyRolls[#PartyRolls + 1] = {
+          range = t.Range, engine = type(t.Result), player = t.Player == Party[0],
+          monster = t.Monster == Map.Monsters[t.MonsterIndex],
+        }
+        t.Result = Lands
+      end
+      function events.MonsterHitOrMiss(t)
+        MonsterRolls[#MonsterRolls + 1] = {
+          engine = type(t.Result), player = t.Player == Party[t.PlayerSlot],
+          monster = t.Monster == Map.Monsters[t.MonsterIndex],
+        }
+        t.Result = Lands
+      end
+      function events.CalcDamageToMonster(t)
+        if t.Player then PartyHits = PartyHits + 1 end
+      end
+      function events.CalcDamageToPlayer(t)
+        MonsterHits = MonsterHits + 1
+      end
+      function ProbeRound()
+        for condition = 0, Party[0].Conditions.High do
+          Party[0].Conditions[condition] = 0
+        end
+        Party[0].HP = Party[0].FullHPBase
+        local placed = 0
+        for i = 0, Map.Monsters.High do
+          local m = Map.Monsters[i]
+          if placed < 12 and m.Hostile and not m.IsDead then
+            local angle = placed * math.pi / 6
+            m.X = math.floor(Party.X + math.cos(angle) * 130)
+            m.Y = math.floor(Party.Y + math.sin(angle) * 130)
+            m.Z = Party.Z
+            m.HP = 30000
+            placed = placed + 1
+          end
+        end
+        return placed
+      end
+      return ProbeRound()
+    expect: "12"
+- press_action: {action: attack, seconds: 3}
+- mod_lua: {code: "return ProbeRound()", expect: "12"}
+- press_action: {action: attack, seconds: 3}
+- mod_lua: {code: "return ProbeRound()", expect: "12"}
+- press_action: {action: attack, seconds: 3}
+- mod_lua:
+    code: |
+      local p, m = PartyRolls[1], MonsterRolls[1]
+      if not p or not m then return "rolls: party " .. #PartyRolls .. ", monsters " .. #MonsterRolls end
+      return p.range, p.engine, p.player, p.monster, m.engine, m.player, m.monster, PartyHits, MonsterHits,
+        Party[0].FullHPBase - Party[0].HP
+    expect: "0\tboolean\ttrue\ttrue\tboolean\ttrue\ttrue\t0\t0\t0"
+# Both rolls are made to succeed: every roll is a hit.
+- mod_lua:
+    code: |
+      Lands = true
+      PartyRollsBefore, MonsterRollsBefore = #PartyRolls, #MonsterRolls
+      return ProbeRound()
+    expect: "12"
+- press_action: {action: attack, seconds: 3}
+- mod_lua: {code: "return ProbeRound()", expect: "12"}
+- press_action: {action: attack, seconds: 3}
+- mod_lua:
+    code: |
+      local partyRolls, monsterRolls = #PartyRolls - PartyRollsBefore, #MonsterRolls - MonsterRollsBefore
+      return partyRolls > 0, PartyHits == partyRolls, monsterRolls > 0, MonsterHits >= monsterRolls
+    expect: "true\ttrue\ttrue\ttrue"
+# The map table: a write changes the game's own table (the game reads a map's refill days when the party enters
+# it, and its encounters when monsters are placed).
+- mod_lua:
+    code: |
+      local map = Game.MapStats[Map.MapStatsIndex]
+      local refill, low = map.RefillDays, map.Mon1Low
+      map.RefillDays = 1000000000
+      map.Mon1Low = low + 3
+      local kept = 0
+      for name in pairs(ModRT.Bindings.tableWrites) do
+        if name:find("MapStats", 1, true) then kept = kept + 1 end
+      end
+      return modrt.mapStatsGet(Map.MapStatsIndex, "RefillDays"), map.Mon1Low - low, kept
+    expect: "1000000000\t3\t0"

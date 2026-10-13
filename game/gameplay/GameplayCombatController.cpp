@@ -1539,6 +1539,12 @@ void GameplayCombatController::handlePendingCombatEvents(
         if (needsArmorHitRoll && targetMemberIndex.has_value() && sourceActor)
         {
             hitCheck = resolveMonsterImpactHitCheck(context, event, *sourceActor, *targetMemberIndex);
+
+            if (IModHooks *pModHooks = activeModHooks())
+            {
+                hitCheck->hit =
+                    pModHooks->monsterHitOrMiss(sourceActor->actorIndex, *targetMemberIndex, hitCheck->hit);
+            }
         }
 
         if (hitCheck && !hitCheck->hit)

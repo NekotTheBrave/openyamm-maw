@@ -92,6 +92,17 @@ public:
     // from the monster table. Mods give single monsters an experience value of their own.
     virtual uint32_t monsterKillExperience(size_t actorIndex, uint32_t engineExperience) = 0;
 
+    // The two rolls that decide whether an attack lands; `engineHit` is the engine's own roll and the answer is
+    // the one to use. For the party's attack the member is given by slot when the caller knows it, otherwise by
+    // the character itself.
+    virtual bool playerHitOrMiss(
+        std::optional<size_t> partyMemberIndex,
+        const Character *pCharacter,
+        size_t actorIndex,
+        bool ranged,
+        bool engineHit) = 0;
+    virtual bool monsterHitOrMiss(size_t actorIndex, size_t partyMemberIndex, bool engineHit) = 0;
+
     virtual void playerAttacked(ModPlayerAttackedEvent &event) = 0;
     virtual void playerCastSpell(ModPlayerCastSpellEvent &event) = 0;
 

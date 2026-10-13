@@ -1088,6 +1088,62 @@ uint32_t ModRuntime::monsterKillExperience(size_t actorIndex, uint32_t engineExp
     return static_cast<uint32_t>(std::clamp<lua_Number>(result, 0.0, 4000000000.0));
 }
 
+bool ModRuntime::playerHitOrMiss(
+    std::optional<size_t> partyMemberIndex,
+    const Character *pCharacter,
+    size_t actorIndex,
+    bool ranged,
+    bool engineHit)
+{
+    if (!partyMemberIndex && pCharacter != nullptr && m_host.party)
+    {
+        if (const Party *pParty = m_host.party())
+        {
+            partyMemberIndex = findModPartySlot(*pParty, *pCharacter);
+        }
+    }
+
+    if (!partyMemberIndex || !beginDispatch("playerHitOrMiss"))
+    {
+        return engineHit;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(*partyMemberIndex));
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(actorIndex));
+    lua_pushboolean(m_pLuaState, ranged);
+    lua_pushboolean(m_pLuaState, engineHit);
+
+    if (!endDispatch(4, 1))
+    {
+        return engineHit;
+    }
+
+    const bool hit = lua_isnil(m_pLuaState, -1) ? engineHit : lua_toboolean(m_pLuaState, -1) != 0;
+    lua_pop(m_pLuaState, 1);
+    return hit;
+}
+
+bool ModRuntime::monsterHitOrMiss(size_t actorIndex, size_t partyMemberIndex, bool engineHit)
+{
+    if (!beginDispatch("monsterHitOrMiss"))
+    {
+        return engineHit;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(actorIndex));
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(partyMemberIndex));
+    lua_pushboolean(m_pLuaState, engineHit);
+
+    if (!endDispatch(3, 1))
+    {
+        return engineHit;
+    }
+
+    const bool hit = lua_isnil(m_pLuaState, -1) ? engineHit : lua_toboolean(m_pLuaState, -1) != 0;
+    lua_pop(m_pLuaState, 1);
+    return hit;
+}
+
 void ModRuntime::playerAttacked(ModPlayerAttackedEvent &event)
 {
     if (!beginDispatch("playerAttacked"))

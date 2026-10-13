@@ -258,6 +258,10 @@ local function dispatchKind(kind, ...)
         return ModRT.Combat.monsterKilled(...)
     elseif kind == "monsterKillExperience" then
         return ModRT.Combat.monsterKillExperience(...)
+    elseif kind == "playerHitOrMiss" then
+        return ModRT.Combat.playerHitOrMiss(...)
+    elseif kind == "monsterHitOrMiss" then
+        return ModRT.Combat.monsterHitOrMiss(...)
     elseif kind == "playerAttacked" then
         return ModRT.Combat.playerAttacked(...)
     elseif kind == "badThingToPlayer" then

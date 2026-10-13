@@ -2666,7 +2666,8 @@ CharacterAttackResult GameMechanics::resolveCharacterAttackAgainstArmorClass(
     int targetArmorClass,
     float targetDistance,
     std::mt19937 &rng,
-    CharacterAttackTuning attackTuning)
+    CharacterAttackTuning attackTuning,
+    std::optional<size_t> targetActorIndex)
 {
     CharacterAttackResult result = {};
     const EquippedItems equippedItems = resolveEquippedItems(character, pItemTable);
@@ -2792,6 +2793,11 @@ CharacterAttackResult GameMechanics::resolveCharacterAttackAgainstArmorClass(
     {
         result.damageType = CombatDamageType::Physical;
         result.hit = characterAttackHitsArmorClass(effectiveTargetArmorClass, result.attackBonus, 0, 0, rng);
+
+        if (IModHooks *pModHooks = activeModHooks(); pModHooks != nullptr && targetActorIndex)
+        {
+            result.hit = pModHooks->playerHitOrMiss(std::nullopt, &character, *targetActorIndex, false, result.hit);
+        }
 
         if (!result.hit)
         {

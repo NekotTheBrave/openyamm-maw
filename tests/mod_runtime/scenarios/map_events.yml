@@ -49,3 +49,12 @@ steps:
       ModRT.tick(0.016)
       return before, ran
     expect: "0\t1"
+# A mod's own flag on Game (set up by the test mod when it loads).
+# Unset it reads as nil; a field the mod never assigns is taken for the engine's and is a stand-in (a table).
+- mod_lua:
+    code: |
+      local before = Game.HelloModMode
+      HelloMod.setMode(3)
+      return tostring(HelloMod.modeAtLoad), HelloMod.modeTakenForOn, type(HelloMod.engineFieldAtLoad),
+        tostring(before), Game.HelloModMode
+    expect: "nil\tfalse\ttable\tnil\t3"

@@ -5,6 +5,7 @@
 #include "game/fx/ParticleRecipes.h"
 #include "game/gameplay/GameMechanics.h"
 #include "game/items/ItemEnchantRuntime.h"
+#include "game/mod/ModHooks.h"
 #include "game/SpriteObjectDefs.h"
 #include "game/party/SkillData.h"
 #include "game/StringUtils.h"
@@ -1534,6 +1535,16 @@ GameplayProjectileService::buildProjectileDirectActorImpact(
                 projectile.attackBonus,
                 input.targetDistance,
                 rng);
+
+            if (IModHooks *pModHooks = activeModHooks())
+            {
+                impact.hit = pModHooks->playerHitOrMiss(
+                    projectile.sourcePartyMemberIndex,
+                    nullptr,
+                    input.actorIndex,
+                    true,
+                    impact.hit);
+            }
         }
 
         if (impact.hit && impact.damage > 0)

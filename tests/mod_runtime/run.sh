@@ -41,8 +41,19 @@ scenario() {
     if [ "$code" -eq 0 ]; then
         report "$label" ok "($passed steps)"
     else
-        report "$label" FAILED "$(grep -a 'Scenario failure' "$log" | sed 's/\x1b\[[0-9;]*m//g; s/^Scenario failure: //' \
+        local detail
+        detail="$(grep -a 'Scenario failure' "$log" | sed 's/\x1b\[[0-9;]*m//g; s/^Scenario failure: //' \
             | sed 's/ mod_lua expected / expected /' | cut -c1-260)"
+
+        # No failed check to quote: the game stopped by itself (a crash, or the time limit). Keep its output.
+        if [ -z "$detail" ]; then
+            local kept="$root/logs/failed_$(basename "$path" .yml).log"
+            mkdir -p "$root/logs"
+            cp "$log" "$kept"
+            detail="exit code $code after $passed steps, no failed check; output kept in ${kept#$root/}"
+        fi
+
+        report "$label" FAILED "$detail"
     fi
 }
 

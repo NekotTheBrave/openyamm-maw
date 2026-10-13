@@ -231,9 +231,133 @@ local function installModuleSearcher()
     end)
 end
 
+-- Works out which fields of the engine's root objects are the mods' own (see Bindings.ownedFields): those a mod's
+-- script assigns somewhere, unless the field is one of the original engine's. The original's fields are read
+-- from the structure definitions of the Merge base and of the mods (function structs.f.GameStructure and so on);
+-- a field of the original that is not bound here stays a stand-in. Runs before any script does.
+local structureOfRoot = {Game = "GameStructure", Party = "GameParty", Map = "GameMap", Mouse = "GameMouse"}
+
+local function eachLuaFile(directory, depth, visit)
+    for _, entry in ipairs(modrt.listDirectory(directory)) do
+        local path = directory .. "/" .. entry.name
+
+        if entry.isDirectory then
+            if depth < 6 then
+                eachLuaFile(path, depth + 1, visit)
+            end
+        elseif entry.name:lower():sub(-4) == ".lua" then
+            visit(path)
+        end
+    end
+end
+
+local function scanOwnedFields()
+    local ownedFields = ModRT.Bindings and ModRT.Bindings.ownedFields
+
+    if not ownedFields then
+        return
+    end
+
+    -- the original engine's fields, by root
+    local engineFields = {}
+
+    for root in pairs(ownedFields) do
+        engineFields[root] = {}
+    end
+
+    local function scanStructures(path)
+        local source = modrt.readFile(path)
+
+        if not source then
+            return
+        end
+
+        for root, structure in pairs(structureOfRoot) do
+            local position = 1
+
+            while true do
+                local _, bodyStart = source:find("function structs%.f%." .. structure .. "%s*%(", position)
+
+                if not bodyStart then
+                    break
+                end
+
+                -- the definition ends at the first "end" in the first column
+                local bodyEnd = source:find("\nend", bodyStart, true) or #source
+                local body = source:sub(bodyStart, bodyEnd)
+
+                for name in body:gmatch("'([%a_][%w_]*)'") do
+                    engineFields[root][name] = true
+                end
+
+                for name in body:gmatch('"([%a_][%w_]*)"') do
+                    engineFields[root][name] = true
+                end
+
+                position = bodyEnd
+            end
+        end
+    end
+
+    if config.mergeBase ~= "" then
+        eachLuaFile(config.mergeBase .. "/Scripts/Structs", 0, scanStructures)
+    end
+
+    for _, mod in ipairs(config.mods) do
+        eachLuaFile(mod.path .. "/Scripts/Structs", 0, scanStructures)
+    end
+
+    local count = 0
+
+    local function scanAssignments(path)
+        local source = modrt.readFile(path)
+
+        if not source then
+            return
+        end
+
+        for root, names in pairs(ownedFields) do
+            -- "Game.Name =" but neither "Game.Name ==" nor "Game.Table.Field ="
+            for name in source:gmatch("%f[%w_]" .. root .. "%.([%a_][%w_]*)%s*=[^=]") do
+                if not names[name] and not engineFields[root][name] then
+                    names[name] = true
+                    count = count + 1
+                end
+            end
+        end
+    end
+
+    for _, mod in ipairs(config.mods) do
+        local scriptsRoot = mod.path .. "/Scripts/"
+
+        -- A file that is not going to run (a Merge base file the mod overrides, a file under `skip`) sets nothing.
+        eachLuaFile(mod.path .. "/Scripts", 0, function(path)
+            if not isSkipped(mod, path:sub(#scriptsRoot + 1)) then
+                scanAssignments(path)
+            end
+        end)
+
+        if mod.port and mod.port ~= "" then
+            eachLuaFile(mod.port .. "/Scripts", 0, scanAssignments)
+        end
+    end
+
+    local listed = {}
+
+    for root, names in pairs(ownedFields) do
+        for name in pairs(names) do
+            listed[#listed + 1] = root .. "." .. name
+        end
+    end
+
+    table.sort(listed)
+    ModRT.log("info", "fields the mods keep on the engine's objects (" .. count .. "): " .. table.concat(listed, " "))
+end
+
 function Loader.loadStartupScripts()
     installModuleSearcher()
     ModRT.Env.finish()
+    scanOwnedFields()
     runFolder("Structs")
     events.cocalls("StructsLoaded")
     runFolder("Structs/After")

@@ -348,3 +348,39 @@ function Combat.monsterKillExperience(actorIndex, experience)
 
     return floor(event.Exp)
 end
+
+-- The roll for the party's attack on a monster. PlayerHitOrMiss is MAW's own event for it, raised from a patch of
+-- the original engine; Range is 0 for a blow and 1 for a shot. Returns whether the attack lands.
+function Combat.playerHitOrMiss(slot, actorIndex, ranged, hit)
+    ModRT.ensureSession()
+    local player = Party[slot]
+
+    if not player then
+        return hit
+    end
+
+    local event = {
+        Range = ranged and 1 or 0, Bonus = 0, Result = hit, Player = player, PlayerIndex = player:GetIndex(),
+        Monster = Map.Monsters[actorIndex], MonsterIndex = actorIndex,
+    }
+    ModRT.fire("PlayerHitOrMiss", event)
+    return event.Result and true or false
+end
+
+-- The roll for a monster's blow or arrow on a party member. The original has no event here; MonsterHitOrMiss is
+-- this runtime's own.
+function Combat.monsterHitOrMiss(actorIndex, slot, hit)
+    ModRT.ensureSession()
+    local player = Party[slot]
+
+    if not player then
+        return hit
+    end
+
+    local event = {
+        Result = hit, Monster = Map.Monsters[actorIndex], MonsterIndex = actorIndex, Player = player,
+        PlayerIndex = player:GetIndex(), PlayerSlot = slot,
+    }
+    ModRT.fire("MonsterHitOrMiss", event)
+    return event.Result and true or false
+end

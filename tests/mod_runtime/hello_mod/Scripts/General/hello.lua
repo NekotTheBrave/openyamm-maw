@@ -33,3 +33,14 @@ recordMapEvent("BeforeLoadMap")
 recordMapEvent("LoadMap")
 recordMapEvent("AfterLoadMap")
 recordMapEvent("LeaveMap")
+
+-- A flag the mod keeps on Game, as mods do. It is the mod's own field: unset, it must read as nil and not as a
+-- stand-in, or the test below would take it for "on". A field the mod never assigns (Game.HelloEngineField) is
+-- taken for the engine's and stays a stand-in. Checked by tests/mod_runtime/scenarios/bindings.yml.
+HelloMod.modeAtLoad = Game.HelloModMode
+HelloMod.modeTakenForOn = Game.HelloModMode and true or false
+HelloMod.engineFieldAtLoad = Game.HelloEngineField
+
+function HelloMod.setMode(value)
+    Game.HelloModMode = value
+end

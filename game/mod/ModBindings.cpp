@@ -2055,6 +2055,103 @@ int nativeMapStatsGet(lua_State *pLuaState)
     return 1;
 }
 
+// modrt.mapStatsSet(map, field, value): changes the game's map table, until the game is closed, as a write to
+// Game.MapStats[] does in the original. The game reads a map's refill days when the party enters it and its
+// encounters when monsters are placed. Returns false for a field that cannot be changed here.
+int nativeMapStatsSet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t mapId = integerArgument(pLuaState, 1);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+    const MapStatsEntry *pConstEntry =
+        pData != nullptr && mapId >= 0 ? pData->getMapStats().findById(static_cast<uint32_t>(mapId)) : nullptr;
+
+    if (pConstEntry == nullptr)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    // The table belongs to the game's data loader, which hands it out read-only; it is not a constant object.
+    MapStatsEntry &entry = const_cast<MapStatsEntry &>(*pConstEntry);
+    int *pNumber = nullptr;
+
+    if (field == "RefillDays")
+    {
+        pNumber = &entry.respawnIntervalDays;
+    }
+    else if (field == "Per")
+    {
+        pNumber = &entry.perceptionDifficulty;
+    }
+    else if (field == "StealPerm")
+    {
+        pNumber = &entry.baseStealingFine;
+    }
+    else if (field == "Lock")
+    {
+        pNumber = &entry.disarmDifficulty;
+    }
+    else if (field == "Trap")
+    {
+        pNumber = &entry.trapDamageD20DiceCount;
+    }
+    else if (field == "Tres")
+    {
+        pNumber = &entry.treasureLevel;
+    }
+    else if (field == "EncounterChance")
+    {
+        pNumber = &entry.encounterChance;
+    }
+    else if (field == "RedbookTrack")
+    {
+        pNumber = &entry.redbookTrack;
+    }
+    else
+    {
+        MapEncounterInfo *const encounters[3] = {&entry.encounter1, &entry.encounter2, &entry.encounter3};
+
+        for (int number = 1; number <= 3 && pNumber == nullptr; ++number)
+        {
+            MapEncounterInfo &encounter = *encounters[number - 1];
+            const std::string digit = std::to_string(number);
+
+            if (field == "Monster" + digit + "Pic")
+            {
+                encounter.pictureName = luaL_checkstring(pLuaState, 3);
+                lua_pushboolean(pLuaState, true);
+                return 1;
+            }
+
+            if (field == "Mon" + digit + "Dif")
+            {
+                pNumber = &encounter.difficulty;
+            }
+            else if (field == "Mon" + digit + "Low")
+            {
+                pNumber = &encounter.minCount;
+            }
+            else if (field == "Mon" + digit + "Hi")
+            {
+                pNumber = &encounter.maxCount;
+            }
+            else if (field == "EncounterChanceM" + digit)
+            {
+                pNumber = &encounter.chance;
+            }
+        }
+    }
+
+    if (pNumber != nullptr)
+    {
+        *pNumber = clampedInteger<int>(integerArgument(pLuaState, 3));
+    }
+
+    lua_pushboolean(pLuaState, pNumber != nullptr);
+    return 1;
+}
+
 int nativePortraitGet(lua_State *pLuaState)
 {
     const GameDataLoader *pData = dataFromHost(pLuaState);
@@ -2312,6 +2409,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"placeMonSet", nativePlaceMonSet},
         {"portraitGet", nativePortraitGet},
         {"mapStatsGet", nativeMapStatsGet},
+        {"mapStatsSet", nativeMapStatsSet},
         {"mapMonsterGet", nativeMapMonsterGet},
         {"mapMonsterSet", nativeMapMonsterSet},
         {"gameGet", nativeGameGet},
