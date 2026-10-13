@@ -1,0 +1,7 @@
+# Mod set for the mod runtime's own scenarios. Use with OPENYAMM_MODS_CONFIG:
+#   OPENYAMM_MODS_CONFIG=tests/mod_runtime/mods.test.yml \
+#     ./build/game/openyamm --headless-run-scenario tests/mod_runtime/scenarios/bindings.yml
+enabled: true
+mods:
+  - id: hello
+    path: hello_mod

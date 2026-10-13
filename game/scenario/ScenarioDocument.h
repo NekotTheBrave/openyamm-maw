@@ -41,6 +41,7 @@ enum class ScenarioStepKind
     LoadCheckpoint,
     SaveGame,
     LoadGame,
+    ModLua,
     Note,
     Todo,
     TraceObservation,

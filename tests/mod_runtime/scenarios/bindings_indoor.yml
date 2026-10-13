@@ -1,0 +1,38 @@
+id: mod_runtime.bindings_indoor
+title: Mod runtime reaches actors on an indoor map, and their state survives a save and load
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: d05.blv
+    party:
+      gold: 10
+      food: 1
+      members:
+      - name: Delver
+        class: Knight
+        level: 1
+        skills: []
+        equipment: {}
+- mod_lua:
+    code: return Map.Name, Map.Monsters.Count > 0, Map.Monsters[0].HP > 0, Map.Monsters[0].FullHP > 0
+    expect: "d05.blv\ttrue\ttrue\ttrue"
+- mod_lua:
+    code: |
+      Map.Monsters[0].HP = 2
+      mapvars.indoor = "seen"
+      return Map.Monsters[0].HP
+    expect: "2"
+- save_game: mod_bindings_indoor
+- mod_lua:
+    code: |
+      Map.Monsters[0].HP = 1
+      mapvars.indoor = nil
+      return Map.Monsters[0].HP
+    expect: "1"
+- load_game: mod_bindings_indoor
+- mod_lua:
+    code: return Map.Monsters[0].HP, mapvars.indoor
+    expect: "2\tseen"

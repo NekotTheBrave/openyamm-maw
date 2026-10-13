@@ -1,5 +1,7 @@
 #pragma once
 
+#include "game/mod/ModHost.h"
+
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -45,6 +47,12 @@ public:
     bool configure(Engine::AssetFileSystem &assetFileSystem);
     void shutdown();
     bool isActive() const;
+    // Game state the bindings may reach. Set once, before initialize().
+    void setHost(ModHost host);
+
+    // Mod state that belongs to a save (Lua vars and mapvars). An empty string restores a clean state.
+    std::string captureState();
+    void restoreState(const std::string &state);
 
     void fireEvent(const std::string &eventName);
     void tick(float deltaSeconds);
@@ -75,6 +83,7 @@ private:
     const Engine::AssetFileSystem *m_pAssetFileSystem = nullptr;
     std::vector<ModDefinition> m_mods;
     std::filesystem::path m_mergeBasePath;
+    ModHost m_host;
     std::filesystem::path m_configPath;
     std::filesystem::path m_logDirectory = "logs";
     std::vector<std::filesystem::path> m_searchedConfigPaths;

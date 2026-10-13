@@ -217,5 +217,6 @@ function Env.finish()
         Stubs.installRoot("const")
     end
 
+    ModRT.Bindings.ensureConstants()
     Stubs.watchUndefinedGlobals()
 end

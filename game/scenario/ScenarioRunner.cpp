@@ -4666,6 +4666,56 @@ bool ensureRuntimeReadyForCurrentContext(
     return true;
 }
 
+// mod_lua: {code: "<lua>", expect: "<text>"} runs code in the mod runtime and compares what it returns or prints.
+bool runModLua(
+    ScenarioExecutionContext &context,
+    const ScenarioStep &step,
+    std::vector<std::string> &failures)
+{
+    if (!payloadIsMap(step, failures))
+    {
+        return false;
+    }
+
+    if (!step.payload["code"] || !step.payload["code"].IsScalar())
+    {
+        failures.push_back(stepLocation(step) + ": mod_lua requires code");
+        return false;
+    }
+
+    if (!ensureRuntimeReadyForCurrentContext(context, failures))
+    {
+        return false;
+    }
+
+    const std::string code = step.payload["code"].as<std::string>();
+    std::string output;
+    std::string failure;
+
+    if (!context.runtimeDriver->executeModLua(code, output, failure))
+    {
+        failures.push_back(stepLocation(step) + ": " + failure);
+        return false;
+    }
+
+    // The script may have changed the party; the context re-seeds the runtime from its copy before each step.
+    syncContextFromRuntime(context);
+
+    if (step.payload["expect"] && step.payload["expect"].IsScalar())
+    {
+        const std::string expected = step.payload["expect"].as<std::string>();
+
+        if (output != expected)
+        {
+            failures.push_back(
+                stepLocation(step) + ": mod_lua expected \"" + expected + "\" but got \"" + output + "\"");
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool runSaveGame(
     ScenarioExecutionContext &context,
     const ScenarioStep &step,
@@ -7169,6 +7219,9 @@ ScenarioRunResult ScenarioRunner::run(
             break;
         case ScenarioStepKind::SaveGame:
             stepSuccess = runSaveGame(context, step, result.failures);
+            break;
+        case ScenarioStepKind::ModLua:
+            stepSuccess = runModLua(context, step, result.failures);
             break;
         case ScenarioStepKind::LoadGame:
             stepSuccess = runLoadGame(context, step, result.failures);

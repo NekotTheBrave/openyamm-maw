@@ -13935,6 +13935,68 @@ size_t OutdoorWorldRuntime::mapActorCount() const
     return m_mapActors.size();
 }
 
+bool OutdoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField field, int64_t &value) const
+{
+    const MapActorState *pActor = mapActorState(actorIndex);
+
+    if (pActor == nullptr)
+    {
+        return false;
+    }
+
+    switch (field)
+    {
+        case GameplayModActorField::MonsterId: value = pActor->monsterId; return true;
+        case GameplayModActorField::CurrentHp: value = pActor->currentHp; return true;
+        case GameplayModActorField::MaxHp: value = pActor->maxHp; return true;
+        case GameplayModActorField::X: value = pActor->x; return true;
+        case GameplayModActorField::Y: value = pActor->y; return true;
+        case GameplayModActorField::Z: value = pActor->z; return true;
+        case GameplayModActorField::Group: value = pActor->group; return true;
+    }
+
+    return false;
+}
+
+bool OutdoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorField field, int64_t value)
+{
+    if (actorIndex >= m_mapActors.size())
+    {
+        return false;
+    }
+
+    MapActorState &actor = m_mapActors[actorIndex];
+
+    switch (field)
+    {
+        case GameplayModActorField::CurrentHp:
+            actor.currentHp = static_cast<int>(std::clamp<int64_t>(value, INT32_MIN, INT32_MAX));
+            return true;
+        case GameplayModActorField::MaxHp:
+            actor.maxHp = static_cast<int>(std::clamp<int64_t>(value, 0, INT32_MAX));
+            return true;
+        case GameplayModActorField::X:
+            actor.x = static_cast<int>(value);
+            actor.preciseX = static_cast<float>(value);
+            return true;
+        case GameplayModActorField::Y:
+            actor.y = static_cast<int>(value);
+            actor.preciseY = static_cast<float>(value);
+            return true;
+        case GameplayModActorField::Z:
+            actor.z = static_cast<int>(value);
+            actor.preciseZ = static_cast<float>(value);
+            return true;
+        case GameplayModActorField::Group:
+            actor.group = static_cast<uint32_t>(std::clamp<int64_t>(value, 0, UINT32_MAX));
+            return true;
+        case GameplayModActorField::MonsterId:
+            return false;
+    }
+
+    return false;
+}
+
 bool OutdoorWorldRuntime::actorRuntimeState(size_t actorIndex, GameplayRuntimeActorState &state) const
 {
     const MapActorState *pActor = mapActorState(actorIndex);

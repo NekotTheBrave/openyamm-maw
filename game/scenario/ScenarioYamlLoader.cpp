@@ -180,6 +180,12 @@ bool ScenarioYamlLoader::parseStepKind(const std::string &value, ScenarioStepKin
         return true;
     }
 
+    if (value == "mod_lua")
+    {
+        kind = ScenarioStepKind::ModLua;
+        return true;
+    }
+
     if (value == "load_game")
     {
         kind = ScenarioStepKind::LoadGame;

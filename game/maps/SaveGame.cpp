@@ -93,6 +93,15 @@ constexpr uint32_t SaveVersionIndoorCamera = 84;
 constexpr uint32_t SaveVersionWeatherModel = 85;
 constexpr char SaveMagic[8] = {'O', 'Y', 'S', 'A', 'V', 'E', '1', '\0'};
 
+// Mod runtime additions to the save format. They are numbered separately from SaveVersion, in the top byte of the
+// version word, so this fork's format changes never collide with upstream's version numbers. A save written with
+// mods active therefore reads as "too new" to an upstream build, which is the right answer: it carries data
+// upstream would drop. Without mods the revision is 0 and the file is exactly upstream's format.
+constexpr uint32_t ModSaveRevision = 1;
+constexpr uint32_t ModSaveRevisionShift = 24;
+constexpr uint32_t ModSaveRevisionItemData = 1;
+constexpr uint32_t ModSaveRevisionModState = 1;
+
 std::string toLowerCopy(const std::string &value)
 {
     std::string normalized = value;
@@ -142,8 +151,19 @@ public:
         return m_bytes;
     }
 
+    void setModRevision(uint32_t modRevision)
+    {
+        m_modRevision = modRevision;
+    }
+
+    uint32_t modRevision() const
+    {
+        return m_modRevision;
+    }
+
 private:
     std::vector<uint8_t> m_bytes;
+    uint32_t m_modRevision = 0;
 };
 
 class BinaryReader
@@ -198,11 +218,22 @@ public:
         return m_version;
     }
 
+    void setModRevision(uint32_t modRevision)
+    {
+        m_modRevision = modRevision;
+    }
+
+    uint32_t modRevision() const
+    {
+        return m_modRevision;
+    }
+
 private:
     const std::vector<uint8_t> &m_bytes;
     size_t m_offset = 0;
     bool m_failed = false;
     uint32_t m_version = SaveVersion;
+    uint32_t m_modRevision = ModSaveRevision;
 };
 
 void writeValue(BinaryWriter &writer, const HiredNpcFollower &value);
@@ -518,6 +549,20 @@ bool readValue(BinaryReader &reader, CharacterSkill &value)
         && readValue(reader, value.mastery);
 }
 
+void writeValue(BinaryWriter &writer, const ItemModData &value)
+{
+    writeValue(writer, value.charges);
+    writeValue(writer, value.maxCharges);
+    writeValue(writer, value.bonusExpireTime);
+}
+
+bool readValue(BinaryReader &reader, ItemModData &value)
+{
+    return readValue(reader, value.charges)
+        && readValue(reader, value.maxCharges)
+        && readValue(reader, value.bonusExpireTime);
+}
+
 void writeValue(BinaryWriter &writer, const InventoryItem &value)
 {
     writeValue(writer, value.objectDescriptionId);
@@ -537,6 +582,11 @@ void writeValue(BinaryWriter &writer, const InventoryItem &value)
     writeValue(writer, value.currentCharges);
     writeValue(writer, value.maxCharges);
     writeValue(writer, value.temporaryBonusRemainingSeconds);
+
+    if (writer.modRevision() >= ModSaveRevisionItemData)
+    {
+        writeValue(writer, value.modData);
+    }
 }
 
 bool readValue(BinaryReader &reader, InventoryItem &value)
@@ -557,7 +607,8 @@ bool readValue(BinaryReader &reader, InventoryItem &value)
         && readValue(reader, value.rarity)
         && (reader.version() < SaveVersionWandCharges || readValue(reader, value.currentCharges))
         && (reader.version() < SaveVersionWandCharges || readValue(reader, value.maxCharges))
-        && readValue(reader, value.temporaryBonusRemainingSeconds);
+        && readValue(reader, value.temporaryBonusRemainingSeconds)
+        && (reader.modRevision() < ModSaveRevisionItemData || readValue(reader, value.modData));
 }
 
 void writeValue(BinaryWriter &writer, const LloydBeacon &value)
@@ -723,6 +774,11 @@ void writeValue(BinaryWriter &writer, const EquippedItemRuntimeState &value)
     writeValue(writer, value.currentCharges);
     writeValue(writer, value.maxCharges);
     writeValue(writer, value.temporaryBonusRemainingSeconds);
+
+    if (writer.modRevision() >= ModSaveRevisionItemData)
+    {
+        writeValue(writer, value.modData);
+    }
 }
 
 bool readValue(BinaryReader &reader, EquippedItemRuntimeState &value)
@@ -737,7 +793,8 @@ bool readValue(BinaryReader &reader, EquippedItemRuntimeState &value)
         && readValue(reader, value.rarity)
         && (reader.version() < SaveVersionWandCharges || readValue(reader, value.currentCharges))
         && (reader.version() < SaveVersionWandCharges || readValue(reader, value.maxCharges))
-        && readValue(reader, value.temporaryBonusRemainingSeconds);
+        && readValue(reader, value.temporaryBonusRemainingSeconds)
+        && (reader.modRevision() < ModSaveRevisionItemData || readValue(reader, value.modData));
 }
 
 void writeValue(BinaryWriter &writer, const CharacterEquipmentRuntimeState &value)
@@ -3604,6 +3661,11 @@ void writeValue(BinaryWriter &writer, const GameSaveData &value)
     writeValue(writer, value.requiredContentPackages);
     writeValue(writer, value.saveName);
     writeValue(writer, value.previewBmp);
+
+    if (writer.modRevision() >= ModSaveRevisionModState)
+    {
+        writeValue(writer, value.modState);
+    }
 }
 
 bool readValue(BinaryReader &reader, GameSaveData &value)
@@ -3633,7 +3695,8 @@ bool readValue(BinaryReader &reader, GameSaveData &value)
         && (reader.version() < SaveVersionRequiredContentPackages
             || readValue(reader, value.requiredContentPackages))
         && readValue(reader, value.saveName)
-        && readValue(reader, value.previewBmp);
+        && readValue(reader, value.previewBmp)
+        && (reader.modRevision() < ModSaveRevisionModState || readValue(reader, value.modState));
     value.cameraAnglesValid = reader.version() >= SaveVersionIndoorCamera || value.currentSceneKind == SceneKind::Outdoor;
     return read;
 }
@@ -4039,8 +4102,10 @@ bool validateRequiredContentPackages(
 bool saveGameDataToPath(const std::filesystem::path &path, const GameSaveData &data, std::string &error)
 {
     BinaryWriter writer;
+    const uint32_t modRevision = data.modDataEnabled ? ModSaveRevision : 0;
+    writer.setModRevision(modRevision);
     writer.writeBytes(SaveMagic, sizeof(SaveMagic));
-    writer.write(SaveVersion);
+    writer.write(SaveVersion | (modRevision << ModSaveRevisionShift));
     writer.write(data);
 
     std::filesystem::create_directories(path.parent_path());
@@ -4105,13 +4170,17 @@ std::optional<GameSaveData> loadGameDataFromPath(const std::filesystem::path &pa
         return std::nullopt;
     }
 
-    if (version > SaveVersion)
+    const uint32_t modRevision = version >> ModSaveRevisionShift;
+    version &= (uint32_t(1) << ModSaveRevisionShift) - 1;
+
+    if (version > SaveVersion || modRevision > ModSaveRevision)
     {
         error = "unsupported save version";
         return std::nullopt;
     }
 
     reader.setVersion(version);
+    reader.setModRevision(modRevision);
 
     GameSaveData data = {};
     bool decoded = false;

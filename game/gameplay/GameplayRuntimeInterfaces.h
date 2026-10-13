@@ -117,6 +117,18 @@ enum class ActorAiAnimationState : uint8_t
     Bored = 7,
 };
 
+// Actor fields the mod runtime can read and write through IGameplayWorldRuntime.
+enum class GameplayModActorField : uint8_t
+{
+    MonsterId,
+    CurrentHp,
+    MaxHp,
+    X,
+    Y,
+    Z,
+    Group,
+};
+
 struct GameplayRuntimeActorState
 {
     uint32_t actorId = 0;
@@ -635,6 +647,21 @@ public:
         return nullptr;
     }
     virtual size_t mapActorCount() const = 0;
+    // Mod runtime access to one field of a map actor. False when the actor or the field is not available.
+    virtual bool modActorField(size_t actorIndex, GameplayModActorField field, int64_t &value) const
+    {
+        static_cast<void>(actorIndex);
+        static_cast<void>(field);
+        static_cast<void>(value);
+        return false;
+    }
+    virtual bool setModActorField(size_t actorIndex, GameplayModActorField field, int64_t value)
+    {
+        static_cast<void>(actorIndex);
+        static_cast<void>(field);
+        static_cast<void>(value);
+        return false;
+    }
     virtual bool actorRuntimeState(size_t actorIndex, GameplayRuntimeActorState &state) const = 0;
     // Gold plus item value left in a dead actor's corpse (its loot is rolled at death); nullopt without corpse loot.
     virtual std::optional<uint32_t> corpseLootValue(size_t actorIndex) const

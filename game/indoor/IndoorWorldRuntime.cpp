@@ -10915,6 +10915,75 @@ size_t IndoorWorldRuntime::mapActorCount() const
     return pMapDeltaData != nullptr ? pMapDeltaData->actors.size() : 0;
 }
 
+bool IndoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField field, int64_t &value) const
+{
+    const MapDeltaData *pMapDeltaData = mapDeltaData();
+
+    if (pMapDeltaData == nullptr || actorIndex >= pMapDeltaData->actors.size())
+    {
+        return false;
+    }
+
+    const MapDeltaActor &actor = pMapDeltaData->actors[actorIndex];
+
+    switch (field)
+    {
+        case GameplayModActorField::MonsterId: value = resolveIndoorActorStatsId(actor); return true;
+        case GameplayModActorField::CurrentHp: value = actor.hp; return true;
+        case GameplayModActorField::MaxHp:
+        {
+            // Indoor actors do not store a maximum; it is the monster table's value.
+            const MonsterTable::MonsterStatsEntry *pStats =
+                m_pMonsterTable != nullptr ? m_pMonsterTable->findStatsById(resolveIndoorActorStatsId(actor)) : nullptr;
+
+            if (pStats == nullptr)
+            {
+                return false;
+            }
+
+            value = pStats->hitPoints;
+            return true;
+        }
+        case GameplayModActorField::X: value = actor.x; return true;
+        case GameplayModActorField::Y: value = actor.y; return true;
+        case GameplayModActorField::Z: value = actor.z; return true;
+        case GameplayModActorField::Group: value = actor.group; return true;
+    }
+
+    return false;
+}
+
+bool IndoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorField field, int64_t value)
+{
+    MapDeltaData *pMapDeltaData = mapDeltaData();
+
+    if (pMapDeltaData == nullptr || actorIndex >= pMapDeltaData->actors.size())
+    {
+        return false;
+    }
+
+    MapDeltaActor &actor = pMapDeltaData->actors[actorIndex];
+
+    switch (field)
+    {
+        case GameplayModActorField::CurrentHp:
+            // Indoor actors keep the original 16-bit hit point field.
+            actor.hp = static_cast<int16_t>(std::clamp<int64_t>(value, INT16_MIN, INT16_MAX));
+            return true;
+        case GameplayModActorField::X: actor.x = static_cast<int>(value); return true;
+        case GameplayModActorField::Y: actor.y = static_cast<int>(value); return true;
+        case GameplayModActorField::Z: actor.z = static_cast<int>(value); return true;
+        case GameplayModActorField::Group:
+            actor.group = static_cast<uint32_t>(std::clamp<int64_t>(value, 0, UINT32_MAX));
+            return true;
+        case GameplayModActorField::MonsterId:
+        case GameplayModActorField::MaxHp:
+            return false;
+    }
+
+    return false;
+}
+
 const IndoorWorldRuntime::MapActorAiState *IndoorWorldRuntime::mapActorAiState(size_t actorIndex) const
 {
     if (actorIndex >= m_mapActorAiStates.size())

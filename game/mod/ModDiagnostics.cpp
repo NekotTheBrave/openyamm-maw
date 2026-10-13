@@ -102,4 +102,82 @@ int runModTableProbe(
 
     return allFound ? 0 : 1;
 }
+
+int runModRuntimeHeadlessReport(
+    const std::filesystem::path &basePath,
+    const Engine::ApplicationConfig &config,
+    int tickCount,
+    const std::string &consoleCode)
+{
+    Engine::AssetFileSystem assetFileSystem;
+
+    if (!assetFileSystem.initialize(
+            basePath,
+            config.assetRoot,
+            config.assetScaleTier,
+            config.assetScaleProfile,
+            config.activeWorldId))
+    {
+        std::cerr << "Mod report failed: could not initialize asset file system\n";
+        return 1;
+    }
+
+    // Mods read and rewrite game tables while they initialise, so the tables are loaded (with the mods' asset
+    // overlays mounted) even though no game session exists here.
+    ModRuntime runtime;
+
+    if (!runtime.configure(assetFileSystem))
+    {
+        return 1;
+    }
+
+    GameDataLoader gameDataLoader;
+
+    if (!gameDataLoader.loadForHeadlessGameplay(assetFileSystem))
+    {
+        std::cerr << "Mod report failed: could not load game tables\n";
+        return 1;
+    }
+
+    ModHost host = {};
+    host.data = [&gameDataLoader]() -> const GameDataLoader *
+    {
+        return &gameDataLoader;
+    };
+    runtime.setHost(std::move(host));
+
+    if (!runtime.initialize(assetFileSystem))
+    {
+        return 1;
+    }
+
+    if (!runtime.isActive())
+    {
+        std::cerr << "Mod report: " << runtime.statusDescription() << '\n';
+        return 1;
+    }
+
+    runtime.fireEvent("GameInitialized1");
+    runtime.fireEvent("GameInitialized2");
+    runtime.fireEvent("SessionStarted");
+
+    for (int tickIndex = 0; tickIndex < tickCount; ++tickIndex)
+    {
+        runtime.tick(1.0f / 60.0f);
+    }
+
+    std::string output;
+    bool success = true;
+
+    if (!consoleCode.empty())
+    {
+        success = runtime.executeConsole(consoleCode, output);
+        std::cout << output << '\n';
+    }
+
+    success = runtime.executeConsole("return ModRT.writeReport()", output) && success;
+    std::cout << output << '\n';
+    runtime.shutdown();
+    return success ? 0 : 1;
+}
 }

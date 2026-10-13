@@ -1,0 +1,26 @@
+id: mod_runtime.save_roundtrip
+title: A game saves and loads; run it with mods on and with OPENYAMM_DISABLE_MODS=1 to cover both save formats
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 77
+      food: 5
+      members:
+      - name: Keeper
+        class: Knight
+        level: 2
+        skills:
+        - name: Sword
+          level: 2
+          mastery: 1
+        equipment:
+          main_hand: 1
+- save_game: mod_save_roundtrip
+- load_game: mod_save_roundtrip
+- save_game: mod_save_roundtrip_again
+- load_game: mod_save_roundtrip_again

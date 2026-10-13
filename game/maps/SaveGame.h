@@ -46,6 +46,11 @@ struct GameSaveData
     std::unordered_map<std::string, uint32_t> requiredContentPackages;
     std::string saveName;
     std::vector<uint8_t> previewBmp;
+    // Opaque state of the mod runtime (Lua vars and mapvars), written and read by game/mod.
+    std::string modState;
+    // Set when the mod runtime is active: the save then carries modState and per-item mod data. Left false, the
+    // file is written in upstream's format and that data is not stored.
+    bool modDataEnabled = false;
 };
 
 void migrateLegacyConsumedCorpseMarkers(GameSaveData &data, uint32_t sourceSaveVersion);

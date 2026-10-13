@@ -2845,6 +2845,49 @@ GameApplication::GameApplication(const Engine::ApplicationConfig &config)
 
             applyCurrentSettingsToActiveRuntime();
         });
+
+    ModHost modHost = {};
+    modHost.party = [this]() -> Party *
+    {
+        if (m_pMapSceneRuntime != nullptr)
+        {
+            return &m_pMapSceneRuntime->party();
+        }
+
+        return m_gameSession.partyState() ? &*m_gameSession.partyState() : nullptr;
+    };
+    modHost.world = [this]() -> IGameplayWorldRuntime *
+    {
+        if (m_pMapSceneRuntime == nullptr)
+        {
+            return nullptr;
+        }
+
+        if (m_pMapSceneRuntime->kind() == SceneKind::Outdoor)
+        {
+            return m_pOutdoorWorldRuntime.get();
+        }
+
+        IndoorSceneRuntime *pIndoorRuntime = static_cast<IndoorSceneRuntime *>(m_pMapSceneRuntime.get());
+        return &pIndoorRuntime->worldRuntime();
+    };
+    modHost.data = [this]() -> const GameDataLoader *
+    {
+        return m_commonGameDataLoaded ? &m_gameDataLoader : nullptr;
+    };
+    modHost.currentMapFileName = [this]()
+    {
+        return m_gameSession.currentMapFileName();
+    };
+    modHost.gameMinutes = [this]()
+    {
+        return m_gameSession.gameMinutes();
+    };
+    modHost.showStatusText = [this](const std::string &text)
+    {
+        m_gameSession.gameplayScreenRuntime().setStatusBarEvent(text);
+    };
+    m_modRuntime.setHost(std::move(modHost));
 }
 
 int GameApplication::run()
@@ -8979,6 +9022,9 @@ bool GameApplication::quickSaveToPath(
         return false;
     }
 
+    saveData->modDataEnabled = m_modRuntime.isActive();
+    saveData->modState = m_modRuntime.captureState();
+
     saveData->saveName = saveName;
     saveData->previewBmp = previewBmp;
     saveData->requiredContentPackages = collectRequiredContentPackages(
@@ -9074,6 +9120,7 @@ bool GameApplication::quickLoadFromPath(const std::filesystem::path &path, bool 
 
     m_gameSession.restoreFromSaveData(*saveData);
     m_gameSession.setCurrentSavePath(path);
+    m_modRuntime.restoreState(saveData->modState);
 
     renderLoadingOverlayProgress(35);
 
@@ -9504,6 +9551,8 @@ bool GameApplication::startNewSession(std::optional<uint32_t> rosterId, bool ini
         return false;
     }
 
+    m_modRuntime.restoreState({});
+
     m_gameAudioSystem.stopBackgroundMusicImmediate();
     m_screenManager.setActiveScreen(nullptr);
     m_gameSession.gameplayScreenRuntime().clearSharedUiRuntime();
@@ -9615,6 +9664,8 @@ bool GameApplication::startNewSessionFromCharacterCreation(
         std::cerr << "GameApplication: startNewSessionFromCharacterCreation failed to load common gameplay data\n";
         return false;
     }
+
+    m_modRuntime.restoreState({});
 
     m_gameAudioSystem.stopBackgroundMusicImmediate();
     m_screenManager.setActiveScreen(nullptr);

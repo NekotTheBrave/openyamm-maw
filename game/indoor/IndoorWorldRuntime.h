@@ -352,6 +352,8 @@ public:
     ) override;
     bool specialJump(uint32_t encodedHorizontalVelocity, uint32_t verticalVelocity) override;
     size_t mapActorCount() const override;
+    bool modActorField(size_t actorIndex, GameplayModActorField field, int64_t &value) const override;
+    bool setModActorField(size_t actorIndex, GameplayModActorField field, int64_t value) override;
     const MapActorAiState *mapActorAiState(size_t actorIndex) const;
     std::vector<int16_t> activatedIndoorSectorIds() const;
     size_t bloodSplatCount() const;

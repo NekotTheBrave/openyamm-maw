@@ -1480,6 +1480,7 @@ InventoryItem makeInventoryItem(
     item.currentCharges = runtimeState.currentCharges;
     item.maxCharges = runtimeState.maxCharges;
     item.temporaryBonusRemainingSeconds = runtimeState.temporaryBonusRemainingSeconds;
+    item.modData = runtimeState.modData;
 
     if (pItemTable != nullptr)
     {
@@ -1606,6 +1607,7 @@ void copyItemToEquippedRuntimeState(const InventoryItem &item, EquippedItemRunti
     runtimeState.currentCharges = item.currentCharges;
     runtimeState.maxCharges = item.maxCharges;
     runtimeState.temporaryBonusRemainingSeconds = item.temporaryBonusRemainingSeconds;
+    runtimeState.modData = item.modData;
 }
 
 void grantRosterInventoryToCharacter(
@@ -2593,6 +2595,7 @@ void Party::seed(const PartySeed &seed)
             resolvedItem.artifactId = seededItem.artifactId;
             resolvedItem.rarity = seededItem.rarity;
             resolvedItem.temporaryBonusRemainingSeconds = seededItem.temporaryBonusRemainingSeconds;
+            resolvedItem.modData = seededItem.modData;
 
             if (seededItem.currentCharges != 0 || seededItem.maxCharges != 0)
             {
@@ -4659,6 +4662,7 @@ bool Party::tryEquipItemOnMember(
     targetRuntimeState.currentCharges = item.currentCharges;
     targetRuntimeState.maxCharges = item.maxCharges;
     targetRuntimeState.temporaryBonusRemainingSeconds = item.temporaryBonusRemainingSeconds;
+    targetRuntimeState.modData = item.modData;
 
     if (targetRuntimeState.rarity == ItemRarity::Common && ItemRuntime::isRareItem(*pItemDefinition))
     {

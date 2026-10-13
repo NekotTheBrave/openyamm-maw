@@ -49,6 +49,7 @@ struct InventoryItem
     uint16_t currentCharges = 0;
     uint16_t maxCharges = 0;
     float temporaryBonusRemainingSeconds = 0.0f;
+    ItemModData modData = {};
 };
 
 struct LloydBeacon

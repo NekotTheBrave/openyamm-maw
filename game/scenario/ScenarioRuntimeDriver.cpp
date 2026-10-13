@@ -248,6 +248,11 @@ struct ScenarioGameApplicationAccess
         return application.quickSaveToPath(path, "Scenario");
     }
 
+    static bool executeModLua(GameApplication &application, const std::string &code, std::string &output)
+    {
+        return application.m_modRuntime.executeConsole(code, output);
+    }
+
     static bool quickLoadFromPath(GameApplication &application, const std::filesystem::path &path)
     {
         return application.quickLoadFromPath(path, true);
@@ -757,6 +762,22 @@ bool ScenarioRuntimeDriver::saveGameToPath(const std::filesystem::path &path, st
     if (!ScenarioGameApplicationAccess::quickSaveToPath(m_application, path))
     {
         failure = "could not save scenario game to '" + path.string() + "'";
+        return false;
+    }
+
+    return true;
+}
+
+bool ScenarioRuntimeDriver::executeModLua(const std::string &code, std::string &output, std::string &failure)
+{
+    if (!initialize(failure))
+    {
+        return false;
+    }
+
+    if (!ScenarioGameApplicationAccess::executeModLua(m_application, code, output))
+    {
+        failure = "mod Lua failed: " + output;
         return false;
     }
 

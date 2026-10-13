@@ -125,6 +125,17 @@ struct CharacterEquipment
     uint32_t ring6 = 0;
 };
 
+// Raw item fields as MMExtension mods address them (Item.Charges, Item.MaxCharges, Item.BonusExpireTime).
+// The engine never interprets these. Mods repurpose them for their own item data (MAW: second enchant, item level,
+// quality tier), so they are kept apart from the engine's wand charges and temporary-bonus timer and simply
+// travel with the item.
+struct ItemModData
+{
+    int32_t charges = 0;
+    int32_t maxCharges = 0;
+    int32_t bonusExpireTime = 0;
+};
+
 struct EquippedItemRuntimeState
 {
     bool identified = true;
@@ -138,6 +149,7 @@ struct EquippedItemRuntimeState
     uint16_t currentCharges = 0;
     uint16_t maxCharges = 0;
     float temporaryBonusRemainingSeconds = 0.0f;
+    ItemModData modData = {};
 };
 
 struct CharacterEquipmentRuntimeState

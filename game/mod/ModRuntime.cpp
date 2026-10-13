@@ -2,6 +2,7 @@
 
 #include "engine/ApplicationConfig.h"
 #include "engine/AssetFileSystem.h"
+#include "game/mod/ModBindings.h"
 
 #include <SDL3/SDL.h>
 #include <lua.hpp>
@@ -306,6 +307,17 @@ std::filesystem::path ModRuntime::findConfigPath()
     m_searchedConfigPaths.clear();
     std::vector<std::filesystem::path> directories;
     std::error_code errorCode;
+
+    // OPENYAMM_MODS_CONFIG names the file outright (tests use it to run with a fixed mod set).
+    const char *pConfigOverride = SDL_getenv("OPENYAMM_MODS_CONFIG");
+
+    if (pConfigOverride != nullptr && pConfigOverride[0] != '\0')
+    {
+        const std::filesystem::path overridePath = std::filesystem::absolute(pathFromUtf8(pConfigOverride), errorCode);
+        m_searchedConfigPaths.push_back(overridePath);
+        return std::filesystem::is_regular_file(overridePath, errorCode) ? overridePath : std::filesystem::path();
+    }
+
     directories.push_back(std::filesystem::current_path(errorCode));
 
     if (const char *pBasePath = SDL_GetBasePath(); pBasePath != nullptr)
@@ -398,6 +410,11 @@ bool ModRuntime::loadConfig(const std::filesystem::path &configPath, std::string
                 ModDefinition mod = {};
                 mod.id = modNode["id"].as<std::string>();
                 mod.rootPath = pathFromUtf8(modNode["path"].as<std::string>());
+
+                if (mod.rootPath.is_relative())
+                {
+                    mod.rootPath = configPath.parent_path() / mod.rootPath;
+                }
 
                 if (modNode["base_overrides"] && modNode["base_overrides"].IsScalar())
                 {
@@ -684,6 +701,7 @@ bool ModRuntime::initialize(const Engine::AssetFileSystem &assetFileSystem)
     luaO_floatsuffix = 0;
     luaL_openlibs(m_pLuaState);
     registerNatives();
+    registerModBindings(m_pLuaState, m_host);
 
     if (!runAssetChunk(BootScriptPath))
     {
@@ -767,6 +785,36 @@ bool ModRuntime::endDispatch(int argumentCount, int resultCount)
 
     lua_remove(m_pLuaState, m_tracebackIndex);
     return true;
+}
+
+void ModRuntime::setHost(ModHost host)
+{
+    m_host = std::move(host);
+}
+
+std::string ModRuntime::captureState()
+{
+    if (!beginDispatch("captureState") || !endDispatch(0, 1))
+    {
+        return {};
+    }
+
+    size_t length = 0;
+    const char *pText = lua_tolstring(m_pLuaState, -1, &length);
+    std::string state = pText != nullptr ? std::string(pText, length) : std::string();
+    lua_pop(m_pLuaState, 1);
+    return state;
+}
+
+void ModRuntime::restoreState(const std::string &state)
+{
+    if (!beginDispatch("restoreState"))
+    {
+        return;
+    }
+
+    lua_pushlstring(m_pLuaState, state.data(), state.size());
+    endDispatch(1, 0);
 }
 
 void ModRuntime::fireEvent(const std::string &eventName)
@@ -898,61 +946,5 @@ int ModRuntime::windowsVirtualKeyFromSdlKeycode(int32_t sdlKeycode)
         case SDLK_APOSTROPHE: return 0xDE;
         default: return 0;
     }
-}
-
-int runModRuntimeHeadlessReport(
-    const std::filesystem::path &basePath,
-    const Engine::ApplicationConfig &config,
-    int tickCount,
-    const std::string &consoleCode)
-{
-    Engine::AssetFileSystem assetFileSystem;
-
-    if (!assetFileSystem.initialize(
-            basePath,
-            config.assetRoot,
-            config.assetScaleTier,
-            config.assetScaleProfile,
-            config.activeWorldId))
-    {
-        std::cerr << "Mod report failed: could not initialize asset file system\n";
-        return 1;
-    }
-
-    ModRuntime runtime;
-
-    if (!runtime.initialize(assetFileSystem))
-    {
-        return 1;
-    }
-
-    if (!runtime.isActive())
-    {
-        std::cerr << "Mod report: " << runtime.statusDescription() << '\n';
-        return 1;
-    }
-
-    runtime.fireEvent("GameInitialized1");
-    runtime.fireEvent("GameInitialized2");
-    runtime.fireEvent("SessionStarted");
-
-    for (int tickIndex = 0; tickIndex < tickCount; ++tickIndex)
-    {
-        runtime.tick(1.0f / 60.0f);
-    }
-
-    std::string output;
-    bool success = true;
-
-    if (!consoleCode.empty())
-    {
-        success = runtime.executeConsole(consoleCode, output);
-        std::cout << output << '\n';
-    }
-
-    success = runtime.executeConsole("return ModRT.writeReport()", output) && success;
-    std::cout << output << '\n';
-    runtime.shutdown();
-    return success ? 0 : 1;
 }
 }

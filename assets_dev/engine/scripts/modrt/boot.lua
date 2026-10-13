@@ -104,6 +104,8 @@ loadRuntimeScript("compat51.lua")
 loadRuntimeScript("events.lua")
 loadRuntimeScript("stubs.lua")
 loadRuntimeScript("environment.lua")
+loadRuntimeScript("bindings.lua")
+loadRuntimeScript("state.lua")
 loadRuntimeScript("loader.lua")
 loadRuntimeScript("report.lua")
 loadRuntimeScript("selftest.lua")
@@ -134,6 +136,7 @@ function ModRT.fire(eventName, ...)
 end
 
 function ModRT.tick(deltaSeconds)
+    ModRT.State.syncMap()
     local errorsBefore = ModRT.totalErrorCount
     ModRT.fire("Tick")
 
@@ -148,6 +151,7 @@ function ModRT.key(pressed, virtualKey, isRepeat)
 end
 
 function ModRT.console(code)
+    ModRT.State.syncMap()
     ModRT.printLines = {}
     local chunk, loadError = load("return " .. code, "=console")
 
@@ -196,6 +200,10 @@ function ModRT.dispatch(kind, ...)
         return ModRT.console(...)
     elseif kind == "start" then
         return ModRT.start()
+    elseif kind == "captureState" then
+        return ModRT.State.capture()
+    elseif kind == "restoreState" then
+        return ModRT.State.restore(...)
     end
 
     error("unknown dispatch kind " .. tostring(kind))

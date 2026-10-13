@@ -139,6 +139,8 @@ public:
     bool openMapTransitionPrompt(uint32_t sourceId, std::string &failure);
     bool speakNpc(uint32_t npcId, std::string &failure);
     bool saveGameToPath(const std::filesystem::path &path, std::string &failure);
+    // Runs Lua in the mod runtime as the debug console does; `output` receives the printed lines and results.
+    bool executeModLua(const std::string &code, std::string &output, std::string &failure);
     bool loadGameFromPath(const std::filesystem::path &path, std::string &failure);
     bool setPose(const ScenarioPose &pose, std::string &failure);
     ScenarioPose currentPose() const;
