@@ -518,6 +518,9 @@ local resistanceNames = {
     [7] = "Mind", [8] = "Body", [9] = "Light", [10] = "Dark",
 }
 
+-- const.Stats for the six resistances a character sheet has.
+local resistanceByStat = {[10] = "Fire", [11] = "Air", [12] = "Water", [13] = "Earth", [14] = "Mind", [15] = "Body"}
+
 -- const.Stats numbers the entries of Player.Stats.
 local statNames = {
     [0] = "Might", [1] = "Intellect", [2] = "Personality", [3] = "Endurance", [4] = "Speed", [5] = "Accuracy",
@@ -701,6 +704,12 @@ local function playerObject(playerIndex)
             GetRangedAttack = function() return modrt.playerGet(playerIndex, "GetRangedAttack") end,
             GetRangedDamageMin = function() return modrt.playerGet(playerIndex, "GetRangedDamageMin") end,
             GetRangedDamageMax = function() return modrt.playerGet(playerIndex, "GetRangedDamageMax") end,
+            -- pl:GetResistance(stat): stat is the statistic number of the resistance (const.Stats, 10 Fire to
+            -- 15 Body).
+            GetResistance = function(_, stat)
+                local element = resistanceByStat[stat]
+                return element and modrt.playerGet(playerIndex, "GetResistance" .. element) or 0
+            end,
             -- Recovery after an attack in ticks: pl:GetAttackDelay() for the main hand, (true) for the bow.
             GetAttackDelay = function(_, ranged)
                 return modrt.playerGet(playerIndex, ranged and "GetAttackDelayRanged" or "GetAttackDelay")

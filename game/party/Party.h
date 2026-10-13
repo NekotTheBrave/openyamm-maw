@@ -130,6 +130,17 @@ struct Character
     int armorClassModifier = 0;
     int levelModifier = 0;
     int ageModifier = 0;
+    // The equipped weapons' share of the damage range (their dice; 1 to 3 for bare hands). The original engine
+    // asks mods for it as the item bonus to "damage minimum" and "damage maximum", and a mod runtime puts its
+    // answer here at every bonus rebuild. Unset, the engine works it out from what is equipped. Not saved.
+    struct ModWeaponDamage
+    {
+        std::optional<int> meleeMin;
+        std::optional<int> meleeMax;
+        std::optional<int> rangedMin;
+        std::optional<int> rangedMax;
+    };
+    ModWeaponDamage modWeaponDamage = {};
     std::unordered_set<uint32_t> playerBits;
     uint32_t npcs2 = 0;
     int merchantBonus = 0;

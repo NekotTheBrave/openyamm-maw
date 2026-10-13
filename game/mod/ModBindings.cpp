@@ -547,6 +547,40 @@ int nativePlayerGet(lua_State *pLuaState)
         return 1;
     }
 
+    // Resistance with everything counted, as the character sheet shows it.
+    if (field.compare(0, 13, "GetResistance") == 0)
+    {
+        const Party *pParty = partyFromHost(pLuaState);
+
+        if (pParty == nullptr)
+        {
+            return 0;
+        }
+
+        const CharacterSheetSummary summary = GameMechanics::buildCharacterSheetSummary(
+            *pCharacter,
+            pParty->itemTable(),
+            pParty->standardItemEnchantTable(),
+            pParty->specialItemEnchantTable());
+        const std::string element = field.substr(13);
+        const CharacterSheetValue *pValue =
+            element == "Fire" ? &summary.fireResistance
+            : element == "Air" ? &summary.airResistance
+            : element == "Water" ? &summary.waterResistance
+            : element == "Earth" ? &summary.earthResistance
+            : element == "Mind" ? &summary.mindResistance
+            : element == "Body" ? &summary.bodyResistance
+            : nullptr;
+
+        if (pValue == nullptr)
+        {
+            return 0;
+        }
+
+        lua_pushinteger(pLuaState, pValue->actual);
+        return 1;
+    }
+
     if (field == "GetArmorClass")
     {
         const Party *pParty = partyFromHost(pLuaState);
@@ -610,9 +644,21 @@ int nativePlayerGet(lua_State *pLuaState)
         {
             lua_pushinteger(pLuaState, profile.rangedRecoveryTicks);
         }
+        else if (profile.rangedAttackBonus)
+        {
+            lua_pushinteger(pLuaState, *profile.rangedAttackBonus);
+        }
         else
         {
-            lua_pushinteger(pLuaState, profile.rangedAttackBonus.value_or(0));
+            // With nothing to shoot with the original still answers, from accuracy and the bonuses.
+            const int accuracy = static_cast<int>(pCharacter->accuracy)
+                + pCharacter->permanentBonuses.accuracy
+                + pCharacter->magicalBonuses.accuracy;
+            lua_pushinteger(
+                pLuaState,
+                GameMechanics::statisticEffect(accuracy)
+                    + pCharacter->permanentBonuses.rangedAttack
+                    + pCharacter->magicalBonuses.rangedAttack);
         }
 
         return 1;

@@ -311,6 +311,43 @@ constexpr ModStatField ModStatFields[] = {
     {30, &CharacterStatBonuses::rangedDamage, nullptr},
 };
 
+// The original engine's numbers for the weapon's share of the damage range. They have no place among the
+// bonuses: the mod's answer goes to Character::modWeaponDamage, which the damage formulas read in place of the
+// equipped weapon's dice.
+struct ModWeaponDamageField
+{
+    int statId;
+    std::optional<int> Character::ModWeaponDamage::*pField;
+    int GameMechanics::WeaponDamageItemBonuses::*pEngineValue;
+};
+
+constexpr ModWeaponDamageField ModWeaponDamageFields[] = {
+    {27, &Character::ModWeaponDamage::meleeMin, &GameMechanics::WeaponDamageItemBonuses::meleeMin},
+    {28, &Character::ModWeaponDamage::meleeMax, &GameMechanics::WeaponDamageItemBonuses::meleeMax},
+    {31, &Character::ModWeaponDamage::rangedMin, &GameMechanics::WeaponDamageItemBonuses::rangedMin},
+    {32, &Character::ModWeaponDamage::rangedMax, &GameMechanics::WeaponDamageItemBonuses::rangedMax},
+};
+
+// Keeps the mod's answer only when it differs from the engine's: left unset, the engine goes on working the range
+// out from what is equipped, so a change to the weapon or to the item table shows without waiting for a rebuild.
+void setModWeaponDamage(
+    Character &member,
+    const ModWeaponDamageField &field,
+    const GameMechanics::WeaponDamageItemBonuses &engine,
+    lua_Number value)
+{
+    const int answer = static_cast<int>(std::clamp<lua_Number>(std::floor(value), 0.0, 2000000000.0));
+
+    if (answer == engine.*field.pEngineValue)
+    {
+        (member.modWeaponDamage.*field.pField).reset();
+    }
+    else
+    {
+        member.modWeaponDamage.*field.pField = answer;
+    }
+}
+
 int &statBonusField(CharacterStatBonuses &bonuses, const ModStatField &field)
 {
     return field.pField != nullptr ? bonuses.*field.pField : bonuses.resistances.*field.pResistance;
@@ -345,6 +382,17 @@ int nativeSetStatBonus(lua_State *pLuaState)
         {
             statBonusField(pMember->magicalBonuses, field) =
                 static_cast<int>(std::clamp<lua_Number>(value, -2000000000.0, 2000000000.0));
+            break;
+        }
+    }
+
+    for (const ModWeaponDamageField &field : ModWeaponDamageFields)
+    {
+        if (field.statId == statId)
+        {
+            const GameMechanics::WeaponDamageItemBonuses engine =
+                GameMechanics::resolveWeaponDamageItemBonuses(*pMember, pParty->itemTable());
+            setModWeaponDamage(*pMember, field, engine, value);
             break;
         }
     }
@@ -1256,6 +1304,11 @@ void ModRuntime::adjustCharacterBonuses(
     m_adjustingBonuses = true;
     ensureModCharacterIndex(party, *pMember);
 
+    // The weapons' share of the damage range starts from what the engine works out for the equipped items.
+    pMember->modWeaponDamage = {};
+    const GameMechanics::WeaponDamageItemBonuses weaponDamage =
+        GameMechanics::resolveWeaponDamageItemBonuses(*pMember, party.itemTable());
+
     // --- statistics: item part and magic part ------------------------------------------------------------------------
     if (beginDispatch("characterBonuses"))
     {
@@ -1275,6 +1328,16 @@ void ModRuntime::adjustCharacterBonuses(
             lua_rawseti(m_pLuaState, -2, ++position);
         }
 
+        for (const ModWeaponDamageField &field : ModWeaponDamageFields)
+        {
+            lua_pushinteger(m_pLuaState, field.statId);
+            lua_rawseti(m_pLuaState, -2, ++position);
+            lua_pushinteger(m_pLuaState, weaponDamage.*field.pEngineValue);
+            lua_rawseti(m_pLuaState, -2, ++position);
+            lua_pushinteger(m_pLuaState, 0);
+            lua_rawseti(m_pLuaState, -2, ++position);
+        }
+
         if (endDispatch(2, 1))
         {
             if (lua_istable(m_pLuaState, -1))
@@ -1289,6 +1352,18 @@ void ModRuntime::adjustCharacterBonuses(
                     {
                         statBonusField(pMember->magicalBonuses, field) = static_cast<int>(
                             std::clamp<lua_Number>(lua_tonumber(m_pLuaState, -1), -2000000000.0, 2000000000.0));
+                    }
+
+                    lua_pop(m_pLuaState, 1);
+                }
+
+                for (const ModWeaponDamageField &field : ModWeaponDamageFields)
+                {
+                    lua_rawgeti(m_pLuaState, -1, ++resultIndex);
+
+                    if (lua_isnumber(m_pLuaState, -1))
+                    {
+                        setModWeaponDamage(*pMember, field, weaponDamage, lua_tonumber(m_pLuaState, -1));
                     }
 
                     lua_pop(m_pLuaState, 1);

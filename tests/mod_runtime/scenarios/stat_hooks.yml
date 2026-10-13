@@ -177,3 +177,28 @@ steps:
       return class == const.Class.Knight, factor, base, gained == expected, p:GetFullHP() == before,
         Game.Classes.Skills[class][const.Skills.Fire], Game.ClassNames[class]
     expect: "true\t5\t35\ttrue\ttrue\t0\tKnight"
+# The weapon's share of the damage range is asked for as the item bonus to statistics 27 (damage minimum) and 28
+# (damage maximum); the engine's own answer comes from the dice of what is in hand. Also: Shoot is answered
+# without a bow, from accuracy; resistances by their statistic number.
+- mod_lua:
+    code: |
+      local p = Party[0]
+      Party.RefreshBonuses()
+      local low, high = p:GetMeleeDamageMin(), p:GetMeleeDamageMax()
+      Weapon = {}
+      function events.CalcStatBonusByItems(t)
+        if t.PlayerIndex ~= Party[0]:GetIndex() then return end
+        if t.Stat == 27 then
+          Weapon.low = t.Result
+          t.Result = t.Result + 5
+        elseif t.Stat == 28 then
+          Weapon.high = t.Result
+          t.Result = t.Result + 7
+        end
+      end
+      Party.RefreshBonuses()
+      local row = Game.ItemsTxt[1]
+      return Weapon.low == row.Mod1DiceCount + row.Mod2, Weapon.high == row.Mod1DiceCount * row.Mod1DiceSides + row.Mod2,
+        p:GetMeleeDamageMin() - low, p:GetMeleeDamageMax() - high,
+        p:GetRangedAttack() == Game.GetStatisticEffect(p:GetAccuracy()), p:GetResistance(10) == p.FireResistanceBase
+    expect: "true\ttrue\t5\t7\ttrue\ttrue"

@@ -107,6 +107,11 @@ if [ -f mods.yml ]; then
     for name in bindings bindings_indoor; do
         scenario "$name (MAW)" "$tests/scenarios/$name.yml"
     done
+
+    # Numbers read off a real install of the same MAW.
+    for path in "$tests"/maw/*.yml; do
+        scenario "$(basename "$path" .yml) (MAW)" "$path"
+    done
 else
     echo "mods.yml not found: MAW checks skipped"
 fi

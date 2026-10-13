@@ -2379,7 +2379,7 @@ CharacterSheetSummary GameMechanics::buildCharacterSheetSummary(
     const int meleeMinDamage = std::max(
         1,
         meleeMightBonus
-            + resolveMeleeMinDamageItemBonus(equippedItems)
+            + character.modWeaponDamage.meleeMin.value_or(resolveMeleeMinDamageItemBonus(equippedItems))
             + modSkillStatBonus(
                 character,
                 ModStatMeleeDamage,
@@ -2390,7 +2390,7 @@ CharacterSheetSummary GameMechanics::buildCharacterSheetSummary(
     const int meleeMaxDamage = std::max(
         1,
         meleeMightBonus
-            + resolveMeleeMaxDamageItemBonus(equippedItems)
+            + character.modWeaponDamage.meleeMax.value_or(resolveMeleeMaxDamageItemBonus(equippedItems))
             + modSkillStatBonus(
                 character,
                 ModStatMeleeDamage,
@@ -2445,12 +2445,12 @@ CharacterSheetSummary GameMechanics::buildCharacterSheetSummary(
                     + character.magicalBonuses.rangedDamage;
         const int rangedMinDamage = std::max(
             0,
-            weaponMinDamage(*equippedItems.pBow)
+            character.modWeaponDamage.rangedMin.value_or(weaponMinDamage(*equippedItems.pBow))
                 + rangedSkillDamageBonus
                 + rangedFlatDamageBonus);
         const int rangedMaxDamage = std::max(
             0,
-            weaponMaxDamage(*equippedItems.pBow)
+            character.modWeaponDamage.rangedMax.value_or(weaponMaxDamage(*equippedItems.pBow))
                 + rangedSkillDamageBonus
                 + rangedFlatDamageBonus);
         summary.combat.rangedDamageText = formatDamageRange(rangedMinDamage, rangedMaxDamage);
@@ -2542,7 +2542,7 @@ CharacterAttackProfile GameMechanics::buildCharacterAttackProfile(
     profile.meleeMinDamage = std::max(
         1,
         meleeMightBonus
-            + resolveMeleeMinDamageItemBonus(equippedItems)
+            + character.modWeaponDamage.meleeMin.value_or(resolveMeleeMinDamageItemBonus(equippedItems))
             + modSkillStatBonus(
                 character,
                 ModStatMeleeDamage,
@@ -2553,7 +2553,7 @@ CharacterAttackProfile GameMechanics::buildCharacterAttackProfile(
     profile.meleeMaxDamage = std::max(
         1,
         meleeMightBonus
-            + resolveMeleeMaxDamageItemBonus(equippedItems)
+            + character.modWeaponDamage.meleeMax.value_or(resolveMeleeMaxDamageItemBonus(equippedItems))
             + modSkillStatBonus(
                 character,
                 ModStatMeleeDamage,
@@ -2641,7 +2641,8 @@ CharacterAttackProfile GameMechanics::buildCharacterAttackProfile(
                 character,
                 ModStatRangedDamage,
                 resolveRangedDamageSkillBonus(character, equippedItems, attackTuning))
-                + (equippedItems.pBow != nullptr ? weaponMinDamage(*equippedItems.pBow) : 0)
+                + character.modWeaponDamage.rangedMin.value_or(
+                    equippedItems.pBow != nullptr ? weaponMinDamage(*equippedItems.pBow) : 0)
                 + character.weaponEnchantmentDamageBonus
                 + character.permanentBonuses.rangedDamage
                 + character.magicalBonuses.rangedDamage);
@@ -2651,7 +2652,8 @@ CharacterAttackProfile GameMechanics::buildCharacterAttackProfile(
                 character,
                 ModStatRangedDamage,
                 resolveRangedDamageSkillBonus(character, equippedItems, attackTuning))
-                + (equippedItems.pBow != nullptr ? weaponMaxDamage(*equippedItems.pBow) : 0)
+                + character.modWeaponDamage.rangedMax.value_or(
+                    equippedItems.pBow != nullptr ? weaponMaxDamage(*equippedItems.pBow) : 0)
                 + character.weaponEnchantmentDamageBonus
                 + character.permanentBonuses.rangedDamage
                 + character.magicalBonuses.rangedDamage);
@@ -3356,6 +3358,24 @@ bool GameMechanics::canAct(const Character &character)
         && !hasCondition(character, CharacterCondition::Dead)
         && !hasCondition(character, CharacterCondition::Petrified)
         && !hasCondition(character, CharacterCondition::Eradicated);
+}
+
+GameMechanics::WeaponDamageItemBonuses GameMechanics::resolveWeaponDamageItemBonuses(
+    const Character &character,
+    const ItemTable *pItemTable)
+{
+    const EquippedItems equippedItems = resolveEquippedItems(character, pItemTable);
+    WeaponDamageItemBonuses bonuses = {};
+    bonuses.meleeMin = resolveMeleeMinDamageItemBonus(equippedItems);
+    bonuses.meleeMax = resolveMeleeMaxDamageItemBonus(equippedItems);
+
+    if (equippedItems.pBow != nullptr && isRangedWeapon(*equippedItems.pBow))
+    {
+        bonuses.rangedMin = weaponMinDamage(*equippedItems.pBow);
+        bonuses.rangedMax = weaponMaxDamage(*equippedItems.pBow);
+    }
+
+    return bonuses;
 }
 
 int GameMechanics::statisticEffect(int value)

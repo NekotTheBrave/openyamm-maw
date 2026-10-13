@@ -283,6 +283,19 @@ public:
         int attackBonus,
         std::mt19937 &rng);
     static std::optional<CharacterCondition> displayedCondition(const Character &character);
+
+    // The equipped weapons' share of the damage range as the engine works it out from the items themselves; a
+    // mod's own values (Character::modWeaponDamage) are not consulted.
+    struct WeaponDamageItemBonuses
+    {
+        int meleeMin = 0;
+        int meleeMax = 0;
+        int rangedMin = 0;
+        int rangedMax = 0;
+    };
+    static WeaponDamageItemBonuses resolveWeaponDamageItemBonuses(
+        const Character &character,
+        const ItemTable *pItemTable);
     static bool canAct(const Character &character);
     // The effect of a statistic's value on what it governs (13 gives 0, 15 gives 1, ...).
     static int statisticEffect(int value);
