@@ -97,8 +97,18 @@ local function replaceContents(target, source)
     end
 end
 
--- Keeps `mapvars` pointing at the table of the map the party is on.
+-- True between a new game or a load and the first map the scripts are told about.
+State.freshSession = true
+local syncing = false
+
+-- Notices that the party is on a different map than the scripts last knew: switches `mapvars` to that map's
+-- table and raises the map events. The engine has already loaded the map by then, so "before" and "after" both
+-- run after the fact, in MMExtension's order. Nothing happens until the map's world is ready.
 function State.syncMap()
+    if syncing or not modrt.gameGet("MapReady") then
+        return
+    end
+
     local mapName = modrt.gameGet("MapFileName")
 
     if mapName == nil or mapName == "" then
@@ -111,18 +121,37 @@ function State.syncMap()
         return
     end
 
+    syncing = true
+    local wasInGame = not State.freshSession
+
     if State.currentMap then
+        ModRT.fire("LeaveMap")
         State.mapVarsByMap[State.currentMap] = mapvars
     end
 
     State.currentMap = mapName
+    State.freshSession = false
     mapvars = State.mapVarsByMap[mapName] or {}
     State.mapVarsByMap[mapName] = mapvars
+
+    -- WasInGame: the party arrived from another map of the same game. WasLoaded: the map already had saved state.
+    local wasLoaded = next(mapvars) ~= nil
+    ModRT.fire("BeforeLoadMap", wasInGame, wasLoaded)
+    ModRT.fire("LoadMapScripts", wasInGame)
+    ModRT.fire("LoadMap", wasInGame, wasLoaded)
+    ModRT.fire("AfterLoadMap", wasInGame, wasLoaded)
+    syncing = false
+
+    -- Map handlers set up what the stat events read (MAW builds its item tables in AfterLoadMap).
+    modrt.partyRefreshBonuses()
 end
 
 function State.capture()
-    State.syncMap()
     State.dropped = 0
+
+    if State.currentMap then
+        State.mapVarsByMap[State.currentMap] = mapvars
+    end
     local text = State.serialize({version = 1, vars = vars, mapvars = State.mapVarsByMap})
 
     if State.dropped > 0 then
@@ -149,6 +178,6 @@ function State.restore(text)
     replaceContents(vars, data and type(data.vars) == "table" and data.vars or {})
     State.mapVarsByMap = data and type(data.mapvars) == "table" and data.mapvars or {}
     State.currentMap = nil
+    State.freshSession = true
     mapvars = {}
-    State.syncMap()
 end

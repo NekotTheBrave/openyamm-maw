@@ -198,6 +198,7 @@ end
 
 local EquipmentSlotCount = 16
 local MaxItemRecords = 138
+local activeItem
 
 local function itemObject(playerIndex, group, index, path)
     return boundObject(path, {
@@ -280,6 +281,30 @@ local function skillsObject(playerIndex, path)
     })
 end
 
+local equippedItemAt = cached(function(key)
+    local playerIndex, slot = key >> 8, key & 0xFF
+    return itemObject(playerIndex, "equip", slot, "Party[].Items[]")
+end)
+
+activeItem = function(playerIndex, slot, includeBroken)
+    if type(slot) ~= "number" or slot < 0 or slot >= EquipmentSlotCount then
+        return nil
+    end
+
+    slot = floor(slot)
+    local number = modrt.itemGet(playerIndex, "equip", slot, "Number")
+
+    if not number or number == 0 then
+        return nil
+    end
+
+    if not includeBroken and modrt.itemGet(playerIndex, "equip", slot, "Broken") then
+        return nil
+    end
+
+    return equippedItemAt(playerIndex << 8 | slot)
+end
+
 -- Address of the player array and size of one player in the original MM8 executable.
 local OriginalPlayerArrayAddress = 0xB2187C
 local OriginalPlayerSize = 0x1D28
@@ -288,6 +313,23 @@ local function playerObject(playerIndex)
     local path = "Party[]"
     local skills = skillsObject(playerIndex, path .. ".Skills")
     local items = itemsObject(playerIndex, path .. ".Items")
+    -- EquippedItems[slot] is the item's number in Items, 0 for an empty slot.
+    local equipped = boundObject(path .. ".EquippedItems", {
+        index = function(slot)
+            if slot < 0 or slot >= EquipmentSlotCount then
+                return nil
+            end
+
+            local number = modrt.itemGet(playerIndex, "equip", floor(slot), "Number")
+
+            if not number or number == 0 then
+                return 0
+            end
+
+            return (modrt.playerGet(playerIndex, "ItemCount") or 0) + floor(slot) + 1
+        end,
+        get = sizeFields(function() return EquipmentSlotCount end),
+    })
 
     return boundObject(path, {
         get = function(key)
@@ -295,6 +337,8 @@ local function playerObject(playerIndex)
                 return skills
             elseif key == "Items" then
                 return items
+            elseif key == "EquippedItems" then
+                return equipped
             elseif key == "?ptr" then
                 -- Scripts derive a character's index from its address in the original player array. Nothing lives
                 -- at this address here; it only has to give that arithmetic the right answer.
@@ -327,6 +371,27 @@ local function playerObject(playerIndex)
                 end
 
                 return JoinSkill(level + (bonus or 0), mastery)
+            end,
+            -- The item in an equipment slot (const.ItemSlot), or nil; broken items only on request.
+            GetActiveItem = function(_, slot, includeBroken)
+                return activeItem(playerIndex, slot, includeBroken, path)
+            end,
+            -- for item, slot in pl:EnumActiveItems() do ... end
+            EnumActiveItems = function(_, includeBroken)
+                local slot = -1
+
+                return function()
+                    while slot < EquipmentSlotCount - 1 do
+                        slot = slot + 1
+                        local item = activeItem(playerIndex, slot, includeBroken, path)
+
+                        if item then
+                            return item, slot
+                        end
+                    end
+
+                    return nil
+                end
             end,
             GetMight = function() return modrt.playerGet(playerIndex, "GetMight") end,
             GetIntellect = function() return modrt.playerGet(playerIndex, "GetIntellect") end,
@@ -411,6 +476,25 @@ local function tableRow(path, getter)
     end)
 end
 
+local portraitRow = tableRow("Game.CharacterPortraits[]", modrt.portraitGet)
+
+local characterPortraits = boundObject("Game.CharacterPortraits", {
+    index = function(id)
+        return portraitRow(id)
+    end,
+})
+
+-- Merge's helper (Structs/CharacterOutfits.lua): a character's race comes from its portrait.
+function GetRace(player, playerIndex)
+    local race = Game.CharacterPortraits[player.Face].Race
+
+    if type(race) == "number" then
+        return race
+    end
+
+    return player.RaceId
+end
+
 local itemRow = tableRow("Game.ItemsTxt[]", modrt.itemTxtGet)
 local monsterRow = tableRow("Game.MonstersTxt[]", modrt.monsterTxtGet)
 
@@ -441,6 +525,8 @@ Game = boundObject("Game", {
             return itemsTxt
         elseif key == "MonstersTxt" then
             return monstersTxt
+        elseif key == "CharacterPortraits" then
+            return characterPortraits
         elseif key == "CurrentPlayer" then
             return modrt.partyGet("CurrentPlayer")
         elseif key == "Time" then

@@ -6,6 +6,7 @@
 #include "game/mod/ModHost.h"
 #include "game/party/Party.h"
 #include "game/party/SkillData.h"
+#include "game/tables/CharacterDollTable.h"
 #include "game/tables/ClassSkillTable.h"
 #include "game/tables/ItemTable.h"
 #include "game/tables/MonsterTable.h"
@@ -14,6 +15,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
+#include <exception>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -607,6 +610,8 @@ struct ItemView
     uint16_t *pMaxCharges = nullptr;
     ItemModData *pModData = nullptr;
     const InventoryItem *pInventoryItem = nullptr;
+    // 0 in the backpack, otherwise the equipment slot plus one (Item.BodyLocation).
+    int bodyLocation = 0;
 };
 
 struct EquipmentSlotMembers
@@ -687,6 +692,7 @@ bool itemViewArgument(lua_State *pLuaState, ItemView &view)
         view.pCurrentCharges = &runtime.currentCharges;
         view.pMaxCharges = &runtime.maxCharges;
         view.pModData = &runtime.modData;
+        view.bodyLocation = static_cast<int>(index) + 1;
         return true;
     }
 
@@ -751,6 +757,17 @@ int nativeItemGet(lua_State *pLuaState)
     {
         lua_pushboolean(pLuaState, *view.pStolen);
     }
+    else if (field == "BodyLocation")
+    {
+        lua_pushinteger(pLuaState, view.bodyLocation);
+    }
+    else if (field == "Condition")
+    {
+        // Item.Condition bits of the original engine: 1 identified, 2 broken, 0x100 stolen.
+        lua_pushinteger(
+            pLuaState,
+            (*view.pIdentified ? 1 : 0) | (*view.pBroken ? 2 : 0) | (*view.pStolen ? 0x100 : 0));
+    }
     else if (field == "GridX" && view.pInventoryItem != nullptr)
     {
         lua_pushinteger(pLuaState, view.pInventoryItem->gridX);
@@ -811,6 +828,13 @@ int nativeItemSet(lua_State *pLuaState)
     {
         *view.pMaxCharges = clampedInteger<uint16_t>(integerArgument(pLuaState, 5));
     }
+    else if (field == "Condition")
+    {
+        const int64_t bits = integerArgument(pLuaState, 5);
+        *view.pIdentified = (bits & 1) != 0;
+        *view.pBroken = (bits & 2) != 0;
+        *view.pStolen = (bits & 0x100) != 0;
+    }
     else if (field == "Identified")
     {
         *view.pIdentified = lua_toboolean(pLuaState, 5) != 0;
@@ -833,6 +857,80 @@ int nativeItemSet(lua_State *pLuaState)
 }
 
 // --- tables ----------------------------------------------------------------------------------------------------------
+
+// ItemsTxt.EquipStat as the original engine numbers the "Equip Stat" column of items.txt (const.ItemType - 1).
+int mm8EquipStat(const std::string &equipStat)
+{
+    static const std::unordered_map<std::string, int> values = {
+        {"weapon", 0}, {"weapon1or2", 0}, {"weapon2", 1}, {"missile", 2}, {"bow", 2}, {"armor", 3},
+        {"shield", 4}, {"helm", 5}, {"belt", 6}, {"cloak", 7}, {"gauntlets", 8}, {"boots", 9}, {"ring", 10},
+        {"amulet", 11}, {"weaponw", 12}, {"reagent", 13}, {"herb", 13}, {"bottle", 14}, {"sscroll", 15},
+        {"book", 16}, {"mscroll", 17}, {"gold", 18}, {"gem", 19},
+    };
+    std::string key = equipStat;
+
+    for (char &character : key)
+    {
+        character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+    }
+
+    const std::unordered_map<std::string, int>::const_iterator it = values.find(key);
+    return it != values.end() ? it->second : 20;
+}
+
+// ItemsTxt.Skill: the "Skill Group" column as a skill id. Club and Misc follow the 39 real skills.
+int mm8ItemSkill(const std::string &skillGroup)
+{
+    static const std::unordered_map<std::string, int> values = {
+        {"staff", 0}, {"sword", 1}, {"dagger", 2}, {"axe", 3}, {"spear", 4}, {"bow", 5}, {"mace", 6},
+        {"blaster", 7}, {"shield", 8}, {"leather", 9}, {"chain", 10}, {"plate", 11}, {"club", 39},
+    };
+    std::string key = skillGroup;
+
+    for (char &character : key)
+    {
+        character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+    }
+
+    const std::unordered_map<std::string, int>::const_iterator it = values.find(key);
+    return it != values.end() ? it->second : 40;
+}
+
+// "2d3" -> 2 and 3; anything else -> 0 and 0.
+void parseDice(const std::string &text, int &count, int &sides)
+{
+    count = 0;
+    sides = 0;
+    const size_t separator = text.find_first_of("dD");
+
+    if (separator == std::string::npos || separator == 0)
+    {
+        return;
+    }
+
+    try
+    {
+        count = std::stoi(text.substr(0, separator));
+        sides = std::stoi(text.substr(separator + 1));
+    }
+    catch (const std::exception &)
+    {
+        count = 0;
+        sides = 0;
+    }
+}
+
+int integerOrZero(const std::string &text)
+{
+    try
+    {
+        return std::stoi(text);
+    }
+    catch (const std::exception &)
+    {
+        return 0;
+    }
+}
 
 int nativeItemTxtGet(lua_State *pLuaState)
 {
@@ -884,13 +982,44 @@ int nativeItemTxtGet(lua_State *pLuaState)
     {
         pushString(pLuaState, pItem->skillGroup);
     }
-    else if (field == "Mod1")
+    else if (field == "EquipStat")
+    {
+        lua_pushinteger(pLuaState, mm8EquipStat(pItem->equipStat));
+    }
+    else if (field == "Skill")
+    {
+        lua_pushinteger(pLuaState, mm8ItemSkill(pItem->skillGroup));
+    }
+    else if (field == "Mod1DiceCount" || field == "Mod1DiceSides")
+    {
+        int count = 0;
+        int sides = 0;
+        parseDice(pItem->mod1, count, sides);
+        lua_pushinteger(pLuaState, field == "Mod1DiceCount" ? count : sides);
+    }
+    else if (field == "Mod1Text")
     {
         pushString(pLuaState, pItem->mod1);
     }
     else if (field == "Mod2")
     {
-        pushString(pLuaState, pItem->mod2);
+        lua_pushinteger(pLuaState, integerOrZero(pItem->mod2));
+    }
+    else if (field == "SpriteIndex")
+    {
+        lua_pushinteger(pLuaState, pItem->spriteIndex);
+    }
+    else if (field == "EquipX")
+    {
+        lua_pushinteger(pLuaState, pItem->equipX);
+    }
+    else if (field == "EquipY")
+    {
+        lua_pushinteger(pLuaState, pItem->equipY);
+    }
+    else if (field == "Notes")
+    {
+        pushString(pLuaState, pItem->notes);
     }
     else if (field == "Material")
     {
@@ -961,6 +1090,35 @@ int nativeMonsterTxtGet(lua_State *pLuaState)
     }
 
     return 1;
+}
+
+int nativePortraitGet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t portraitId = integerArgument(pLuaState, 1);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+
+    if (pData == nullptr || portraitId < 0)
+    {
+        return 0;
+    }
+
+    // Scripts number portraits from 0 (Player.Face); OpenYAMM's character table numbers its rows from 1.
+    const CharacterDollEntry *pEntry =
+        pData->getCharacterDollTable().getCharacter(static_cast<uint32_t>(portraitId) + 1);
+
+    if (pEntry == nullptr)
+    {
+        return 0;
+    }
+
+    if (field == "Race" && pEntry->raceId >= 0)
+    {
+        lua_pushinteger(pLuaState, pEntry->raceId);
+        return 1;
+    }
+
+    return 0;
 }
 
 // --- map monsters ----------------------------------------------------------------------------------------------------
@@ -1068,6 +1226,14 @@ int nativeGameGet(lua_State *pLuaState)
         return 1;
     }
 
+    if (field == "MapReady")
+    {
+        lua_pushboolean(
+            pLuaState,
+            pHost->mapReady ? pHost->mapReady() : (worldFromHost(pLuaState) != nullptr));
+        return 1;
+    }
+
     return 0;
 }
 
@@ -1106,6 +1272,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"itemSet", nativeItemSet},
         {"itemTxtGet", nativeItemTxtGet},
         {"monsterTxtGet", nativeMonsterTxtGet},
+        {"portraitGet", nativePortraitGet},
         {"mapMonsterGet", nativeMapMonsterGet},
         {"mapMonsterSet", nativeMapMonsterSet},
         {"gameGet", nativeGameGet},

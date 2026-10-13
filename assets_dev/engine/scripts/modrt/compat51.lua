@@ -268,6 +268,42 @@ bit.arshift = function(value, count)
 end
 
 ---------------------------------------------------------------------------------------------------------------------
+-- MMExtension: bit operations under capitalised names, and as methods of every number (flags:And(2))
+
+bit.Or = bit.bor
+bit.And = bit.band
+bit.Xor = bit.bxor
+bit.Not = bit.bnot
+
+function bit.AndNot(value, mask)
+    return bit.band(value, bit.bnot(mask))
+end
+
+do
+    local numberMethods = {}
+
+    for name, func in pairs(bit) do
+        numberMethods[name] = func
+    end
+
+    function numberMethods.ToHex(value)
+        return stringFormat("%X", toInteger(value))
+    end
+
+    function numberMethods.Div(value, divisor)
+        return floor(value / divisor)
+    end
+
+    numberMethods.tohex = numberMethods.ToHex
+    numberMethods.div = numberMethods.Div
+    numberMethods.floor = math.floor
+    numberMethods.ceil = math.ceil
+    numberMethods.round = function(value) return floor(value + 0.5) end
+
+    debug.setmetatable(0, {__index = numberMethods})
+end
+
+---------------------------------------------------------------------------------------------------------------------
 -- function environments, emulated through the _ENV upvalue
 
 local function resolveFunction(target, level)

@@ -1,0 +1,51 @@
+id: mod_runtime.map_events
+title: Arriving on a map raises the map events, and each map keeps its own mapvars
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 0
+      food: 1
+      members:
+      - name: Walker
+        class: Knight
+        level: 1
+        skills: []
+        equipment: {}
+# The first map of a game: "-" marks WasInGame false. The test mod (hello_mod) records the events.
+- mod_lua:
+    code: |
+      mapvars.here = "island"
+      return table.concat(HelloMod.mapEvents, " ")
+    expect: "BeforeLoadMap@out01.odm- LoadMap@out01.odm- AfterLoadMap@out01.odm-"
+- load_map:
+    map: d05.blv
+# Moving on: the old map is left first, and the new one is entered from within the game ("+").
+- mod_lua:
+    code: |
+      local seen = {}
+      for index = 4, #HelloMod.mapEvents do seen[#seen + 1] = HelloMod.mapEvents[index] end
+      local before = tostring(mapvars.here)
+      mapvars.here = "temple"
+      return table.concat(seen, " "), before
+    expect: "LeaveMap@d05.blv BeforeLoadMap@d05.blv+ LoadMap@d05.blv+ AfterLoadMap@d05.blv+\tnil"
+- load_map:
+    map: out01.odm
+- mod_lua:
+    code: |
+      return mapvars.here, #HelloMod.mapEvents
+    expect: "island\t11"
+# RunNextTick queues a function for the next tick; nothing ticks in a scenario, so one is driven by hand.
+- mod_lua:
+    code: |
+      local ran = 0
+      RunNextTick(function() ran = ran + 1 end)
+      local before = ran
+      ModRT.tick(0.016)
+      ModRT.tick(0.016)
+      return before, ran
+    expect: "0\t1"

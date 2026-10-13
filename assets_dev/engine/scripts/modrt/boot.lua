@@ -127,11 +127,22 @@ local function pruneFailingHandlers(eventName)
     end
 end
 
--- Session scripts are loaded when a game starts or is loaded (State.restore); this covers paths that reach
--- gameplay without either.
+-- Brings the scripts up to date with the game before anything is asked of them: session scripts are loaded if
+-- this game has none yet, and a change of map is noticed.
 function ModRT.ensureSession()
     if not ModRT.Loader.sessionLoaded then
         ModRT.Loader.loadSessionScripts()
+    end
+
+    ModRT.State.syncMap()
+end
+
+-- Functions queued by RunNextTick, run once at the start of the next tick.
+local nextTickQueue = {}
+
+function RunNextTick(func)
+    if type(func) == "function" then
+        nextTickQueue[#nextTickQueue + 1] = func
     end
 end
 
@@ -148,7 +159,16 @@ end
 
 function ModRT.tick(deltaSeconds)
     ModRT.ensureSession()
-    ModRT.State.syncMap()
+
+    if #nextTickQueue > 0 then
+        local queue = nextTickQueue
+        nextTickQueue = {}
+
+        for index = 1, #queue do
+            ModRT.protectedCall(queue[index], "RunNextTick")
+        end
+    end
+
     local errorsBefore = ModRT.totalErrorCount
     ModRT.fire("Tick")
 
@@ -163,7 +183,7 @@ function ModRT.key(pressed, virtualKey, isRepeat)
 end
 
 function ModRT.console(code)
-    ModRT.State.syncMap()
+    ModRT.ensureSession()
     ModRT.printLines = {}
     local chunk, loadError = load("return " .. code, "=console")
 
@@ -215,6 +235,7 @@ function ModRT.dispatch(kind, ...)
     elseif kind == "captureState" then
         return ModRT.State.capture()
     elseif kind == "restoreState" then
+        -- The map events follow later, from ensureSession, once the map's world is ready.
         ModRT.State.restore(...)
         return ModRT.Loader.loadSessionScripts()
     elseif kind == "damageToMonster" then

@@ -2879,6 +2879,12 @@ GameApplication::GameApplication(const Engine::ApplicationConfig &config)
     {
         return m_gameSession.currentMapFileName();
     };
+    modHost.mapReady = [this]()
+    {
+        return m_pMapSceneRuntime != nullptr
+            && m_gameSession.activeWorldRuntime() != nullptr
+            && !m_loadingSavedGameRuntime;
+    };
     modHost.gameMinutes = [this]()
     {
         return m_gameSession.gameMinutes();

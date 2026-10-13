@@ -18,3 +18,18 @@ function events.KeyDown(t)
         print("hello_mod: R pressed after " .. HelloMod.ticks .. " ticks")
     end
 end
+
+-- Map lifecycle, recorded for tests/mod_runtime/scenarios/map_events.yml.
+HelloMod.mapEvents = {}
+
+local function recordMapEvent(name)
+    events[name] = function(wasInGame)
+        HelloMod.mapEvents[#HelloMod.mapEvents + 1] =
+            name .. "@" .. tostring(Map.Name) .. (wasInGame == nil and "" or (wasInGame and "+" or "-"))
+    end
+end
+
+recordMapEvent("BeforeLoadMap")
+recordMapEvent("LoadMap")
+recordMapEvent("AfterLoadMap")
+recordMapEvent("LeaveMap")

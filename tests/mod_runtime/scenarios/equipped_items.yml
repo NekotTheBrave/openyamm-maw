@@ -1,0 +1,65 @@
+id: mod_runtime.equipped_items
+title: Scripts reach a character's equipped items and the item table rows behind them
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 0
+      food: 1
+      members:
+      - name: Wearer
+        class: Knight
+        level: 3
+        race_id: 0
+        skills:
+        - name: Sword
+          level: 2
+          mastery: 1
+        equipment:
+          main_hand: 1
+# Slots are const.ItemSlot: 0 extra hand, 1 main hand, 2 bow. Item 1 is the Iron Longsword, "Weapon / Sword / 2d3".
+- mod_lua:
+    code: |
+      local p = Party[0]
+      local sword = p:GetActiveItem(1)
+      return sword.Number, sword.BodyLocation, tostring(p:GetActiveItem(0)), tostring(p:GetActiveItem(2)),
+        p.EquippedItems[1], p.EquippedItems[0], p.Items[p.EquippedItems[1]].Number
+    expect: "1\t2\tnil\tnil\t2\t0\t1"
+- mod_lua:
+    code: |
+      local row = Party[0]:GetActiveItem(1):T()
+      return row.Name, row.EquipStat, row.Skill, row.Mod1DiceCount, row.Mod1DiceSides, row.Mod2, row.Value
+    expect: "Iron Longsword\t0\t1\t2\t3\t0\t20"
+- mod_lua:
+    code: |
+      local seen = {}
+      for item, slot in Party[0]:EnumActiveItems() do
+        seen[#seen + 1] = slot .. ":" .. item.Number
+      end
+      return table.concat(seen, ",")
+    expect: "1:1"
+# Condition is a bit set (1 identified, 2 broken), and numbers carry the bit methods scripts call on it.
+- mod_lua:
+    code: |
+      local p = Party[0]
+      local sword = p:GetActiveItem(1)
+      local before = sword.Condition:And(1) .. "/" .. sword.Condition:And(2)
+      sword.Broken = true
+      local hidden = p:GetActiveItem(1) == nil
+      local shown = p:GetActiveItem(1, true).Number
+      local count = 0
+      for _ in p:EnumActiveItems() do count = count + 1 end
+      local brokenBit = p:GetActiveItem(1, true).Condition:And(2)
+      sword.Condition = 1
+      return before, hidden, shown, count, brokenBit, p:GetActiveItem(1) ~= nil, (6):Or(1), (7):AndNot(2)
+    expect: "1/0\ttrue\t1\t0\t2\ttrue\t7\t5"
+# Portraits are numbered from 0, as Player.Face is; portrait 12 is the first vampire.
+- mod_lua:
+    code: |
+      local p = Party[0]
+      return GetRace(p, p:GetIndex()), p.RaceId, Game.CharacterPortraits[p.Face].Race, Game.CharacterPortraits[12].Race
+    expect: "0\t0\t0\t1"

@@ -17,6 +17,8 @@ struct ModHost
     std::function<IGameplayWorldRuntime *()> world;
     std::function<const GameDataLoader *()> data;
     std::function<std::string()> currentMapFileName;
+    // True once the current map's world exists and is not in the middle of being loaded.
+    std::function<bool()> mapReady;
     std::function<float()> gameMinutes;
     std::function<void(const std::string &)> showStatusText;
 };
