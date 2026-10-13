@@ -14024,17 +14024,22 @@ bool OutdoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFi
         case GameplayModActorField::MaxHp:
             actor.maxHp = static_cast<int>(std::clamp<int64_t>(value, 0, INT32_MAX));
             return true;
+        // A moving actor's position lives in its movement state and is copied from there every frame; marking that
+        // state stale makes the engine start it again from where the script put the actor.
         case GameplayModActorField::X:
             actor.x = static_cast<int>(value);
             actor.preciseX = static_cast<float>(value);
+            actor.movementStateInitialized = false;
             return true;
         case GameplayModActorField::Y:
             actor.y = static_cast<int>(value);
             actor.preciseY = static_cast<float>(value);
+            actor.movementStateInitialized = false;
             return true;
         case GameplayModActorField::Z:
             actor.z = static_cast<int>(value);
             actor.preciseZ = static_cast<float>(value);
+            actor.movementStateInitialized = false;
             return true;
         case GameplayModActorField::Group:
             actor.group = static_cast<uint32_t>(std::clamp<int64_t>(value, 0, UINT32_MAX));

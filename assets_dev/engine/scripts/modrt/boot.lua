@@ -256,6 +256,12 @@ local function dispatchKind(kind, ...)
         return ModRT.Combat.damageToPlayer(...)
     elseif kind == "monsterKilled" then
         return ModRT.Combat.monsterKilled(...)
+    elseif kind == "playerAttacked" then
+        return ModRT.Combat.playerAttacked(...)
+    elseif kind == "badThingToPlayer" then
+        return ModRT.Combat.badThingToPlayer(...)
+    elseif kind == "playerCastSpell" then
+        return ModRT.Combat.playerCastSpell(...)
     elseif kind == "characterBonuses" then
         return ModRT.Stats.characterBonuses(...)
     elseif kind == "characterSkills" then
@@ -273,7 +279,11 @@ end
 
 -- The calls after which the scripts have handed control back to the game, as opposed to those the engine makes in
 -- the middle of computing something (a statistic, a recovery time, the bonuses themselves).
-local settlingKinds = {tick = true, event = true, key = true, console = true}
+local settlingKinds = {
+    tick = true, event = true, key = true, console = true,
+    damageToMonster = true, damageToPlayer = true, monsterKilled = true, playerAttacked = true,
+    badThingToPlayer = true, playerCastSpell = true,
+}
 local dispatchDepth = 0
 
 function ModRT.dispatch(kind, ...)

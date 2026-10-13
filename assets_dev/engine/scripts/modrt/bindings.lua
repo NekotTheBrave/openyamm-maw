@@ -614,6 +614,12 @@ local function playerObject(playerIndex)
             return modrt.playerSet(playerIndex, key, value)
         end,
         methods = {
+            -- Not part of MMExtension: casts a spell the game's own way, as if the player had chosen it and
+            -- its target. pl:CastSpell(spell, targetMonsterIndex) or pl:CastSpell(spell, nil, targetPartySlot).
+            -- Returns whether it went through, and the game's message when it did not.
+            CastSpell = function(_, spell, targetMonster, targetPlayer)
+                return modrt.castSpell(playerIndex, floor(spell), targetMonster or -1, targetPlayer or -1)
+            end,
             -- The condition shown on the portrait (const.Condition); 18, Good, when there is none.
             GetMainCondition = function()
                 return modrt.playerGet(playerIndex, "MainCondition")

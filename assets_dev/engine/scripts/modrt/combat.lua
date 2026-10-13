@@ -151,8 +151,38 @@ function Combat.damageToMonster(
     return floor(result)
 end
 
+-- A monster's attack on the party member in `slot`, as WhoHitPlayer returns it; nil when no monster is behind the
+-- damage (a trap). action says which of the monster's attacks it was: 0 and 1 its attacks, 2 and 3 its spells.
+local function monsterAttack(slot, actorIndex, action, spellId, fromObject)
+    if actorIndex < 0 then
+        return nil
+    end
+
+    local attack = {Monster = Map.Monsters[actorIndex], MonsterIndex = actorIndex, MonsterAction = action}
+
+    if spellId and spellId > 0 then
+        attack.Spell = spellId
+    end
+
+    if fromObject then
+        local monster = attack.Monster
+        attack.Object = attackObject(nil, -1, actorIndex, spellId or 0, 0, 0, monster.X, monster.Y, monster.Z)
+        attack.Object.Owner = actorIndex * 8 + 3
+        attack.Object.Target = slot * 8 + 4
+
+        -- A monster's arrow has no spell number in the original either.
+        if not (spellId and spellId > 0) then
+            attack.Object.Spell = 0
+            attack.Object.SpellType = 0
+            attack.Object.Item = noItem
+        end
+    end
+
+    return attack
+end
+
 -- A party member takes damage. slot is the member's party slot; actorIndex the attacking monster, -1 when there is
--- none (a trap); action which of the monster's attacks it was (0 and 1 its attacks, 2 and 3 its spells).
+-- none.
 function Combat.damageToPlayer(slot, rawDamage, resolvedDamage, damageKind, actorIndex, action, spellId, fromObject)
     ModRT.ensureSession()
     local player = Party[slot]
@@ -161,28 +191,7 @@ function Combat.damageToPlayer(slot, rawDamage, resolvedDamage, damageKind, acto
         return resolvedDamage
     end
 
-    local attack = nil
-
-    if actorIndex >= 0 then
-        attack = {Monster = Map.Monsters[actorIndex], MonsterIndex = actorIndex, MonsterAction = action}
-
-        if spellId and spellId > 0 then
-            attack.Spell = spellId
-        end
-
-        if fromObject then
-            -- A monster's arrow has no spell number in the original either.
-            local monster = attack.Monster
-            attack.Object = attackObject(nil, -1, actorIndex, spellId or 0, 0, 0, monster.X, monster.Y, monster.Z)
-            attack.Object.Owner = actorIndex * 8 + 3
-            attack.Object.Target = slot * 8 + 4
-
-            if not (spellId and spellId > 0) then
-                attack.Object.Spell = 0
-                attack.Object.SpellType = 0
-            end
-        end
-    end
+    local attack = monsterAttack(slot, actorIndex, action, spellId, fromObject)
 
     local event = {
         DamageKind = damageKind,
@@ -223,4 +232,91 @@ function Combat.monsterKilled(actorIndex)
     end
 
     ModRT.fire("MonsterKilled", Map.Monsters[actorIndex], actorIndex, function() end, killer)
+end
+
+-- A monster's attack is about to be resolved against the member in `slot`. A handler may pick another member
+-- (t.PlayerSlot) or take the attack over (t.Handled). Returns handled, slot.
+function Combat.playerAttacked(slot, actorIndex, action, spellId, fromObject)
+    ModRT.ensureSession()
+    local player = Party[slot]
+
+    if not player then
+        return false, slot
+    end
+
+    local attack = monsterAttack(slot, actorIndex, action, spellId, fromObject) or {}
+    local event = {Attacker = attack, Player = player, PlayerSlot = slot, Handled = false}
+
+    local previousHit, previousSlot = playerHit, playerHitSlot
+    playerHit, playerHitSlot = attack, slot
+    ModRT.fire("PlayerAttacked", event, attack)
+    playerHit, playerHitSlot = previousHit, previousSlot
+
+    local chosen = event.PlayerSlot
+
+    if type(chosen) ~= "number" or chosen ~= floor(chosen) or not Party[chosen] then
+        chosen = slot
+    end
+
+    return event.Handled and true or false, chosen
+end
+
+-- A monster's special attack is about to be tried on the member in `slot`; thing is its const.MonsterBonus
+-- number. Returns whether it may go ahead.
+function Combat.badThingToPlayer(slot, actorIndex, thing)
+    ModRT.ensureSession()
+    local player = Party[slot]
+
+    if not player then
+        return true
+    end
+
+    local event = {Thing = thing, Allow = true, Player = player, PlayerIndex = player:GetIndex()}
+
+    if actorIndex >= 0 then
+        event.Monster = Map.Monsters[actorIndex]
+        event.MonsterIndex = actorIndex
+    end
+
+    ModRT.fire("DoBadThingToPlayer", event)
+    return event.Allow and true or false
+end
+
+-- A party member's spell is about to take effect. Object references name what a spell is aimed at by a kind and
+-- a number: kind 3 is a monster, 4 a party member. A handler may change Skill and Mastery, or set Handled to take
+-- the cast over. Returns handled, skill, mastery.
+function Combat.playerCastSpell(slot, spellId, manaCost, skill, mastery, targetActor, targetSlot, fromScroll)
+    ModRT.ensureSession()
+    local player = Party[slot]
+
+    if not player then
+        return false, skill, mastery
+    end
+
+    local targetKind, targetId = 0, 0
+
+    if targetActor >= 0 then
+        targetKind, targetId = 3, targetActor
+    elseif targetSlot >= 0 then
+        targetKind, targetId = 4, targetSlot
+    end
+
+    local event = {
+        SpellId = spellId, Player = player, PlayerIndex = player:GetIndex(), InventorySlot = 0,
+        SPCost = manaCost, Skill = skill, Mastery = mastery, TargetKind = targetKind, TargetId = targetId,
+        IsSpellScroll = fromScroll, CurseInterrupt = false, Handled = false,
+    }
+    ModRT.fire("PlayerCastSpell", event)
+
+    local newSkill, newMastery = event.Skill, event.Mastery
+
+    if type(newSkill) ~= "number" or newSkill < 1 then
+        newSkill = skill
+    end
+
+    if type(newMastery) ~= "number" or newMastery < 1 or newMastery > 4 then
+        newMastery = mastery
+    end
+
+    return event.Handled and true or false, floor(newSkill), floor(newMastery)
 end

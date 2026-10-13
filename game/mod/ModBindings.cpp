@@ -5,12 +5,14 @@
 #include "game/gameplay/GameplayRuntimeInterfaces.h"
 #include "game/mod/ModHost.h"
 #include "game/party/Party.h"
+#include "game/party/PartySpellSystem.h"
 #include "game/party/SkillData.h"
 #include "game/tables/CharacterDollTable.h"
 #include "game/tables/ClassSkillTable.h"
 #include "game/tables/ItemTable.h"
 #include "game/tables/MapStats.h"
 #include "game/tables/MonsterTable.h"
+#include "game/tables/SpellTable.h"
 
 #include <lua.hpp>
 
@@ -436,6 +438,17 @@ int nativePlayerGet(lua_State *pLuaState)
         return 1;
     }
 
+    // The spell the character casts with the quick-cast key, as a spell number; 0 when none is chosen.
+    if (field == "QuickSpell")
+    {
+        const GameDataLoader *pData = dataFromHost(pLuaState);
+        const SpellEntry *pSpell = pData != nullptr && !pCharacter->quickSpellName.empty()
+            ? pData->getSpellTable().findByName(pCharacter->quickSpellName)
+            : nullptr;
+        lua_pushinteger(pLuaState, pSpell != nullptr ? pSpell->id : 0);
+        return 1;
+    }
+
     // The condition that shows on the portrait, as a const.Condition number; 18 is Good.
     if (field == "MainCondition")
     {
@@ -664,6 +677,25 @@ int nativePlayerSet(lua_State *pLuaState)
     if (int *pResistance = playerResistanceField(*pCharacter, field))
     {
         *pResistance = clampedInteger<int>(integerArgument(pLuaState, 3));
+        lua_pushboolean(pLuaState, true);
+        return 1;
+    }
+
+    if (field == "QuickSpell")
+    {
+        const GameDataLoader *pData = dataFromHost(pLuaState);
+        const int64_t spellId = integerArgument(pLuaState, 3);
+        const SpellEntry *pSpell = pData != nullptr && spellId > 0
+            ? pData->getSpellTable().findById(static_cast<int>(spellId))
+            : nullptr;
+
+        if (spellId > 0 && pSpell == nullptr)
+        {
+            lua_pushboolean(pLuaState, false);
+            return 1;
+        }
+
+        pCharacter->quickSpellName = pSpell != nullptr ? pSpell->name : std::string();
         lua_pushboolean(pLuaState, true);
         return 1;
     }
@@ -1851,6 +1883,47 @@ int nativeGameGet(lua_State *pLuaState)
     return 0;
 }
 
+// modrt.castSpell(player, spell, targetMonster, targetPlayer): has the party member cast the spell through the
+// game's own spell code, with the member's own skill, cost and recovery, at a map monster or a party member
+// (-1 for neither). Returns whether the cast went through, and the game's message when it did not.
+int nativeCastSpell(lua_State *pLuaState)
+{
+    Party *pParty = partyFromHost(pLuaState);
+    IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t memberIndex = integerArgument(pLuaState, 1);
+    const int64_t spellId = integerArgument(pLuaState, 2);
+    const int64_t targetActor = luaL_optinteger(pLuaState, 3, -1);
+    const int64_t targetMember = luaL_optinteger(pLuaState, 4, -1);
+
+    if (pParty == nullptr || pWorld == nullptr || pData == nullptr || memberIndex < 0 || spellId <= 0)
+    {
+        lua_pushboolean(pLuaState, false);
+        lua_pushliteral(pLuaState, "no game in progress");
+        return 2;
+    }
+
+    PartySpellCastRequest request = {};
+    request.casterMemberIndex = static_cast<size_t>(memberIndex);
+    request.spellId = static_cast<uint32_t>(spellId);
+
+    if (targetActor >= 0)
+    {
+        request.targetActorIndex = static_cast<size_t>(targetActor);
+    }
+
+    if (targetMember >= 0)
+    {
+        request.targetCharacterIndex = static_cast<size_t>(targetMember);
+    }
+
+    const PartySpellCastResult result =
+        PartySpellSystem::castSpell(*pParty, *pWorld, pData->getSpellTable(), request);
+    lua_pushboolean(pLuaState, result.succeeded());
+    pushString(pLuaState, result.statusText);
+    return 2;
+}
+
 int nativeShowStatusText(lua_State *pLuaState)
 {
     const ModHost *pHost = hostFromUpvalue(pLuaState);
@@ -1905,6 +1978,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"mapMonsterGet", nativeMapMonsterGet},
         {"mapMonsterSet", nativeMapMonsterSet},
         {"gameGet", nativeGameGet},
+        {"castSpell", nativeCastSpell},
         {"showStatusText", nativeShowStatusText},
         {"statisticEffect", nativeStatisticEffect},
     };

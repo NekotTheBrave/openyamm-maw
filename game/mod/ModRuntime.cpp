@@ -1091,6 +1091,102 @@ void ModRuntime::monsterKilled(size_t actorIndex)
     endDispatch(1, 0);
 }
 
+void ModRuntime::playerAttacked(ModPlayerAttackedEvent &event)
+{
+    if (!beginDispatch("playerAttacked"))
+    {
+        return;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(event.partyMemberIndex));
+    lua_pushinteger(m_pLuaState, event.actorIndex ? static_cast<lua_Integer>(*event.actorIndex) : lua_Integer(-1));
+    lua_pushinteger(m_pLuaState, event.attackAction);
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(event.spellId));
+    lua_pushboolean(m_pLuaState, event.fromObject);
+
+    if (!endDispatch(5, 2))
+    {
+        return;
+    }
+
+    // handled, party slot
+    event.handled = lua_toboolean(m_pLuaState, -2) != 0;
+
+    if (lua_isnumber(m_pLuaState, -1))
+    {
+        const lua_Number slot = lua_tonumber(m_pLuaState, -1);
+
+        if (slot >= 0.0 && slot < 64.0)
+        {
+            event.partyMemberIndex = static_cast<size_t>(slot);
+        }
+    }
+
+    lua_pop(m_pLuaState, 2);
+}
+
+void ModRuntime::playerCastSpell(ModPlayerCastSpellEvent &event)
+{
+    if (!beginDispatch("playerCastSpell"))
+    {
+        return;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(event.partyMemberIndex));
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(event.spellId));
+    lua_pushinteger(m_pLuaState, event.manaCost);
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(event.skillLevel));
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(event.skillMastery));
+    lua_pushinteger(
+        m_pLuaState,
+        event.targetActorIndex ? static_cast<lua_Integer>(*event.targetActorIndex) : lua_Integer(-1));
+    lua_pushinteger(
+        m_pLuaState,
+        event.targetPartyMemberIndex ? static_cast<lua_Integer>(*event.targetPartyMemberIndex) : lua_Integer(-1));
+    lua_pushboolean(m_pLuaState, event.fromScroll);
+
+    if (!endDispatch(8, 3))
+    {
+        return;
+    }
+
+    // handled, skill level, mastery
+    event.handled = lua_toboolean(m_pLuaState, -3) != 0;
+
+    if (lua_isnumber(m_pLuaState, -2))
+    {
+        event.skillLevel = static_cast<uint32_t>(std::clamp<lua_Number>(lua_tonumber(m_pLuaState, -2), 0.0, 60000.0));
+    }
+
+    if (lua_isnumber(m_pLuaState, -1))
+    {
+        event.skillMastery = static_cast<uint32_t>(std::clamp<lua_Number>(lua_tonumber(m_pLuaState, -1), 0.0, 4.0));
+    }
+
+    lua_pop(m_pLuaState, 3);
+}
+
+bool ModRuntime::allowBadThingToPlayer(size_t partyMemberIndex, std::optional<size_t> actorIndex, int thing)
+{
+    if (!beginDispatch("badThingToPlayer"))
+    {
+        return true;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(partyMemberIndex));
+    lua_pushinteger(m_pLuaState, actorIndex ? static_cast<lua_Integer>(*actorIndex) : lua_Integer(-1));
+    lua_pushinteger(m_pLuaState, thing);
+
+    if (!endDispatch(3, 1))
+    {
+        return true;
+    }
+
+    const bool allowed = lua_isnil(m_pLuaState, -1) || lua_toboolean(m_pLuaState, -1) != 0;
+    lua_pop(m_pLuaState, 1);
+    return allowed;
+}
+
 void ModRuntime::adjustCharacterBonuses(
     Party &party,
     size_t memberIndex,

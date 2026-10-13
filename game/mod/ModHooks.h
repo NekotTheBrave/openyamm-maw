@@ -48,6 +48,33 @@ struct ModDamageToPlayerEvent
     bool fromObject = false;
 };
 
+// A monster's attack is about to be resolved against a party member, before any roll. The mod may pick another
+// member (`partyMemberIndex`) or take the attack over altogether (`handled`: the engine then does nothing more).
+struct ModPlayerAttackedEvent
+{
+    size_t partyMemberIndex = 0;
+    std::optional<size_t> actorIndex;
+    int attackAction = 0;
+    uint32_t spellId = 0;
+    bool fromObject = false;
+    bool handled = false;
+};
+
+// A party member's spell is about to take effect: targets are chosen and the cost is known. The mod may change
+// the skill the spell is cast with, or take the cast over (`handled`: no effect, no cost, no recovery).
+struct ModPlayerCastSpellEvent
+{
+    size_t partyMemberIndex = 0;
+    uint32_t spellId = 0;
+    int manaCost = 0;
+    uint32_t skillLevel = 0;
+    uint32_t skillMastery = 0;
+    std::optional<size_t> targetActorIndex;
+    std::optional<size_t> targetPartyMemberIndex;
+    bool fromScroll = false;
+    bool handled = false;
+};
+
 class Party;
 
 class IModHooks
@@ -60,6 +87,14 @@ public:
 
     // A map actor has just died, whatever killed it.
     virtual void monsterKilled(size_t actorIndex) = 0;
+
+    virtual void playerAttacked(ModPlayerAttackedEvent &event) = 0;
+    virtual void playerCastSpell(ModPlayerCastSpellEvent &event) = 0;
+
+    // A monster's special attack (curse, poison, breaking an item, ...) is about to be tried on a party member,
+    // before the member's saving throw. `thing` is the original engine's number for it (const.MonsterBonus).
+    // Returns false to forbid it.
+    virtual bool allowBadThingToPlayer(size_t partyMemberIndex, std::optional<size_t> actorIndex, int thing) = 0;
 
     // Called at the end of Party::rebuildMagicalBonusesFromBuffs for each member. At that point the member's
     // magicalBonuses holds buffs plus equipped items and itemSkillBonuses holds item skill bonuses; `buffBonuses`

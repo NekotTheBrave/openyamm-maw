@@ -1,0 +1,119 @@
+id: mod_runtime.spell_event
+title: A party member's spell raises PlayerCastSpell, and its missile raises CalcDamageToMonster as that spell
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 100
+      food: 5
+      members:
+      - name: Caster
+        class: Necromancer
+        level: 60
+        intellect: 500
+        endurance: 3000
+        skills:
+        - name: Fire
+          level: 10
+          mastery: 3
+        spells: [2]
+        equipment: {}
+# Fire Bolt is spell 2. The handler raises the skill it is cast with from 10 to 14; the missile carries that.
+- mod_lua:
+    code: |
+      Casts = {}
+      SpellHits = {}
+      Takeover = false
+      function events.PlayerCastSpell(t)
+        Casts[#Casts + 1] = {
+          spell = t.SpellId, skill = t.Skill, mastery = t.Mastery, cost = t.SPCost,
+          samePlayer = t.Player == Party[0] and t.PlayerIndex == Party[0]:GetIndex(),
+          scroll = t.IsSpellScroll, kind = t.TargetKind,
+        }
+        if Takeover then
+          t.Handled = true
+        else
+          t.Skill = 14
+        end
+      end
+      function events.CalcDamageToMonster(t)
+        local attack = WhoHitMonster()
+        local object = attack.Object
+        SpellHits[#SpellHits + 1] = {
+          spell = attack.Spell, objectSpell = object and object.Spell, skill = object and object.SpellSkill,
+          mastery = object and object.SpellMastery, melee = t.Melee, byPlayer = t.ByPlayer,
+          rawPositive = t.Damage > 0,
+        }
+      end
+      function ProbeRound()
+        local p = Party[0]
+        for condition = 0, p.Conditions.High do
+          p.Conditions[condition] = 0
+        end
+        p.HP = p.FullHPBase
+        p.SP = p.FullSPBase
+        local placed = 0
+        for i = 0, Map.Monsters.High do
+          local m = Map.Monsters[i]
+          if placed < 12 and m.Hostile and not m.IsDead then
+            local angle = placed * math.pi / 6
+            m.X = math.floor(Party.X + math.cos(angle) * 900)
+            m.Y = math.floor(Party.Y + math.sin(angle) * 900)
+            m.Z = Party.Z
+            m.HP = 30000
+            placed = placed + 1
+          end
+        end
+        return placed
+      end
+      function CastAtFirstHostile()
+        for i = 0, Map.Monsters.High do
+          local m = Map.Monsters[i]
+          if m.Hostile and not m.IsDead then
+            return Party[0]:CastSpell(2, i)
+          end
+        end
+        return false, "no hostile monster"
+      end
+      local p = Party[0]
+      p.QuickSpell = 2
+      return ProbeRound(), p.QuickSpell, p.FullSPBase > 0
+    expect: "12\t2\ttrue"
+# The cast goes through the game's own spell code, aimed at one of the ringed monsters.
+- mod_lua:
+    code: |
+      local cast, message = CastAtFirstHostile()
+      return cast, message
+    expect: "true\t"
+- advance_runtime: {seconds: 2}
+- mod_lua:
+    code: |
+      local c = Casts[1]
+      if not c then return "no cast" end
+      local h = SpellHits[1]
+      if not h then return "cast " .. #Casts .. " times, no hit" end
+      return c.spell, c.skill, c.mastery, c.cost > 0, c.samePlayer, c.scroll, c.kind,
+        h.spell, h.objectSpell, h.skill, h.mastery, h.melee, h.byPlayer, h.rawPositive,
+        Party[0].FullSPBase - Party[0].SP == c.cost
+    expect: "2\t10\t3\ttrue\ttrue\tfalse\t3\t2\t2\t14\t3\tfalse\ttrue\ttrue\ttrue"
+# A handler that takes the cast over: the event still fires, and nothing else happens: no spell points spent, no
+# missile.
+- advance_runtime: {seconds: 3}
+- mod_lua:
+    code: |
+      Takeover = true
+      ProbeRound()
+      local castsBefore = #Casts
+      HitsBefore = #SpellHits
+      CastAtFirstHostile()
+      return #Casts - castsBefore, Party[0].FullSPBase - Party[0].SP
+    expect: "1\t0"
+- advance_runtime: {seconds: 2}
+- mod_lua:
+    code: |
+      return #SpellHits - HitsBefore
+    expect: "0"

@@ -537,6 +537,37 @@ int adjustedIncomingDamageForMember(
     return modDamageToPlayer(modEvent);
 }
 
+// The original engine's number (const.MonsterBonus) for a special attack, which is how mods name it.
+int modBadThingNumber(MonsterSpecialAttackKind kind)
+{
+    switch (kind)
+    {
+        case MonsterSpecialAttackKind::Curse: return 1;
+        case MonsterSpecialAttackKind::Weak: return 2;
+        case MonsterSpecialAttackKind::Sleep: return 3;
+        case MonsterSpecialAttackKind::Drunk: return 4;
+        case MonsterSpecialAttackKind::Insane: return 5;
+        case MonsterSpecialAttackKind::PoisonWeak: return 6;
+        case MonsterSpecialAttackKind::PoisonMedium: return 7;
+        case MonsterSpecialAttackKind::PoisonSevere: return 8;
+        case MonsterSpecialAttackKind::DiseaseWeak: return 9;
+        case MonsterSpecialAttackKind::DiseaseMedium: return 10;
+        case MonsterSpecialAttackKind::DiseaseSevere: return 11;
+        case MonsterSpecialAttackKind::Paralyze: return 12;
+        case MonsterSpecialAttackKind::Unconscious: return 13;
+        case MonsterSpecialAttackKind::Dead: return 14;
+        case MonsterSpecialAttackKind::Petrify: return 15;
+        case MonsterSpecialAttackKind::Eradicate: return 16;
+        case MonsterSpecialAttackKind::BreakAny: return 17;
+        case MonsterSpecialAttackKind::BreakArmor: return 18;
+        case MonsterSpecialAttackKind::BreakWeapon: return 19;
+        case MonsterSpecialAttackKind::Aging: return 21;
+        case MonsterSpecialAttackKind::ManaDrain: return 22;
+        case MonsterSpecialAttackKind::Fear: return 23;
+        default: return 0;
+    }
+}
+
 int parameterBonusForCombat(int value)
 {
     constexpr int thresholds[29] = {
@@ -990,6 +1021,16 @@ bool applyMonsterSpecialAttack(
         animationTicks(context.pRuntime) ^ 0x85ebca6bu);
 
     if (!shouldApplyMonsterSpecialAttack(event, sourceActor, rng))
+    {
+        return false;
+    }
+
+    if (IModHooks *pModHooks = activeModHooks();
+        pModHooks != nullptr
+        && !pModHooks->allowBadThingToPlayer(
+            memberIndex,
+            sourceActor.actorIndex,
+            modBadThingNumber(sourceActor.specialAttackKind)))
     {
         return false;
     }
@@ -1463,6 +1504,32 @@ void GameplayCombatController::handlePendingCombatEvents(
             targetMemberIndex = context.party.chooseMonsterAttackTarget(
                 sourceAttackPreferences,
                 event.sourceId ^ static_cast<uint32_t>(event.damage) ^ static_cast<uint32_t>(event.spellId));
+        }
+
+        if (IModHooks *pModHooks = activeModHooks(); pModHooks != nullptr && targetMemberIndex)
+        {
+            ModPlayerAttackedEvent modEvent = {};
+            modEvent.partyMemberIndex = *targetMemberIndex;
+            modEvent.attackAction = static_cast<int>(event.ability);
+            modEvent.spellId = static_cast<uint32_t>(std::max(0, event.spellId));
+            modEvent.fromObject = event.type == CombatEventType::PartyProjectileImpact;
+
+            if (sourceActor)
+            {
+                modEvent.actorIndex = sourceActor->actorIndex;
+            }
+
+            pModHooks->playerAttacked(modEvent);
+
+            if (modEvent.handled)
+            {
+                continue;
+            }
+
+            if (context.party.member(modEvent.partyMemberIndex) != nullptr)
+            {
+                targetMemberIndex = modEvent.partyMemberIndex;
+            }
         }
 
         Character *pTargetMember = targetMemberIndex ? context.party.member(*targetMemberIndex) : nullptr;

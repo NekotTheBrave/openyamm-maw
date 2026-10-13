@@ -40,6 +40,17 @@ steps:
         t.Result = 7
         Taken = Taken + 7
       end
+      -- Before any of that, the attack itself is announced; a handler may take it over.
+      Attacks = {}
+      TakeOver = false
+      function events.PlayerAttacked(t, attacker)
+        Attacks[#Attacks + 1] = {
+          sameAttacker = t.Attacker == attacker and WhoHitPlayer() == attacker,
+          monster = attacker.Monster ~= nil and attacker.Monster == Map.Monsters[attacker.MonsterIndex],
+          player = t.Player == Party[t.PlayerSlot], handled = t.Handled,
+        }
+        if TakeOver then t.Handled = true end
+      end
       Kills = {}
       function events.MonsterKilled(monster, index, callDefault, killer)
         Kills[#Kills + 1] = {
@@ -77,6 +88,26 @@ steps:
       return h.kind, h.rawPositive, h.resultNumber, h.samePlayer, h.monster, h.action, h.onPlayer,
         Taken > 0, p.FullHPBase - p.HP == Taken
     expect: "4\ttrue\ttrue\ttrue\ttrue\t0\ttrue\ttrue\ttrue"
+- mod_lua:
+    code: |
+      local a = Attacks[1]
+      if not a then return "no attack announced" end
+      return a.sameAttacker, a.monster, a.player, a.handled, #Attacks >= #PlayerHits
+    expect: "true\ttrue\ttrue\tfalse\ttrue"
+# With every attack taken over, attacks are still announced but none of them does anything.
+- mod_lua:
+    code: |
+      TakeOver = true
+      AttacksBefore, HitsBefore = #Attacks, #PlayerHits
+      return ProbeRound()
+    expect: "12"
+- advance_runtime: {seconds: 4}
+- mod_lua:
+    code: |
+      local p = Party[0]
+      TakeOver = false
+      return #Attacks > AttacksBefore, #PlayerHits - HitsBefore, p.FullHPBase - p.HP
+    expect: "true\t0\t0"
 # The party kills what is in reach: each of its blows is made lethal. (Weakening the monsters instead would let
 # them kill each other first; this map's pirates and lizardmen are at war.)
 - mod_lua:

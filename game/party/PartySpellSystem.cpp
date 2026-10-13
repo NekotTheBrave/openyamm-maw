@@ -4,6 +4,7 @@
 #include "game/items/ItemEnchantRuntime.h"
 #include "game/items/ItemEnchantTables.h"
 #include "game/items/InventoryItemMixingRuntime.h"
+#include "game/mod/ModHooks.h"
 #include "game/party/LloydsBeaconRuntime.h"
 #include "game/party/SpellSchool.h"
 #include "game/party/SpellIds.h"
@@ -1840,6 +1841,38 @@ PartySpellCastResult PartySpellSystem::castSpell(
                 rule->targetKind,
                 rule->effectKind,
                 "Need spell UI");
+        }
+    }
+
+    // The cast is settled: the spell, its target and its cost. NPC and scripted casts only borrow a member as the
+    // speaker and are not the member's own.
+    if (IModHooks *pModHooks = activeModHooks(); pModHooks != nullptr && !request.bypassGameplayCasterValidation)
+    {
+        ModPlayerCastSpellEvent modEvent = {};
+        modEvent.partyMemberIndex = request.casterMemberIndex;
+        modEvent.spellId = request.spellId;
+        modEvent.manaCost = request.spendMana ? static_cast<int>(result.manaCost) : 0;
+        modEvent.skillLevel = skillLevel;
+        modEvent.skillMastery = static_cast<uint32_t>(skillMastery);
+        modEvent.targetActorIndex = request.targetActorIndex;
+        modEvent.targetPartyMemberIndex = request.targetCharacterIndex;
+        modEvent.fromScroll = request.skillLevelOverride > 0 && request.bypassRequiredMastery;
+        pModHooks->playerCastSpell(modEvent);
+
+        if (modEvent.handled)
+        {
+            result.status = PartySpellCastStatus::Succeeded;
+            result.manaCost = 0;
+            result.recoverySeconds = 0.0f;
+            return result;
+        }
+
+        if (modEvent.skillLevel > 0 && modEvent.skillMastery > 0)
+        {
+            skillLevel = modEvent.skillLevel;
+            skillMastery = static_cast<SkillMastery>(modEvent.skillMastery);
+            result.skillLevel = skillLevel;
+            result.skillMastery = skillMastery;
         }
     }
 
