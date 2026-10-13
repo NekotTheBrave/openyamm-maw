@@ -24,6 +24,7 @@
 #include "game/gameplay/GameplayWorldItemPolicy.h"
 #include "game/gameplay/LootContainerRuntime.h"
 #include "game/gameplay/MonsterSpellSupport.h"
+#include "game/mod/ModHooks.h"
 #include "game/gameplay/NpcFollowerRuntime.h"
 #include "game/gameplay/ReputationRuntime.h"
 #include "game/gameplay/StealingRuntime.h"
@@ -6680,6 +6681,18 @@ void IndoorWorldRuntime::applyIndoorProjectileFrameResult(
                     rng);
             }
 
+            appliedDamage = modObjectDamageToMonster(
+                impact.actorIndex,
+                projectile.sourcePartyMemberIndex,
+                impact.damage,
+                appliedDamage,
+                projectile.damageType,
+                static_cast<uint32_t>(std::max(0, projectile.spellId)),
+                projectile.skillLevel,
+                projectile.skillMastery,
+                projectile.x,
+                projectile.y,
+                projectile.z);
             const int beforeHp =
                 impact.actorIndex < pMapDeltaData->actors.size() ? pMapDeltaData->actors[impact.actorIndex].hp : 0;
             applyPartyAttackMeleeDamage(
@@ -6896,6 +6909,18 @@ void IndoorWorldRuntime::applyIndoorProjectileFrameResult(
                                 rng);
                         }
 
+                        appliedDamage = modObjectDamageToMonster(
+                            actorHit.actorIndex,
+                            projectile.sourcePartyMemberIndex,
+                            actorHit.damage,
+                            appliedDamage,
+                            projectile.damageType,
+                            static_cast<uint32_t>(std::max(0, projectile.spellId)),
+                            projectile.skillLevel,
+                            projectile.skillMastery,
+                            projectile.x,
+                            projectile.y,
+                            projectile.z);
                         const int previousHp = targetActor.hp;
                         applyPartyAttackMeleeDamage(
                             actorHit.actorIndex,
@@ -7359,6 +7384,18 @@ void IndoorWorldRuntime::applyFireSpikeTrapTriggerResult(
                     rng);
             }
 
+            appliedDamage = modObjectDamageToMonster(
+                triggeredActorIndex,
+                trap.sourcePartyMemberIndex,
+                result.damage,
+                appliedDamage,
+                damageType,
+                static_cast<uint32_t>(trap.spellId),
+                0,
+                0,
+                trap.x,
+                trap.y,
+                trap.z);
             applyPartyAttackMeleeDamage(
                 triggeredActorIndex,
                 appliedDamage,
@@ -10335,6 +10372,18 @@ void IndoorWorldRuntime::updateImmolation(float deltaSeconds)
                 rng);
         }
 
+        appliedDamage = modObjectDamageToMonster(
+            actorIndex,
+            pBuff->casterMemberIndex,
+            damage,
+            appliedDamage,
+            damageType,
+            spellId,
+            skillLevel,
+            static_cast<uint32_t>(pBuff->skillMastery),
+            aiState.preciseX,
+            aiState.preciseY,
+            aiState.preciseZ);
         const int beforeHp = actor.hp;
         const bool applied = applyPartyAttackMeleeDamage(actorIndex, appliedDamage, damageType, source);
 
@@ -11755,8 +11804,6 @@ bool IndoorWorldRuntime::applyPartySpellToActor(
     float partyZ,
     uint32_t sourcePartyMemberIndex)
 {
-    (void)sourcePartyMemberIndex;
-
     MapDeltaData *pMapDeltaData = mapDeltaData();
 
     if (pMapDeltaData == nullptr || actorIndex >= pMapDeltaData->actors.size())
@@ -11904,6 +11951,18 @@ bool IndoorWorldRuntime::applyPartySpellToActor(
                     directImpact.preferImpactObject);
             }
 
+            appliedDamage = modObjectDamageToMonster(
+                actorIndex,
+                sourcePartyMemberIndex,
+                directImpact.damage,
+                appliedDamage,
+                damageType,
+                spellId,
+                skillLevel,
+                static_cast<uint32_t>(skillMastery),
+                aiState.preciseX,
+                aiState.preciseY,
+                aiState.preciseZ);
             return applyPartyAttackMeleeDamage(
                 actorIndex,
                 appliedDamage,

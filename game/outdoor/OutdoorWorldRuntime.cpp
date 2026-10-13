@@ -17,6 +17,7 @@
 #include "game/gameplay/GameplayWorldItemPolicy.h"
 #include "game/gameplay/LootContainerRuntime.h"
 #include "game/gameplay/MonsterSpellSupport.h"
+#include "game/mod/ModHooks.h"
 #include "game/gameplay/NpcFollowerRuntime.h"
 #include "game/gameplay/ReputationRuntime.h"
 #include "game/gameplay/StealingRuntime.h"
@@ -6326,6 +6327,18 @@ void OutdoorWorldRuntime::applyFireSpikeTrapTriggerResult(
                     rng);
             }
 
+            appliedDamage = modObjectDamageToMonster(
+                triggeredActorIndex,
+                trap.sourcePartyMemberIndex,
+                damage,
+                appliedDamage,
+                damageType,
+                static_cast<uint32_t>(trap.spellId),
+                0,
+                0,
+                trap.x,
+                trap.y,
+                trap.z);
             applyPartyAttackToMapActor(
                 triggeredActorIndex,
                 appliedDamage,
@@ -6924,6 +6937,18 @@ void OutdoorWorldRuntime::updateImmolation(float deltaSeconds)
                 rng);
         }
 
+        appliedDamage = modObjectDamageToMonster(
+            actorIndex,
+            pBuff->casterMemberIndex,
+            damage,
+            appliedDamage,
+            damageType,
+            spellId,
+            skillLevel,
+            static_cast<uint32_t>(pBuff->skillMastery),
+            actor.preciseX,
+            actor.preciseY,
+            actor.preciseZ);
         const int beforeHp = actor.currentHp;
         const bool applied = applyPartyAttackToMapActor(actorIndex, appliedDamage, partyX, partyY, partyZ);
 
@@ -13128,6 +13153,18 @@ void OutdoorWorldRuntime::applyProjectileFrameResult(
                     rng);
             }
 
+            appliedDamage = modObjectDamageToMonster(
+                impact.actorIndex,
+                projectile.sourcePartyMemberIndex,
+                impact.damage,
+                appliedDamage,
+                projectile.damageType,
+                static_cast<uint32_t>(std::max(0, projectile.spellId)),
+                projectile.skillLevel,
+                projectile.skillMastery,
+                projectile.x,
+                projectile.y,
+                projectile.z);
             const int beforeHp = m_mapActors[impact.actorIndex].currentHp;
             applyPartyAttackToMapActor(
                 impact.actorIndex,
@@ -13218,6 +13255,18 @@ void OutdoorWorldRuntime::applyProjectileFrameResult(
                         rng);
                 }
 
+                appliedDamage = modObjectDamageToMonster(
+                    actorHit.actorIndex,
+                    projectile.sourcePartyMemberIndex,
+                    actorHit.damage,
+                    appliedDamage,
+                    projectile.damageType,
+                    static_cast<uint32_t>(std::max(0, projectile.spellId)),
+                    projectile.skillLevel,
+                    projectile.skillMastery,
+                    projectile.x,
+                    projectile.y,
+                    projectile.z);
                 const int beforeHp = m_mapActors[actorHit.actorIndex].currentHp;
                 applyPartyAttackToMapActor(
                     actorHit.actorIndex,
@@ -16225,6 +16274,18 @@ bool OutdoorWorldRuntime::applyDirectSpellImpactToMapActor(
             rng);
     }
 
+    appliedDamage = modObjectDamageToMonster(
+        actorIndex,
+        sourcePartyMemberIndex,
+        impact.damage,
+        appliedDamage,
+        damageType,
+        spellId,
+        0,
+        0,
+        actor.preciseX,
+        actor.preciseY,
+        actor.preciseZ);
     const int beforeHp = actor.currentHp;
     const bool applied = applyPartyAttackToMapActor(actorIndex, appliedDamage, partyX, partyY, partyZ);
 
@@ -19773,7 +19834,21 @@ void OutdoorWorldRuntime::resolveArmageddonDetonation(float partyX, float partyY
         }
 
         const int beforeHp = actor.currentHp;
-        const bool applied = applyPartyAttackToMapActor(actorIndex, armageddonDamage, partyX, partyY, partyZ);
+        const uint32_t armageddonSpellId = spellIdValue(SpellId::Armageddon);
+        const int appliedArmageddonDamage = modObjectDamageToMonster(
+            actorIndex,
+            sourceMemberIndex,
+            armageddonDamage,
+            armageddonDamage,
+            GameMechanics::spellCombatDamageType(armageddonSpellId, m_pSpellTable),
+            armageddonSpellId,
+            m_armageddonState.skillLevel,
+            0,
+            actor.preciseX,
+            actor.preciseY,
+            actor.preciseZ);
+        const bool applied =
+            applyPartyAttackToMapActor(actorIndex, appliedArmageddonDamage, partyX, partyY, partyZ);
 
         if (!applied)
         {
@@ -19786,7 +19861,7 @@ void OutdoorWorldRuntime::resolveArmageddonDetonation(float partyX, float partyY
                 0,
                 sourceMemberIndex,
                 actor.actorId,
-                armageddonDamage,
+                appliedArmageddonDamage,
                 spellIdValue(SpellId::Armageddon),
                 true,
                 beforeHp > 0 && actor.currentHp <= 0);

@@ -22,6 +22,14 @@ struct ModDamageToMonsterEvent
     CombatDamageType damageType = CombatDamageType::Physical;
     uint32_t spellId = 0;
     bool melee = true;
+    // Set when the hit comes from something in the world (an arrow, a spell missile, a spell's effect) rather than
+    // from a blow: where that is, and for a spell the skill it was cast with.
+    bool fromObject = false;
+    uint32_t skillLevel = 0;
+    uint32_t skillMastery = 0;
+    float objectX = 0.0f;
+    float objectY = 0.0f;
+    float objectZ = 0.0f;
 };
 
 class Party;
@@ -58,4 +66,19 @@ public:
 
 IModHooks *activeModHooks();
 void setActiveModHooks(IModHooks *pModHooks);
+
+// The party's missile or spell hits a map actor: runs the mod's damage event and returns the damage to apply, which
+// is `resolvedDamage` when no mod runtime is present. `spellId` is 0 for an arrow or a blaster shot.
+int modObjectDamageToMonster(
+    size_t actorIndex,
+    std::optional<size_t> partyMemberIndex,
+    int rawDamage,
+    int resolvedDamage,
+    CombatDamageType damageType,
+    uint32_t spellId,
+    uint32_t skillLevel,
+    uint32_t skillMastery,
+    float objectX,
+    float objectY,
+    float objectZ);
 }

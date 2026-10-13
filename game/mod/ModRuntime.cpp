@@ -1033,8 +1033,14 @@ int ModRuntime::calcDamageToMonster(const ModDamageToMonsterEvent &event)
     lua_pushinteger(m_pLuaState, mm8DamageKind(event.damageType));
     lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(event.spellId));
     lua_pushboolean(m_pLuaState, event.melee);
+    lua_pushboolean(m_pLuaState, event.fromObject);
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(event.skillLevel));
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(event.skillMastery));
+    lua_pushnumber(m_pLuaState, event.objectX);
+    lua_pushnumber(m_pLuaState, event.objectY);
+    lua_pushnumber(m_pLuaState, event.objectZ);
 
-    if (!endDispatch(7, 1))
+    if (!endDispatch(13, 1))
     {
         return event.resolvedDamage;
     }
