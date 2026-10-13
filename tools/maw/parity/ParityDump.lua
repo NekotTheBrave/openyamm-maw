@@ -66,6 +66,14 @@ function events.CalcDamageToMonster(t)
 		if not (data and data.Player and t.Monster) then
 			return
 		end
+		-- The engine asks twice for one blow of a weapon (its damage, then its elemental part): one record for both.
+		local last = pending[#pending]
+		if last and last.kind == "party->monster" and last.time == Game.Time and last.monster == t.MonsterIndex
+			and last.attacker == data.Player.Name then
+			last.damageKind = tostring(last.damageKind) .. "+" .. tostring(t.DamageKind)
+			last.raw = (last.raw or 0) + (t.Damage or 0)
+			return
+		end
 		local hp = monsterHP(t.Monster)
 		pending[#pending + 1] = {
 			kind = "party->monster", time = Game.Time, monster = t.MonsterIndex, name = monsterName(t.Monster),
@@ -184,6 +192,14 @@ local function dumpPlayer(out, slot)
 	local melee, ranged, spell, vitality = try(calcPowerVitality, pl, true)
 	line(string.format("  MAW power: melee=%s ranged=%s spell=%s vitality=%s", text(melee), text(ranged), text(spell),
 		text(vitality)))
+
+	-- Chance and multiplier of a critical hit with the weapon in hand, against monsters of level 2, 4 and 50.
+	local crits = {}
+	for _, level in ipairs{2, 4, 50} do
+		local chance, multiplier = try(getCritInfo, pl, false, level)
+		crits[#crits + 1] = string.format("L%d chance=%s mult=%s", level, text(chance), text(multiplier))
+	end
+	line("  crit: " .. table.concat(crits, "  "))
 end
 
 local function dumpMonsters(out)

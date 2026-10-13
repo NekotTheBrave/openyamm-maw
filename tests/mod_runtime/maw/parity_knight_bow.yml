@@ -1,0 +1,61 @@
+id: mod_runtime.maw.parity_knight_bow
+title: MAW's numbers for a fresh Knight with sword and bow and no armor match the real game
+world: mm6
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# Iris, read from a real install of the same MAW (Desktop/MAW5) with tools/maw/parity/ParityDump.lua on 2026-10-13:
+# a new game's Knight whose kit was a Broadsword (item 811) and a Crude Bow (844), with Bodybuilding in place of
+# Axe and no armor. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Iris
+        class: Knight
+        level: 1
+        might: 18
+        intellect: 9
+        personality: 9
+        endurance: 15
+        accuracy: 15
+        speed: 15
+        luck: 11
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        - name: Bow
+          level: 1
+          mastery: 1
+        - name: Plate
+          level: 1
+          mastery: 1
+        - name: Bodybuilding
+          level: 1
+          mastery: 1
+        equipment:
+          main_hand: 811
+          bow: 844
+# The sheet: Hit Points 47, Armor Class 0, Attack +2, Damage 6 - 12, recovery 60, Shoot +3, Damage 5 - 10, recovery
+# 80; the items' values; MAW's item table (8 hit points, 42/43 melee damage, 46/47 ranged damage), its speed
+# multipliers, and its "M/R: 3/3" and "Vitality: 50".
+- mod_lua:
+    code: |
+      local p = Party[0]
+      local sword, bow = p:GetActiveItem(1), p:GetActiveItem(2)
+      local melee, ranged, spell, vitality = calcPowerVitality(p, true)
+      local delay, delayRanged = p:GetAttackDelay(), p:GetAttackDelay(true)
+      local stats, parts = plItemsStats[p:GetIndex()], {}
+      for _, k in ipairs{8, 42, 43, 46, 47} do parts[#parts + 1] = k .. ":" .. string.format("%.3f", stats[k]) end
+      local mult = damageMultiplier[p:GetIndex()]
+      return string.format("hp %d ac %d attack %d dmg %d-%d delay %d shoot %d dmg %d-%d delay %d | %s %s, %s %s | %s | mult %.3f %.3f | power %s/%s vit %s",
+        p:GetFullHP(), p:GetArmorClass(), p:GetMeleeAttack(), p:GetMeleeDamageMin(), p:GetMeleeDamageMax(), delay,
+        p:GetRangedAttack(), p:GetRangedDamageMin(), p:GetRangedDamageMax(), delayRanged,
+        sword:T().Name, tostring(getItemValue(sword)), bow:T().Name, tostring(getItemValue(bow)), table.concat(parts, " "),
+        mult.Melee, mult.Ranged, tostring(melee), tostring(ranged), tostring(vitality))
+    expect: "hp 47 ac 0 attack 2 dmg 6-12 delay 60 shoot 3 dmg 5-10 delay 80 | Broadsword 40, Crude Bow 40 | 8:4.944 42:4.108 43:10.216 46:5.981 47:10.053 | mult 0.600 0.800 | power 3/3 vit 50"
