@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/mod/ModHooks.h"
 #include "game/mod/ModHost.h"
 
 #include <cstdint>
@@ -20,7 +21,7 @@ namespace OpenYAMM::Game
 {
 // Hosts MMExtension-style Lua mods in their own Lua state, separate from the sandboxed map-event state.
 // The host is inert unless mods.yml enables it, so an unconfigured game pays nothing for it.
-class ModRuntime
+class ModRuntime : public IModHooks
 {
 public:
     struct ModDefinition
@@ -54,6 +55,8 @@ public:
     std::string captureState();
     void restoreState(const std::string &state);
 
+    int calcDamageToMonster(const ModDamageToMonsterEvent &event) override;
+
     void fireEvent(const std::string &eventName);
     void tick(float deltaSeconds);
     void keyEvent(bool pressed, int32_t sdlKeycode, bool repeat);
@@ -62,6 +65,8 @@ public:
     // One line saying whether mods are running and, if not, where mods.yml was looked for.
     std::string statusDescription() const;
     const std::filesystem::path &logDirectory() const;
+    // Folder where mods may create and change files (their settings and caches); empty when no mod is enabled.
+    const std::filesystem::path &dataDirectory() const;
 
     void writeLog(const std::string &level, const std::string &text);
     bool isReadablePath(const std::filesystem::path &path) const;
@@ -86,6 +91,7 @@ private:
     ModHost m_host;
     std::filesystem::path m_configPath;
     std::filesystem::path m_logDirectory = "logs";
+    std::filesystem::path m_dataDirectory;
     std::vector<std::filesystem::path> m_searchedConfigPaths;
     std::vector<std::filesystem::path> m_readRoots;
     std::ofstream m_logFile;

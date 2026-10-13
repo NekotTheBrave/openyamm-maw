@@ -12,6 +12,18 @@ ModRT.Events = Events
 Events.registered = {}
 Events.fired = {}
 
+-- Handlers belong to the load phase that registered them ("startup" for Structs and General, "session" for Global).
+-- MMExtension re-runs Global scripts for every new game or load, dropping what the previous run registered.
+Events.scope = "startup"
+local handlerScope = setmetatable({}, {__mode = "k"})
+local objects = setmetatable({}, {__mode = "k"})
+
+function Events.removeScope(scope)
+    for object in pairs(objects) do
+        object.removeScope(scope)
+    end
+end
+
 local function copyList(list)
     local copy = {}
 
@@ -35,6 +47,7 @@ function Events.new(label)
         local list = copyList(handlers[name] or {})
         list[#list + 1] = handler
         handlers[name] = list
+        handlerScope[handler] = handlerScope[handler] or Events.scope
 
         if isMain then
             Events.registered[name] = (Events.registered[name] or 0) + 1
@@ -51,6 +64,7 @@ function Events.new(label)
         local list = copyList(handlers[name] or {})
         table.insert(list, 1, handler)
         handlers[name] = list
+        handlerScope[handler] = handlerScope[handler] or Events.scope
 
         if isMain then
             Events.registered[name] = (Events.registered[name] or 0) + 1
@@ -154,6 +168,22 @@ function Events.new(label)
     function object.clear()
         handlers = {}
     end
+
+    function object.removeScope(scope)
+        for name, list in pairs(handlers) do
+            local kept = {}
+
+            for index = 1, #list do
+                if handlerScope[list[index]] ~= scope then
+                    kept[#kept + 1] = list[index]
+                end
+            end
+
+            handlers[name] = #kept > 0 and kept or nil
+        end
+    end
+
+    objects[object] = true
 
     function object.handlerCount(name)
         local list = handlers[name]

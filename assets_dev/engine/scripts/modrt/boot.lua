@@ -104,8 +104,10 @@ loadRuntimeScript("compat51.lua")
 loadRuntimeScript("events.lua")
 loadRuntimeScript("stubs.lua")
 loadRuntimeScript("environment.lua")
+loadRuntimeScript("mem.lua")
 loadRuntimeScript("bindings.lua")
 loadRuntimeScript("state.lua")
+loadRuntimeScript("combat.lua")
 loadRuntimeScript("loader.lua")
 loadRuntimeScript("report.lua")
 loadRuntimeScript("selftest.lua")
@@ -124,11 +126,19 @@ local function pruneFailingHandlers(eventName)
     end
 end
 
+-- Session scripts are loaded when a game starts or is loaded (State.restore); this covers paths that reach
+-- gameplay without either.
+function ModRT.ensureSession()
+    if not ModRT.Loader.sessionLoaded then
+        ModRT.Loader.loadSessionScripts()
+    end
+end
+
 function ModRT.fire(eventName, ...)
     Events.fired[eventName] = (Events.fired[eventName] or 0) + 1
 
     if eventName == "SessionStarted" then
-        ModRT.Loader.loadSessionScripts()
+        ModRT.ensureSession()
         return nil
     end
 
@@ -136,6 +146,7 @@ function ModRT.fire(eventName, ...)
 end
 
 function ModRT.tick(deltaSeconds)
+    ModRT.ensureSession()
     ModRT.State.syncMap()
     local errorsBefore = ModRT.totalErrorCount
     ModRT.fire("Tick")
@@ -203,7 +214,10 @@ function ModRT.dispatch(kind, ...)
     elseif kind == "captureState" then
         return ModRT.State.capture()
     elseif kind == "restoreState" then
-        return ModRT.State.restore(...)
+        ModRT.State.restore(...)
+        return ModRT.Loader.loadSessionScripts()
+    elseif kind == "damageToMonster" then
+        return ModRT.Combat.damageToMonster(...)
     end
 
     error("unknown dispatch kind " .. tostring(kind))

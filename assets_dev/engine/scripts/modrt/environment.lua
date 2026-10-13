@@ -29,12 +29,37 @@ local function isAbsolute(path)
     return path:match("^%a:/") ~= nil or path:sub(1, 1) == "/"
 end
 
--- Mods address files relative to the original game folder; here that means a mod root or the Merge base.
+-- Where a file a mod wants to create or change goes: the mods' data folder, never the mod or the game itself.
+-- Only paths relative to the game folder are accepted.
+function Env.writablePath(path)
+    path = normalizeSlashes(path)
+
+    if isAbsolute(path) then
+        local appRoot = normalizeSlashes(AppPath):lower()
+
+        if path:sub(1, #appRoot):lower() ~= appRoot then
+            return nil
+        end
+
+        path = path:sub(#appRoot + 1)
+    end
+
+    return modrt.dataPath(path)
+end
+
+-- Mods address files relative to the original game folder; here that means the data folder (files the mod wrote
+-- itself), then a mod root, then the Merge base.
 function Env.resolvePath(path)
     path = normalizeSlashes(path)
 
     if isAbsolute(path) then
         return modrt.fileExists(path) and path or nil
+    end
+
+    local written = modrt.dataPath(path)
+
+    if written and modrt.fileExists(written) then
+        return written
     end
 
     for _, root in ipairs(searchRoots) do
@@ -71,17 +96,26 @@ end
 debug.Message = print
 
 ---------------------------------------------------------------------------------------------------------------------
--- files: reads resolve against the mod roots, writes are refused for now and reported
+-- files: reads resolve against the data folder and the mod roots; writes go to the data folder only
 
 local realOpen = io.open
 local realLines = io.lines
+local realRemove = os.remove
+local realRename = os.rename
 
 function io.open(path, mode)
     mode = mode or "r"
 
     if mode:find("[wa+]") then
-        noteFileAccess(path, mode, "refused: writes are disabled")
-        return nil, tostring(path) .. ": writes are disabled in the mod runtime"
+        local target = Env.writablePath(path)
+
+        if not target then
+            noteFileAccess(path, mode, "refused: outside the game folder")
+            return nil, tostring(path) .. ": mods may only write inside the game folder"
+        end
+
+        noteFileAccess(path, mode, "ok (data folder)")
+        return realOpen(target, mode)
     end
 
     local resolved = Env.resolvePath(path)
@@ -111,15 +145,30 @@ function io.lines(path, ...)
     return realLines(resolved, ...)
 end
 
-local function refuseFileChange(name)
-    return function(path)
-        noteFileAccess(path, name, "refused: writes are disabled")
-        return nil, tostring(path) .. ": file changes are disabled in the mod runtime"
+function os.remove(path)
+    local target = Env.writablePath(path)
+
+    if not target then
+        noteFileAccess(path, "os.remove", "refused: outside the game folder")
+        return nil, tostring(path) .. ": mods may only change files inside the game folder"
     end
+
+    noteFileAccess(path, "os.remove", "ok (data folder)")
+    return realRemove(target)
 end
 
-os.remove = refuseFileChange("os.remove")
-os.rename = refuseFileChange("os.rename")
+function os.rename(from, to)
+    local source, target = Env.writablePath(from), Env.writablePath(to)
+
+    if not source or not target then
+        noteFileAccess(from, "os.rename", "refused: outside the game folder")
+        return nil, tostring(from) .. ": mods may only change files inside the game folder"
+    end
+
+    noteFileAccess(from, "os.rename", "ok (data folder)")
+    realRemove(target)
+    return realRename(source, target)
+end
 
 function loadfile(path)
     local resolved = Env.resolvePath(path)
@@ -170,19 +219,77 @@ Stubs.installRoot("Mouse")
 Stubs.installRoot("Keys")
 Stubs.installRoot("Screens")
 Stubs.installRoot("structs")
-Stubs.installRoot("mem")
 Stubs.installRoot("internal")
+-- Helpers for patching the original executable and for the Merge quest and dialogue framework: callable, recorded,
+-- without effect.
+Stubs.installRoot("HookManager")
+Stubs.installRoot("Quest")
+Stubs.installRoot("Greeting")
+Stubs.installRoot("NPCTopic")
+Stubs.installRoot("KillMonstersQuest")
+
+-- Milliseconds of real time, as the Windows call of the same name.
+function timeGetTime()
+    return math.floor(modrt.clock() * 1000)
+end
+
+-- Text markup of the original engine: 16-bit colour, column alignment.
+function RGB(r, g, b)
+    r, g, b = math.floor(r), math.floor(g), math.floor(b)
+    return (b + 0x40 * ((g & 0xFC) + 0x20 * r)) // 8
+end
+
+function StrLeft(value)
+    return ("\t%.3d"):format(value)
+end
+
+function StrRight(value)
+    return ("\r%.3d"):format(value)
+end
+
+function StrColor(r, g, b, text)
+    local color = b and RGB(r, g, b) or r
+    local body = text or (not b and g) or nil
+    return ("\f%.5d"):format(color) .. (body and (body .. StrColor(0)) or "")
+end
 Stubs.installRoot("CustomUI")
 Stubs.installRoot("Merge")
 Stubs.installRoot("Editor")
 Stubs.installRoot("Multiplayer", {in_game = false})
-Stubs.installRoot("evt", {
-    global = Events.new("evt.global"),
-    map = Events.new("evt.map"),
-    hint = {},
-    house = {},
-    str = {},
-})
+do
+    local globalEvents = Events.new("evt.global")
+    local mapEvents = Events.new("evt.map")
+
+    Stubs.installRoot("evt", {
+        global = globalEvents,
+        Global = globalEvents,
+        map = mapEvents,
+        Map = mapEvents,
+        hint = {},
+        house = {},
+        str = {},
+    })
+end
+
+-- MMExtension's debug console is a Lua function whose code compiler scripts reach through its upvalues (to wrap
+-- or log what is typed). The same shape is provided so that code finds what it looks for.
+do
+    local loadstring = loadstring
+
+    local function DoDebug(code, ...)
+        local chunk, loadError = loadstring(code, ...)
+
+        if not chunk then
+            return nil, loadError
+        end
+
+        return chunk()
+    end
+
+    function debug.debug(code, ...)
+        return DoDebug(code, ...)
+    end
+end
 
 -- Helper library from MMExtension's core (table.copy, string.split, path.*): plain Lua, so it is loaded as is from
 -- the user's own Merge install rather than reimplemented here.

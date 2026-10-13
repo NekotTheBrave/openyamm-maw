@@ -136,6 +136,42 @@ stubMeta.__pairs = function()
     return function() return nil end
 end
 
+-- A stand-in handed to string.format would raise ("number expected, got table") and take the whole script down
+-- with it; it formats as 0, or as its path for %s.
+local plainFormat = string.format
+
+function string.format(format, ...)
+    local count = select("#", ...)
+    local arguments = nil
+
+    for index = 1, count do
+        local value = select(index, ...)
+
+        if type(value) == "table" and rawget(value, PathKey) ~= nil then
+            arguments = arguments or {...}
+            arguments[index] = false
+        end
+    end
+
+    if not arguments then
+        return plainFormat(format, ...)
+    end
+
+    local index = 0
+
+    for conversion in format:gmatch("%%[%-+ #0]*%d*%.?%d*([%a%%])") do
+        if conversion ~= "%" then
+            index = index + 1
+
+            if arguments[index] == false then
+                arguments[index] = (conversion == "s" or conversion == "q") and tostring((select(index, ...))) or 0
+            end
+        end
+    end
+
+    return plainFormat(format, table.unpack(arguments, 1, count))
+end
+
 -- Installs a stand-in as a global root, with optional preset fields that behave normally.
 function Stubs.installRoot(name, presets)
     local stub = newStub(name)

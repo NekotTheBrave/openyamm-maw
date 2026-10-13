@@ -27,6 +27,10 @@ local function boundObject(path, spec)
                 return fallback[key]
             end
 
+            if type(key) ~= "string" then
+                return fallback[key]
+            end
+
             local method = spec.methods and spec.methods[key]
 
             if method then
@@ -48,7 +52,7 @@ local function boundObject(path, spec)
                 if spec.newindex and spec.newindex(key, value) then
                     return
                 end
-            elseif spec.set and spec.set(key, value) then
+            elseif type(key) == "string" and spec.set and spec.set(key, value) then
                 return
             end
 
@@ -162,6 +166,27 @@ function Bindings.ensureConstants()
 
         rawset(constants, "Skills", skills)
     end
+
+    -- MMExtension's constants describe plain MM8. Merge renumbers races, classes and monster kinds in scripts
+    -- that are not run here (they patch the original executable), so its numbering is restated.
+    rawset(constants, "Race", {
+        Human = 0, Vampire = 1, DarkElf = 2, Minotaur = 3, Troll = 4, Dragon = 5, Undead = 6, Elf = 7, Goblin = 8,
+        Dwarf = 9, Zombie = 10,
+    })
+    rawset(constants, "Class", {
+        Archer = 0, WarriorMage = 1, MasterArcher = 2, Sniper = 3, Cleric = 4, Priest = 5, PriestLight = 6,
+        PriestDark = 7, DarkElf = 8, Patriarch = 9, Dragon = 10, GreatWyrm = 11, Druid = 12, GreatDruid = 13,
+        Warlock = 14, ArchDruid = 15, Knight = 16, Cavalier = 17, BlackKnight = 18, Champion = 19, Minotaur = 20,
+        MinotaurLord = 21, Monk = 22, Initiate = 23, Master = 24, Ninja = 25, Paladin = 26, Crusader = 27,
+        Hero = 28, Villain = 29, Ranger = 30, Hunter = 31, BountyHunter = 32, RangerLord = 33, Thief = 34,
+        Rogue = 35, Assassin = 36, Spy = 37, Troll = 38, WarTroll = 39, Vampire = 40, Nosferatu = 41,
+        Sorcerer = 42, Wizard = 43, Necromancer = 44, Lich = 45, ArchMage = 46, nuAM = 47, Peasant = 48,
+        nuPeas = 49, HighPriest = 50, MasterWizard = 51,
+    })
+    rawset(constants, "MonsterKind", {
+        Undead = 1, Dragon = 2, Swimmer = 3, Immobile = 4, Peasant = 5, NoArena = 6, Ogre = 7, Elemental = 8,
+        Demon = 9, Titan = 10, Elf = 11, Goblin = 12, Dwarf = 13, Human = 14,
+    })
 end
 
 ---------------------------------------------------------------------------------------------------------------------
@@ -255,6 +280,10 @@ local function skillsObject(playerIndex, path)
     })
 end
 
+-- Address of the player array and size of one player in the original MM8 executable.
+local OriginalPlayerArrayAddress = 0xB2187C
+local OriginalPlayerSize = 0x1D28
+
 local function playerObject(playerIndex)
     local path = "Party[]"
     local skills = skillsObject(playerIndex, path .. ".Skills")
@@ -266,6 +295,11 @@ local function playerObject(playerIndex)
                 return skills
             elseif key == "Items" then
                 return items
+            elseif key == "?ptr" then
+                -- Scripts derive a character's index from its address in the original player array. Nothing lives
+                -- at this address here; it only has to give that arithmetic the right answer.
+                local index = modrt.playerGet(playerIndex, "ModIndex")
+                return index and (OriginalPlayerArrayAddress + index * OriginalPlayerSize) or nil
             end
 
             return modrt.playerGet(playerIndex, key)
@@ -274,9 +308,9 @@ local function playerObject(playerIndex)
             return modrt.playerSet(playerIndex, key, value)
         end,
         methods = {
-            -- Position in the roster of all characters; the same character keeps it when the party order changes.
+            -- A number of the character's own, stable across party reordering (MMExtension: its roster index).
             GetIndex = function()
-                return modrt.playerGet(playerIndex, "RosterId")
+                return modrt.playerGet(playerIndex, "ModIndex")
             end,
             -- Base skill value for now; item and effect bonuses arrive with the GetSkill event.
             GetSkill = function(_, id)
@@ -295,6 +329,20 @@ end
 
 local playerAt = cached(playerObject)
 
+-- The roster of all characters, addressed by a character's own index (GetIndex). Only party members are reachable
+-- so far; characters waiting in the Adventurer's Inn are not.
+local playersArray = boundObject("Party.PlayersArray", {
+    index = function(index)
+        for slot = 0, partyCount() - 1 do
+            if modrt.playerGet(slot, "ModIndex") == index then
+                return playerAt(slot)
+            end
+        end
+
+        return nil
+    end,
+})
+
 Party = boundObject("Party", {
     index = function(index)
         if index >= 0 and index < partyCount() then
@@ -308,6 +356,8 @@ Party = boundObject("Party", {
 
         if size ~= nil then
             return size
+        elseif key == "PlayersArray" then
+            return playersArray
         end
 
         return modrt.partyGet(key)

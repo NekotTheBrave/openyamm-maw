@@ -1,0 +1,65 @@
+id: mod_runtime.melee_event
+title: A real party melee attack raises CalcDamageToMonster, and the handler's result is the damage applied
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 100
+      food: 5
+      members:
+      - name: Striker
+        class: Knight
+        level: 10
+        might: 30
+        endurance: 500
+        accuracy: 200
+        skills:
+        - name: Sword
+          level: 6
+          mastery: 2
+        equipment:
+          main_hand: 1
+# Ring hostile monsters around the party so one is in reach whichever way the party faces, and replace the damage of
+# every hit with a fixed, recognisable amount.
+- mod_lua:
+    code: |
+      ProbeHits = {}
+      function events.CalcDamageToMonster(t)
+        local attack, targetIndex = WhoHitMonster()
+        ProbeHits[#ProbeHits + 1] = {
+          kind = t.DamageKind, byPlayer = t.ByPlayer, melee = t.Melee, playerIndex = t.PlayerIndex,
+          samePlayer = t.Player == Party.PlayersArray[t.PlayerIndex] and attack.Player == t.Player,
+          monsterIndex = t.MonsterIndex, targetIndex = targetIndex, hpBefore = t.Monster.HP,
+          rawPositive = t.Damage > 0,
+        }
+        t.Result = 1234
+      end
+      local placed = 0
+      for i = 0, Map.Monsters.High do
+        local m = Map.Monsters[i]
+        if placed < 12 and m.Hostile and not m.IsDead then
+          local angle = placed * math.pi / 6
+          m.X = math.floor(Party.X + math.cos(angle) * 130)
+          m.Y = math.floor(Party.Y + math.sin(angle) * 130)
+          m.Z = Party.Z
+          m.HP = 30000
+          placed = placed + 1
+        end
+      end
+      return placed
+    expect: "12"
+- press_action:
+    action: attack
+    seconds: 4
+- mod_lua:
+    code: |
+      local h = ProbeHits[1]
+      if not h then return "no hit" end
+      local after = Map.Monsters[h.monsterIndex].HP
+      return h.kind, h.byPlayer, h.melee, h.playerIndex == Party[0]:GetIndex(), h.samePlayer,
+        h.monsterIndex == h.targetIndex, h.rawPositive, (h.hpBefore - after) % 1234
+    expect: "4\ttrue\ttrue\ttrue\ttrue\ttrue\ttrue\t0"

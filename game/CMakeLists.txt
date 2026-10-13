@@ -24,6 +24,7 @@ add_library(openyamm_game STATIC
     mod/ModRuntime.cpp
     mod/ModDiagnostics.cpp
     mod/ModBindings.cpp
+    mod/ModHooks.cpp
     debug/GameplayDebugTrace.cpp
     debug/GameImGuiBgfxRenderer.cpp
     debug/ScreenshotCaptureService.cpp

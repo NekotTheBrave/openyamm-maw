@@ -75,6 +75,57 @@ T clampedInteger(int64_t value)
     return static_cast<T>(std::clamp(value, low, high));
 }
 
+// MMExtension scripts key their own per-character data by the character's index in the roster of all characters.
+// OpenYAMM has no such roster (created characters all carry roster id 0), so each character gets a small number of
+// its own the first time a mod asks. It is kept in the character's event variables, under a tag no event uses, so
+// it is saved with the character and follows it through party reordering and the Adventurer's Inn.
+constexpr uint16_t ModIndexVariableTag = 0xFFEE;
+
+int64_t modIndexOf(Party &party, Character &character)
+{
+    const std::unordered_map<uint16_t, int32_t>::const_iterator existing =
+        character.eventVariables.find(ModIndexVariableTag);
+
+    if (existing != character.eventVariables.end() && existing->second > 0)
+    {
+        return existing->second - 1;
+    }
+
+    std::array<bool, 128> used = {};
+
+    const auto markUsed = [&used](const Character &other)
+    {
+        const std::unordered_map<uint16_t, int32_t>::const_iterator it =
+            other.eventVariables.find(ModIndexVariableTag);
+
+        if (it != other.eventVariables.end() && it->second > 0 && static_cast<size_t>(it->second - 1) < used.size())
+        {
+            used[static_cast<size_t>(it->second - 1)] = true;
+        }
+    };
+
+    for (const Character &member : party.members())
+    {
+        markUsed(member);
+    }
+
+    for (const AdventurersInnMember &innMember : party.adventurersInnMembers())
+    {
+        markUsed(innMember.character);
+    }
+
+    for (size_t candidate = 0; candidate < used.size(); ++candidate)
+    {
+        if (!used[candidate])
+        {
+            character.eventVariables[ModIndexVariableTag] = static_cast<int32_t>(candidate + 1);
+            return static_cast<int64_t>(candidate);
+        }
+    }
+
+    return -1;
+}
+
 Character *playerArgument(lua_State *pLuaState, int index)
 {
     Party *pParty = partyFromHost(pLuaState);
@@ -119,6 +170,25 @@ int nativePartyGet(lua_State *pLuaState)
     else if (field == "CurrentPlayer")
     {
         lua_pushinteger(pLuaState, static_cast<lua_Integer>(pParty->activeMemberIndex()));
+    }
+    else if (field == "X" || field == "Y" || field == "Z" || field == "YawRadians")
+    {
+        const IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+
+        if (pWorld == nullptr)
+        {
+            return 0;
+        }
+
+        if (field == "YawRadians")
+        {
+            lua_pushnumber(pLuaState, pWorld->gameplayCameraYawRadians());
+        }
+        else
+        {
+            const float value = field == "X" ? pWorld->partyX() : field == "Y" ? pWorld->partyY() : pWorld->partyFootZ();
+            lua_pushinteger(pLuaState, static_cast<lua_Integer>(value));
+        }
     }
     else
     {
@@ -254,6 +324,20 @@ int nativePlayerGet(lua_State *pLuaState)
     if (field == "ItemCount")
     {
         lua_pushinteger(pLuaState, static_cast<lua_Integer>(pCharacter->inventory.size()));
+        return 1;
+    }
+
+    if (field == "ModIndex")
+    {
+        Party *pParty = partyFromHost(pLuaState);
+        Character *pMutableCharacter = playerArgument(pLuaState, 1);
+
+        if (pParty == nullptr || pMutableCharacter == nullptr)
+        {
+            return 0;
+        }
+
+        lua_pushinteger(pLuaState, modIndexOf(*pParty, *pMutableCharacter));
         return 1;
     }
 
@@ -766,6 +850,19 @@ int nativeMapMonsterGet(lua_State *pLuaState)
     if (field == "#")
     {
         lua_pushinteger(pLuaState, static_cast<lua_Integer>(pWorld->mapActorCount()));
+        return 1;
+    }
+
+    if (field == "Hostile" || field == "IsDead")
+    {
+        GameplayRuntimeActorState state = {};
+
+        if (actorIndex < 0 || !pWorld->actorRuntimeState(static_cast<size_t>(actorIndex), state))
+        {
+            return 0;
+        }
+
+        lua_pushboolean(pLuaState, field == "Hostile" ? state.hostileToParty : state.isDead);
         return 1;
     }
 

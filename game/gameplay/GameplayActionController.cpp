@@ -6,6 +6,7 @@
 #include "game/gameplay/GameplaySpellService.h"
 #include "game/gameplay/TurnBasedCombatRuntime.h"
 #include "game/items/ItemEnchantRuntime.h"
+#include "game/mod/ModHooks.h"
 #include "game/party/PartySpellSystem.h"
 #include "game/StringUtils.h"
 #include "game/tables/ItemTable.h"
@@ -793,7 +794,20 @@ GameplayActionController::PartyAttackExecutionResult GameplayActionController::e
             && attack.damage > 0
             && config.pWorldRuntime != nullptr)
         {
-            const int appliedDamage = resolveMeleeAppliedDamage(config, *pAttacker, *target, attack, rng);
+            int appliedDamage = resolveMeleeAppliedDamage(config, *pAttacker, *target, attack, rng);
+
+            if (IModHooks *pModHooks = activeModHooks())
+            {
+                ModDamageToMonsterEvent modEvent = {};
+                modEvent.actorIndex = target->actorIndex;
+                modEvent.partyMemberIndex = actingMemberIndex;
+                modEvent.rawDamage = attack.damage;
+                modEvent.resolvedDamage = appliedDamage;
+                modEvent.damageType = attack.damageType;
+                modEvent.melee = true;
+                appliedDamage = pModHooks->calcDamageToMonster(modEvent);
+            }
+
             appliedMeleeDamage = appliedDamage;
             const int beforeHp = target->currentHp;
             queueMeleeHitBloodEffect(config, *target);

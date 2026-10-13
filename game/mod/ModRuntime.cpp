@@ -248,6 +248,35 @@ int nativeWriteReport(lua_State *pLuaState)
     return 1;
 }
 
+// Maps a path relative to the game folder onto the mods' data folder and creates the folders leading to it.
+// Returns nil for a path that would leave the data folder.
+int nativeDataPath(lua_State *pLuaState)
+{
+    ModRuntime *pRuntime = runtimeFromUpvalue(pLuaState);
+    const std::filesystem::path relativePath = pathFromUtf8(luaL_checkstring(pLuaState, 1));
+    const std::filesystem::path &dataDirectory = pRuntime->dataDirectory();
+
+    if (dataDirectory.empty() || relativePath.empty() || relativePath.is_absolute())
+    {
+        return 0;
+    }
+
+    for (const std::filesystem::path &component : relativePath)
+    {
+        if (component == "..")
+        {
+            return 0;
+        }
+    }
+
+    const std::filesystem::path fullPath = dataDirectory / relativePath;
+    std::error_code errorCode;
+    std::filesystem::create_directories(fullPath.parent_path(), errorCode);
+    const std::string text = fullPath.generic_string();
+    lua_pushlstring(pLuaState, text.data(), text.size());
+    return 1;
+}
+
 int nativeClock(lua_State *pLuaState)
 {
     const std::chrono::steady_clock::duration elapsed = std::chrono::steady_clock::now().time_since_epoch();
@@ -276,6 +305,11 @@ const Engine::AssetFileSystem *ModRuntime::assetFileSystem() const
 const std::filesystem::path &ModRuntime::logDirectory() const
 {
     return m_logDirectory;
+}
+
+const std::filesystem::path &ModRuntime::dataDirectory() const
+{
+    return m_dataDirectory;
 }
 
 std::string ModRuntime::statusDescription() const
@@ -515,6 +549,7 @@ void ModRuntime::registerNatives()
         {"fileExists", nativeFileExists},
         {"listDirectory", nativeListDirectory},
         {"writeReport", nativeWriteReport},
+        {"dataPath", nativeDataPath},
         {"clock", nativeClock},
     };
 
@@ -685,6 +720,10 @@ bool ModRuntime::initialize(const Engine::AssetFileSystem &assetFileSystem)
     }
 
     std::error_code errorCode;
+    m_dataDirectory = std::filesystem::absolute(m_configPath.parent_path(), errorCode) / "mods" / m_mods.front().id
+        / "files";
+    std::filesystem::create_directories(m_dataDirectory, errorCode);
+    m_readRoots.push_back(m_dataDirectory);
     m_logDirectory = m_configPath.parent_path() / LogDirectoryName;
     std::filesystem::create_directories(m_logDirectory, errorCode);
     m_logFile.open(m_logDirectory / LogFileName, std::ios::trunc);
@@ -730,6 +769,7 @@ bool ModRuntime::initialize(const Engine::AssetFileSystem &assetFileSystem)
     m_dispatchReference = luaL_ref(m_pLuaState, LUA_REGISTRYINDEX);
     lua_pop(m_pLuaState, 1);
     m_active = true;
+    setActiveModHooks(this);
 
     if (beginDispatch("start"))
     {
@@ -746,6 +786,11 @@ void ModRuntime::shutdown()
         lua_close(m_pLuaState);
         m_pLuaState = nullptr;
         luaO_floatsuffix = 1;
+    }
+
+    if (activeModHooks() == this)
+    {
+        setActiveModHooks(nullptr);
     }
 
     m_dispatchReference = -1;
@@ -815,6 +860,60 @@ void ModRuntime::restoreState(const std::string &state)
 
     lua_pushlstring(m_pLuaState, state.data(), state.size());
     endDispatch(1, 0);
+}
+
+namespace
+{
+// const.Damage in MMExtension's numbering for MM8.
+int mm8DamageKind(CombatDamageType damageType)
+{
+    switch (damageType)
+    {
+        case CombatDamageType::Fire: return 0;
+        case CombatDamageType::Air: return 1;
+        case CombatDamageType::Water: return 2;
+        case CombatDamageType::Earth: return 3;
+        case CombatDamageType::Physical: return 4;
+        case CombatDamageType::Spirit: return 6;
+        case CombatDamageType::Mind: return 7;
+        case CombatDamageType::Body: return 8;
+        case CombatDamageType::Light: return 9;
+        case CombatDamageType::Dark: return 10;
+        case CombatDamageType::Energy: return 12;
+        case CombatDamageType::Irresistible: return 12;
+    }
+
+    return 4;
+}
+}
+
+int ModRuntime::calcDamageToMonster(const ModDamageToMonsterEvent &event)
+{
+    if (!beginDispatch("damageToMonster"))
+    {
+        return event.resolvedDamage;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(event.actorIndex));
+    lua_pushinteger(
+        m_pLuaState,
+        event.partyMemberIndex ? static_cast<lua_Integer>(*event.partyMemberIndex) : lua_Integer(-1));
+    lua_pushinteger(m_pLuaState, event.rawDamage);
+    lua_pushinteger(m_pLuaState, event.resolvedDamage);
+    lua_pushinteger(m_pLuaState, mm8DamageKind(event.damageType));
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(event.spellId));
+    lua_pushboolean(m_pLuaState, event.melee);
+
+    if (!endDispatch(7, 1))
+    {
+        return event.resolvedDamage;
+    }
+
+    const lua_Number result = lua_isnumber(m_pLuaState, -1)
+        ? lua_tonumber(m_pLuaState, -1)
+        : static_cast<lua_Number>(event.resolvedDamage);
+    lua_pop(m_pLuaState, 1);
+    return static_cast<int>(std::clamp<lua_Number>(result, 0.0, 2000000000.0));
 }
 
 void ModRuntime::fireEvent(const std::string &eventName)

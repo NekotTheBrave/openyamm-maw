@@ -69,15 +69,16 @@ local function listLuaFiles(directory)
         end
     end
 
-    -- Windows lists a folder case-insensitively; mods rely on that order.
+    -- MMExtension runs a folder's scripts sorted by lower-cased name, and mods rely on it: lower-cased, '_' sorts
+    -- before every letter, so "zz_Maw-initialize.lua" runs ahead of "zzAlchemy.lua". (Upper-cased it would run last.)
     table.sort(names, function(left, right)
-        local upperLeft, upperRight = left:upper(), right:upper()
+        local lowerLeft, lowerRight = left:lower(), right:lower()
 
-        if upperLeft == upperRight then
+        if lowerLeft == lowerRight then
             return left < right
         end
 
-        return upperLeft < upperRight
+        return lowerLeft < lowerRight
     end)
 
     return names
@@ -184,7 +185,13 @@ function Loader.loadStartupScripts()
     ModRT.log("info", "startup scripts loaded: " .. #Loader.files .. " files seen")
 end
 
+-- Runs the per-playthrough scripts. Called for every new game and every load: what the previous run registered is
+-- dropped first, as MMExtension does.
 function Loader.loadSessionScripts()
+    ModRT.Events.removeScope("session")
+    ModRT.Events.scope = "session"
     runFolder("Global")
+    ModRT.Events.scope = "startup"
+    Loader.sessionLoaded = true
     ModRT.log("info", "session scripts loaded")
 end

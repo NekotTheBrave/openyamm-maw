@@ -69,3 +69,4 @@ __pycache__/
 /logs/mod_report.txt
 /logs/mod_runtime.log
 /tests/mod_runtime/logs/
+/tests/mod_runtime/mods/
