@@ -34,6 +34,8 @@ public:
     struct CommandContext
     {
         std::vector<std::string> args;
+        // Text after the command name, untouched. Only set for commands registered with rawArguments.
+        std::string rawArguments;
     };
 
     struct CommandResult
@@ -50,6 +52,8 @@ public:
         std::string description;
         std::string usage;
         CommandCallback callback;
+        // The whole line belongs to this command: no ';' splitting and no tokenizing (used for Lua code).
+        bool rawArguments = false;
     };
 
     struct ItemOption

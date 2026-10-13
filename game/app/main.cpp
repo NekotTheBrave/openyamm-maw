@@ -5,6 +5,7 @@
 #include "game/app/GameSettings.h"
 #include "game/app/ProfilingControl.h"
 #include "game/app/OpenYammMain.h"
+#include "game/mod/ModRuntime.h"
 #include "game/outdoor/HeadlessOutdoorDiagnostics.h"
 #include "game/scenario/ScenarioHeadlessCommand.h"
 
@@ -254,6 +255,13 @@ int runApplication(int argc, char **argv)
     if (!arguments.empty() && arguments[0].rfind("--headless-", 0) == 0)
     {
         setEnvironmentVariable("OPENYAMM_DISABLE_LOADING_OVERLAY", "1");
+    }
+
+    if (!arguments.empty() && arguments[0] == "--headless-mod-report")
+    {
+        const int tickCount = arguments.size() >= 2 ? std::stoi(arguments[1]) : 10;
+        const std::string consoleCode = arguments.size() >= 3 ? arguments[2] : std::string();
+        return OpenYAMM::Game::runModRuntimeHeadlessReport(argv[0], config, tickCount, consoleCode);
     }
 
     if (arguments.size() >= 2 && arguments[0] == "--headless-validate-scenario")

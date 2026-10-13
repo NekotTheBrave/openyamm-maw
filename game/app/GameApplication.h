@@ -25,6 +25,7 @@
 #include "game/debug/ScreenshotTour.h"
 #include "game/debug/MenuInputTour.h"
 #include "game/maps/SaveGame.h"
+#include "game/mod/ModRuntime.h"
 #include "game/scene/IMapSceneRuntime.h"
 #include "game/ui/screens/LoadingOverlayScreen.h"
 
@@ -338,6 +339,8 @@ private:
     FramePerformanceDiagnostics m_framePerformanceDiagnostics;
     uint32_t m_lastFramePerformanceLogTick = 0;
     DebugConsole m_debugConsole;
+    ModRuntime m_modRuntime;
+    bool m_modSessionStarted = false;
     GameImGuiBgfxRenderer m_debugConsoleRenderer;
     bool m_debugConsoleRendererInitialized = false;
     bool m_debugConsoleFrameBegun = false;

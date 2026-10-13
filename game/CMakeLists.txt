@@ -21,6 +21,7 @@ add_library(openyamm_game STATIC
     arcomage/ArcomageRules.cpp
     data/ActorNameResolver.cpp
     debug/DebugConsole.cpp
+    mod/ModRuntime.cpp
     debug/GameplayDebugTrace.cpp
     debug/GameImGuiBgfxRenderer.cpp
     debug/ScreenshotCaptureService.cpp

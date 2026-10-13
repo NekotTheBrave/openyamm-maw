@@ -393,7 +393,25 @@ void DebugConsole::clearMessages()
 
 void DebugConsole::executeLine(const std::string &line)
 {
-    const std::vector<std::string> commandLines = splitCommandLine(line);
+    std::vector<std::string> commandLines = splitCommandLine(line);
+    std::string rawArguments;
+    const std::vector<std::string> lineTokens = tokenize(line);
+
+    if (!lineTokens.empty())
+    {
+        const auto rawCommandIt = m_commands.find(normalizeCommandName(lineTokens.front()));
+
+        if (rawCommandIt != m_commands.end() && rawCommandIt->second.rawArguments)
+        {
+            const size_t nameBegin = line.find_first_not_of(" \t");
+            const size_t nameEnd = line.find_first_of(" \t", nameBegin);
+            const size_t argumentsBegin =
+                nameEnd == std::string::npos ? std::string::npos : line.find_first_not_of(" \t", nameEnd);
+            rawArguments = argumentsBegin == std::string::npos ? std::string() : line.substr(argumentsBegin);
+            commandLines = {line};
+        }
+    }
+
     bool hasCommand = false;
 
     for (const std::string &commandLine : commandLines)
@@ -445,6 +463,12 @@ void DebugConsole::executeLine(const std::string &line)
 
         CommandContext context = {};
         context.args.assign(tokens.begin() + 1, tokens.end());
+
+        if (commandIt->second.rawArguments)
+        {
+            context.rawArguments = rawArguments;
+        }
+
         const CommandResult result = commandIt->second.callback(context);
 
         if (!result.message.empty())

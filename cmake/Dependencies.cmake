@@ -84,6 +84,26 @@ function(openyamm_configure_lua)
 
     openyamm_populate_dependency(lua luaSourceDir)
 
+    # Mod runtime (game/mod): scripts written for Lua 5.1 expect whole-valued floats to print as "5", not "5.0".
+    # The patched copy keeps stock behaviour until luaO_floatsuffix is cleared at runtime.
+    set(luaPatchedObjectSource "${CMAKE_BINARY_DIR}/generated/lua/lobject.c")
+    file(READ "${luaSourceDir}/src/lobject.c" luaObjectSource)
+    string(REPLACE
+        "if (buff[strspn(buff, \"-0123456789\")] == '\\0') {"
+        "if (luaO_floatsuffix && buff[strspn(buff, \"-0123456789\")] == '\\0') {"
+        luaObjectSourcePatched
+        "${luaObjectSource}")
+    if (luaObjectSourcePatched STREQUAL luaObjectSource)
+        message(FATAL_ERROR "Lua float-suffix patch no longer applies to lobject.c")
+    endif()
+    string(REPLACE
+        "static int tostringbuff ("
+        "int luaO_floatsuffix = 1;\n\nstatic int tostringbuff ("
+        luaObjectSourcePatched
+        "${luaObjectSourcePatched}")
+    file(WRITE "${luaPatchedObjectSource}.in" "${luaObjectSourcePatched}")
+    configure_file("${luaPatchedObjectSource}.in" "${luaPatchedObjectSource}" COPYONLY)
+
     if (NOT TARGET openyamm_lua)
         add_library(openyamm_lua STATIC
             ${luaSourceDir}/src/lapi.c
@@ -104,7 +124,7 @@ function(openyamm_configure_lua)
             ${luaSourceDir}/src/lmathlib.c
             ${luaSourceDir}/src/lmem.c
             ${luaSourceDir}/src/loadlib.c
-            ${luaSourceDir}/src/lobject.c
+            ${luaPatchedObjectSource}
             ${luaSourceDir}/src/lopcodes.c
             ${luaSourceDir}/src/loslib.c
             ${luaSourceDir}/src/lparser.c

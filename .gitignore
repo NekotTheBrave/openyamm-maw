@@ -61,3 +61,6 @@ __pycache__/
 /tools/upscaling/*.zip
 /tools/upscaling/*.json
 /tools/upscaling/realesrgan-ncnn-vulkan
+
+# Local mod runtime configuration (machine-specific paths)
+/mods.yml

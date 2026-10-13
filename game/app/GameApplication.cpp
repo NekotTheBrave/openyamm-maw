@@ -2937,6 +2937,34 @@ void GameApplication::registerDebugConsoleCommands()
     };
 
     m_debugConsole.registerCommand({
+        .name = "lua",
+        .description = "Run Lua code in the mod runtime (see mods.yml).",
+        .usage = "lua <code>",
+        .callback = [this, commandResult](const DebugConsole::CommandContext &context)
+        {
+            if (context.rawArguments.empty())
+            {
+                return commandResult(false, "Usage: lua <code>");
+            }
+
+            std::string output;
+            const bool success = m_modRuntime.executeConsole(context.rawArguments, output);
+            return commandResult(success, output.empty() ? std::string("ok") : output);
+        },
+        .rawArguments = true});
+
+    m_debugConsole.registerCommand({
+        .name = "modreport",
+        .description = "Write the mod compatibility report to logs/mod_report.txt.",
+        .usage = "modreport",
+        .callback = [this, commandResult](const DebugConsole::CommandContext &)
+        {
+            std::string output;
+            const bool success = m_modRuntime.executeConsole("ModRT.writeReport()", output);
+            return commandResult(success, output);
+        }});
+
+    m_debugConsole.registerCommand({
         .name = "help",
         .description = "Show available commands.",
         .usage = "help",
@@ -6151,6 +6179,13 @@ void GameApplication::handleSdlEvent(const SDL_Event &event)
         return;
     }
 
+    if (m_modRuntime.isActive()
+        && m_modSessionStarted
+        && (event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP))
+    {
+        m_modRuntime.keyEvent(event.type == SDL_EVENT_KEY_DOWN, static_cast<int32_t>(event.key.key), event.key.repeat);
+    }
+
     IScreen *pActiveScreen = m_screenManager.activeScreen();
 
     m_gameInputSystem.handleSdlEvent(event);
@@ -6697,6 +6732,7 @@ void GameApplication::applyStartupDebugSettingsToActiveRuntime()
 void GameApplication::shutdownApplication()
 {
     setGameplayProfilingEnabled(false);
+    m_modRuntime.shutdown();
     m_screenManager.setActiveScreen(nullptr);
     m_pLoadingOverlayScreen.reset();
     m_gameSession.gameplayScreenRuntime().clearSharedUiRuntime();
@@ -6807,6 +6843,14 @@ bool GameApplication::ensureCommonGameDataLoaded()
     m_commonGameDataLoaded = true;
     m_deferredCommonGameDataLoadPending = false;
     updateDebugConsoleDataOptions();
+
+    if (m_modRuntime.initialize(*m_pAssetFileSystem) && m_modRuntime.isActive())
+    {
+        m_modSessionStarted = false;
+        m_modRuntime.fireEvent("GameInitialized1");
+        m_modRuntime.fireEvent("GameInitialized2");
+    }
+
     return true;
 }
 
@@ -10045,6 +10089,18 @@ void GameApplication::renderFrame(int width, int height, float mouseWheelDelta, 
     if (!debugConsoleFreezesGameplay && !skipGameplayUpdateAfterInputPrompt && !screenshotTourActive)
     {
         const uint64_t gameplayUpdateBeginTickCount = collectFrameDiagnostics ? SDL_GetTicksNS() : 0;
+
+        if (m_modRuntime.isActive() && gameplayLoaded)
+        {
+            if (!m_modSessionStarted)
+            {
+                m_modSessionStarted = true;
+                m_modRuntime.fireEvent("SessionStarted");
+            }
+
+            m_modRuntime.tick(scaledGameplayDeltaSeconds);
+        }
+
         m_gameSession.updateGameplay(m_gameInputSystem.frame(), scaledGameplayDeltaSeconds, collectFrameDiagnostics);
         const float turnBasedGameMinutes =
             m_gameSession.turnBasedCombatRuntime().consumePendingGameTimeAdvanceMinutes();
