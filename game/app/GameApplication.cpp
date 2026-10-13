@@ -6746,6 +6746,8 @@ void GameApplication::shutdownApplication()
 bool GameApplication::loadGameData(Engine::AssetFileSystem &assetFileSystem)
 {
     m_pAssetFileSystem = &assetFileSystem;
+    // Mod asset overlays have to be mounted before any table is read.
+    m_modRuntime.configure(assetFileSystem);
     m_gameSession.clear();
     m_gameDataRepository.clear();
     m_gameSession.bindDataRepository(&m_gameDataRepository);

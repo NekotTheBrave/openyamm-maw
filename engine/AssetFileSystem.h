@@ -73,6 +73,9 @@ public:
         const std::string &activeWorldId
     );
     bool switchActiveWorld(const std::string &activeWorldId);
+    // Mounts a folder above every other asset root, so its files replace same-named engine files. The folder is
+    // laid out like the development asset root (engine/data_tables/...). Overlays are kept across world switches.
+    bool addOverlayRoot(const std::filesystem::path &overlayRoot);
     bool mountDevelopmentRoot(const std::filesystem::path &assetRoot);
     bool exists(const std::string &virtualPath) const;
     // Returns the selected virtual file path, including its actual scale directory, also inside archives.
@@ -116,6 +119,7 @@ private:
     bool mountAndroidApkAssetRoot(const std::string &activeWorldId);
     bool mountPackageArchiveIfPresent(const std::filesystem::path &archivePath, bool appendToPath);
     bool mountSearchRoot(const std::filesystem::path &assetRoot, bool appendToPath);
+    bool mountOverlayRoot(const std::filesystem::path &overlayRoot);
     bool mountSearchRootAt(
         const std::filesystem::path &assetRoot,
         const std::string &mountPoint,
@@ -169,6 +173,7 @@ private:
     // Package-owned icon roots override user scale preferences after a content migration.
     std::vector<std::pair<std::string, AssetScaleTier>> m_iconPackages;
     std::vector<SearchMount> m_searchMounts;
+    std::vector<std::filesystem::path> m_overlayRoots;
     bool m_androidApkAssetRoot;
     std::unique_ptr<LookupCache> m_pLookupCache;
     mutable uint64_t m_contentGeneration = 0;

@@ -620,6 +620,15 @@ bool AssetFileSystem::initialize(
         return false;
     }
 
+    for (const std::filesystem::path &overlayRoot : m_overlayRoots)
+    {
+        if (!mountOverlayRoot(overlayRoot))
+        {
+            shutdown();
+            return false;
+        }
+    }
+
     m_developmentRoot = assetRoot;
     m_editorDevelopmentRoot = deriveEditorDevelopmentRoot(assetRoot);
 
@@ -653,6 +662,55 @@ bool AssetFileSystem::initialize(
     }
 
     m_editorDevelopmentRoot = editorDevelopmentRoot;
+
+    return true;
+}
+
+bool AssetFileSystem::addOverlayRoot(const std::filesystem::path &overlayRoot)
+{
+    std::error_code errorCode;
+    const std::filesystem::path absoluteRoot = std::filesystem::absolute(overlayRoot, errorCode);
+
+    if (errorCode || !std::filesystem::is_directory(absoluteRoot, errorCode))
+    {
+        std::cerr << "Asset overlay root is not a directory: " << overlayRoot << '\n';
+        return false;
+    }
+
+    for (const std::filesystem::path &existingRoot : m_overlayRoots)
+    {
+        if (existingRoot == absoluteRoot)
+        {
+            return true;
+        }
+    }
+
+    if (isInitialized() && !mountOverlayRoot(absoluteRoot))
+    {
+        return false;
+    }
+
+    m_overlayRoots.push_back(absoluteRoot);
+    return true;
+}
+
+// Engine files are looked up both as "engine/data_tables/x" and, through the path aliases, as "data_tables/x".
+// The first form resolves against the asset root and the second against the engine folder, so an overlay has to be
+// mounted the same two ways to win in both.
+bool AssetFileSystem::mountOverlayRoot(const std::filesystem::path &overlayRoot)
+{
+    if (!mountSearchRoot(overlayRoot, false))
+    {
+        return false;
+    }
+
+    const std::filesystem::path overlayEngineRoot = overlayRoot / EngineDevelopmentRootName;
+    std::error_code errorCode;
+
+    if (std::filesystem::is_directory(overlayEngineRoot, errorCode) && !mountSearchRoot(overlayEngineRoot, false))
+    {
+        return false;
+    }
 
     return true;
 }

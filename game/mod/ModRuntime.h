@@ -25,6 +25,8 @@ public:
     {
         std::string id;
         std::filesystem::path rootPath;
+        // Optional folder mounted over the engine assets (table overrides built by tools/maw/convert_tables.py).
+        std::filesystem::path assetsPath;
         std::string baseOverrides = "skip";
         std::vector<std::string> skippedScripts;
     };
@@ -38,6 +40,9 @@ public:
     // Looks for mods.yml in the working directory, next to the executable, then beside the development asset root,
     // so the game finds it however it was launched. Logs and reports go to a logs folder next to that file.
     bool initialize(const Engine::AssetFileSystem &assetFileSystem);
+    // Reads mods.yml and mounts each enabled mod's asset overlay. Call before game tables are loaded; the Lua
+    // side is started later by initialize().
+    bool configure(Engine::AssetFileSystem &assetFileSystem);
     void shutdown();
     bool isActive() const;
 
@@ -58,6 +63,7 @@ public:
 
 private:
     std::filesystem::path findConfigPath();
+    bool loadConfiguration();
     bool loadConfig(const std::filesystem::path &configPath, std::string &error);
     void registerNatives();
     void pushConfig();
@@ -77,8 +83,14 @@ private:
     int m_dispatchReference = -1;
     int m_tracebackIndex = 0;
     bool m_enabled = false;
+    bool m_configured = false;
     bool m_active = false;
 };
+
+int runModTableProbe(
+    const std::filesystem::path &basePath,
+    const Engine::ApplicationConfig &config,
+    const std::vector<std::string> &probes);
 
 int runModRuntimeHeadlessReport(
     const std::filesystem::path &basePath,

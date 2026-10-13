@@ -257,6 +257,12 @@ int runApplication(int argc, char **argv)
         setEnvironmentVariable("OPENYAMM_DISABLE_LOADING_OVERLAY", "1");
     }
 
+    if (arguments.size() >= 2 && arguments[0] == "--headless-mod-tables")
+    {
+        const std::vector<std::string> probes(arguments.begin() + 1, arguments.end());
+        return OpenYAMM::Game::runModTableProbe(argv[0], config, probes);
+    }
+
     if (!arguments.empty() && arguments[0] == "--headless-mod-report")
     {
         const int tickCount = arguments.size() >= 2 ? std::stoi(arguments[1]) : 10;

@@ -418,6 +418,23 @@ bool ModRuntime::loadConfig(const std::filesystem::path &configPath, std::string
                     return false;
                 }
 
+                if (modNode["assets"] && modNode["assets"].IsScalar())
+                {
+                    mod.assetsPath = pathFromUtf8(modNode["assets"].as<std::string>());
+
+                    if (mod.assetsPath.is_relative())
+                    {
+                        mod.assetsPath = configPath.parent_path() / mod.assetsPath;
+                    }
+
+                    if (!std::filesystem::is_directory(mod.assetsPath, errorCode))
+                    {
+                        error = "mods.yml: mod '" + mod.id + "' assets is not a directory: "
+                            + mod.assetsPath.string();
+                        return false;
+                    }
+                }
+
                 m_readRoots.push_back(mod.rootPath);
                 m_mods.push_back(std::move(mod));
             }
@@ -560,10 +577,20 @@ bool ModRuntime::runAssetChunk(const std::string &virtualPath)
     return true;
 }
 
-bool ModRuntime::initialize(const Engine::AssetFileSystem &assetFileSystem)
+bool ModRuntime::loadConfiguration()
 {
-    shutdown();
-    m_pAssetFileSystem = &assetFileSystem;
+    // OPENYAMM_DISABLE_MODS=1 runs the unmodded game without touching mods.yml (for before/after comparisons).
+    const char *pDisableMods = SDL_getenv("OPENYAMM_DISABLE_MODS");
+
+    if (pDisableMods != nullptr && pDisableMods[0] != '\0' && std::string(pDisableMods) != "0")
+    {
+        m_configPath.clear();
+        m_searchedConfigPaths.clear();
+        m_enabled = false;
+        m_mods.clear();
+        return true;
+    }
+
     m_configPath = findConfigPath();
 
     if (m_configPath.empty())
@@ -578,7 +605,61 @@ bool ModRuntime::initialize(const Engine::AssetFileSystem &assetFileSystem)
     if (!loadConfig(m_configPath, error))
     {
         std::cerr << "ModRuntime: " << error << '\n';
+        m_enabled = false;
+        m_mods.clear();
         return false;
+    }
+
+    return true;
+}
+
+bool ModRuntime::configure(Engine::AssetFileSystem &assetFileSystem)
+{
+    m_pAssetFileSystem = &assetFileSystem;
+    m_configured = loadConfiguration();
+
+    if (!m_configured)
+    {
+        return false;
+    }
+
+    if (!m_enabled)
+    {
+        return true;
+    }
+
+    for (const ModDefinition &mod : m_mods)
+    {
+        if (mod.assetsPath.empty())
+        {
+            continue;
+        }
+
+        if (!assetFileSystem.addOverlayRoot(mod.assetsPath))
+        {
+            return false;
+        }
+
+        std::cout << "ModRuntime: mod '" << mod.id << "' assets mounted from " << mod.assetsPath.generic_string()
+                  << '\n';
+    }
+
+    return true;
+}
+
+bool ModRuntime::initialize(const Engine::AssetFileSystem &assetFileSystem)
+{
+    shutdown();
+
+    if (!m_configured || m_pAssetFileSystem != &assetFileSystem)
+    {
+        m_pAssetFileSystem = &assetFileSystem;
+        m_configured = loadConfiguration();
+
+        if (!m_configured)
+        {
+            return false;
+        }
     }
 
     if (!m_enabled || m_mods.empty())

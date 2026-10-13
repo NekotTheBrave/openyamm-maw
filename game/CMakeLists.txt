@@ -22,6 +22,7 @@ add_library(openyamm_game STATIC
     data/ActorNameResolver.cpp
     debug/DebugConsole.cpp
     mod/ModRuntime.cpp
+    mod/ModDiagnostics.cpp
     debug/GameplayDebugTrace.cpp
     debug/GameImGuiBgfxRenderer.cpp
     debug/ScreenshotCaptureService.cpp
