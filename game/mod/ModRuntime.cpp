@@ -1052,6 +1052,45 @@ int ModRuntime::calcDamageToMonster(const ModDamageToMonsterEvent &event)
     return static_cast<int>(std::clamp<lua_Number>(result, 0.0, 2000000000.0));
 }
 
+int ModRuntime::calcDamageToPlayer(const ModDamageToPlayerEvent &event)
+{
+    if (!beginDispatch("damageToPlayer"))
+    {
+        return event.resolvedDamage;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(event.partyMemberIndex));
+    lua_pushinteger(m_pLuaState, event.rawDamage);
+    lua_pushinteger(m_pLuaState, event.resolvedDamage);
+    lua_pushinteger(m_pLuaState, mm8DamageKind(event.damageType));
+    lua_pushinteger(m_pLuaState, event.actorIndex ? static_cast<lua_Integer>(*event.actorIndex) : lua_Integer(-1));
+    lua_pushinteger(m_pLuaState, event.attackAction);
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(event.spellId));
+    lua_pushboolean(m_pLuaState, event.fromObject);
+
+    if (!endDispatch(8, 1))
+    {
+        return event.resolvedDamage;
+    }
+
+    const lua_Number result = lua_isnumber(m_pLuaState, -1)
+        ? lua_tonumber(m_pLuaState, -1)
+        : static_cast<lua_Number>(event.resolvedDamage);
+    lua_pop(m_pLuaState, 1);
+    return static_cast<int>(std::clamp<lua_Number>(result, 0.0, 2000000000.0));
+}
+
+void ModRuntime::monsterKilled(size_t actorIndex)
+{
+    if (!beginDispatch("monsterKilled"))
+    {
+        return;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(actorIndex));
+    endDispatch(1, 0);
+}
+
 void ModRuntime::adjustCharacterBonuses(
     Party &party,
     size_t memberIndex,

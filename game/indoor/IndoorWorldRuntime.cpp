@@ -10759,6 +10759,11 @@ int IndoorWorldRuntime::applyMonsterDamageEventHooks(
 
 void IndoorWorldRuntime::notifyMonsterKilledEventHooks(size_t actorIndex, int16_t monsterId)
 {
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->monsterKilled(actorIndex);
+    }
+
     EventRuntimeState *pEventRuntimeState = eventRuntimeState();
 
     if (pEventRuntimeState == nullptr || monsterId <= 0)
@@ -11559,6 +11564,7 @@ std::optional<GameplayCombatActorInfo> IndoorWorldRuntime::combatActorInfoById(u
 
     GameplayCombatActorInfo info = {};
     info.actorId = actorId;
+    info.actorIndex = actorIndex;
     info.monsterId = inspectState.monsterId;
     info.maxHp = inspectState.maxHp;
     info.displayName = inspectState.displayName;

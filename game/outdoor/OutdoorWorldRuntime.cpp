@@ -14775,6 +14775,7 @@ std::optional<GameplayCombatActorInfo> OutdoorWorldRuntime::combatActorInfoById(
 
         GameplayCombatActorInfo info = {};
         info.actorId = actor.actorId;
+        info.actorIndex = static_cast<size_t>(&actor - m_mapActors.data());
         info.monsterId = actor.monsterId;
         info.maxHp = actor.maxHp;
         info.displayName = actor.displayName;
@@ -15354,6 +15355,11 @@ bool OutdoorWorldRuntime::setMapActorDead(size_t actorIndex, bool isDead, bool e
 
 void OutdoorWorldRuntime::queueMonsterKilledEvent(size_t actorIndex, int16_t monsterId)
 {
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->monsterKilled(actorIndex);
+    }
+
     if (m_monsterKilledHooksEnabled && monsterId > 0)
     {
         m_pendingMonsterKilledEvents.push_back({uint32_t(actorIndex), uint32_t(monsterId)});

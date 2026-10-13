@@ -32,6 +32,22 @@ struct ModDamageToMonsterEvent
     float objectZ = 0.0f;
 };
 
+// A party member takes damage. `rawDamage` is the amount before the character's resistances, `resolvedDamage` what
+// the engine would apply after them; the hook returns the damage to apply. The attacker is a map actor when there
+// is one (a trap has none); `attackAction` says which of its attacks it was (0 and 1 its two attacks, 2 and 3 its
+// two spells), and `fromObject` that it arrived as a missile rather than a blow.
+struct ModDamageToPlayerEvent
+{
+    size_t partyMemberIndex = 0;
+    int rawDamage = 0;
+    int resolvedDamage = 0;
+    CombatDamageType damageType = CombatDamageType::Physical;
+    std::optional<size_t> actorIndex;
+    int attackAction = 0;
+    uint32_t spellId = 0;
+    bool fromObject = false;
+};
+
 class Party;
 
 class IModHooks
@@ -40,6 +56,10 @@ public:
     virtual ~IModHooks() = default;
 
     virtual int calcDamageToMonster(const ModDamageToMonsterEvent &event) = 0;
+    virtual int calcDamageToPlayer(const ModDamageToPlayerEvent &event) = 0;
+
+    // A map actor has just died, whatever killed it.
+    virtual void monsterKilled(size_t actorIndex) = 0;
 
     // Called at the end of Party::rebuildMagicalBonusesFromBuffs for each member. At that point the member's
     // magicalBonuses holds buffs plus equipped items and itemSkillBonuses holds item skill bonuses; `buffBonuses`
@@ -66,6 +86,10 @@ public:
 
 IModHooks *activeModHooks();
 void setActiveModHooks(IModHooks *pModHooks);
+
+// Runs the mod's event for damage to a party member and returns the damage to apply, which is
+// event.resolvedDamage when no mod runtime is present.
+int modDamageToPlayer(const ModDamageToPlayerEvent &event);
 
 // The party's missile or spell hits a map actor: runs the mod's damage event and returns the damage to apply, which
 // is `resolvedDamage` when no mod runtime is present. `spellId` is 0 for an arrow or a blaster shot.

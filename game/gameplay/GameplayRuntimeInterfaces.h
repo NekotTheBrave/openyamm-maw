@@ -422,6 +422,8 @@ struct GameplayPartyAttackActorFacts
 struct GameplayCombatActorInfo
 {
     uint32_t actorId = 0;
+    // Position among the map's actors, which is how mods address them.
+    size_t actorIndex = 0;
     int16_t monsterId = 0;
     int monsterLevel = 0;
     int maxHp = 0;

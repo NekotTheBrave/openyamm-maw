@@ -3,6 +3,7 @@
 #include "game/events/EvtEnums.h"
 #include "game/items/ItemEnchantRuntime.h"
 #include "game/items/ItemGenerator.h"
+#include "game/mod/ModHooks.h"
 #include "game/party/Party.h"
 #include "game/StringUtils.h"
 #include "game/tables/ChestTable.h"
@@ -924,6 +925,13 @@ ChestTrapOpenResult resolveChestTrapOpen(
                 result.trapDamage,
                 result.damageType,
                 rng);
+
+            ModDamageToPlayerEvent modEvent = {};
+            modEvent.partyMemberIndex = memberIndex;
+            modEvent.rawDamage = result.trapDamage;
+            modEvent.resolvedDamage = memberResult.damage;
+            modEvent.damageType = result.damageType;
+            memberResult.damage = modDamageToPlayer(modEvent);
         }
 
         result.memberResults.push_back(memberResult);

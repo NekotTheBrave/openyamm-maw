@@ -252,6 +252,10 @@ local function dispatchKind(kind, ...)
         return ModRT.Loader.loadSessionScripts()
     elseif kind == "damageToMonster" then
         return ModRT.Combat.damageToMonster(...)
+    elseif kind == "damageToPlayer" then
+        return ModRT.Combat.damageToPlayer(...)
+    elseif kind == "monsterKilled" then
+        return ModRT.Combat.monsterKilled(...)
     elseif kind == "characterBonuses" then
         return ModRT.Stats.characterBonuses(...)
     elseif kind == "characterSkills" then

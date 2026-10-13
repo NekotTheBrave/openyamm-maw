@@ -5,6 +5,7 @@
 #include "game/gameplay/GameplayRuntimeInterfaces.h"
 #include "game/gameplay/GameplayScreenRuntime.h"
 #include "game/items/ItemEnchantRuntime.h"
+#include "game/mod/ModHooks.h"
 #include "game/tables/ItemTable.h"
 
 #include <algorithm>
@@ -491,6 +492,7 @@ bool characterEvadesMonsterImpact(
 int adjustedIncomingDamageForMember(
     const GameplayCombatController::PendingCombatEventContext &context,
     const GameplayCombatController::CombatEvent &event,
+    const std::optional<GameplayCombatActorInfo> &sourceActor,
     const Character &member,
     size_t memberIndex,
     bool isPhysicalProjectile)
@@ -509,7 +511,7 @@ int adjustedIncomingDamageForMember(
     }
 
     std::mt19937 rng = buildMonsterAttackRng(event, memberIndex, animationTicks(context.pRuntime));
-    return GameMechanics::resolveCharacterIncomingDamage(
+    const int resolvedDamage = GameMechanics::resolveCharacterIncomingDamage(
         member,
         context.pRuntime != nullptr ? context.pRuntime->itemTable() : nullptr,
         context.pRuntime != nullptr ? context.pRuntime->standardItemEnchantTable() : nullptr,
@@ -517,6 +519,22 @@ int adjustedIncomingDamageForMember(
         damage,
         event.damageType,
         rng);
+
+    ModDamageToPlayerEvent modEvent = {};
+    modEvent.partyMemberIndex = memberIndex;
+    modEvent.rawDamage = event.damage;
+    modEvent.resolvedDamage = resolvedDamage;
+    modEvent.damageType = event.damageType;
+    modEvent.attackAction = static_cast<int>(event.ability);
+    modEvent.spellId = static_cast<uint32_t>(std::max(0, event.spellId));
+    modEvent.fromObject = event.type == GameplayCombatController::CombatEventType::PartyProjectileImpact;
+
+    if (sourceActor)
+    {
+        modEvent.actorIndex = sourceActor->actorIndex;
+    }
+
+    return modDamageToPlayer(modEvent);
 }
 
 int parameterBonusForCombat(int value)
@@ -1590,8 +1608,13 @@ void GameplayCombatController::handlePendingCombatEvents(
 
                 specialAttackMembers.push_back(memberIndex);
 
-                const int adjustedDamage =
-                    adjustedIncomingDamageForMember(context, event, *pMember, memberIndex, isPhysicalProjectile);
+                const int adjustedDamage = adjustedIncomingDamageForMember(
+                    context,
+                    event,
+                    sourceActor,
+                    *pMember,
+                    memberIndex,
+                    isPhysicalProjectile);
                 const bool applied = context.party.applyDamageToMember(memberIndex, adjustedDamage, "", true);
                 damagedParty = applied || damagedParty;
 
@@ -1622,15 +1645,6 @@ void GameplayCombatController::handlePendingCombatEvents(
         }
         else
         {
-            const int adjustedDamage =
-                pTargetMember != nullptr && targetMemberIndex
-                    ? adjustedIncomingDamageForMember(
-                        context,
-                        event,
-                        *pTargetMember,
-                        *targetMemberIndex,
-                        isPhysicalProjectile)
-                    : event.damage;
             const bool evaded =
                 pTargetMember != nullptr && targetMemberIndex
                     ? characterEvadesMonsterImpact(
@@ -1639,6 +1653,17 @@ void GameplayCombatController::handlePendingCombatEvents(
                         *targetMemberIndex,
                         animationTicks(context.pRuntime))
                     : false;
+            // Resolved only for a hit that lands: a mod's damage event runs in here and has effects of its own.
+            const int adjustedDamage =
+                !evaded && pTargetMember != nullptr && targetMemberIndex
+                    ? adjustedIncomingDamageForMember(
+                        context,
+                        event,
+                        sourceActor,
+                        *pTargetMember,
+                        *targetMemberIndex,
+                        isPhysicalProjectile)
+                    : event.damage;
 
             if (evaded)
             {

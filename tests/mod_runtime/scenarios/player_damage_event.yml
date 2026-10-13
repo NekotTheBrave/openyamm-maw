@@ -1,0 +1,114 @@
+id: mod_runtime.player_damage_event
+title: A monster's hit on a party member raises CalcDamageToPlayer; a monster's death raises MonsterKilled
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 100
+      food: 5
+      members:
+      - name: Target
+        class: Knight
+        level: 60
+        might: 30
+        endurance: 3000
+        accuracy: 200
+        skills:
+        - name: Sword
+          level: 6
+          mastery: 2
+        equipment:
+          main_hand: 1
+# Every hit on the party member is replaced with a fixed amount, so the hit points lost say how many landed.
+- mod_lua:
+    code: |
+      PlayerHits = {}
+      Taken = 0
+      function events.CalcDamageToPlayer(t)
+        local attack, slot = WhoHitPlayer()
+        local onPlayer = IsAttackOnPlayer()
+        PlayerHits[#PlayerHits + 1] = {
+          kind = t.DamageKind, rawPositive = t.Damage > 0, resultNumber = type(t.Result) == "number",
+          samePlayer = t.Player == Party[0] and t.PlayerIndex == Party[0]:GetIndex() and slot == 0,
+          monster = attack and attack.Monster == Map.Monsters[attack.MonsterIndex] and attack.Monster.HP > 0,
+          action = attack and attack.MonsterAction, onPlayer = onPlayer,
+        }
+        t.Result = 7
+        Taken = Taken + 7
+      end
+      Kills = {}
+      function events.MonsterKilled(monster, index, callDefault, killer)
+        Kills[#Kills + 1] = {
+          index = index, same = monster == Map.Monsters[index], callable = type(callDefault) == "function",
+          byParty = killer ~= nil and killer.Player == Party[0],
+        }
+      end
+      function ProbeRound()
+        for condition = 0, Party[0].Conditions.High do
+          Party[0].Conditions[condition] = 0
+        end
+        Party[0].HP = Party[0].FullHPBase
+        Taken = 0
+        local placed = 0
+        for i = 0, Map.Monsters.High do
+          local m = Map.Monsters[i]
+          if placed < 12 and m.Hostile and not m.IsDead then
+            local angle = placed * math.pi / 6
+            m.X = math.floor(Party.X + math.cos(angle) * 130)
+            m.Y = math.floor(Party.Y + math.sin(angle) * 130)
+            m.Z = Party.Z
+            placed = placed + 1
+          end
+        end
+        return placed
+      end
+      return ProbeRound()
+    expect: "12"
+- advance_runtime: {seconds: 4}
+- mod_lua:
+    code: |
+      local h = PlayerHits[1]
+      if not h then return "no hit on the party" end
+      local p = Party[0]
+      return h.kind, h.rawPositive, h.resultNumber, h.samePlayer, h.monster, h.action, h.onPlayer,
+        Taken > 0, p.FullHPBase - p.HP == Taken
+    expect: "4\ttrue\ttrue\ttrue\ttrue\t0\ttrue\ttrue\ttrue"
+# The party kills what is in reach: each of its blows is made lethal. (Weakening the monsters instead would let
+# them kill each other first; this map's pirates and lizardmen are at war.)
+- mod_lua:
+    code: |
+      PartyBlows = 0
+      function events.CalcDamageToMonster(t)
+        if t.Player then
+          t.Result = 30000
+          PartyBlows = PartyBlows + 1
+        end
+      end
+      return ProbeRound()
+    expect: "12"
+- press_action: {action: attack, seconds: 3}
+- mod_lua: {code: "return ProbeRound()", expect: "12"}
+- press_action: {action: attack, seconds: 3}
+- mod_lua: {code: "return ProbeRound() >= 0", expect: "true"}
+- press_action: {action: attack, seconds: 3}
+- mod_lua: {code: "return ProbeRound() >= 0", expect: "true"}
+- press_action: {action: attack, seconds: 3}
+- mod_lua: {code: "return ProbeRound() >= 0", expect: "true"}
+- press_action: {action: attack, seconds: 3}
+- mod_lua:
+    code: |
+      -- Monsters of this map also kill each other; those deaths arrive without a killer.
+      local k = nil
+      for _, kill in ipairs(Kills) do
+        if kill.byParty then k = kill break end
+      end
+      if not k then
+        return "no kill by the party among " .. #Kills .. "; its blows " .. PartyBlows .. "; condition "
+          .. tostring(Party[0]:GetMainCondition())
+      end
+      return k.same, k.callable, k.byParty, Map.Monsters[k.index].HP <= 0
+    expect: "true\ttrue\ttrue\ttrue"

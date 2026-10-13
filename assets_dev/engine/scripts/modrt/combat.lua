@@ -18,14 +18,28 @@ function WhoHitMonster()
     return monsterHit, monsterHitIndex
 end
 
+-- Description of the attack on a party member being resolved, and that member's party slot.
+local playerHit = nil
+local playerHitSlot = nil
+
+function WhoHitPlayer()
+    return playerHit, playerHitSlot
+end
+
 -- True, attack when a player is the target of the attack being handled; false, attack when a monster is.
 function IsAttackOnPlayer()
-    if monsterHit then
+    if playerHit then
+        return true, playerHit
+    elseif monsterHit then
         return false, monsterHit
     end
 
     return nil
 end
+
+-- The last attack on each monster, kept so that MonsterKilled can say who did it.
+local lastMonsterHit = nil
+local lastMonsterHitIndex = nil
 
 -- Merge's numbers for the two missiles that are not spells.
 local ArrowSpell = 133
@@ -120,6 +134,7 @@ function Combat.damageToMonster(
 
     local previousHit, previousIndex = monsterHit, monsterHitIndex
     monsterHit, monsterHitIndex = attack, actorIndex
+    lastMonsterHit, lastMonsterHitIndex = attack, actorIndex
     ModRT.fire("CalcDamageToMonster", event)
     monsterHit, monsterHitIndex = previousHit, previousIndex
 
@@ -134,4 +149,78 @@ function Combat.damageToMonster(
     end
 
     return floor(result)
+end
+
+-- A party member takes damage. slot is the member's party slot; actorIndex the attacking monster, -1 when there is
+-- none (a trap); action which of the monster's attacks it was (0 and 1 its attacks, 2 and 3 its spells).
+function Combat.damageToPlayer(slot, rawDamage, resolvedDamage, damageKind, actorIndex, action, spellId, fromObject)
+    ModRT.ensureSession()
+    local player = Party[slot]
+
+    if not player then
+        return resolvedDamage
+    end
+
+    local attack = nil
+
+    if actorIndex >= 0 then
+        attack = {Monster = Map.Monsters[actorIndex], MonsterIndex = actorIndex, MonsterAction = action}
+
+        if spellId and spellId > 0 then
+            attack.Spell = spellId
+        end
+
+        if fromObject then
+            -- A monster's arrow has no spell number in the original either.
+            local monster = attack.Monster
+            attack.Object = attackObject(nil, -1, actorIndex, spellId or 0, 0, 0, monster.X, monster.Y, monster.Z)
+            attack.Object.Owner = actorIndex * 8 + 3
+            attack.Object.Target = slot * 8 + 4
+
+            if not (spellId and spellId > 0) then
+                attack.Object.Spell = 0
+                attack.Object.SpellType = 0
+            end
+        end
+    end
+
+    local event = {
+        DamageKind = damageKind,
+        Damage = rawDamage,
+        Result = resolvedDamage,
+        Player = player,
+        PlayerIndex = player:GetIndex(),
+    }
+
+    local previousHit, previousSlot = playerHit, playerHitSlot
+    playerHit, playerHitSlot = attack, slot
+    ModRT.fire("CalcDamageToPlayer", event)
+    playerHit, playerHitSlot = previousHit, previousSlot
+
+    local result = event.Result
+
+    if type(result) ~= "number" or result ~= result then
+        return resolvedDamage
+    end
+
+    if result < 0 then
+        result = 0
+    end
+
+    return floor(result)
+end
+
+-- A monster has died. Handlers get the monster, its index, a function that would run the original engine's own
+-- handling (nothing to run here: the engine has done its part), and the attack that killed it when the party's
+-- last hit was on this monster.
+function Combat.monsterKilled(actorIndex)
+    ModRT.ensureSession()
+    local killer = nil
+
+    if lastMonsterHitIndex == actorIndex then
+        killer = lastMonsterHit
+        lastMonsterHit, lastMonsterHitIndex = nil, nil
+    end
+
+    ModRT.fire("MonsterKilled", Map.Monsters[actorIndex], actorIndex, function() end, killer)
 end

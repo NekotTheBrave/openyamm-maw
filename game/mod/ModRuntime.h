@@ -64,6 +64,8 @@ public:
     void restoreState(const std::string &state);
 
     int calcDamageToMonster(const ModDamageToMonsterEvent &event) override;
+    int calcDamageToPlayer(const ModDamageToPlayerEvent &event) override;
+    void monsterKilled(size_t actorIndex) override;
     void adjustCharacterBonuses(
         Party &party,
         size_t memberIndex,

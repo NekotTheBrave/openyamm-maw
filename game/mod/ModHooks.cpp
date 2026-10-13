@@ -18,6 +18,11 @@ void setActiveModHooks(IModHooks *pModHooks)
     g_pActiveModHooks = pModHooks;
 }
 
+int modDamageToPlayer(const ModDamageToPlayerEvent &event)
+{
+    return g_pActiveModHooks != nullptr ? g_pActiveModHooks->calcDamageToPlayer(event) : event.resolvedDamage;
+}
+
 int modObjectDamageToMonster(
     size_t actorIndex,
     std::optional<size_t> partyMemberIndex,
