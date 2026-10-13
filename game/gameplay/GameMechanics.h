@@ -296,6 +296,9 @@ public:
     static WeaponDamageItemBonuses resolveWeaponDamageItemBonuses(
         const Character &character,
         const ItemTable *pItemTable);
+    // The armor class of the equipped pieces themselves, as the engine adds it up; Character::modItemArmorClass
+    // is not consulted.
+    static int resolveEquippedArmorClass(const Character &character, const ItemTable *pItemTable);
     static bool canAct(const Character &character);
     // The effect of a statistic's value on what it governs (13 gives 0, 15 gives 1, ...).
     static int statisticEffect(int value);

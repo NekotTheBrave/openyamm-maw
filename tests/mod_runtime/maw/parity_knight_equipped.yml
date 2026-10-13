@@ -1,0 +1,81 @@
+id: mod_runtime.maw.parity_knight_equipped
+title: MAW's numbers for a fresh Knight with sword, breastplate and crossbow match the real game
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# The character of parity/Equipped.png with the items of Sword.png, Armor.png and Crossbow.png, read off a real
+# install of the same MAW (Desktop/MAW5) on 2026-10-13: Iron Broadsword (item 11), Rusty Breastplate (94), Crude
+# Crossbow (849). Her statistics are those of the unequipped Knight of parity_new_knight.yml; her skills were not
+# recorded and are taken to be the same. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 1
+        might: 18
+        intellect: 9
+        personality: 9
+        endurance: 15
+        accuracy: 15
+        speed: 15
+        luck: 11
+        skills:
+        - name: Axe
+          level: 1
+          mastery: 1
+        - name: Bow
+          level: 1
+          mastery: 1
+        - name: Sword
+          level: 1
+          mastery: 1
+        - name: Plate
+          level: 1
+          mastery: 1
+        equipment:
+          main_hand: 11
+          armor: 94
+          bow: 849
+# The sheet: Hit Points 43, Spell Points 0, Attack +2, Damage 6 - 12, Shoot +3, Damage 4 - 11, resistances -1.
+# Armor class is left out: the real game shows 20 and this gives 19 (see MAW_PORT_PLAN.md, M4e).
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      local resistances = {}
+      for stat = 10, 15 do
+        resistances[#resistances + 1] = pl:GetResistance(stat)
+      end
+      return pl:GetFullHP(), pl:GetFullSP(), pl:GetMeleeAttack(),
+        pl:GetMeleeDamageMin() .. "-" .. pl:GetMeleeDamageMax(), pl:GetRangedAttack(),
+        pl:GetRangedDamageMin() .. "-" .. pl:GetRangedDamageMax(), table.concat(resistances, ",")
+    expect: "43\t0\t2\t6-12\t3\t4-11\t-1,-1,-1,-1,-1,-1"
+# The item tooltips: damage 3 - 9 at attack speed 0.6 for the sword and 0.8 for the crossbow, armor +18, and the
+# values 20, 300 and 10, which are MAW's own (the item table says 50, 750 and 25).
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      local sword, armor, bow = pl:GetActiveItem(1), pl:GetActiveItem(3), pl:GetActiveItem(2)
+      local function dice(item)
+        local row = item:T()
+        return row.Mod1DiceCount + row.Mod2 .. "-" .. row.Mod1DiceCount * row.Mod1DiceSides + row.Mod2
+      end
+      pl:GetAttackDelay()
+      pl:GetAttackDelay(true)
+      local speed = damageMultiplier[pl:GetIndex()]
+      return sword:T().Name, dice(sword), speed.baseSpeedMelee, bow:T().Name, dice(bow), speed.baseSpeedRanged,
+        armor:T().Name, armor:T().Mod1DiceCount + armor:T().Mod2,
+        getItemValue(sword), getItemValue(armor), getItemValue(bow)
+    expect: "Iron Broadsword\t3-9\t60\tCrude Crossbow\t3-9\t80\tRusty Breastplate\t18\t20\t300\t10"
+# MAW's own "M/R: 3/2". Its "Vitality: 48" follows armor class and comes out as 47 here.
+- mod_lua:
+    code: |
+      local melee, ranged = calcPowerVitality(Party[0], true)
+      return tostring(melee), tostring(ranged)
+    expect: "3\t2"

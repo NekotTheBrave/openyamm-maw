@@ -1,0 +1,61 @@
+id: mod_runtime.item_bonus_parts
+title: What the equipped pieces themselves give (armor class) is part of the item bonus a mod may replace
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+# Item 94 is the Rusty Breastplate (armor class 18), item 56 the Hunting Bow.
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 0
+      food: 1
+      members:
+      - name: Subject
+        class: Knight
+        level: 5
+        skills:
+        - name: Plate
+          level: 1
+          mastery: 1
+        - name: Bow
+          level: 1
+          mastery: 1
+        equipment:
+          armor: 94
+          bow: 56
+# In the original the armor class of what is worn is the item bonus to armor class (statistic 9). The handler is
+# told the engine's figure, the breastplate included, and what it answers is used in its place.
+- mod_lua:
+    code: |
+      local p = Party[0]
+      Party.RefreshBonuses()
+      local worn = p:GetArmorClass()
+      Seen = {}
+      function events.CalcStatBonusByItems(t)
+        if t.Stat == 9 then
+          Seen.armor = t.Result
+          t.Result = 5
+        end
+      end
+      Party.RefreshBonuses()
+      return Seen.armor >= 18, worn - p:GetArmorClass() == Seen.armor - 5
+    expect: "true\ttrue"
+# The original's ranged damage takes statistic 30 (ranged damage bonus) from magic and skills, never from items:
+# a handler's item answer for it changes nothing, while its magic answer does.
+- mod_lua:
+    code: |
+      local p = Party[0]
+      local low = p:GetRangedDamageMin()
+      function events.CalcStatBonusByItems(t)
+        if t.Stat == 30 then t.Result = t.Result + 9 end
+      end
+      Party.RefreshBonuses()
+      local afterItems = p:GetRangedDamageMin() - low
+      function events.CalcStatBonusByMagic(t)
+        if t.Stat == 30 then t.Result = t.Result + 4 end
+      end
+      Party.RefreshBonuses()
+      return afterItems, p:GetRangedDamageMin() - low
+    expect: "0\t4"

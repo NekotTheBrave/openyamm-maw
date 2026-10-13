@@ -89,10 +89,11 @@ function Stats.characterBonuses(slot, flat)
         local magic = {Stat = stat, Result = fromMagic, Player = player, PlayerIndex = playerIndex}
         ModRT.fire("CalcStatBonusByMagic", magic)
 
-        local total = wholeNumber(items.Result, fromItems) + wholeNumber(magic.Result, fromMagic)
-        totals[#totals + 1] = total
-        -- Stored at once: handlers for the statistics that follow may ask for this one.
-        modrt.setStatBonus(slot, stat, total)
+        local itemsAnswer = wholeNumber(items.Result, fromItems)
+        local magicAnswer = wholeNumber(magic.Result, fromMagic)
+        totals[#totals + 1] = itemsAnswer + magicAnswer
+        -- Handed over at once: handlers for the statistics that follow may ask for this one.
+        modrt.setStatBonus(slot, stat, itemsAnswer, magicAnswer)
     end
 
     return totals

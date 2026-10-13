@@ -84,6 +84,9 @@ public:
     int statisticEffect(int value, int engineEffect) override;
     int attackDelay(const Character &character, bool ranged, int engineTicks) override;
     int skillStatBonus(const Character &character, int statId, int engineBonus) override;
+    // Takes the scripts' answer for one statistic of the member whose bonuses are being rebuilt: what the items
+    // give and what magic gives.
+    void setCharacterStatAnswer(size_t memberIndex, int statId, double itemsAnswer, double magicAnswer);
 
     void fireEvent(const std::string &eventName);
     void tick(float deltaSeconds);
@@ -125,6 +128,16 @@ private:
     std::ofstream m_logFile;
     int m_dispatchReference = -1;
     bool m_adjustingBonuses = false;
+    // The engine's own figures for the member whose bonuses are being rebuilt, kept while the scripts answer.
+    struct BonusRebuild
+    {
+        bool active = false;
+        size_t memberIndex = 0;
+        std::vector<int> engineItemBonuses;
+        int equippedArmorClass = 0;
+        GameMechanics::WeaponDamageItemBonuses weaponDamage = {};
+    };
+    BonusRebuild m_bonusRebuild;
     // Statistic effects already asked of the scripts this frame. The engine asks for the same few values many
     // times while drawing one frame, and the scripts answer from a formula.
     std::unordered_map<int, int> m_statisticEffects;

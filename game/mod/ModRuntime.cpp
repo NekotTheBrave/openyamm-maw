@@ -288,6 +288,9 @@ struct ModStatField
     int CharacterResistanceSet::*pResistance;
 };
 
+constexpr int ModStatArmorClassId = 9;
+constexpr int ModStatRangedDamageBaseId = 30;
+
 constexpr ModStatField ModStatFields[] = {
     {0, &CharacterStatBonuses::might, nullptr},
     {1, &CharacterStatBonuses::intellect, nullptr},
@@ -328,26 +331,6 @@ constexpr ModWeaponDamageField ModWeaponDamageFields[] = {
     {32, &Character::ModWeaponDamage::rangedMax, &GameMechanics::WeaponDamageItemBonuses::rangedMax},
 };
 
-// Keeps the mod's answer only when it differs from the engine's: left unset, the engine goes on working the range
-// out from what is equipped, so a change to the weapon or to the item table shows without waiting for a rebuild.
-void setModWeaponDamage(
-    Character &member,
-    const ModWeaponDamageField &field,
-    const GameMechanics::WeaponDamageItemBonuses &engine,
-    lua_Number value)
-{
-    const int answer = static_cast<int>(std::clamp<lua_Number>(std::floor(value), 0.0, 2000000000.0));
-
-    if (answer == engine.*field.pEngineValue)
-    {
-        (member.modWeaponDamage.*field.pField).reset();
-    }
-    else
-    {
-        member.modWeaponDamage.*field.pField = answer;
-    }
-}
-
 int &statBonusField(CharacterStatBonuses &bonuses, const ModStatField &field)
 {
     return field.pField != nullptr ? bonuses.*field.pField : bonuses.resistances.*field.pResistance;
@@ -366,35 +349,16 @@ int nativeSetStatBonus(lua_State *pLuaState)
     ModRuntime *pRuntime = runtimeFromUpvalue(pLuaState);
     const lua_Integer memberIndex = luaL_checkinteger(pLuaState, 1);
     const lua_Integer statId = luaL_checkinteger(pLuaState, 2);
-    const lua_Number value = luaL_checknumber(pLuaState, 3);
-    const ModHost &host = pRuntime->host();
-    Party *pParty = host.party ? host.party() : nullptr;
-    Character *pMember = pParty != nullptr && memberIndex >= 0 ? pParty->member(static_cast<size_t>(memberIndex)) : nullptr;
+    const lua_Number itemsAnswer = luaL_checknumber(pLuaState, 3);
+    const lua_Number magicAnswer = luaL_optnumber(pLuaState, 4, 0.0);
 
-    if (pMember == nullptr)
+    if (memberIndex >= 0)
     {
-        return 0;
-    }
-
-    for (const ModStatField &field : ModStatFields)
-    {
-        if (field.statId == statId)
-        {
-            statBonusField(pMember->magicalBonuses, field) =
-                static_cast<int>(std::clamp<lua_Number>(value, -2000000000.0, 2000000000.0));
-            break;
-        }
-    }
-
-    for (const ModWeaponDamageField &field : ModWeaponDamageFields)
-    {
-        if (field.statId == statId)
-        {
-            const GameMechanics::WeaponDamageItemBonuses engine =
-                GameMechanics::resolveWeaponDamageItemBonuses(*pMember, pParty->itemTable());
-            setModWeaponDamage(*pMember, field, engine, value);
-            break;
-        }
+        pRuntime->setCharacterStatAnswer(
+            static_cast<size_t>(memberIndex),
+            static_cast<int>(statId),
+            itemsAnswer,
+            magicAnswer);
     }
 
     return 0;
@@ -1288,6 +1252,90 @@ bool ModRuntime::allowBadThingToPlayer(size_t partyMemberIndex, std::optional<si
     return allowed;
 }
 
+void ModRuntime::setCharacterStatAnswer(size_t memberIndex, int statId, double itemsAnswer, double magicAnswer)
+{
+    Party *pParty = m_host.party ? m_host.party() : nullptr;
+    Character *pMember = pParty != nullptr ? pParty->member(memberIndex) : nullptr;
+
+    if (pMember == nullptr || !m_bonusRebuild.active || m_bonusRebuild.memberIndex != memberIndex)
+    {
+        return;
+    }
+
+    const auto whole =
+        [](double value)
+        {
+            return static_cast<int>(std::clamp(std::floor(value), -2000000000.0, 2000000000.0));
+        };
+    const int items = whole(itemsAnswer);
+    const int magic = whole(magicAnswer);
+
+    for (size_t fieldIndex = 0; fieldIndex < std::size(ModStatFields); ++fieldIndex)
+    {
+        const ModStatField &field = ModStatFields[fieldIndex];
+
+        if (field.statId != statId)
+        {
+            continue;
+        }
+
+        const int engineItems = m_bonusRebuild.engineItemBonuses[fieldIndex];
+        int &bonus = statBonusField(pMember->magicalBonuses, field);
+
+        if (statId == ModStatArmorClassId)
+        {
+            // The scripts were asked about everything worn: the enchantments (engineItems) and the pieces' own
+            // armor class. An unchanged answer leaves the engine adding the pieces up itself, so that a change
+            // of armor shows without waiting for a rebuild.
+            if (items == engineItems + m_bonusRebuild.equippedArmorClass)
+            {
+                pMember->modItemArmorClass.reset();
+                bonus = engineItems + magic;
+            }
+            else
+            {
+                pMember->modItemArmorClass = items;
+                bonus = magic;
+            }
+        }
+        else if (statId == ModStatRangedDamageBaseId)
+        {
+            // The original's ranged damage takes this statistic from magic and skills only, never from items,
+            // so the scripts' item answer is not used. The engine's own item bonus stays.
+            bonus = engineItems + magic;
+        }
+        else
+        {
+            bonus = items + magic;
+        }
+
+        return;
+    }
+
+    for (const ModWeaponDamageField &field : ModWeaponDamageFields)
+    {
+        if (field.statId != statId)
+        {
+            continue;
+        }
+
+        // Kept only when it differs from the engine's: left unset, the engine goes on working the range out from
+        // what is equipped, so a change to the weapon or to the item table shows without waiting for a rebuild.
+        const int answer = std::max(0, items);
+
+        if (answer == m_bonusRebuild.weaponDamage.*field.pEngineValue)
+        {
+            (pMember->modWeaponDamage.*field.pField).reset();
+        }
+        else
+        {
+            pMember->modWeaponDamage.*field.pField = answer;
+        }
+
+        return;
+    }
+}
+
 void ModRuntime::adjustCharacterBonuses(
     Party &party,
     size_t memberIndex,
@@ -1304,10 +1352,16 @@ void ModRuntime::adjustCharacterBonuses(
     m_adjustingBonuses = true;
     ensureModCharacterIndex(party, *pMember);
 
-    // The weapons' share of the damage range starts from what the engine works out for the equipped items.
+    // The scripts are asked about each statistic in turn and answer through setCharacterStatAnswer. What the
+    // equipped items themselves give (weapon dice, armor class) starts from what the engine works out.
     pMember->modWeaponDamage = {};
-    const GameMechanics::WeaponDamageItemBonuses weaponDamage =
-        GameMechanics::resolveWeaponDamageItemBonuses(*pMember, party.itemTable());
+    pMember->modItemArmorClass.reset();
+    m_bonusRebuild = {};
+    m_bonusRebuild.active = true;
+    m_bonusRebuild.memberIndex = memberIndex;
+    m_bonusRebuild.weaponDamage = GameMechanics::resolveWeaponDamageItemBonuses(*pMember, party.itemTable());
+    m_bonusRebuild.equippedArmorClass = GameMechanics::resolveEquippedArmorClass(*pMember, party.itemTable());
+    const GameMechanics::WeaponDamageItemBonuses &weaponDamage = m_bonusRebuild.weaponDamage;
 
     // --- statistics: item part and magic part ------------------------------------------------------------------------
     if (beginDispatch("characterBonuses"))
@@ -1320,9 +1374,13 @@ void ModRuntime::adjustCharacterBonuses(
         {
             const int total = statBonusValue(pMember->magicalBonuses, field);
             const int fromMagic = statBonusValue(buffBonuses, field);
+            const int fromItems = total - fromMagic;
+            m_bonusRebuild.engineItemBonuses.push_back(fromItems);
             lua_pushinteger(m_pLuaState, field.statId);
             lua_rawseti(m_pLuaState, -2, ++position);
-            lua_pushinteger(m_pLuaState, total - fromMagic);
+            lua_pushinteger(
+                m_pLuaState,
+                field.statId == ModStatArmorClassId ? fromItems + m_bonusRebuild.equippedArmorClass : fromItems);
             lua_rawseti(m_pLuaState, -2, ++position);
             lua_pushinteger(m_pLuaState, fromMagic);
             lua_rawseti(m_pLuaState, -2, ++position);
@@ -1338,41 +1396,11 @@ void ModRuntime::adjustCharacterBonuses(
             lua_rawseti(m_pLuaState, -2, ++position);
         }
 
-        if (endDispatch(2, 1))
-        {
-            if (lua_istable(m_pLuaState, -1))
-            {
-                lua_Integer resultIndex = 0;
-
-                for (const ModStatField &field : ModStatFields)
-                {
-                    lua_rawgeti(m_pLuaState, -1, ++resultIndex);
-
-                    if (lua_isnumber(m_pLuaState, -1))
-                    {
-                        statBonusField(pMember->magicalBonuses, field) = static_cast<int>(
-                            std::clamp<lua_Number>(lua_tonumber(m_pLuaState, -1), -2000000000.0, 2000000000.0));
-                    }
-
-                    lua_pop(m_pLuaState, 1);
-                }
-
-                for (const ModWeaponDamageField &field : ModWeaponDamageFields)
-                {
-                    lua_rawgeti(m_pLuaState, -1, ++resultIndex);
-
-                    if (lua_isnumber(m_pLuaState, -1))
-                    {
-                        setModWeaponDamage(*pMember, field, weaponDamage, lua_tonumber(m_pLuaState, -1));
-                    }
-
-                    lua_pop(m_pLuaState, 1);
-                }
-            }
-
-            lua_pop(m_pLuaState, 1);
-        }
+        // The answers have arrived one by one through setCharacterStatAnswer.
+        endDispatch(2, 0);
     }
+
+    m_bonusRebuild.active = false;
 
     // --- skills ------------------------------------------------------------------------------------------------------
     if (beginDispatch("characterSkills"))

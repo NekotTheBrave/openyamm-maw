@@ -2267,7 +2267,7 @@ CharacterSheetSummary GameMechanics::buildCharacterSheetSummary(
         ? 5 * std::max(0, skillLevel(character, "DragonAbility"))
         : 0;
     const int armorBase = parameterBonus(actualSpeed)
-        + resolvePassiveArmorBonus(equippedItems)
+        + character.modItemArmorClass.value_or(resolvePassiveArmorBonus(equippedItems))
         + modSkillStatBonus(character, ModStatArmorClass, resolveArmorSkillBonus(character, equippedItems))
         + dragonArmorBonus
         + character.permanentBonuses.armorClass;
@@ -3376,6 +3376,11 @@ GameMechanics::WeaponDamageItemBonuses GameMechanics::resolveWeaponDamageItemBon
     }
 
     return bonuses;
+}
+
+int GameMechanics::resolveEquippedArmorClass(const Character &character, const ItemTable *pItemTable)
+{
+    return resolvePassiveArmorBonus(resolveEquippedItems(character, pItemTable));
 }
 
 int GameMechanics::statisticEffect(int value)

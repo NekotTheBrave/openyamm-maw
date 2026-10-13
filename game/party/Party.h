@@ -141,6 +141,10 @@ struct Character
         std::optional<int> rangedMax;
     };
     ModWeaponDamage modWeaponDamage = {};
+    // Likewise the armor class of what is worn (armor, shield, helm and so on, with their enchantments): in the
+    // original it is the item bonus to armor class, which a mod may replace. Unset, the engine adds up the
+    // equipped pieces itself. Not saved.
+    std::optional<int> modItemArmorClass;
     std::unordered_set<uint32_t> playerBits;
     uint32_t npcs2 = 0;
     int merchantBonus = 0;
