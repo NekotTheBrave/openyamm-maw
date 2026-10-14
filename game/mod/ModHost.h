@@ -8,6 +8,7 @@ namespace OpenYAMM::Game
 class GameDataLoader;
 class IGameplayWorldRuntime;
 class Party;
+struct InventoryItem;
 
 // What the mod runtime may reach in the running game. The application fills this in; every accessor may return
 // null (or an empty value) when there is no session yet, and bindings treat that as "nothing there".
@@ -27,5 +28,7 @@ struct ModHost
     // The character screen's page, in the original's numbers (const.CharScreens): 100 stats, 101 skills, 102 awards,
     // 103 inventory.
     std::function<int()> currentCharScreen;
+    // The item the player holds on the mouse pointer, nullptr when none.
+    std::function<InventoryItem *()> heldItem;
 };
 }

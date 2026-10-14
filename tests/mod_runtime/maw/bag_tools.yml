@@ -1,0 +1,97 @@
+id: mod_runtime.maw.bag_tools
+title: MAW's bag tools sort a backpack and keep five bags per character, losing nothing
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# The port's versions of MAW's sorter and multi-bag (tools/maw/port/Scripts/General/zMaw-Bags.lua), called as MAW's
+# keys call them: sortInventory (R), changeBag (Shift+1..5), sortMultibag (C). Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 1
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      -- The backpack's items without disturbing it.
+      function Peek()
+        local items = modrt.inventoryTake(0)
+        for _, item in ipairs(items) do modrt.inventoryPut(0, item, item.X, item.Y) end
+        return items
+      end
+      modrt.inventoryTake(0)
+      for _, number in ipairs({220, 11, 61, 94, 849}) do modrt.inventoryPut(0, {Number = number}) end
+      return #Peek()
+    expect: "5"
+# R: the current bag sorted by MAW's order, largest first; nothing lost.
+- mod_lua:
+    code: |
+      sortInventory(false)
+      local items = Peek()
+      local ordered = true
+      for i = 2, #items do
+        local a, b = items[i - 1], items[i]
+        local sizeA = (a.Height == 1 and a.Width > 1) and 1.5 or a.Height
+        local sizeB = (b.Height == 1 and b.Width > 1) and 1.5 or b.Height
+        if sizeA < sizeB then ordered = false end
+      end
+      return #items, ordered
+    expect: "5\ttrue"
+# Shift+2 puts the backpack away as bag 1; Shift+1 brings it back, every item where it was.
+- mod_lua:
+    code: |
+      local before = {}
+      for _, item in ipairs(Peek()) do before[#before + 1] = item.Number .. "@" .. item.X .. "," .. item.Y end
+      changeBag(Party[0], 2)
+      local empty = #Peek()
+      changeBag(Party[0], 1)
+      local after = {}
+      for _, item in ipairs(Peek()) do after[#after + 1] = item.Number .. "@" .. item.X .. "," .. item.Y end
+      table.sort(before)
+      table.sort(after)
+      return empty, vars.mawbags[Party[0]:GetIndex()].CurrentBag, table.concat(before, " ") == table.concat(after, " ")
+    expect: "0\t1\ttrue"
+# C: all five bags sorted together, filled from the first: an item in bag 2 comes to bag 1, which has room.
+- mod_lua:
+    code: |
+      changeBag(Party[0], 2)
+      modrt.inventoryPut(0, {Number = 220})
+      changeBag(Party[0], 1)
+      local bags = vars.mawbags[Party[0]:GetIndex()]
+      local inBag2 = #(bags[2] or {})
+      sortMultibag()
+      return inBag2, #Peek(), bags[2] == nil, bags.CurrentBag
+    expect: "1\t6\ttrue\t1"
+# What is in a bag is kept with the save: an item put away in bag 3 is there again after saving and loading.
+- mod_lua:
+    code: |
+      changeBag(Party[0], 3)
+      modrt.inventoryPut(0, {Number = 11})
+      changeBag(Party[0], 1)
+      return #(vars.mawbags[Party[0]:GetIndex()][3] or {})
+    expect: "1"
+- save_game: maw_bag_tools
+- mod_lua:
+    code: |
+      vars.mawbags[Party[0]:GetIndex()][3] = nil
+      return #(vars.mawbags[Party[0]:GetIndex()][3] or {})
+    expect: "0"
+- load_game: maw_bag_tools
+- mod_lua:
+    code: |
+      changeBag(Party[0], 3)
+      local items = Peek and Peek() or modrt.inventoryTake(0)
+      local number = items[1] and items[1].Number
+      return #items, number
+    expect: "1\t11"

@@ -2900,6 +2900,11 @@ GameApplication::GameApplication(const Engine::ApplicationConfig &config)
     {
         m_gameSession.gameplayScreenRuntime().setStatusBarEvent(text);
     };
+    modHost.heldItem = [this]() -> InventoryItem *
+    {
+        GameplayUiController::HeldInventoryItemState &held = m_gameSession.gameplayScreenRuntime().heldInventoryItem();
+        return held.active ? &held.item : nullptr;
+    };
     modHost.currentCharScreen = [this]()
     {
         switch (m_gameSession.gameplayScreenRuntime().characterScreenReadOnly().page)

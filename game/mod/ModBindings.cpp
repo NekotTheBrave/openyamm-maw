@@ -1266,6 +1266,21 @@ bool itemViewArgument(lua_State *pLuaState, ItemView &view)
 {
     const std::string group = luaL_checkstring(pLuaState, 2);
 
+    // The item the player holds on the mouse pointer (Mouse.Item).
+    if (group == "held")
+    {
+        const ModHost *pHost = hostFromUpvalue(pLuaState);
+        InventoryItem *pHeld = pHost != nullptr && pHost->heldItem ? pHost->heldItem() : nullptr;
+
+        if (pHeld == nullptr)
+        {
+            return false;
+        }
+
+        itemViewOfInventoryItem(*pHeld, view);
+        return true;
+    }
+
     // The item of the event being handled; it belongs to no party member.
     if (group == "event")
     {
@@ -2895,6 +2910,168 @@ int nativeHouseOfferSkill(lua_State *pLuaState)
     return 1;
 }
 
+// A backpack item as a table of its fields, for scripts that move items between bags. `Location` is the item's cell
+// as the original numbers the 14 by 9 grid (row * 14 + column).
+void pushInventoryItemTable(lua_State *pLuaState, const InventoryItem &item)
+{
+    lua_createtable(pLuaState, 0, 21);
+    const auto number = [pLuaState](const char *pName, lua_Number value)
+    {
+        lua_pushnumber(pLuaState, value);
+        lua_setfield(pLuaState, -2, pName);
+    };
+    const auto boolean = [pLuaState](const char *pName, bool value)
+    {
+        lua_pushboolean(pLuaState, value);
+        lua_setfield(pLuaState, -2, pName);
+    };
+    number("Number", item.objectDescriptionId);
+    number("Quantity", item.quantity);
+    number("Width", item.width);
+    number("Height", item.height);
+    number("X", item.gridX);
+    number("Y", item.gridY);
+    number("Location", item.gridY * 14 + item.gridX);
+    boolean("Identified", item.identified);
+    boolean("Broken", item.broken);
+    boolean("Stolen", item.stolen);
+    number("Enchant", item.standardEnchantId);
+    number("EnchantPower", item.standardEnchantPower);
+    number("Special", item.specialEnchantId);
+    number("Artifact", item.artifactId);
+    number("Rarity", static_cast<int>(item.rarity));
+    number("Charges", item.currentCharges);
+    number("MaxCharges", item.maxCharges);
+    number("TemporaryBonusSeconds", item.temporaryBonusRemainingSeconds);
+    number("ModCharges", item.modData.charges);
+    number("ModMaxCharges", item.modData.maxCharges);
+    number("ModExpire", item.modData.bonusExpireTime);
+}
+
+InventoryItem inventoryItemFromTable(lua_State *pLuaState, int index)
+{
+    const auto number = [pLuaState, index](const char *pName, lua_Number fallback)
+    {
+        lua_getfield(pLuaState, index, pName);
+        const lua_Number value = lua_isnumber(pLuaState, -1) ? lua_tonumber(pLuaState, -1) : fallback;
+        lua_pop(pLuaState, 1);
+        return value;
+    };
+    const auto boolean = [pLuaState, index](const char *pName, bool fallback)
+    {
+        lua_getfield(pLuaState, index, pName);
+        const bool value = lua_isboolean(pLuaState, -1) ? lua_toboolean(pLuaState, -1) != 0 : fallback;
+        lua_pop(pLuaState, 1);
+        return value;
+    };
+    InventoryItem item = {};
+    item.objectDescriptionId = static_cast<uint32_t>(number("Number", 0));
+    item.quantity = static_cast<uint32_t>(std::max<lua_Number>(1, number("Quantity", 1)));
+    item.width = static_cast<uint8_t>(std::clamp<lua_Number>(number("Width", 1), 1, 14));
+    item.height = static_cast<uint8_t>(std::clamp<lua_Number>(number("Height", 1), 1, 9));
+    item.identified = boolean("Identified", true);
+    item.broken = boolean("Broken", false);
+    item.stolen = boolean("Stolen", false);
+    item.standardEnchantId = static_cast<uint16_t>(number("Enchant", 0));
+    item.standardEnchantPower = static_cast<uint16_t>(number("EnchantPower", 0));
+    item.specialEnchantId = static_cast<uint16_t>(number("Special", 0));
+    item.artifactId = static_cast<uint16_t>(number("Artifact", 0));
+    item.rarity = static_cast<ItemRarity>(static_cast<int>(number("Rarity", 0)));
+    item.currentCharges = static_cast<uint16_t>(number("Charges", 0));
+    item.maxCharges = static_cast<uint16_t>(number("MaxCharges", 0));
+    item.temporaryBonusRemainingSeconds = static_cast<float>(number("TemporaryBonusSeconds", 0));
+    item.modData.charges = static_cast<int32_t>(number("ModCharges", 0));
+    item.modData.maxCharges = static_cast<int32_t>(number("ModMaxCharges", 0));
+    item.modData.bonusExpireTime = static_cast<int32_t>(number("ModExpire", 0));
+    return item;
+}
+
+// modrt.inventoryTake(player): empties the character's backpack and returns its items, each as a table of its
+// fields (see pushInventoryItemTable). Equipped items stay.
+int nativeInventoryTake(lua_State *pLuaState)
+{
+    Character *pCharacter = playerArgument(pLuaState, 1);
+
+    if (pCharacter == nullptr)
+    {
+        return 0;
+    }
+
+    const std::vector<InventoryItem> items = std::move(pCharacter->inventory);
+    pCharacter->inventory.clear();
+    lua_createtable(pLuaState, static_cast<int>(items.size()), 0);
+
+    for (size_t index = 0; index < items.size(); ++index)
+    {
+        pushInventoryItemTable(pLuaState, items[index]);
+        lua_rawseti(pLuaState, -2, static_cast<lua_Integer>(index + 1));
+    }
+
+    return 1;
+}
+
+// modrt.inventoryPut(player, item[, x, y]): puts an item (a table as inventoryTake gives) in the backpack: at the
+// cell when one is given and the item fits there, otherwise where it first fits. False when it fits nowhere.
+int nativeInventoryPut(lua_State *pLuaState)
+{
+    Character *pCharacter = playerArgument(pLuaState, 1);
+    luaL_checktype(pLuaState, 2, LUA_TTABLE);
+
+    if (pCharacter == nullptr)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    InventoryItem item = inventoryItemFromTable(pLuaState, 2);
+
+    if (item.objectDescriptionId == 0)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    // An item made by a script need not say its size: its kind's.
+    lua_getfield(pLuaState, 2, "Width");
+    const bool sized = lua_isnumber(pLuaState, -1);
+    lua_pop(pLuaState, 1);
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const ItemDefinition *pDefinition =
+        !sized && pData != nullptr ? pData->getItemTable().get(item.objectDescriptionId) : nullptr;
+
+    if (pDefinition != nullptr)
+    {
+        item.width = std::max<uint8_t>(1, pDefinition->inventoryWidth);
+        item.height = std::max<uint8_t>(1, pDefinition->inventoryHeight);
+    }
+
+    bool placed = false;
+
+    if (lua_isnumber(pLuaState, 3) && lua_isnumber(pLuaState, 4))
+    {
+        placed = pCharacter->addInventoryItemAt(
+            item,
+            static_cast<uint8_t>(std::clamp<lua_Integer>(lua_tointeger(pLuaState, 3), 0, 13)),
+            static_cast<uint8_t>(std::clamp<lua_Integer>(lua_tointeger(pLuaState, 4), 0, 8)));
+    }
+
+    if (!placed)
+    {
+        placed = pCharacter->addInventoryItem(item);
+    }
+
+    lua_pushboolean(pLuaState, placed);
+    return 1;
+}
+
+// modrt.heldItemPresent(): whether the player holds an item on the mouse pointer.
+int nativeHeldItemPresent(lua_State *pLuaState)
+{
+    const ModHost *pHost = hostFromUpvalue(pLuaState);
+    lua_pushboolean(pLuaState, pHost != nullptr && pHost->heldItem && pHost->heldItem() != nullptr);
+    return 1;
+}
+
 // modrt.npcText(id): one of the game's NPC texts (Game.NPCText), nil where there is none.
 int nativeNpcText(lua_State *pLuaState)
 {
@@ -3765,6 +3942,9 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"classSkillSet", nativeClassSkillSet},
         {"globalTextSet", nativeGlobalTextSet},
         {"npcText", nativeNpcText},
+        {"inventoryTake", nativeInventoryTake},
+        {"inventoryPut", nativeInventoryPut},
+        {"heldItemPresent", nativeHeldItemPresent},
         {"skillRegister", nativeSkillRegister},
         {"houseOfferSkill", nativeHouseOfferSkill},
         {"statDescription", nativeStatDescription},
