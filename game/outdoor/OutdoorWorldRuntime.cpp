@@ -6343,8 +6343,8 @@ void OutdoorWorldRuntime::applyFireSpikeTrapTriggerResult(
                 appliedDamage,
                 damageType,
                 static_cast<uint32_t>(trap.spellId),
-                0,
-                0,
+                trap.skillLevel,
+                trap.skillMastery,
                 trap.x,
                 trap.y,
                 trap.z);

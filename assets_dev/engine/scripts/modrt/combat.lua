@@ -135,6 +135,29 @@ function Combat.damageToMonster(
     local previousHit, previousIndex = monsterHit, monsterHitIndex
     monsterHit, monsterHitIndex = attack, actorIndex
     lastMonsterHit, lastMonsterHitIndex = attack, actorIndex
+
+    -- A party member's spell: as in the original, its damage is the CalcSpellDamage event's before the monster's
+    -- resistances and CalcDamageToMonster (MAW computes all spell damage there: its dice, Intellect and Personality,
+    -- crits). Result comes in as the engine's roll; HP is the monster's (Mass Distortion takes a share of it). The
+    -- engine's resistance roll is kept in proportion.
+    if player and fromObject and spellId and spellId > 0 then
+        local monster = event.Monster
+        local spellEvent = {
+            Spell = spellId, Skill = skillLevel or 0, Mastery = skillMastery or 0, Result = rawDamage,
+            HP = monster and monster.HP or 0, Player = player, PlayerIndex = playerIndex, Monster = monster,
+            MonsterIndex = actorIndex,
+        }
+        ModRT.fire("CalcSpellDamage", spellEvent)
+        local spellDamage = spellEvent.Result
+
+        if type(spellDamage) == "number" and spellDamage == spellDamage and spellDamage ~= rawDamage then
+            spellDamage = math.max(0, floor(spellDamage))
+            resolvedDamage = rawDamage > 0 and floor(resolvedDamage * spellDamage / rawDamage + 0.5) or spellDamage
+            rawDamage = spellDamage
+            event.Damage, event.Result = rawDamage, resolvedDamage
+        end
+    end
+
     ModRT.fire("CalcDamageToMonster", event)
     monsterHit, monsterHitIndex = previousHit, previousIndex
 

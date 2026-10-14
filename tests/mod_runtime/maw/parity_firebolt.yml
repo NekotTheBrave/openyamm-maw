@@ -1,0 +1,76 @@
+id: mod_runtime.maw.parity_firebolt
+title: A level 1 Sorcerer's Fire Bolt does what it does in the real game
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# Read off a real install of the same MAW (Desktop/MAW5) with tools/maw/parity/ParityDump.lua on 2026-10-14: a new
+# Sorcerer (class 42) at level 1, the statistics below, Fire 1 Normal, cast Fire Bolt at the goblins by New Sorpigal
+# (no fire resistance). Raw damage, as CalcDamageToMonster sees it, was 9 or 10, and 15 once (a crit: 1.54 times).
+# MAW computes it in CalcSpellDamage (9.22 or 10.25 here). Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Wilma
+        class: Sorcerer
+        level: 1
+        might: 11
+        intellect: 25
+        personality: 9
+        endurance: 11
+        accuracy: 11
+        speed: 14
+        luck: 11
+        skills:
+        - name: Staff
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      pl.Skills[const.Skills.Fire] = JoinSkill(1, 1)
+      pl.Spells[2] = true
+      Raw, Spell = {}, {}
+      function events.CalcSpellDamage(t) Spell[#Spell + 1] = string.format("%.2f", t.Result) end
+      function events.CalcDamageToMonster(t)
+        if t.ByPlayer and not t.Melee then Raw[#Raw + 1] = t.Damage end
+      end
+      Target = nil
+      for i = 0, Map.Monsters.High do
+        local m = Map.Monsters[i]
+        if m.Id >= 550 and m.Id <= 551 and not m.IsDead then Target = i break end
+      end
+      function Shoot()
+        local m = Map.Monsters[Target]
+        m.X = Party.X + 500; m.Y = Party.Y; m.Z = Party.Z; m.HP = 1000
+        pl.SP = 50
+        pl.RecoveryDelay = 0
+        return pl:CastSpell(2, Target)
+      end
+      return Target ~= nil, pl:GetIntellect(), SplitSkill(pl.Skills[const.Skills.Fire])
+    expect: "true\t25\t1\t1"
+- mod_lua: {code: "return Shoot()", expect: "true\t"}
+- advance_runtime: {seconds: 2}
+- mod_lua: {code: "return Shoot()", expect: "true\t"}
+- advance_runtime: {seconds: 2}
+- mod_lua: {code: "return Shoot()", expect: "true\t"}
+- advance_runtime: {seconds: 2}
+- mod_lua: {code: "return Shoot()", expect: "true\t"}
+- advance_runtime: {seconds: 2}
+- mod_lua: {code: "return Shoot()", expect: "true\t"}
+- advance_runtime: {seconds: 2}
+- mod_lua:
+    code: |
+      local allowed = {[9] = true, [10] = true, [14] = true, [15] = true}
+      local bad = {}
+      for _, raw in ipairs(Raw) do
+        if not allowed[raw] then bad[#bad + 1] = raw end
+      end
+      return #Raw, #bad == 0 and "ok" or table.concat(bad, ",")
+    expect: "5\tok"

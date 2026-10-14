@@ -117,3 +117,33 @@ steps:
     code: |
       return #SpellHits - HitsBefore
     expect: "0"
+# The missile's hit raises CalcSpellDamage first (the spell, the skill it was cast with, the mastery, the monster's
+# HP, Result the engine's roll), with WhoHitMonster set; the Result a handler leaves is the damage CalcDamageToMonster
+# then sees (MAW computes all spell damage there).
+- mod_lua:
+    code: |
+      Takeover = false
+      SpellDamage = {}
+      function events.CalcSpellDamage(t)
+        SpellDamage[#SpellDamage + 1] = {
+          spell = t.Spell, skill = t.Skill, mastery = t.Mastery, hp = t.HP, rolled = t.Result > 0,
+          who = WhoHitMonster() and WhoHitMonster().Player == Party[0],
+        }
+        t.Result = 777
+      end
+      events.Remove("CalcDamageToMonster")
+      function events.CalcDamageToMonster(t)
+        SpellHits[#SpellHits + 1] = {damage = t.Damage}
+      end
+      ProbeRound()
+      HitsBefore = #SpellHits
+      return CastAtFirstHostile()
+    expect: "true\t"
+- advance_runtime: {seconds: 2}
+- mod_lua:
+    code: |
+      local d, h = SpellDamage[1], SpellHits[HitsBefore + 1]
+      if not d then return "no CalcSpellDamage" end
+      if not h then return "no hit" end
+      return d.spell, d.skill, d.mastery, d.hp, d.rolled, d.who, h.damage
+    expect: "2\t14\t3\t30000\ttrue\ttrue\t777"
