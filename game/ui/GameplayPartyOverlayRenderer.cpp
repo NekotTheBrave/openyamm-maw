@@ -1641,6 +1641,89 @@ SplitCharacterStatValue makeSplitCharacterResourceValue(int currentValue, int ma
     return result;
 }
 
+// The original's interface text (global.txt) behind a row of the stats page, by the row's name in the layout
+// (CharacterStat<Name>Label and CharacterStat<Name>Value, lower case).
+std::optional<int> statPageGlobalTextIndex(const std::string &rowName)
+{
+    static const std::unordered_map<std::string, int> indices = {
+        {"might", 144}, {"intellect", 116}, {"personality", 163}, {"endurance", 75}, {"accuracy", 1},
+        {"speed", 211}, {"luck", 136}, {"hitpoints", 108}, {"spellpoints", 212}, {"armorclass", 12},
+        {"condition", 47}, {"quickspell", 172}, {"age", 5}, {"level", 131}, {"experience", 83}, {"attack", 18},
+        {"meleedamage", 53}, {"shoot", 203}, {"rangeddamage", 53}, {"fireresistance", 87}, {"airresistance", 6},
+        {"waterresistance", 240}, {"earthresistance", 70}, {"mindresistance", 142}, {"bodyresistance", 29}};
+    const std::unordered_map<std::string, int>::const_iterator it = indices.find(rowName);
+    return it != indices.end() ? std::optional<int>(it->second) : std::nullopt;
+}
+
+// A row of the stats page whose label a mod has rewritten. The original draws a row's label and value as one line,
+// so mods put more than the name in the label: what follows a tab takes the value's place (MAW's resistances, with
+// the original's value in it), and a line break pushes the value out of sight (MAW's M/R and Vitality in place of
+// Condition and Quick Spell). `value` is empty when the value is hidden, and absent when the engine's stays.
+struct ModStatRow
+{
+    std::string label;
+    std::optional<std::string> value;
+};
+
+std::optional<ModStatRow> modStatRow(const std::string &rowName)
+{
+    const std::optional<int> index = statPageGlobalTextIndex(rowName);
+    const std::string *pText = index ? modGlobalText(*index) : nullptr;
+
+    if (pText == nullptr)
+    {
+        return std::nullopt;
+    }
+
+    const size_t lineEnd = pText->find('\n');
+    std::string line = pText->substr(0, lineEnd);
+    line.erase(std::remove(line.begin(), line.end(), '\r'), line.end());
+    ModStatRow row;
+    const size_t tab = line.find('\t');
+
+    if (tab == std::string::npos)
+    {
+        row.label = line;
+
+        if (lineEnd != std::string::npos)
+        {
+            row.value = std::string();
+        }
+
+        return row;
+    }
+
+    row.label = line.substr(0, tab);
+    size_t rest = tab + 1;
+
+    for (size_t digit = 0; digit < 3 && rest < line.size() && std::isdigit(static_cast<unsigned char>(line[rest]));
+         ++digit)
+    {
+        ++rest;
+    }
+
+    while (rest < line.size() && line[rest] == ' ')
+    {
+        ++rest;
+    }
+
+    // The value goes on in the colour the label was in at the tab.
+    std::string openColor;
+
+    for (size_t index = 0; index < row.label.size(); ++index)
+    {
+        if (const size_t codeLength = GameplayHudCommon::hudColorCodeLength(row.label, index); codeLength > 0)
+        {
+            const std::string code = row.label.substr(index, codeLength);
+            openColor = code == "\f00000" ? std::string() : code;
+            index += codeLength - 1;
+        }
+    }
+
+    row.value = openColor + line.substr(rest);
+    return row;
+}
+
 bool tryGetSplitCharacterStatValue(
     const std::string &normalizedLayoutId,
     const CharacterSheetSummary &summary,
@@ -9694,9 +9777,52 @@ void GameplayPartyOverlayRenderer::renderCharacterOverlay(
                 label.clear();
             }
 
+            // A row whose label a mod has rewritten (see modStatRow). A label whose value is hidden may run on over
+            // the value's place.
+            std::optional<ModStatRow> modRow;
+            GameplayResolvedHudLayoutElement labelRect = *resolved;
+
+            if (normalizedLayoutId.starts_with("characterstat")
+                && !normalizedLayoutId.starts_with("characterstats")
+                && (normalizedLayoutId.ends_with("label") || normalizedLayoutId.ends_with("value")))
+            {
+                const std::string rowName =
+                    normalizedLayoutId.substr(13, normalizedLayoutId.size() - 13 - 5);
+                modRow = modStatRow(rowName);
+
+                if (modRow && normalizedLayoutId.ends_with("label"))
+                {
+                    label = modRow->label;
+                    const std::string valueId = pLayout->id.substr(0, pLayout->id.size() - 5) + "Value";
+                    const UiLayoutManager::LayoutElement *pValueLayout = context.findHudLayoutElement(valueId);
+                    const std::optional<GameplayResolvedHudLayoutElement> valueRect =
+                        modRow->value && modRow->value->empty() && pValueLayout != nullptr
+                            ? context.resolveHudLayoutElement(
+                                valueId, width, height, pValueLayout->width, pValueLayout->height)
+                            : std::nullopt;
+
+                    if (valueRect)
+                    {
+                        labelRect.width = std::max(labelRect.width, valueRect->x + valueRect->width - labelRect.x);
+                    }
+                }
+                else if (modRow && modRow->value)
+                {
+                    label = *modRow->value;
+                }
+                else
+                {
+                    modRow.reset();
+                }
+            }
+
             SplitCharacterStatValue splitValue = {};
 
-            if (tryGetSplitCharacterStatValue(normalizedLayoutId, summary, splitValue))
+            if (modRow)
+            {
+                context.renderLayoutLabel(layoutForRender, labelRect, label, true, nullptr);
+            }
+            else if (tryGetSplitCharacterStatValue(normalizedLayoutId, summary, splitValue))
             {
                 renderSplitCharacterStatLabel(layoutForRender, *resolved, splitValue);
             }

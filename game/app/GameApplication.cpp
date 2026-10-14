@@ -2893,6 +2893,20 @@ GameApplication::GameApplication(const Engine::ApplicationConfig &config)
     {
         m_gameSession.gameplayScreenRuntime().setStatusBarEvent(text);
     };
+    modHost.currentCharScreen = [this]()
+    {
+        switch (m_gameSession.gameplayScreenRuntime().characterScreenReadOnly().page)
+        {
+            case GameplayUiController::CharacterPage::Skills:
+                return 101;
+            case GameplayUiController::CharacterPage::Awards:
+                return 102;
+            case GameplayUiController::CharacterPage::Inventory:
+                return 103;
+            default:
+                return 100;
+        }
+    };
     modHost.currentScreen = [this]()
     {
         switch (m_screenManager.currentMode())

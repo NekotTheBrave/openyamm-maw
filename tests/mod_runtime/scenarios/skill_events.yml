@@ -77,3 +77,13 @@ steps:
       Game.Classes.Skills[knight][fire] = before
       return before, after, Game.Classes.Skills[knight][fire]
     expect: "0\t3\t0"
+# Game.GlobalTxt[i] reads the original's interface texts and keeps what a mod writes (MAW rewrites the stats page's
+# labels: Condition becomes its M/R line); the original text written back gives the game its own label again.
+- mod_lua:
+    code: |
+      local before = Game.GlobalTxt[47]
+      Game.GlobalTxt[47] = "M/R:1/0\n\n"
+      local written = Game.GlobalTxt[47]:gsub("\n", "|")
+      Game.GlobalTxt[47] = before
+      return before, written, Game.GlobalTxt[144]
+    expect: "Condition\tM/R:1/0||\tMight"

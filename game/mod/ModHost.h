@@ -24,5 +24,8 @@ struct ModHost
     // Which screen is up, in the original's numbers (const.Screens): 0 the game itself, 7 the character screen, 13 a
     // house, 16 the main menu, and so on.
     std::function<int()> currentScreen;
+    // The character screen's page, in the original's numbers (const.CharScreens): 100 stats, 101 skills, 102 awards,
+    // 103 inventory.
+    std::function<int()> currentCharScreen;
 };
 }

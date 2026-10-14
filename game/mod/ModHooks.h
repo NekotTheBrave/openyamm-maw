@@ -237,6 +237,12 @@ ModPlayerActionResult modPlayerAction(int action, int param = 0, int param2 = 0)
 // runtime.
 MonsterTable::LootPrototype modCorpseLoot(size_t actorIndex, const MonsterTable::LootPrototype &engineLoot);
 
+// The original's interface texts (global.txt) by number, as a mod has rewritten them (Game.GlobalTxt); nullptr where
+// no mod has. MAW shows its own numbers on the stats page by rewriting the page's labels. An empty text gives the
+// game its own back.
+const std::string *modGlobalText(int index);
+void setModGlobalText(int index, const std::string &text);
+
 // The original marks coloured text with a form feed and five digits ("\f00000" ends a colour). The engine's text
 // drawing does not know the marks, so they are taken out before a mod's text is shown.
 std::string stripMm8ColorCodes(const std::string &text);

@@ -1171,6 +1171,48 @@ local skillTexts = {
     SkillDesGM = skillTextArray("Game.SkillDesGM", 5),
 }
 
+-- Game.GlobalTxt[i]: the original's interface texts (global.txt). Writes are kept, and those the game shows (the
+-- labels of the stats page) reach the screen; the original text written back gives the game its own label again.
+local globalTexts
+local globalTextWrites = {}
+
+local function globalText(index)
+    if not globalTexts then
+        globalTexts = {}
+        local source = modrt.readAsset("engine/data_tables/english/Global.txt") or ""
+
+        for line in source:gmatch("[^\n]+") do
+            local id, text = line:match("^(%d+)\t([^\t\r]*)")
+
+            if id then
+                globalTexts[tonumber(id)] = text:match('^"(.*)"$') or text
+            end
+        end
+    end
+
+    return globalTexts[index]
+end
+
+local globalTxt = boundObject("Game.GlobalTxt", {
+    index = function(index)
+        index = floor(index)
+        local written = globalTextWrites[index]
+
+        if written ~= nil then
+            return written
+        end
+
+        return globalText(index) or ""
+    end,
+    newindex = function(index, value)
+        index = floor(index)
+        value = tostring(value)
+        globalTextWrites[index] = value
+        modrt.globalTextSet(index, value == globalText(index) and "" or value)
+        return true
+    end,
+})
+
 -- Game.ClassDescriptions[class]: what the game says of a class.
 local classDescriptions = boundObject("Game.ClassDescriptions", {
     index = function(class)
@@ -1401,7 +1443,7 @@ Game = boundObject("Game", {
         SkillNames = true, SkillDescriptions = true, SkillDesNormal = true, SkillDesExpert = true,
         SkillDesMaster = true, SkillDesGM = true, ClassDescriptions = true,
         CurrentPlayer = true, Time = true, Classes = true, ClassNames = true, ClassesExtra = true,
-        HouseScreen = true,
+        HouseScreen = true, GlobalTxt = true, CurrentCharScreen = true,
     },
     get = function(key)
         if key == "ItemsTxt" then
@@ -1412,6 +1454,11 @@ Game = boundObject("Game", {
             return skillTexts[key]
         elseif key == "ClassDescriptions" then
             return classDescriptions
+        elseif key == "GlobalTxt" then
+            return globalTxt
+        elseif key == "CurrentCharScreen" then
+            -- The character screen's page, by const.CharScreens: 100 stats, 101 skills, 102 awards, 103 inventory.
+            return modrt.gameGet("CurrentCharScreen") or 100
         elseif key == "CurrentScreen" then
             -- Which screen is up, by const.Screens: 0 the game itself, 7 the character screen, 13 a house...
             return modrt.gameGet("CurrentScreen") or 0

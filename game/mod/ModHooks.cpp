@@ -1,11 +1,37 @@
 #include "game/mod/ModHooks.h"
 
+#include <unordered_map>
+
 namespace OpenYAMM::Game
 {
 namespace
 {
 // One mod runtime per process; gameplay code reaches it from many layers that share no owner object.
 IModHooks *g_pActiveModHooks = nullptr;
+
+std::unordered_map<int, std::string> &modGlobalTexts()
+{
+    static std::unordered_map<int, std::string> texts;
+    return texts;
+}
+}
+
+const std::string *modGlobalText(int index)
+{
+    const std::unordered_map<int, std::string>::const_iterator it = modGlobalTexts().find(index);
+    return it != modGlobalTexts().end() ? &it->second : nullptr;
+}
+
+void setModGlobalText(int index, const std::string &text)
+{
+    if (text.empty())
+    {
+        modGlobalTexts().erase(index);
+    }
+    else
+    {
+        modGlobalTexts()[index] = text;
+    }
 }
 
 IModHooks *activeModHooks()

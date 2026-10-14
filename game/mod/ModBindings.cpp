@@ -2661,6 +2661,17 @@ int nativeClassDescription(lua_State *pLuaState)
     return 1;
 }
 
+// modrt.globalTextSet(index, text): the game shows the text where it shows that interface text (the stats page's
+// labels); an empty text gives it its own back.
+int nativeGlobalTextSet(lua_State *pLuaState)
+{
+    const int64_t index = integerArgument(pLuaState, 1);
+    size_t length = 0;
+    const char *pText = luaL_checklstring(pLuaState, 2, &length);
+    setModGlobalText(static_cast<int>(index), std::string(pText, length));
+    return 0;
+}
+
 // modrt.classSkillSet(class, skill, mastery): the highest mastery the class can reach in the skill, 0 for none to 4
 // for Grandmaster. The game's teachers and the skill screen go by it from then on (MAW sets every class's limits
 // from its own table this way).
@@ -3247,6 +3258,12 @@ int nativeGameGet(lua_State *pLuaState)
         return 1;
     }
 
+    if (field == "CurrentCharScreen")
+    {
+        lua_pushinteger(pLuaState, pHost->currentCharScreen ? pHost->currentCharScreen() : 100);
+        return 1;
+    }
+
     if (field == "HasSession")
     {
         lua_pushboolean(pLuaState, partyFromHost(pLuaState) != nullptr);
@@ -3382,6 +3399,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"classSet", nativeClassSet},
         {"classSkillGet", nativeClassSkillGet},
         {"classSkillSet", nativeClassSkillSet},
+        {"globalTextSet", nativeGlobalTextSet},
         {"skillTextGet", nativeSkillTextGet},
         {"skillTextSet", nativeSkillTextSet},
         {"classDescription", nativeClassDescription},
