@@ -97,6 +97,7 @@ public:
     bool potionEffect(uint32_t potionId, int power) override;
     bool canWearItem(const Character &character, uint32_t itemId) override;
     void monsterInformationBox(ModMonsterInfoBox &box) override;
+    float monsterSpriteScale(size_t actorIndex) override;
     bool hasMapEvent(uint16_t eventId) override;
     int mapEvent(uint16_t eventId) override;
     bool mapEventHint(uint16_t eventId, std::string &hint) override;

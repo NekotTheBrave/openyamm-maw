@@ -1,0 +1,35 @@
+id: mod_runtime.maw.monster_sprite_scale
+title: MAW draws its bosses larger (MonsterSpriteScale)
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# The game asks the mod, once a second for each monster, how much larger than its own size to draw it (the
+# original's MonsterSpriteScale). MAW's bosses (name ids 220 to 299) are twice as large outdoors, 1.4 times indoors.
+# Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 5
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      local mon = Map.Monsters[0]
+      local plain = ModRT.Stats.monsterSpriteScale(0)
+      local nameId = mon.NameId
+      mon.NameId = 230
+      local boss = ModRT.Stats.monsterSpriteScale(0)
+      mon.NameId = nameId
+      return plain, boss, mon.NameId == nameId
+    expect: "1	2	true"

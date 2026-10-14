@@ -573,6 +573,7 @@ std::optional<RuntimeActorBillboard> buildRuntimeActorBillboard(
     {
         billboard.heightScale = std::clamp(pActorAiState->spellEffects.shrinkDamageMultiplier, 0.25f, 1.0f);
     }
+    billboard.heightScale *= modMonsterSpriteScale(actorIndex);
     billboard.useStaticFrame = false;
     GameplayRuntimeActorState runtimeActorState = {};
     billboard.isFriendly =

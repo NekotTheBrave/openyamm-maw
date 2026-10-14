@@ -1713,6 +1713,29 @@ bool ModRuntime::potionEffect(uint32_t potionId, int power)
     return handled;
 }
 
+float ModRuntime::monsterSpriteScale(size_t actorIndex)
+{
+    if (!m_active || !beginDispatch("monsterSpriteScale"))
+    {
+        return 1.0f;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(actorIndex));
+    float scale = 1.0f;
+
+    if (endDispatch(1, 1))
+    {
+        if (lua_isnumber(m_pLuaState, -1))
+        {
+            scale = static_cast<float>(lua_tonumber(m_pLuaState, -1));
+        }
+
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return scale;
+}
+
 void ModRuntime::monsterInformationBox(ModMonsterInfoBox &box)
 {
     if (!m_active || !beginDispatch("monsterInformationBox"))

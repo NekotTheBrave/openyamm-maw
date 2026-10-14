@@ -2275,6 +2275,7 @@ std::optional<GameplayWorldPoint> OutdoorInteractionController::resolvePartyAtta
     {
         heightScale *= std::clamp(pActor->shrinkDamageMultiplier, 0.25f, 1.0f);
     }
+    heightScale *= modMonsterSpriteScale(actorIndex);
     const float spriteScale = std::max(pFrame->scale * heightScale, 0.01f);
     const float worldWidth = pTexture->width * spriteScale;
     const float worldHeight = pTexture->height * spriteScale;
@@ -2902,6 +2903,7 @@ bool OutdoorInteractionController::hitTestDecorationBillboard(
 bool OutdoorInteractionController::hitTestActorBillboard(
     OutdoorGameView &view,
     const OutdoorWorldRuntime::MapActorState *pRuntimeActor,
+    std::optional<size_t> runtimeActorIndex,
     int actorX,
     int actorY,
     int actorZ,
@@ -2961,10 +2963,12 @@ bool OutdoorInteractionController::hitTestActorBillboard(
         return false;
     }
 
+    // Drawn at the size a mod gives the monster, it is hit there too.
     const float heightScale =
-        pRuntimeActor != nullptr && sourceBillboardHeight > 0
+        (pRuntimeActor != nullptr && sourceBillboardHeight > 0
             ? static_cast<float>(actorHeight) / static_cast<float>(sourceBillboardHeight)
-            : 1.0f;
+            : 1.0f)
+        * (runtimeActorIndex ? modMonsterSpriteScale(*runtimeActorIndex) : 1.0f);
     uint32_t frameTimeTicks = useStaticFrame ? 0U : currentAnimationTicks();
 
     if (pRuntimeActor != nullptr)
@@ -3924,6 +3928,7 @@ OutdoorGameView::InspectHit OutdoorInteractionController::inspectBModelFace(
                 allowDecorationBillboardHit
                 && hitTestActorBillboard(view, 
                     pActorState,
+                    pActorState != nullptr ? std::optional<size_t>(actor.runtimeActorIndex) : std::nullopt,
                     actorX,
                     actorY,
                     actorZ,
@@ -4052,6 +4057,7 @@ OutdoorGameView::InspectHit OutdoorInteractionController::inspectBModelFace(
                 allowDecorationBillboardHit
                 && hitTestActorBillboard(view, 
                     pActorState,
+                    std::optional<size_t>(actorIndex),
                     pActorState->x,
                     pActorState->y,
                     pActorState->z,

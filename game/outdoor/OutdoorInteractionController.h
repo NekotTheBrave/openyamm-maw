@@ -299,6 +299,7 @@ private:
     static bool hitTestActorBillboard(
         OutdoorGameView &view,
         const OutdoorWorldRuntime::MapActorState *pRuntimeActor,
+        std::optional<size_t> runtimeActorIndex,
         int actorX,
         int actorY,
         int actorZ,

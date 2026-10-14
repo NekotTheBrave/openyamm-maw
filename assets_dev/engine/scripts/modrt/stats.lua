@@ -236,6 +236,20 @@ function Stats.canLearnSpell(slot, spell, needMastery)
     return math.floor(tonumber(event.NeedMastery) or needMastery)
 end
 
+-- The size monster `index` (Map.Monsters) is drawn at: the original's MonsterSpriteScale, its Scale here a factor of
+-- the game's own size (the original's is the sprite's own scale, which handlers only multiply). Returns the factor.
+function Stats.monsterSpriteScale(index)
+    local monster = Map.Monsters[index]
+
+    if not monster then
+        return 1
+    end
+
+    local event = {Scale = 1, MonsterIndex = index, Monster = monster}
+    ModRT.fire("MonsterSpriteScale", event)
+    return tonumber(event.Scale) or 1
+end
+
 -- The information box of monster `index` (Map.Monsters), as the original's BuildMonsterInformationBox has it: each
 -- row a table with its Text (label, tab stop and value), the effects and resistances lists of such tables under their
 -- headers, and the Identified flags (the game shows everything it shows). Mouse:GetTarget() is the monster meanwhile.

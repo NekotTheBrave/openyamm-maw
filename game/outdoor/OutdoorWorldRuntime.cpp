@@ -14199,8 +14199,9 @@ bool OutdoorWorldRuntime::actorRuntimeState(size_t actorIndex, GameplayRuntimeAc
     state.castingSpellId = pActor->queuedAttackAbility == MonsterAttackAbility::Spell1
         ? pActor->spell1Id : pActor->spell2Id;
     state.attackImpactTriggered = pActor->attackImpactTriggered;
-    state.visualScale = pActor->shrinkRemainingSeconds > 0
-        ? std::clamp(pActor->shrinkDamageMultiplier, 0.25f, 1.0f) : 1.0f;
+    state.visualScale = (pActor->shrinkRemainingSeconds > 0
+        ? std::clamp(pActor->shrinkDamageMultiplier, 0.25f, 1.0f) : 1.0f)
+        * modMonsterSpriteScale(actorIndex);
     state.monsterId = pActor->monsterId;
     state.mm9RudeId = pActor->mm9RudeId;
     state.mm9SourceObjectIndex = !pActor->spawnedAtRuntime

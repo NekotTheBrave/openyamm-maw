@@ -1,4 +1,7 @@
 #include "game/mod/ModHooks.h"
+#include <algorithm>
+#include <cmath>
+#include <SDL3/SDL.h>
 
 #include "game/mod/ModBindings.h"
 #include "game/party/SkillData.h"
@@ -113,6 +116,44 @@ bool modPotionEffect(uint32_t potionId, int power, InventoryItem &target)
     const bool handled = pModHooks->potionEffect(potionId, power);
     setModEventItem(pPreviousEventItem);
     return handled;
+}
+
+float modMonsterSpriteScale(size_t actorIndex)
+{
+    struct CachedScale
+    {
+        float scale = 1.0f;
+        uint64_t ticks = 0;
+    };
+
+    static std::unordered_map<size_t, CachedScale> s_scales;
+    static IModHooks *s_pScalesHooks = nullptr;
+    IModHooks *pModHooks = activeModHooks();
+
+    if (pModHooks == nullptr)
+    {
+        return 1.0f;
+    }
+
+    if (s_pScalesHooks != pModHooks)
+    {
+        s_scales.clear();
+        s_pScalesHooks = pModHooks;
+    }
+
+    const uint64_t nowTicks = SDL_GetTicks();
+    auto iterator = s_scales.find(actorIndex);
+
+    if (iterator == s_scales.end() || nowTicks - iterator->second.ticks >= 1000)
+    {
+        const float scale = pModHooks->monsterSpriteScale(actorIndex);
+        CachedScale &cached = s_scales[actorIndex];
+        cached.scale = std::isfinite(scale) ? std::clamp(scale, 0.05f, 20.0f) : 1.0f;
+        cached.ticks = nowTicks;
+        return cached.scale;
+    }
+
+    return iterator->second.scale;
 }
 
 void modMonsterInformationBox(ModMonsterInfoBox &box)

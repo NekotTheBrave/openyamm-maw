@@ -281,6 +281,8 @@ public:
     virtual bool canWearItem(const Character &character, uint32_t itemId) = 0;
     // The monster's information box is being shown (the original's BuildMonsterInformationBox).
     virtual void monsterInformationBox(ModMonsterInfoBox &box) = 0;
+    // The size monster `actorIndex` is drawn at, as a factor of the game's (the original's MonsterSpriteScale).
+    virtual float monsterSpriteScale(size_t actorIndex) = 0;
     // The held item is used on the party member in `memberIndex` (the original's UseMouseItem; Mouse.Item is the
     // item): whether the game may go on with its own use of it.
     virtual bool useMouseItem(size_t memberIndex) = 0;
@@ -338,6 +340,10 @@ bool modPotionEffect(uint32_t potionId, int power, InventoryItem &target);
 std::optional<std::string> modMapEventHint(uint16_t eventId);
 // Whether a mod removed the current map's own lines for event `eventId`; false without a mod.
 bool modMapEventRemoved(uint16_t eventId);
+
+// The factor the mod draws monster `actorIndex` at (1 without a mod). The mod is asked about a monster once a second;
+// the map's monsters are drawn every frame.
+float modMonsterSpriteScale(size_t actorIndex);
 
 // Runs the mod's BuildMonsterInformationBox event over the box's texts; they stay the engine's without a mod.
 void modMonsterInformationBox(ModMonsterInfoBox &box);

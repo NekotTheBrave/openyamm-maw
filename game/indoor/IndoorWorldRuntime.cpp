@@ -11423,8 +11423,9 @@ bool IndoorWorldRuntime::actorRuntimeState(size_t actorIndex, GameplayRuntimeAct
             ? pAiState->spell1Id : pAiState->spell2Id) : 0;
     state.secondaryAttack = pAiState != nullptr && pAiState->queuedAttackAbility == GameplayActorAttackAbility::Attack2;
     state.attackImpactTriggered = pAiState != nullptr && pAiState->attackImpactTriggered;
-    state.visualScale = pEffectState != nullptr && pEffectState->shrinkRemainingSeconds > 0
-        ? std::clamp(pEffectState->shrinkDamageMultiplier, 0.25f, 1.0f) : 1.0f;
+    state.visualScale = (pEffectState != nullptr && pEffectState->shrinkRemainingSeconds > 0
+        ? std::clamp(pEffectState->shrinkDamageMultiplier, 0.25f, 1.0f) : 1.0f)
+        * modMonsterSpriteScale(actorIndex);
     state.monsterId = resolvedMonsterId;
     state.mm9RudeId = actor.mm9RudeId;
     state.mm9SourceObjectIndex = actor.mm9SourceObjectIndex;

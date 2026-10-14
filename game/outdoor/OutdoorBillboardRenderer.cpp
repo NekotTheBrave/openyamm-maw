@@ -1,4 +1,5 @@
 #include "game/outdoor/OutdoorSunlight.h"
+#include "game/mod/ModHooks.h"
 #include "game/outdoor/OutdoorBillboardRenderer.h"
 #include "game/outdoor/OutdoorRenderer.h"
 
@@ -2806,6 +2807,10 @@ void OutdoorBillboardRenderer::renderActorPreviewBillboards(
             if (pRuntimeActor != nullptr && pRuntimeActor->shrinkRemainingSeconds > 0.0f)
             {
                 drawItem.heightScale *= std::clamp(pRuntimeActor->shrinkDamageMultiplier, 0.25f, 1.0f);
+            }
+            if (runtimeActorIndex)
+            {
+                drawItem.heightScale *= modMonsterSpriteScale(*runtimeActorIndex);
             }
             drawItem.distanceSquared = distanceSquared;
             drawItem.cameraDepth = deltaX * cameraForward.x + deltaY * cameraForward.y + deltaZ * cameraForward.z;
