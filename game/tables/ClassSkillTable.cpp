@@ -304,6 +304,12 @@ bool ClassSkillTable::applyRaceSkillOverrides(const MergedRaceSkillTable &raceSk
         rule.minMastery = clampSkillMastery(static_cast<int32_t>(entry.minMastery));
         rule.add = entry.add;
         rule.exceptionCode = entry.exceptionCode;
+        rule.addWithoutClass = entry.addWithoutClass;
+
+        if (entry.maxMastery)
+        {
+            rule.maxMastery = clampSkillMastery(static_cast<int32_t>(*entry.maxMastery));
+        }
 
         if (rule.skillName.empty())
         {
@@ -383,6 +389,8 @@ SkillMastery ClassSkillTable::getEffectiveCap(
 
     SkillMastery minMastery = SkillMastery::None;
     int32_t add = 0;
+    std::optional<SkillMastery> maxMastery;
+    bool modOrder = false;
 
     for (const RaceSkillRule &rule : m_raceSkillRules)
     {
@@ -402,6 +410,26 @@ SkillMastery ClassSkillTable::getEffectiveCap(
         {
             add = rule.add;
         }
+
+        if (rule.maxMastery && (!maxMastery || *rule.maxMastery < *maxMastery))
+        {
+            maxMastery = rule.maxMastery;
+        }
+
+        modOrder = modOrder || rule.addWithoutClass || rule.maxMastery.has_value();
+    }
+
+    // A mod's rule (MAW's): the class's mastery plus `add`, held to the race's highest, then raised to its lowest.
+    if (modOrder)
+    {
+        int32_t result = static_cast<int32_t>(baseCap) + add;
+
+        if (maxMastery)
+        {
+            result = std::min(result, static_cast<int32_t>(*maxMastery));
+        }
+
+        return clampSkillMastery(std::max(result, static_cast<int32_t>(minMastery)));
     }
 
     int32_t result = std::max(static_cast<int32_t>(baseCap), static_cast<int32_t>(minMastery));

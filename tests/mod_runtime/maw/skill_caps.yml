@@ -1,0 +1,36 @@
+id: mod_runtime.maw.skill_caps
+title: MAW's class mastery caps (Class Skillz) and race modifiers (Race Skillz) are the game's
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's skill DLL takes a class's cap from Class Skillz.txt and changes it by the race (Race Skillz.txt: a Human gets
+# a mastery more in the misc skills, also those the class cannot learn); Merge's own race rules (a Human's Learning)
+# are not MAW's. tools/maw/convert_tables.py writes both into the overlay. A Human Knight: Expert Merchant and
+# Perception from the class, Master with the race; no Learning; Master Sword, Expert Dagger. Run with the MAW
+# mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 5
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      local race = Game.CharacterPortraits[Party[0].Face].Race
+      local caps = {}
+      for _, s in ipairs({"Merchant", "Perception", "Learning", "Sword", "Dagger"}) do
+        caps[#caps + 1] = modrt.playerSkillCap(0, s)
+      end
+      return race, table.concat(caps, " ")
+    expect: "0	3 3 0 3 2"

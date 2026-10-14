@@ -1,0 +1,36 @@
+id: mod_runtime.maw.merge_rules
+title: Merge's rules MAW leaves out in its copies of Merge's scripts are off (zMaw-MergeRules.lua)
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW comments out Merge's spell points from Meditation every five minutes (it regains them itself, on its tick,
+# which scenarios do not run). With the rule off, a Cleric with Expert Meditation 10 regains none while an hour
+# passes. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Cleric
+        level: 5
+        skills:
+        - name: Meditation
+          level: 10
+          mastery: 2
+        equipment: {}
+- mod_lua:
+    code: |
+      Party[0].SP = 0
+      SpBefore = Party[0].SP
+      return SpBefore
+    expect: "0"
+- advance_runtime: {seconds: 40}
+- mod_lua:
+    code: |
+      return Party[0].SP - SpBefore
+    expect: "0"

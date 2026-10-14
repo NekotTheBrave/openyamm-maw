@@ -473,7 +473,8 @@ bool characterEvadesMonsterImpact(
         && event.damageType == CombatDamageType::Physical;
 
     if ((!canEvadeMelee && !canEvadeProjectile)
-        || characterCombatSkillMastery(character, "Unarmed") < SkillMastery::Grandmaster)
+        || characterCombatSkillMastery(character, "Unarmed") < SkillMastery::Grandmaster
+        || modRule("unarmed_dodge") == "off")
     {
         return false;
     }

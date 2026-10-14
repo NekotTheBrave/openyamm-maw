@@ -421,6 +421,84 @@ def convert_class_skills(base, maw, ours):
     return merge_grid('Class Skills.txt -> class_skills.txt', base, maw, ours, add_columns=True)
 
 
+# MAW's mastery letters (its skill DLL's) in OpenYAMM's: '=' none, N novice; above grandmaster is grandmaster.
+SKILLZ_MASTERY = {'=': '-', '': '-', 'N': 'B', 'B': 'B', 'E': 'E', 'M': 'M', 'G': 'G', 'S': 'G', 'U': 'G', 'A': 'G',
+                  'D': 'G'}
+BASE_SKILL_COUNT = 39
+
+
+def convert_class_skillz(base, maw, ours):
+    # The class mastery caps MAW's game uses are its skill DLL's (Class Skillz.txt); Class Skills.txt is an older
+    # copy that differs in some 150 cells. Every MAW cell of the 39 original skills is taken as it is (the rows for
+    # MAW's added skills, Skill39 on, are its own and read by its scripts).
+    if maw is None:
+        result = TableResult('Class Skillz.txt -> class_skills.txt')
+        result.mode = 'skipped: a source table is missing'
+        return result
+
+    maw = [maw[0]] + [row for row in maw[1:BASE_SKILL_COUNT + 1]]
+    # A stand-in base no MAW cell equals, laid out as OpenYAMM's table, so that every cell is MAW's and the classes
+    # MAW adds are columns it added.
+    differs = [list(ours[0])] + [[row[0]] + ['?'] * (len(ours[0]) - 1) for row in maw[1:]]
+    result = merge_grid('Class Skillz.txt -> class_skills.txt', differs, maw, ours, add_columns=True,
+                        translate=lambda _column, value: SKILLZ_MASTERY.get(value.strip(), value.strip()))
+    result.conflicts = []
+    result.notes.append('every cell is MAW\'s (no Merge base to compare with), so differences are not conflicts')
+    return result
+
+
+RACE_MASTERY_NAMES = {0: 'none', 1: 'basic', 2: 'expert', 3: 'master'}
+SKILLZ_MIN = {'N': 1, 'E': 2, 'M': 3, 'G': 4, 'S': 5, 'U': 6, 'A': 7, 'D': 8}
+SKILLZ_MAX = {'0': 0, 'n': 1, 'e': 2, 'm': 3, 'g': 4, 's': 5, 'u': 6, 'a': 7, 'd': 8}
+
+
+def race_skillz_yaml(text):
+    """MAW's race mastery modifiers (Race Skillz.txt, as its skill DLL reads them) as OpenYAMM race skill rules.
+
+    A cell is a modifier: a capital letter the lowest mastery, a small letter or 0 the highest, each + or - a step.
+    MAW applies the step, then the highest, then the lowest, to the class's mastery, also where the class has
+    none (a Human's misc skills): add_without_class."""
+    rows = [line.rstrip('\r').split('\t') for line in text.split('\n') if line.strip()]
+    header = rows[0]
+    rules = []
+
+    for row in rows[1:BASE_SKILL_COUNT + 1]:
+        skill = row[0].strip()
+
+        for column in range(1, min(len(row), len(header))):
+            token = row[column].strip()
+
+            if token in ('', '='):
+                continue
+
+            minimum, maximum, step = 0, 8, 0
+
+            for ch in token:
+                if ch in SKILLZ_MIN:
+                    minimum = SKILLZ_MIN[ch]
+                elif ch in SKILLZ_MAX:
+                    maximum = SKILLZ_MAX[ch]
+                elif ch == '+':
+                    step += 1
+                elif ch == '-':
+                    step -= 1
+
+            race = header[column].split('(')[0].strip()
+            race_id = column - 1
+            rule = [f'  - race: {race}', f'    race_id: {race_id}', f'    skill: {skill}',
+                    f'    min_mastery: {RACE_MASTERY_NAMES.get(minimum, "grandmaster")}']
+
+            if maximum < 4:
+                rule.append(f'    max_mastery: {RACE_MASTERY_NAMES[maximum]}')
+
+            rule += [f'    add: {step}', '    add_without_class: true', '    exception: none']
+            rules.append('\n'.join(rule))
+
+    header_text = ("version: 1\n# MAW's race mastery modifiers (Race Skillz.txt), written by "
+                   "tools/maw/convert_tables.py.\nrules:\n")
+    return header_text + ('\n'.join(rules) + '\n' if rules else '')
+
+
 def convert_class_multipliers(base, maw, ours):
     # Same columns under different headers, and the spell point stat spelled out in OpenYAMM.
     if base is None or maw is None or ours is None:
@@ -534,7 +612,7 @@ LOOSE_TABLES = [
 
 # MAW Data/Tables file -> (OpenYAMM path, converter) for class tables OpenYAMM lays out differently
 GRID_TABLES = [
-    ('Class Skills.txt', 'class_skills.txt', convert_class_skills),
+    ('Class Skillz.txt', 'class_skills.txt', convert_class_skillz),
     ('Class HP SP.txt', 'class_multipliers.txt', convert_class_multipliers),
     ('Class Starting Skills.txt', 'class_starting_skills.txt', convert_class_starting_skills),
 ]
@@ -543,12 +621,10 @@ GRID_TABLES = [
 UNCONVERTED = [
     ('Character portraits.txt', 'character_data.txt: OpenYAMM restructured the columns'),
     ('ObjList.txt', 'object_list.txt: OpenYAMM restructured the columns; MAW adds 44 objects'),
-    ('Race Skills.txt', 'race_skills.yml: OpenYAMM uses YAML'),
+    ('Race Skills.txt', 'not read in MAW (its RacialSkills.lua is empty); its race rules are Race Skillz.txt'),
     ('SFT.txt', 'sprite frame tables: OpenYAMM uses YAML'),
     ('Spells2.txt', 'no direct counterpart'),
-    ('Class Skillz.txt', 'MAW extended skills, no OpenYAMM counterpart yet'),
     ('Class Starting Skillz.txt', 'MAW extended skills, no OpenYAMM counterpart yet'),
-    ('Race Skillz.txt', 'MAW extended skills, no OpenYAMM counterpart yet'),
     ('Extra Skillz.txt', 'MAW extended skills, no OpenYAMM counterpart yet'),
 ]
 
@@ -609,6 +685,15 @@ def main():
             parse_table(read_ours(ours_path)))
         result.output = ours_path
         results.append(result)
+
+    race_text = read_folder_file(maw_tables_folder, 'Race Skillz.txt')
+
+    if race_text is not None:
+        race_target = os.path.join(out_folder, 'race_skills.yml')
+        os.makedirs(os.path.dirname(race_target), exist_ok=True)
+
+        with open(race_target, 'w', encoding='utf-8', newline='\n') as stream:
+            stream.write(race_skillz_yaml(race_text if isinstance(race_text, str) else race_text.decode('latin-1')))
 
     report = ['MAW table conversion report', '']
     written = 0

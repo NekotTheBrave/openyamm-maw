@@ -2064,6 +2064,7 @@ ModPlayerActionResult ModRuntime::playerAction(int action, int param, int param2
         return result;
     }
 
+    m_rebuildAfterNextTick = true;
     lua_pushinteger(m_pLuaState, action);
     lua_pushinteger(m_pLuaState, param);
     lua_pushinteger(m_pLuaState, param2);
@@ -2313,6 +2314,8 @@ void ModRuntime::tick(float deltaSeconds)
 {
     m_statisticEffects.clear();
     ensureBonusesCurrent();
+    const bool rebuildAfterTick = m_rebuildAfterNextTick;
+    m_rebuildAfterNextTick = false;
 
     if (!beginDispatch("tick"))
     {
@@ -2321,6 +2324,12 @@ void ModRuntime::tick(float deltaSeconds)
 
     lua_pushnumber(m_pLuaState, deltaSeconds);
     endDispatch(1, 0);
+
+    if (rebuildAfterTick)
+    {
+        m_bonusRebuildPending = true;
+    }
+
     // What the scripts did may have put a rebuild off.
     ensureBonusesCurrent();
 }

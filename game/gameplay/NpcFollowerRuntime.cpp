@@ -1,4 +1,5 @@
 #include "game/gameplay/NpcFollowerRuntime.h"
+#include "game/mod/ModHooks.h"
 
 #include "game/party/Party.h"
 #include "game/tables/MergedBaseTables.h"
@@ -243,6 +244,12 @@ int hiredNpcRestFoodReduction(const EventRuntimeState &eventRuntimeState)
 int hiredNpcSkillBonus(std::span<const HiredNpcFollower> followers, const std::string &skillName)
 {
     int bonus = 0;
+    // A mod may have followers' bonuses to a skill not add up: the largest counts (MAW's).
+    const bool largestOnly = modRule("follower_skill_bonuses") == "largest";
+    const auto add = [&bonus, largestOnly](int amount)
+    {
+        bonus = largestOnly ? std::max(bonus, amount) : bonus + amount;
+    };
 
     for (const EventRuntimeState::HiredNpcFollower &follower : followers)
     {
@@ -250,47 +257,47 @@ int hiredNpcSkillBonus(std::span<const HiredNpcFollower> followers, const std::s
 
         if (skillName == "Learning")
         {
-            if (professionId == 4) bonus += 5;
-            else if (professionId == 13) bonus += 10;
-            else if (professionId == 14) bonus += 15;
+            if (professionId == 4) add(5);
+            else if (professionId == 13) add(10);
+            else if (professionId == 14) add(15);
         }
         else if (skillName == "Merchant")
         {
-            if (professionId == 20) bonus += 4;
-            else if (professionId == 21) bonus += 6;
-            else if (professionId == 48) bonus += 3;
-            else if (professionId == 49) bonus += 4;
-            else if (professionId == 50) bonus += 8;
+            if (professionId == 20) add(4);
+            else if (professionId == 21) add(6);
+            else if (professionId == 48) add(3);
+            else if (professionId == 49) add(4);
+            else if (professionId == 50) add(8);
         }
         else if (skillName == "DisarmTraps")
         {
-            if (professionId == 25) bonus += 4;
-            else if (professionId == 26) bonus += 6;
-            else if (professionId == 51) bonus += 8;
+            if (professionId == 25) add(4);
+            else if (professionId == 26) add(6);
+            else if (professionId == 51) add(8);
         }
         else if (skillName == "Perception")
         {
-            if (professionId == 22) bonus += 6;
-            else if (professionId == 47) bonus += 5;
+            if (professionId == 22) add(6);
+            else if (professionId == 47) add(5);
         }
         else if (skillName == "LeatherArmor" || skillName == "ChainArmor" || skillName == "PlateArmor")
         {
-            if (professionId == 46) bonus += 2;
+            if (professionId == 46) add(2);
         }
         else if (skillName == "Staff" || skillName == "Sword" || skillName == "Dagger" || skillName == "Axe"
             || skillName == "Spear" || skillName == "Bow" || skillName == "Mace")
         {
-            if (professionId == 15) bonus += 2;
-            else if (professionId == 16) bonus += 3;
-            else if (professionId == 46) bonus += 2;
+            if (professionId == 15) add(2);
+            else if (professionId == 16) add(3);
+            else if (professionId == 46) add(2);
         }
         else if (skillName == "FireMagic" || skillName == "AirMagic" || skillName == "WaterMagic"
             || skillName == "EarthMagic" || skillName == "SpiritMagic" || skillName == "MindMagic"
             || skillName == "BodyMagic" || skillName == "LightMagic" || skillName == "DarkMagic")
         {
-            if (professionId == 17) bonus += 2;
-            else if (professionId == 18) bonus += 3;
-            else if (professionId == 19) bonus += 4;
+            if (professionId == 17) add(2);
+            else if (professionId == 18) add(3);
+            else if (professionId == 19) add(4);
         }
     }
 

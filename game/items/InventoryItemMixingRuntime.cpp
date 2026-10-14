@@ -1,4 +1,5 @@
 #include "game/items/InventoryItemMixingRuntime.h"
+#include "game/mod/ModHooks.h"
 
 #include "game/tables/ItemTable.h"
 #include "game/tables/MergedBaseTables.h"
@@ -288,7 +289,25 @@ InventoryItemMixResult InventoryItemMixingRuntime::tryApplyHeldItemToInventoryIt
         if (heldItem.objectDescriptionId == catalystItemId
             && pTargetItem->objectDescriptionId == catalystItemId)
         {
-            pTargetItem->standardEnchantPower = std::max(itemPower(*pTargetItem), itemPower(heldItem));
+            const int targetPower = static_cast<int>(itemPower(*pTargetItem));
+            const int heldPower = static_cast<int>(itemPower(heldItem));
+
+            if (modRule("catalyst_combination") == "alchemy_capped")
+            {
+                // MAW's: the mix keeps the larger potion's power and half the other's, up to the mixer's Alchemy
+                // (level x mastery / 2), never less than either potion.
+                const int skillLevel = static_cast<int>(alchemyLevel(*pMember)) + pMember->skillBonus("Alchemy");
+                const int mastery = static_cast<int>(alchemyMastery(*pMember));
+                int power = static_cast<int>(std::lround(std::max(
+                    targetPower + heldPower * 0.5, targetPower * 0.5 + heldPower)));
+                power = std::min(power, skillLevel * mastery / 2);
+                pTargetItem->standardEnchantPower =
+                    static_cast<uint16_t>(std::max({power, targetPower, heldPower}));
+            }
+            else
+            {
+                pTargetItem->standardEnchantPower = std::max(itemPower(*pTargetItem), itemPower(heldItem));
+            }
         }
         else if (pTargetItem->objectDescriptionId == catalystItemId)
         {

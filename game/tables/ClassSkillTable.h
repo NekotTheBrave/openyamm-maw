@@ -69,6 +69,8 @@ private:
         SkillMastery minMastery = SkillMastery::None;
         int32_t add = 0;
         int32_t exceptionCode = 0;
+        std::optional<SkillMastery> maxMastery;
+        bool addWithoutClass = false;
     };
 
     std::vector<std::string> promotionClassNamesFromMetadata(const std::string &className) const;

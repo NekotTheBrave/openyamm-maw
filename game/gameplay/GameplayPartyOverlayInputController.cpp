@@ -2901,6 +2901,14 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
 
                 if (!context.heldInventoryItem().active)
                 {
+                    // A click on the doll is the original's Action 133 with or without an item in hand, raised
+                    // before the game takes the item off; MAW works its items' bonuses out again on the next tick
+                    // after any action (the armor class shown, say).
+                    if (modPlayerAction(Mm8Action::EquipOnDoll).handled)
+                    {
+                        return;
+                    }
+
                     InventoryItem unequippedItem = {};
 
                     if (pParty->takeEquippedItemFromMember(memberIndex, target.equipmentSlot, unequippedItem))

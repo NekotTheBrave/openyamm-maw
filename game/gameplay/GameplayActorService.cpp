@@ -1,4 +1,5 @@
 #include "game/gameplay/GameplayActorService.h"
+#include "game/mod/ModHooks.h"
 
 #include "game/party/SpellIds.h"
 #include "game/tables/MonsterTable.h"
@@ -350,7 +351,8 @@ GameplayActorService::SharedSpellEffectResult GameplayActorService::tryApplyShar
 
     if (spellName == "slow")
     {
-        if (!canApplyMmergeStatusSpell(skillLevel, skillMastery, spellResistance))
+        if (modRule("slow_resistance") != "off"
+            && !canApplyMmergeStatusSpell(skillLevel, skillMastery, spellResistance))
         {
             result.disposition = SharedSpellDisposition::Rejected;
             return result;

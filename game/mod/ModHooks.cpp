@@ -84,6 +84,33 @@ bool modUseMouseItem(size_t memberIndex)
     return pModHooks == nullptr || pModHooks->useMouseItem(memberIndex);
 }
 
+namespace
+{
+std::unordered_map<std::string, std::string> &modRules()
+{
+    static std::unordered_map<std::string, std::string> rules;
+    return rules;
+}
+}
+
+const std::string &modRule(const std::string &name)
+{
+    static const std::string empty;
+    const auto iterator = modRules().find(name);
+    return iterator != modRules().end() ? iterator->second : empty;
+}
+
+void setModRule(const std::string &name, const std::string &value)
+{
+    if (value.empty())
+    {
+        modRules().erase(name);
+        return;
+    }
+
+    modRules()[name] = value;
+}
+
 std::optional<std::string> modMapEventHint(uint16_t eventId)
 {
     IModHooks *pModHooks = activeModHooks();

@@ -340,6 +340,17 @@ bool modUseMouseItem(size_t memberIndex);
 // without a mod, or when it has no effect for that potion).
 bool modPotionEffect(uint32_t potionId, int power, InventoryItem &target);
 
+// Native rules a mod sets otherwise (from its scripts: modrt.setRule(name, value)), for the Merge features a mod
+// leaves out or changes in its own copies of Merge's scripts. An empty value is the engine's own rule.
+//   meditation_regeneration  "off": no spell points from Meditation every five minutes (MAW regains them itself)
+//   unarmed_dodge            "off": no Grandmaster Unarmed dodge (Merge's repair of it, which MAW leaves out)
+//   slow_resistance          "off": Slow always takes hold (no resistance roll)
+//   follower_skill_bonuses   "largest": followers' bonuses to a skill do not add up; the largest counts
+//   catalyst_combination     "alchemy_capped": two catalysts make the larger of target + held / 2 and
+//                            target / 2 + held, at most Alchemy level x mastery / 2, never less than either
+const std::string &modRule(const std::string &name);
+void setModRule(const std::string &name, const std::string &value);
+
 // The mod's hint for event `eventId` of the current map (the original's evt.hint[id]); none without a mod.
 std::optional<std::string> modMapEventHint(uint16_t eventId);
 // Whether a mod removed the current map's own lines for event `eventId`; false without a mod.

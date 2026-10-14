@@ -133,6 +133,10 @@ struct MergedRaceSkillOverride
     int32_t add = 0;
     int32_t exceptionCode = 0;
     std::string exception;
+    // A mod's rules (MAW's Race Skillz): the highest mastery the race may reach, and `add` given even where the
+    // class has no mastery in the skill. A rule with either is applied in the mod's order: add, cap, then minimum.
+    std::optional<uint32_t> maxMastery;
+    bool addWithoutClass = false;
 };
 
 struct MergedNewsProfessionDayTopic

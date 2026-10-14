@@ -5816,7 +5816,8 @@ void Party::advanceTimedStates(float deltaSeconds)
     const int regenerationTicks = static_cast<int>(
         std::floor(m_periodicEffectElapsedGameSeconds / OeFiveGameMinuteTickGameSeconds) - previousRegenerationTick);
 
-    if (regenerationTicks > 0)
+    // A mod may leave this out: MAW regains spell points by Meditation its own way.
+    if (regenerationTicks > 0 && modRule("meditation_regeneration") != "off")
     {
         for (Character &member : m_members)
         {

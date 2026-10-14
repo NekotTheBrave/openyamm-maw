@@ -1122,6 +1122,37 @@ int nativePlayerSkillGet(lua_State *pLuaState)
     return 3;
 }
 
+// modrt.setRule(name, value): sets one of the engine's native rules a mod changes (modRule in ModHooks.h lists
+// them); no value restores the engine's own.
+int nativeSetRule(lua_State *pLuaState)
+{
+    const std::string name = luaL_checkstring(pLuaState, 1);
+    const std::string value = lua_isstring(pLuaState, 2) ? lua_tostring(pLuaState, 2) : std::string();
+    setModRule(name, value);
+    return 0;
+}
+
+// modrt.playerSkillCap(player, skill): the highest mastery (0 none to 4 grandmaster) the character's class and race
+// let them reach in the skill (named as playerSkillGet names it), as teachers ask it.
+int nativePlayerSkillCap(lua_State *pLuaState)
+{
+    const Character *pCharacter = playerArgument(pLuaState, 1);
+    const std::string skillName = canonicalSkillName(luaL_checkstring(pLuaState, 2));
+    const Party *pParty = partyFromHost(pLuaState);
+    const ClassSkillTable *pClassSkillTable = pParty != nullptr ? pParty->classSkillTable() : nullptr;
+
+    if (pCharacter == nullptr || pClassSkillTable == nullptr)
+    {
+        return 0;
+    }
+
+    lua_pushinteger(
+        pLuaState,
+        static_cast<lua_Integer>(
+            pClassSkillTable->getEffectiveCap(pCharacter->className, pCharacter->raceId, skillName)));
+    return 1;
+}
+
 // Recomputes every member's bonuses now, which runs the stat events (mods call this after changing what the
 // events depend on; the game itself does it whenever equipment or buffs change).
 int nativePartyRefreshBonuses(lua_State *pLuaState)
@@ -4067,6 +4098,8 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"playerSpellGet", nativePlayerSpellGet},
         {"playerSpellSet", nativePlayerSpellSet},
         {"partyRefreshBonuses", nativePartyRefreshBonuses},
+        {"playerSkillCap", nativePlayerSkillCap},
+        {"setRule", nativeSetRule},
         {"questBitGet", nativeQuestBitGet},
         {"questBitSet", nativeQuestBitSet},
         {"itemGet", nativeItemGet},

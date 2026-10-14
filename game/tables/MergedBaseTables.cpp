@@ -1001,6 +1001,16 @@ bool MergedRaceSkillTable::loadFromYaml(const std::string &yamlText, std::string
             entry.minMastery = raceSkillMasteryFromTokenPart(masteryNode.as<std::string>());
         }
 
+        if (const YAML::Node maxNode = ruleNode["max_mastery"]; maxNode && maxNode.IsScalar())
+        {
+            entry.maxMastery = raceSkillMasteryFromTokenPart(maxNode.as<std::string>());
+        }
+
+        if (const YAML::Node addAlwaysNode = ruleNode["add_without_class"]; addAlwaysNode && addAlwaysNode.IsScalar())
+        {
+            entry.addWithoutClass = addAlwaysNode.as<std::string>() == "true";
+        }
+
         if (const YAML::Node addNode = ruleNode["add"]; addNode && addNode.IsScalar())
         {
             try

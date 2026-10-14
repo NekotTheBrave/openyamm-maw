@@ -347,7 +347,24 @@ end
 -- The item of the event being handled, when it is not one a party member holds.
 Bindings.eventItem = itemObject(0, "event", 0, "Item(event)")
 
+-- No item's record (the original's item 0): numbers 0, texts empty, so `Mouse.Item:T().Skill` reads as nothing.
+local blankItemRecord = setmetatable({}, {
+    __index = function(_, key)
+        if key == "Name" or key == "NotIdentifiedName" or key == "Notes" or key == "Picture" then
+            return ""
+        end
+
+        return 0
+    end,
+    __newindex = function() end,
+})
+
 local emptyItem = boundObject("Item(empty)", {
+    methods = {
+        T = function()
+            return blankItemRecord
+        end,
+    },
     get = function(key)
         if key == "Number" or key == "Bonus" or key == "BonusStrength" or key == "Bonus2" or key == "Charges"
             or key == "MaxCharges" or key == "BonusExpireTime" then

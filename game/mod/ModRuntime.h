@@ -154,6 +154,9 @@ private:
     // (a new game, a load, a copy of a party built elsewhere) or a rebuild ran while the scripts were busy.
     void ensureBonusesCurrent();
     bool m_bonusRebuildPending = false;
+    // An action happened: the scripts may answer the bonus events differently once their next tick has run (MAW
+    // works its items' bonuses out again then), so the bonuses are rebuilt after it.
+    bool m_rebuildAfterNextTick = false;
     uint64_t m_bonusRebuildToken = 0;
     // The engine's own figures for the member whose bonuses are being rebuilt, kept while the scripts answer.
     struct BonusRebuild
