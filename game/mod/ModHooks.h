@@ -40,6 +40,13 @@ namespace Mm8Action
 constexpr int Attack = 23;
 // Param 0: the quick spell key; param 1: the attack spell in place of an attack.
 constexpr int QuickSpell = 25;
+constexpr int OpenSpellbook = 105;
+// Param: the member's number from 1 (a click on the portrait).
+constexpr int SelectCharacter = 110;
+// Param: the spell; param 2: the caster's member index (a cast from the spellbook).
+constexpr int CastFromSpellbook = 142;
+// The key that moves to the next member.
+constexpr int NextCharacter = 176;
 }
 
 // A character's total in a skill the game asks of one character (the original's GetMerchantTotalSkill and

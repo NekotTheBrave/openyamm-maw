@@ -115,3 +115,16 @@ steps:
       return Map.IsOutdoor(), Map.IsIndoor(), Map.IndoorOrOutdoor, Game.MapStats.High,
         Game.MapStats[9001].Name, tostring(Game.MapStats[208])
     expect: "true\tfalse\t2\t207\tThjorgard City\tnil"
+# Game.Time follows the world's clock as it runs (MAW's timers, its regeneration and buff upkeep among them, run on
+# the time passed): it was the session's clock, which during play is brought up to the world's only on saving or
+# changing maps, so in the game window it stood still.
+- mod_lua:
+    code: |
+      TimeBefore = Game.Time
+      return TimeBefore > 0
+    expect: "true"
+- advance_runtime: {seconds: 2}
+- mod_lua:
+    code: |
+      return Game.Time > TimeBefore
+    expect: "true"

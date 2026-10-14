@@ -1,6 +1,7 @@
 #include "game/gameplay/GameplayInteractionController.h"
 
 #include "game/gameplay/GameplayHeldItemController.h"
+#include "game/mod/ModHooks.h"
 #include "game/gameplay/GameplayInputController.h"
 #include "game/gameplay/GameplayInputFrame.h"
 #include "game/gameplay/GameplayScreenRuntime.h"
@@ -1959,7 +1960,9 @@ GameplayInteractionController::updateWorldInteractionFrame(
                 .hasReadyMember = hasReadyMember,
             });
 
-    if (attackActionDecision.shouldAttemptAttack)
+    // The mod's Action event comes first, as in the original; a handler that takes the attack over leaves the game
+    // nothing to do.
+    if (attackActionDecision.shouldAttemptAttack && !modPlayerAction(Mm8Action::Attack).handled)
     {
         pickCurrentHit();
         const GameplayWorldHit attackHit = pWorldRuntime != nullptr

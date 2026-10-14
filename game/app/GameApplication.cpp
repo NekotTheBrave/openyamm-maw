@@ -2887,6 +2887,13 @@ GameApplication::GameApplication(const Engine::ApplicationConfig &config)
     };
     modHost.gameMinutes = [this]()
     {
+        // The world's clock runs during play; the session's is brought up to it only now and then (on saving,
+        // changing maps), so it is the clock only while no map is loaded.
+        if (const IGameplayWorldRuntime *pWorld = m_gameSession.activeWorldRuntime())
+        {
+            return pWorld->gameMinutes();
+        }
+
         return m_gameSession.gameMinutes();
     };
     modHost.showStatusText = [this](const std::string &text)

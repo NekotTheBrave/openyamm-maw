@@ -1,4 +1,5 @@
 #include "game/gameplay/GameplayPartyOverlayInputController.h"
+#include "game/mod/ModHooks.h"
 
 #include "game/debug/GameplayDebugTrace.h"
 #include "game/tables/CharacterDollTable.h"
@@ -1487,7 +1488,16 @@ void GameplayPartyOverlayInputController::handleSpellbookOverlayInput(
                     const size_t casterMemberIndex =
                         context.partyReadOnly() != nullptr ? context.partyReadOnly()->activeMemberIndex() : 0;
 
-                    context.tryCastSpellFromMember(casterMemberIndex, target.spellId, spellName);
+                    // The mod's Action event comes first, as in the original: a handler may cast the spell its own
+                    // way (MAW's buff rework).
+                    if (!modPlayerAction(
+                            Mm8Action::CastFromSpellbook,
+                            static_cast<int>(target.spellId),
+                            static_cast<int>(casterMemberIndex)).handled)
+                    {
+                        context.tryCastSpellFromMember(casterMemberIndex, target.spellId, spellName);
+                    }
+
                     context.closeSpellbookOverlay();
                 }
 
@@ -1808,7 +1818,10 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
 
     if (charCycleNewlyPressed)
     {
-        if (pParty != nullptr && !pParty->members().empty())
+        // The mod's Action event comes first, as in the original.
+        if (pParty != nullptr
+            && !pParty->members().empty()
+            && !modPlayerAction(Mm8Action::NextCharacter).handled)
         {
             const size_t nextMemberIndex = (selectedPartyMemberIndex + 1) % pParty->members().size();
             context.characterScreen().source = GameplayUiController::CharacterScreenSource::Party;

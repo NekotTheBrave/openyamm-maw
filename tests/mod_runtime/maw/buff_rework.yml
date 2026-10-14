@@ -1,0 +1,40 @@
+id: mod_runtime.maw.buff_rework
+title: MAW's buff rework takes a buff spell cast from the spellbook and keeps the buff on the party
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW turns buff spells into lasting buffs that hold back part of the caster's spell points (vars.MAWSETTINGS.buffRework,
+# on by default). A cast from the spellbook comes to MAW as the original's Action event (142: spell, caster); MAW
+# takes it over and applies the buff itself, for as long as the caster is conscious. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Caster
+        class: Necromancer
+        level: 10
+        intellect: 30
+        skills:
+        - name: Fire
+          level: 10
+          mastery: 3
+        spells: [2, 3]
+        equipment:
+          main_hand: 61
+# Fire Resistance (spell 3) is party buff 6. The scenario runner does not tick the mod runtime, so MAW's apply step,
+# which it runs on the next tick, is called here.
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      local before = pl:GetResistance(10)
+      local t = {Action = 142, Param = 3, Param2 = 0, Handled = false}
+      events.call("Action", t)
+      mawBuffApply()
+      return t.Handled, Party.SpellBuffs[6].ExpireTime > Game.Time, pl:GetResistance(10) > before,
+        vars.currentManaPool[0] < vars.maxManaPool[0]
+    expect: "true\ttrue\ttrue\ttrue"

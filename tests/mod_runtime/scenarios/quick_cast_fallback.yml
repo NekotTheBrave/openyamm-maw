@@ -140,3 +140,36 @@ steps:
     code: |
       return Casts, Attacks > 0
     expect: "0\ttrue"
+# The attack key raises the original's Action event first (action 23). A handler that sets Handled takes the attack
+# over, and the character does not swing; without one the character attacks as before.
+- mod_lua:
+    code: |
+      events.Remove("Action")
+      Seen = {}
+      function events.Action(t)
+        Seen[#Seen + 1] = t.Action
+        if t.Action == 23 then t.Handled = true end
+      end
+      Party[0].RecoveryDelay = 0
+      Casts, Attacks = 0, 0
+      return ProbeRound(Party[0].FullSPBase) > 0
+    expect: "true"
+- press_action: {action: attack, seconds: 1}
+- mod_lua:
+    code: |
+      return Seen[1], Attacks
+    expect: "23\t0"
+- mod_lua:
+    code: |
+      events.Remove("Action")
+      function events.Action(t) Seen[#Seen + 1] = t.Action end
+      Seen, Attacks = {}, 0
+      return ProbeRound(Party[0].FullSPBase) > 0
+    expect: "true"
+- press_action: {action: attack, seconds: 1}
+- mod_lua: {code: "return ProbeRound(Party[0].FullSPBase) > 0", expect: "true"}
+- press_action: {action: attack, seconds: 1}
+- mod_lua:
+    code: |
+      return Seen[1], Attacks > 0
+    expect: "23\ttrue"

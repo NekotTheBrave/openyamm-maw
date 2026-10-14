@@ -563,6 +563,13 @@ int nativePlayerGet(lua_State *pLuaState)
         return 1;
     }
 
+    // Awake and able to act: not asleep, paralyzed, unconscious, dead, stoned or eradicated.
+    if (field == "IsConscious")
+    {
+        lua_pushboolean(pLuaState, GameMechanics::canAct(*pCharacter));
+        return 1;
+    }
+
     if (field == "GetFullHP" || field == "GetFullSP")
     {
         const Party *pParty = partyFromHost(pLuaState);

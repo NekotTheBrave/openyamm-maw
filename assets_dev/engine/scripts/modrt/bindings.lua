@@ -729,6 +729,8 @@ local function playerObject(playerIndex)
             GetAccuracy = function() return modrt.playerGet(playerIndex, "GetAccuracy") end,
             GetSpeed = function() return modrt.playerGet(playerIndex, "GetSpeed") end,
             GetLuck = function() return modrt.playerGet(playerIndex, "GetLuck") end,
+            -- Awake and able to act: not asleep, paralyzed, unconscious, dead, stoned or eradicated.
+            IsConscious = function() return modrt.playerGet(playerIndex, "IsConscious") == true end,
             GetFullHP = function() return modrt.playerGet(playerIndex, "GetFullHP") end,
             GetFullSP = function() return modrt.playerGet(playerIndex, "GetFullSP") end,
             GetArmorClass = function() return modrt.playerGet(playerIndex, "GetArmorClass") end,

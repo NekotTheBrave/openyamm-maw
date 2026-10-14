@@ -456,7 +456,8 @@ void GameplayInputController::handleStandardUiHotkeys(
         && !houseShopActive;
     const std::optional<size_t> nextMemberIndex = nextSelectableMemberIndex(*pParty, requireGameplayReady);
 
-    if (nextMemberIndex.has_value())
+    // The mod's Action event comes first, as in the original.
+    if (nextMemberIndex.has_value() && !modPlayerAction(Mm8Action::NextCharacter).handled)
     {
         context.trySelectPartyMember(*nextMemberIndex, requireGameplayReady);
     }

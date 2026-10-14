@@ -1,4 +1,5 @@
 #include "game/gameplay/GameplayScreenRuntime.h"
+#include "game/mod/ModHooks.h"
 #include "game/ui/GameplayHudCommon.h"
 
 #include "game/app/GameSession.h"
@@ -1557,6 +1558,12 @@ void GameplayScreenRuntime::startInnRest(float durationMinutes)
 
 void GameplayScreenRuntime::openSpellbookOverlay()
 {
+    // The mod's Action event comes first, as in the original: MAW's Death Knights get their spells for the book here.
+    if (modPlayerAction(Mm8Action::OpenSpellbook).handled)
+    {
+        return;
+    }
+
     std::optional<GameplayUiController::SpellbookSchool> school;
     const GameplayUiController::SpellbookState &currentSpellbook = uiController().spellbook();
 

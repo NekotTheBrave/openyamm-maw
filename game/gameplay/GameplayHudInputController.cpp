@@ -1,4 +1,5 @@
 #include "game/gameplay/TurnBasedCombatRuntime.h"
+#include "game/mod/ModHooks.h"
 #include "game/ui/GameplayBuffHud.h"
 #include "game/gameplay/GameplayHudInputController.h"
 
@@ -174,6 +175,12 @@ void GameplayHudInputController::activatePartyPortrait(
         && *context.interactionState().lastPartyPortraitClickedIndex == memberIndex
         && nowTicks >= context.interactionState().lastPartyPortraitClickTicks
         && nowTicks - context.interactionState().lastPartyPortraitClickTicks <= PartyPortraitDoubleClickWindowMs;
+
+    // The mod's Action event for choosing a member comes first, as in the original.
+    if (modPlayerAction(Mm8Action::SelectCharacter, static_cast<int>(memberIndex) + 1).handled)
+    {
+        return;
+    }
 
     if (context.characterScreenReadOnly().open && !context.isAdventurersInnCharacterSourceActive())
     {
