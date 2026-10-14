@@ -327,6 +327,27 @@ std::unordered_map<std::string, std::string> &displaySkillNameOverrides()
 }
 }
 
+namespace
+{
+std::unordered_map<std::string, ModSkillGroup> &modSkillGroups()
+{
+    static std::unordered_map<std::string, ModSkillGroup> groups;
+    return groups;
+}
+}
+
+void setModSkillGroup(const std::string &skillName, ModSkillGroup group)
+{
+    modSkillGroups()[canonicalSkillName(skillName)] = group;
+}
+
+std::optional<ModSkillGroup> modSkillGroup(const std::string &skillName)
+{
+    const std::unordered_map<std::string, ModSkillGroup>::const_iterator it =
+        modSkillGroups().find(canonicalSkillName(skillName));
+    return it != modSkillGroups().end() ? std::optional<ModSkillGroup>(it->second) : std::nullopt;
+}
+
 void setDisplaySkillNameOverride(const std::string &skillName, const std::string &displayName)
 {
     const std::string canonicalName = canonicalSkillName(skillName);

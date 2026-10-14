@@ -1,0 +1,68 @@
+id: mod_runtime.maw.new_skills
+title: MAW's own skills (Cover, Mana Shield, Enlightenment, Retaliation) are skills of the game's
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW adds skills 50 to 53 through its Skillz API (tools/maw/port/Scripts/General/zMaw-Skillz.lua): the game keeps
+# them as Skill50 ... under MAW's names, the classes' limits come from MAW's "Class Skillz.txt", and Skillz.get and
+# set reach the character. A Cleric (class 4) may have Mana Shield to Expert and Enlightenment to Master, and no
+# Cover; a Knight (16) Cover and Retaliation to Master. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Ariel
+        class: Cleric
+        level: 1
+        skills:
+        - name: Mace
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      local names = {}
+      for id = 50, 53 do names[#names + 1] = tostring(Game.SkillNames[id]) end
+      local cleric, knight = Game.Classes.Skills[4], Game.Classes.Skills[16]
+      return table.concat(names, ","), cleric[50], cleric[51], cleric[52], knight[50], knight[53]
+    expect: "Cover,Mana Shield,Enlightenment,Retaliation\t0\t2\t3\t3\t3"
+# Skillz.set and get go through the character's skills; the skill shows under its name on the skill page's group.
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      local before = Skillz.get(pl, 51)
+      Skillz.set(pl, 51, JoinSkill(3, 2))
+      local level, mastery = SplitSkill(Skillz.get(pl, 51))
+      local engineLevel = SplitSkill(pl.Skills[51])
+      return before, level, mastery, engineLevel, Game.SkillDescriptions[51]:sub(1, 11)
+    expect: "0\t3\t2\t3\tMana shield"
+# The game saves the skill with the character, and it comes back on loading.
+- save_game: maw_new_skills
+- mod_lua:
+    code: |
+      Party[0].Skills[51] = 0
+      return Skillz.get(Party[0], 51)
+    expect: "0"
+- load_game: maw_new_skills
+- mod_lua:
+    code: |
+      local level, mastery = SplitSkill(Skillz.get(Party[0], 51))
+      return level, mastery
+    expect: "3\t2"
+# Raising a skill on the skill page raises the original's Action event 121 (Param the skill's number) first; MAW
+# grants the next mastery of its own skills as they rise (Mana Shield's Expert at 6, within the Cleric's limit).
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      Skillz.set(pl, 51, JoinSkill(5, 1))
+      pl.SkillPoints = 20
+      local t = {Action = 121, Param = 51, Handled = false}
+      events.call("Action", t)
+      local level, mastery = SplitSkill(Skillz.get(pl, 51))
+      return Skillz.MasteryLimit(pl, 51), level, mastery
+    expect: "2\t5\t2"

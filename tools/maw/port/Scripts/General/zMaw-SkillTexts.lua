@@ -5,10 +5,14 @@
 -- getName, setDesc, getDesc and restoreDesc to the game's texts (Game.SkillNames, Game.SkillDescriptions and
 -- Game.SkillDes<Mastery>), which the skill page and the skill's information box show. Parts are as the original
 -- numbers them: 1 the description, 2 to 5 Normal, Expert, Master and Grandmaster. The skills MAW adds (39 and up)
--- stay with MAW's module, as the game has no place for them yet.
+-- are the game's too once zMaw-Skillz.lua has registered them.
 
 local BASE_SKILLS = 39
 local partArrays = {"SkillDescriptions", "SkillDesNormal", "SkillDesExpert", "SkillDesMaster", "SkillDesGM"}
+
+local function gameSkill(id)
+    return id >= 0 and (id < BASE_SKILLS or ModRT.Bindings.skillNamesById[id] ~= nil)
+end
 
 local function wrap()
     local api = Skillz
@@ -24,13 +28,13 @@ local function wrap()
     api.setName = function(id, text)
         setName(id, text)
 
-        if id >= 0 and id < BASE_SKILLS then
+        if gameSkill(id) then
             Game.SkillNames[id] = text
         end
     end
 
     api.getName = function(id)
-        if id >= 0 and id < BASE_SKILLS then
+        if gameSkill(id) then
             return Game.SkillNames[id]
         end
 
@@ -39,7 +43,7 @@ local function wrap()
 
     api.setDesc = function(id, part, text)
         setDesc(id, part, text)
-        local array = id >= 0 and id < BASE_SKILLS and partArrays[part]
+        local array = gameSkill(id) and partArrays[part]
 
         if array then
             local key = part .. "_" .. id
@@ -53,7 +57,7 @@ local function wrap()
     end
 
     api.getDesc = function(id, part)
-        local array = id >= 0 and id < BASE_SKILLS and partArrays[part]
+        local array = gameSkill(id) and partArrays[part]
 
         if array then
             return Game[array][id] or ""

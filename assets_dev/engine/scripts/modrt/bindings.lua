@@ -183,6 +183,25 @@ local skillNamesById = {
 
 Bindings.skillNamesById = skillNamesById
 
+-- A skill a mod adds (MAW's Skillz: Cover is 50): its number, the name the engine keeps it under (scripts see the
+-- name they give it through Game.SkillNames), and its group on the skill page: "weapon", "magic", "armor", "misc".
+local SkillGroups = {weapon = 0, magic = 1, armor = 2, misc = 3}
+
+function Bindings.registerSkill(id, name, group)
+    id = floor(id)
+
+    if id < 39 or not SkillGroups[group] then
+        return false
+    end
+
+    if modrt.skillRegister(id, name, SkillGroups[group]) then
+        skillNamesById[id] = name
+        return true
+    end
+
+    return false
+end
+
 local function skillName(id)
     return skillNamesById[id]
 end

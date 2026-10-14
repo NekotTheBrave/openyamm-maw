@@ -30,6 +30,7 @@
 #include <exception>
 #include <cstdint>
 #include <limits>
+#include <map>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -102,6 +103,40 @@ int64_t modIndexOf(Party &party, Character &character)
 }
 }
 
+namespace
+{
+std::map<size_t, std::string> &registeredMergeSkills()
+{
+    static std::map<size_t, std::string> skills;
+    return skills;
+}
+}
+
+void registerMergeSkill(size_t skillId, const std::string &skillName)
+{
+    if (skillId >= MergeSkillCount)
+    {
+        registeredMergeSkills()[skillId] = skillName;
+    }
+}
+
+std::vector<size_t> mergeSkillIds()
+{
+    std::vector<size_t> ids;
+
+    for (size_t skillId = 0; skillId < MergeSkillCount; ++skillId)
+    {
+        ids.push_back(skillId);
+    }
+
+    for (const auto &[skillId, skillName] : registeredMergeSkills())
+    {
+        ids.push_back(skillId);
+    }
+
+    return ids;
+}
+
 const char *mergeSkillName(size_t skillId)
 {
     static const char *const names[MergeSkillCount] = {
@@ -111,7 +146,13 @@ const char *mergeSkillName(size_t skillId)
         "Perception", "Regeneration", "DisarmTraps", "Dodging", "Unarmed", "IdentifyMonster", "Armsmaster",
         "Stealing", "Alchemy", "Learning",
     };
-    return skillId < MergeSkillCount ? names[skillId] : nullptr;
+    if (skillId < MergeSkillCount)
+    {
+        return names[skillId];
+    }
+
+    const std::map<size_t, std::string>::const_iterator it = registeredMergeSkills().find(skillId);
+    return it != registeredMergeSkills().end() ? it->second.c_str() : nullptr;
 }
 
 std::optional<size_t> findModPartySlot(const Party &party, const Character &character)
@@ -2565,7 +2606,7 @@ int nativeSkillTextGet(lua_State *pLuaState)
     const int64_t skillId = integerArgument(pLuaState, 1);
     const int64_t part = integerArgument(pLuaState, 2);
 
-    if (pData == nullptr || skillId < 0 || static_cast<size_t>(skillId) >= MergeSkillCount)
+    if (pData == nullptr || skillId < 0 || mergeSkillName(static_cast<size_t>(skillId)) == nullptr)
     {
         return 0;
     }
@@ -2601,7 +2642,7 @@ int nativeSkillTextSet(lua_State *pLuaState)
     size_t length = 0;
     const char *pText = luaL_checklstring(pLuaState, 3, &length);
 
-    if (pData == nullptr || skillId < 0 || static_cast<size_t>(skillId) >= MergeSkillCount)
+    if (pData == nullptr || skillId < 0 || mergeSkillName(static_cast<size_t>(skillId)) == nullptr)
     {
         lua_pushboolean(pLuaState, false);
         return 1;
@@ -2741,6 +2782,59 @@ int nativeStatDescription(lua_State *pLuaState)
 
     const StatInspectEntry *pEntry = table.getStat(statNames[stat]);
     pushString(pLuaState, pEntry != nullptr ? pEntry->description : std::string());
+    return 1;
+}
+
+// modrt.skillRegister(id, name, group): a skill a mod adds, by its Merge number (39 up), the name the engine keeps it
+// under, and its group on the skill page (0 weapons, 1 magic, 2 armor, 3 misc).
+int nativeSkillRegister(lua_State *pLuaState)
+{
+    const int64_t skillId = integerArgument(pLuaState, 1);
+    const std::string skillName = canonicalSkillName(luaL_checkstring(pLuaState, 2));
+    const int64_t group = integerArgument(pLuaState, 3);
+
+    if (skillId < static_cast<int64_t>(MergeSkillCount) || skillName.empty() || group < 0 || group > 3)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    registerMergeSkill(static_cast<size_t>(skillId), skillName);
+    setModSkillGroup(skillName, static_cast<ModSkillGroup>(group));
+    lua_pushboolean(pLuaState, true);
+    return 1;
+}
+
+// modrt.houseOfferSkill(houseType, skill): the houses of a type (the house table's own names: "Training", "Magic
+// Shop", ...) offer the skill to learn, to whoever's class may have it.
+int nativeHouseOfferSkill(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const std::string houseType = luaL_checkstring(pLuaState, 1);
+    const std::string skillName = canonicalSkillName(luaL_checkstring(pLuaState, 2));
+    int houses = 0;
+
+    if (pData != nullptr && !skillName.empty())
+    {
+        // The table belongs to the game's data loader, which hands it out read-only; it is not a constant object.
+        for (auto &[houseId, entry] : const_cast<HouseTable &>(pData->getHouseTable()).entriesForWrite())
+        {
+            if (entry.type != houseType)
+            {
+                continue;
+            }
+
+            if (std::find(entry.offeredSkills.begin(), entry.offeredSkills.end(), skillName)
+                == entry.offeredSkills.end())
+            {
+                entry.offeredSkills.push_back(skillName);
+            }
+
+            ++houses;
+        }
+    }
+
+    lua_pushinteger(pLuaState, houses);
     return 1;
 }
 
@@ -3599,6 +3693,8 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"classSkillSet", nativeClassSkillSet},
         {"globalTextSet", nativeGlobalTextSet},
         {"npcText", nativeNpcText},
+        {"skillRegister", nativeSkillRegister},
+        {"houseOfferSkill", nativeHouseOfferSkill},
         {"statDescription", nativeStatDescription},
         {"trainingLevel", nativeTrainingLevel},
         {"skillTextGet", nativeSkillTextGet},

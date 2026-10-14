@@ -604,7 +604,18 @@ CharacterSkillUiData buildCharacterSkillUiData(const Character *pCharacter, bool
             return left.label < right.label;
         });
 
-    data.miscRows.insert(data.miscRows.end(), extraMiscRows.begin(), extraMiscRows.end());
+    // A skill a mod adds goes into the group the mod gives it.
+    for (CharacterSkillUiRow &row : extraMiscRows)
+    {
+        const std::optional<ModSkillGroup> group = modSkillGroup(row.canonicalName);
+        std::vector<CharacterSkillUiRow> &rows = !group ? data.miscRows
+            : *group == ModSkillGroup::Weapon ? data.weaponRows
+            : *group == ModSkillGroup::Magic ? data.magicRows
+            : *group == ModSkillGroup::Armor ? data.armorRows
+            : data.miscRows;
+        rows.push_back(std::move(row));
+    }
+
     return data;
 }
 
@@ -2801,6 +2812,15 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
             {
                 if (pParty->activeMemberIndex() != selectedPartyMemberIndex
                     && !context.trySelectPartyMember(selectedPartyMemberIndex, true))
+                {
+                    return;
+                }
+
+                // The mod's Action event comes first, as in the original (MAW caps some skills and grants masteries
+                // as they rise); a handler that takes the raise over leaves the game nothing to do.
+                const std::optional<int> mergeSkillId = modMergeSkillId(target.skillName);
+
+                if (mergeSkillId && modPlayerAction(Mm8Action::RaiseSkill, *mergeSkillId).handled)
                 {
                     return;
                 }

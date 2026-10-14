@@ -43,6 +43,8 @@ constexpr int QuickSpell = 25;
 constexpr int OpenSpellbook = 105;
 // Param: the member's number from 1 (a click on the portrait).
 constexpr int SelectCharacter = 110;
+// Param: the skill's Merge number (the skill page's raise of a skill with skill points).
+constexpr int RaiseSkill = 121;
 // Param: the spell; param 2: the caster's member index (a cast from the spellbook).
 constexpr int CastFromSpellbook = 142;
 // The key that moves to the next member.
@@ -267,6 +269,9 @@ float modTrainingMinutes(float engineMinutes);
 
 // Runs the mod's BuildStatInformationBox event over `text`; it stays the engine's without a mod.
 void modStatInformationBox(int stat, std::string &text);
+
+// A skill's number in the Merge's numbering (the skills a mod adds included), for the events that name skills by it.
+std::optional<int> modMergeSkillId(const std::string &skillName);
 
 // Runs the mod's Action event; nothing handled and nothing asked for without a mod runtime.
 ModPlayerActionResult modPlayerAction(int action, int param = 0, int param2 = 0);

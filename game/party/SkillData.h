@@ -37,6 +37,19 @@ std::string displaySkillName(const std::string &skillName);
 // A name a mod gives a skill in place of its own (MAW calls Water, Body and Dark Magic Frost, Blood and Unholy for its
 // Death Knights); an empty name gives the skill its own back.
 void setDisplaySkillNameOverride(const std::string &skillName, const std::string &displayName);
+
+// The skill page's groups. A skill a mod adds (MAW's Cover, Mana Shield, ...) is shown in the group the mod gives it;
+// other skills the page does not list go under Misc.
+enum class ModSkillGroup
+{
+    Weapon,
+    Magic,
+    Armor,
+    Misc,
+};
+
+void setModSkillGroup(const std::string &skillName, ModSkillGroup group);
+std::optional<ModSkillGroup> modSkillGroup(const std::string &skillName);
 std::string masteryDisplayName(SkillMastery mastery);
 std::vector<std::string> allCanonicalSkillNames();
 std::optional<std::string> nextPromotionClassName(const std::string &className);

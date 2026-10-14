@@ -1460,8 +1460,9 @@ void ModRuntime::adjustCharacterBonuses(
         lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(memberIndex));
         lua_newtable(m_pLuaState);
         lua_Integer position = 0;
+        const std::vector<size_t> skillIds = mergeSkillIds();
 
-        for (size_t skillId = 0; skillId < MergeSkillCount; ++skillId)
+        for (const size_t skillId : skillIds)
         {
             const std::string skillName = canonicalSkillName(mergeSkillName(skillId));
             const CharacterSkill *pSkill = pMember->findSkillByCanonicalName(skillName);
@@ -1479,9 +1480,11 @@ void ModRuntime::adjustCharacterBonuses(
         {
             if (lua_istable(m_pLuaState, -1))
             {
-                for (size_t skillId = 0; skillId < MergeSkillCount; ++skillId)
+                // The answers come in the order the skills went out.
+                for (size_t position = 0; position < skillIds.size(); ++position)
                 {
-                    lua_rawgeti(m_pLuaState, -1, static_cast<lua_Integer>(skillId + 1));
+                    const size_t skillId = skillIds[position];
+                    lua_rawgeti(m_pLuaState, -1, static_cast<lua_Integer>(position + 1));
 
                     if (lua_isnumber(m_pLuaState, -1))
                     {
@@ -1718,7 +1721,7 @@ void ModRuntime::canTeachSkillMastery(ModTeachSkillMasteryEvent &event)
 {
     std::optional<size_t> skillId;
 
-    for (size_t id = 0; id < MergeSkillCount; ++id)
+    for (const size_t id : mergeSkillIds())
     {
         if (canonicalSkillName(mergeSkillName(id)) == canonicalSkillName(event.skillName))
         {

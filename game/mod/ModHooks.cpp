@@ -1,5 +1,8 @@
 #include "game/mod/ModHooks.h"
 
+#include "game/mod/ModBindings.h"
+#include "game/party/SkillData.h"
+
 #include <unordered_map>
 
 namespace OpenYAMM::Game
@@ -84,6 +87,21 @@ float modTrainingMinutes(float engineMinutes)
 {
     IModHooks *pModHooks = activeModHooks();
     return pModHooks != nullptr ? pModHooks->trainingMinutes(engineMinutes) : engineMinutes;
+}
+
+std::optional<int> modMergeSkillId(const std::string &skillName)
+{
+    const std::string canonicalName = canonicalSkillName(skillName);
+
+    for (const size_t skillId : mergeSkillIds())
+    {
+        if (canonicalSkillName(mergeSkillName(skillId)) == canonicalName)
+        {
+            return static_cast<int>(skillId);
+        }
+    }
+
+    return std::nullopt;
 }
 
 ModPlayerActionResult modPlayerAction(int action, int param, int param2)

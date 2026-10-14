@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <vector>
 
 struct lua_State;
 
@@ -25,6 +27,11 @@ InventoryItem *setModEventItem(InventoryItem *pItem);
 // Skill names in Merge's numbering, 0..MergeSkillCount-1.
 constexpr size_t MergeSkillCount = 39;
 const char *mergeSkillName(size_t skillId);
+// Skills a mod adds take numbers from MergeSkillCount up (MAW's 50 to 53): the number, the name the engine keeps the
+// skill under, and its group on the skill page.
+void registerMergeSkill(size_t skillId, const std::string &skillName);
+// Every skill number with a name, the 39 first.
+std::vector<size_t> mergeSkillIds();
 
 // Adds the game-state natives to the `modrt` table. The host must outlive the Lua state.
 void registerModBindings(lua_State *pLuaState, const ModHost &host);
