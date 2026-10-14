@@ -61,3 +61,7 @@ steps:
       ModRT.key(false, 0x12, false, true, false, false)
       return table.concat(Keys_, "; "), held, Keys.IsPressed(0x12), Keys.IsPressed(0x41)
     expect: "down 18 alt true; down 65 alt true; up 18 alt true\ttrue\tfalse\ttrue"
+# Game.CurrentScreen in the original's numbers: 0 is the game itself, with no screen or dialogue up.
+- mod_lua:
+    code: return Game.CurrentScreen, const.Screens and const.Screens.Game
+    expect: "0\t0"

@@ -3089,6 +3089,12 @@ int nativeGameGet(lua_State *pLuaState)
         return 1;
     }
 
+    if (field == "CurrentScreen")
+    {
+        lua_pushinteger(pLuaState, pHost->currentScreen ? pHost->currentScreen() : 0);
+        return 1;
+    }
+
     if (field == "HasSession")
     {
         lua_pushboolean(pLuaState, partyFromHost(pLuaState) != nullptr);

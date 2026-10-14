@@ -238,6 +238,13 @@ function Bindings.ensureConstants()
         Poison2 = 8, Disease2 = 9, Poison3 = 10, Disease3 = 11, Paralyzed = 12, Unconscious = 13, Dead = 14,
         Stoned = 15, Eradicated = 16, Zombie = 17, Good = 18,
     })
+    fallback("Screens", {
+        Game = 0, Menu = 1, Controls = 2, Info = 3, NPC = 4, Rest = 5, Query = 6, Inventory = 7, SpellBook = 8,
+        NewGameBriefing = 9, Chest = 10, SaveGame = 11, LoadGame = 12, House = 13, InventoryInShop = 14,
+        InventoryInChest = 15, MainManu = 16, WalkToMap = 17, MapEntrance = 18, SimpleMessage = 19,
+        SelectTarget = 20, CreateParty = 21, EscMessage = 22, ItemSpell = 23, KeyConfig = 26, VideoOptions = 28,
+        AdventurersInn = 29, ItemSpellMM6 = 103, QuickReference = 104,
+    })
     fallback("AIState", {
         Stand = 0, Active = 1, MeleeAttack = 2, RangedAttack = 3, Dying = 4, Dead = 5, Pursue = 6, Flee = 7,
         Stunned = 8, Fidget = 9, Interact = 10, Removed = 11, RangedAttack2 = 12, CastSpell = 13, Stoned = 14,
@@ -1350,7 +1357,7 @@ Game = boundObject("Game", {
     owned = "Game",
     bound = {
         ItemsTxt = true, MonstersTxt = true, CharacterPortraits = true, MapStats = true, PlaceMonTxt = true,
-        SpcItemsTxt = true, StdItemsTxt = true, Spells = true,
+        SpcItemsTxt = true, StdItemsTxt = true, Spells = true, CurrentScreen = true,
         CurrentPlayer = true, Time = true, Classes = true, ClassNames = true, ClassesExtra = true,
         HouseScreen = true,
     },
@@ -1359,6 +1366,9 @@ Game = boundObject("Game", {
             return itemsTxt
         elseif key == "SpcItemsTxt" then
             return spcItemsTxt
+        elseif key == "CurrentScreen" then
+            -- Which screen is up, by const.Screens: 0 the game itself, 7 the character screen, 13 a house...
+            return modrt.gameGet("CurrentScreen") or 0
         elseif key == "Spells" then
             return spellsTxt
         elseif key == "StdItemsTxt" then

@@ -2893,6 +2893,97 @@ GameApplication::GameApplication(const Engine::ApplicationConfig &config)
     {
         m_gameSession.gameplayScreenRuntime().setStatusBarEvent(text);
     };
+    modHost.currentScreen = [this]()
+    {
+        switch (m_screenManager.currentMode())
+        {
+            case AppMode::MainMenu:
+            case AppMode::LoadMenu:
+                return 16;
+            case AppMode::NewGame:
+                return 21;
+            case AppMode::PauseMenu:
+                return 1;
+            default:
+                break;
+        }
+
+        const GameplayScreenRuntime &screen = m_gameSession.gameplayScreenRuntime();
+        const EventDialogContent &dialog = screen.activeEventDialog();
+        IGameplayWorldRuntime *pWorld = m_gameSession.activeWorldRuntime();
+
+        if (screen.saveGameScreenState().active)
+        {
+            return 11;
+        }
+
+        if (screen.loadGameScreenState().active)
+        {
+            return 12;
+        }
+
+        if (screen.keyboardScreenState().active)
+        {
+            return 26;
+        }
+
+        if (screen.videoOptionsScreenState().active)
+        {
+            return 28;
+        }
+
+        if (screen.controlsScreenState().active)
+        {
+            return 2;
+        }
+
+        if (screen.menuScreenState().active)
+        {
+            return 1;
+        }
+
+        if (dialog.isActive)
+        {
+            return dialog.isHouseDialog ? 13 : 4;
+        }
+
+        if (pWorld != nullptr && (pWorld->activeChestView() != nullptr || pWorld->activeCorpseView() != nullptr))
+        {
+            return screen.characterScreenReadOnly().open ? 15 : 10;
+        }
+
+        if (screen.characterScreenReadOnly().open)
+        {
+            return 7;
+        }
+
+        if (screen.spellbookReadOnly().active)
+        {
+            return 8;
+        }
+
+        if (screen.restScreenState().active)
+        {
+            return 5;
+        }
+
+        if (screen.journalScreenStateReadOnly().active)
+        {
+            return 3;
+        }
+
+        if (screen.quickReferenceScreenStateReadOnly().active)
+        {
+            return 104;
+        }
+
+        if (screen.pendingSpellTargetActive())
+        {
+            return 20;
+        }
+
+        return 0;
+    };
     m_modRuntime.setHost(std::move(modHost));
 }
 

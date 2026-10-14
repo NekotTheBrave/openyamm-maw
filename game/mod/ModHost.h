@@ -21,5 +21,8 @@ struct ModHost
     std::function<bool()> mapReady;
     std::function<float()> gameMinutes;
     std::function<void(const std::string &)> showStatusText;
+    // Which screen is up, in the original's numbers (const.Screens): 0 the game itself, 7 the character screen, 13 a
+    // house, 16 the main menu, and so on.
+    std::function<int()> currentScreen;
 };
 }
