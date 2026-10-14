@@ -3124,8 +3124,10 @@ uint32_t Party::grantSharedExperience(uint32_t totalExperience)
             continue;
         }
 
-        const int learningPercent = learningPercentForExperienceGain(member)
-            + hiredNpcSkillBonus(m_hiredNpcFollowers, "Learning");
+        const int learningPercent = modPlayerSkillTotal(
+            ModPlayerSkillTotal::Learning,
+            member,
+            learningPercentForExperienceGain(member) + hiredNpcSkillBonus(m_hiredNpcFollowers, "Learning"));
         const uint32_t learnedExperience =
             experiencePerEligibleMember
             + experiencePerEligibleMember * std::max(0, learningPercent) / 100;

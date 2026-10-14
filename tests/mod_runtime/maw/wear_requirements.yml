@@ -1,0 +1,35 @@
+id: mod_runtime.maw.wear_requirements
+title: MAW's CanWearItem keeps a character out of enchanted items above their level
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# The game asks the mod before putting the held item on a character (the original's CanWearItem); MAW's items need
+# the level they dropped at (kept in MaxCharges), less a margin. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 5
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      modrt.heldItemSet({Number = 111, Identified = true})
+      Mouse.Item.MaxCharges = 100
+      local need = GetLevelRquirement(Mouse.Item)
+      local highAllowed = ModRT.Stats.canWearItem(0, 111)
+      modrt.heldItemSet({Number = 111, Identified = true})
+      local lowAllowed = ModRT.Stats.canWearItem(0, 111)
+      modrt.heldItemSet(nil)
+      return need > Party[0].LevelBase, highAllowed, lowAllowed
+    expect: "true	false	true"

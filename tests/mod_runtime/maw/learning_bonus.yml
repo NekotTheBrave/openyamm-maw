@@ -1,0 +1,28 @@
+id: mod_runtime.maw.learning_bonus
+title: MAW takes the Learning skill's experience bonus away
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# The share of experience Learning adds is the mod's to say (the original's GetLearningTotalSkill); MAW makes it
+# nothing, as its Ascendance replaces the skill's bonus. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 5
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      return ModRT.Stats.playerSkillTotal("GetLearningTotalSkill", 0, 19)
+    expect: "0"

@@ -59,6 +59,8 @@ enum class ModPlayerSkillTotal
 {
     Merchant,
     DisarmTrap,
+    // The percentage more experience the character gets (GetLearningTotalSkill).
+    Learning,
 };
 
 // A random item being made. `treasureLevel` is the original's "strength", 1 to 6 (7 for artifacts); `mode` says
@@ -253,6 +255,9 @@ public:
     // A character is about to learn a spell from a book: the mastery of its school it takes (the original's
     // CanLearnSpell, NeedMastery: 1 to 4, above 4 not at all). `engineMastery` is the engine's.
     virtual int canLearnSpell(const Character &character, uint32_t spellId, int engineMastery) = 0;
+    // The character may put on the held item, item `itemId`, as far as the game goes (the original's CanWearItem):
+    // whether the mod lets it.
+    virtual bool canWearItem(const Character &character, uint32_t itemId) = 0;
     // The held item is used on the party member in `memberIndex` (the original's UseMouseItem; Mouse.Item is the
     // item): whether the game may go on with its own use of it.
     virtual bool useMouseItem(size_t memberIndex) = 0;
@@ -310,6 +315,10 @@ bool modPotionEffect(uint32_t potionId, int power, InventoryItem &target);
 std::optional<std::string> modMapEventHint(uint16_t eventId);
 // Whether a mod removed the current map's own lines for event `eventId`; false without a mod.
 bool modMapEventRemoved(uint16_t eventId);
+
+// Runs the mod's CanWearItem event for the held item the game would let the character put on: whether the mod lets
+// it too (true without a mod).
+bool modCanWearItem(const Character &character, uint32_t itemId);
 
 // Runs the mod's CanLearnSpell event and returns the mastery the spell takes, `engineMastery` without a mod.
 int modCanLearnSpell(const Character &character, uint32_t spellId, int engineMastery);

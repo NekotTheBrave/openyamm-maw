@@ -311,6 +311,8 @@ local function dispatchKind(kind, ...)
         return ModRT.Stats.useMouseItem(...)
     elseif kind == "potionEffect" then
         return ModRT.Stats.potionEffect(...)
+    elseif kind == "canWearItem" then
+        return ModRT.Stats.canWearItem(...)
     elseif kind == "hasMapEvent" then
         return ModRT.MapEvents.has(...)
     elseif kind == "mapEvent" then

@@ -115,6 +115,12 @@ bool modPotionEffect(uint32_t potionId, int power, InventoryItem &target)
     return handled;
 }
 
+bool modCanWearItem(const Character &character, uint32_t itemId)
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks == nullptr || pModHooks->canWearItem(character, itemId);
+}
+
 int modCanLearnSpell(const Character &character, uint32_t spellId, int engineMastery)
 {
     IModHooks *pModHooks = activeModHooks();

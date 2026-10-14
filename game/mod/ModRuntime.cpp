@@ -1624,7 +1624,10 @@ int ModRuntime::playerSkillTotal(ModPlayerSkillTotal kind, const Character &char
 
     ++m_skillTotalDepth;
     lua_pushstring(
-        m_pLuaState, kind == ModPlayerSkillTotal::Merchant ? "GetMerchantTotalSkill" : "GetDisarmTrapTotalSkill");
+        m_pLuaState,
+        kind == ModPlayerSkillTotal::Merchant ? "GetMerchantTotalSkill"
+            : kind == ModPlayerSkillTotal::Learning ? "GetLearningTotalSkill"
+            : "GetDisarmTrapTotalSkill");
     lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(*slot));
     lua_pushinteger(m_pLuaState, engineValue);
     int value = engineValue;
@@ -1708,6 +1711,29 @@ bool ModRuntime::potionEffect(uint32_t potionId, int power)
     }
 
     return handled;
+}
+
+bool ModRuntime::canWearItem(const Character &character, uint32_t itemId)
+{
+    Party *pParty = m_active && m_host.party ? m_host.party() : nullptr;
+    const std::optional<size_t> slot = pParty != nullptr ? findModPartySlot(*pParty, character) : std::nullopt;
+
+    if (!slot || !beginDispatch("canWearItem"))
+    {
+        return true;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(*slot));
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(itemId));
+    bool available = true;
+
+    if (endDispatch(2, 1))
+    {
+        available = lua_toboolean(m_pLuaState, -1) != 0;
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return available;
 }
 
 bool ModRuntime::hasMapEvent(uint16_t eventId)

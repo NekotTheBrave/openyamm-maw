@@ -2940,7 +2940,7 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
                     return;
                 }
 
-                const std::optional<CharacterEquipPlan> plan =
+                std::optional<CharacterEquipPlan> plan =
                     GameMechanics::resolveCharacterEquipPlan(
                         *pCharacter,
                         *pItemDefinition,
@@ -2948,6 +2948,11 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
                         pActiveCharacterDollType,
                         target.equipmentSlot,
                         false);
+
+                if (plan.has_value() && !modCanWearItem(*pCharacter, pItemDefinition->itemId))
+                {
+                    plan.reset();
+                }
 
                 if (!plan.has_value())
                 {
@@ -3038,7 +3043,7 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
                     return;
                 }
 
-                const std::optional<CharacterEquipPlan> plan =
+                std::optional<CharacterEquipPlan> plan =
                     GameMechanics::resolveCharacterEquipPlan(
                         *pCharacter,
                         *pItemDefinition,
@@ -3046,6 +3051,11 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
                         pActiveCharacterDollType,
                         std::nullopt,
                         preferOffHand);
+
+                if (plan.has_value() && !modCanWearItem(*pCharacter, pItemDefinition->itemId))
+                {
+                    plan.reset();
+                }
 
                 if (!plan.has_value())
                 {

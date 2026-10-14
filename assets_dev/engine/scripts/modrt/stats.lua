@@ -166,8 +166,8 @@ function Stats.itemValue(value)
     return wholeNumber(event.Value, value)
 end
 
--- A character's total in a skill the game asks of one character: GetMerchantTotalSkill or GetDisarmTrapTotalSkill,
--- with the engine's answer in Result.
+-- A character's total in a skill the game asks of one character: GetMerchantTotalSkill, GetDisarmTrapTotalSkill or
+-- GetLearningTotalSkill (the percentage more experience they get), with the engine's answer in Result.
 function Stats.playerSkillTotal(eventName, slot, value)
     local player = Party[slot]
 
@@ -234,6 +234,14 @@ function Stats.canLearnSpell(slot, spell, needMastery)
     local event = {Player = player, PlayerIndex = player and player:GetIndex(), Spell = spell, NeedMastery = needMastery}
     ModRT.fire("CanLearnSpell", event)
     return math.floor(tonumber(event.NeedMastery) or needMastery)
+end
+
+-- The party member in `slot` would put on the held item, `itemId` (Mouse.Item), and the game lets them: the
+-- original's CanWearItem, which handlers answer by setting Available to false. Returns whether they may.
+function Stats.canWearItem(slot, itemId)
+    local event = {PlayerId = slot, ItemId = itemId, Available = true}
+    ModRT.fire("CanWearItem", event)
+    return event.Available ~= false
 end
 
 -- The information box of a row of the stats page, for Game.CurrentPlayer: the original's BuildStatInformationBox.

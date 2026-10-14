@@ -95,6 +95,7 @@ public:
     int canLearnSpell(const Character &character, uint32_t spellId, int engineMastery) override;
     bool useMouseItem(size_t memberIndex) override;
     bool potionEffect(uint32_t potionId, int power) override;
+    bool canWearItem(const Character &character, uint32_t itemId) override;
     bool hasMapEvent(uint16_t eventId) override;
     int mapEvent(uint16_t eventId) override;
     bool mapEventHint(uint16_t eventId, std::string &hint) override;
