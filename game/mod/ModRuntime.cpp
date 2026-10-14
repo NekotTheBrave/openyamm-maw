@@ -1605,6 +1605,69 @@ int ModRuntime::attackDelay(const Character &character, bool ranged, int engineT
     return ticks;
 }
 
+int ModRuntime::playerSkillTotal(ModPlayerSkillTotal kind, const Character &character, int engineValue)
+{
+    if (!m_active || m_skillTotalDepth >= 3 || !m_host.party || m_host.party() == nullptr)
+    {
+        return engineValue;
+    }
+
+    const std::optional<size_t> slot = findModPartySlot(*m_host.party(), character);
+
+    if (!slot || !beginDispatch("playerSkillTotal"))
+    {
+        return engineValue;
+    }
+
+    ++m_skillTotalDepth;
+    lua_pushstring(
+        m_pLuaState, kind == ModPlayerSkillTotal::Merchant ? "GetMerchantTotalSkill" : "GetDisarmTrapTotalSkill");
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(*slot));
+    lua_pushinteger(m_pLuaState, engineValue);
+    int value = engineValue;
+
+    if (endDispatch(3, 1))
+    {
+        if (lua_isnumber(m_pLuaState, -1))
+        {
+            value = static_cast<int>(
+                std::clamp<lua_Number>(std::floor(lua_tonumber(m_pLuaState, -1)), -100000.0, 100000.0));
+        }
+
+        lua_pop(m_pLuaState, 1);
+    }
+
+    --m_skillTotalDepth;
+    return value;
+}
+
+bool ModRuntime::canHandleItem(bool repair, uint32_t itemId, bool engineAnswer)
+{
+    if (!m_active || !m_host.party || m_host.party() == nullptr || !beginDispatch("canHandleItem"))
+    {
+        return engineAnswer;
+    }
+
+    // The handlers look at the item's kind; the item they see is one of that kind, as yet unidentified (or broken).
+    InventoryItem eventItem = {};
+    eventItem.objectDescriptionId = itemId;
+    eventItem.identified = repair;
+    eventItem.broken = repair;
+    InventoryItem *pPreviousEventItem = setModEventItem(&eventItem);
+    lua_pushboolean(m_pLuaState, repair);
+    lua_pushboolean(m_pLuaState, engineAnswer);
+    bool answer = engineAnswer;
+
+    if (endDispatch(2, 1))
+    {
+        answer = lua_toboolean(m_pLuaState, -1) != 0;
+        lua_pop(m_pLuaState, 1);
+    }
+
+    setModEventItem(pPreviousEventItem);
+    return answer;
+}
+
 ModPlayerActionResult ModRuntime::playerAction(int action, int param, int param2)
 {
     ModPlayerActionResult result = {};
@@ -1883,10 +1946,16 @@ void ModRuntime::keyEvent(bool pressed, int32_t sdlKeycode, bool repeat)
         return;
     }
 
+    // Whether Alt, Ctrl and Shift are held, as the original's key events say. The key going up or down counts as
+    // held itself, so that letting go of Alt is a key event "with Alt" (MAW turns its Alt view off on that).
+    const SDL_Keymod modifiers = SDL_GetModState();
     lua_pushboolean(m_pLuaState, pressed);
     lua_pushinteger(m_pLuaState, virtualKey);
     lua_pushboolean(m_pLuaState, repeat);
-    endDispatch(3, 0);
+    lua_pushboolean(m_pLuaState, (modifiers & SDL_KMOD_ALT) != 0 || virtualKey == 0x12);
+    lua_pushboolean(m_pLuaState, (modifiers & SDL_KMOD_CTRL) != 0 || virtualKey == 0x11);
+    lua_pushboolean(m_pLuaState, (modifiers & SDL_KMOD_SHIFT) != 0 || virtualKey == 0x10);
+    endDispatch(6, 0);
 }
 
 bool ModRuntime::executeConsole(const std::string &code, std::string &output)

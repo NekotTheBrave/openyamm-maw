@@ -87,6 +87,8 @@ public:
     int itemValue(const InventoryItem &item, int engineValue) override;
     void itemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh) override;
     ModPlayerActionResult playerAction(int action, int param, int param2) override;
+    int playerSkillTotal(ModPlayerSkillTotal kind, const Character &character, int engineValue) override;
+    bool canHandleItem(bool repair, uint32_t itemId, bool engineAnswer) override;
     void pickCorpse(size_t actorIndex, ModCorpseLoot &loot) override;
     void generateItem(ModItemGeneration &generation) override;
     void itemGenerated(InventoryItem &item, const ModItemGeneration &generation) override;
@@ -156,6 +158,7 @@ private:
     int m_attackDelayDepth = 0;
     int m_itemValueDepth = 0;
     int m_itemGenerationDepth = 0;
+    int m_skillTotalDepth = 0;
 
     // The information box is built again on every frame it is on screen. The scripts' answer for the same item
     // and the same engine texts is kept for a short while instead of being asked for sixty times a second.

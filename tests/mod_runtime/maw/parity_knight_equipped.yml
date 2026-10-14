@@ -112,3 +112,20 @@ steps:
       Iron Broadsword; Type: Broadsword|Attack Speed: 0.6; Attack: +0  Damage: 3-9; ; Notes.||Level Required: 1 ##
       Rusty Breastplate; Type: Plate Armor; Armor: +18; ; Notes.||Level Required: 1 ##
       Crude Crossbow; Type: Crossbow|Attack Speed: 0.8; Attack: +0  Damage: 3-9; ; Notes.||Level Required: 1
+# With Alt held MAW adds what the item could be crafted into: a grey enchantment it might take ("<stat> +X") and
+# its bonus power, "Item Bonus Power: 0/255" for the breastplate (parity/Armor.png was taken with Alt held). The key
+# events are fed here as the game feeds them.
+- mod_lua:
+    code: |
+      local armor = Party[0]:GetActiveItem(3)
+      local function box()
+        return armor:BuildInformationBox{Name = armor:T().Name, Type = "Type: Plate Armor", BasicStat = "Armor: +18",
+          Enchantment = "", Description = "Notes."}
+      end
+      ModRT.key(true, 0x12, false, true, false, false)
+      local held = box()
+      ModRT.key(false, 0x12, false, true, false, false)
+      local released = box()
+      local function plain(text) return (text:gsub("\f%d%d%d%d%d", ""):gsub("\n", "|")) end
+      return plain(held.Enchantment):match("^[%a ]+ %+X$") ~= nil, plain(held.Description), plain(released.Description)
+    expect: "true\tNotes.||Item Bonus Power: 0/255||Level Required: 1\tNotes.||Level Required: 1"

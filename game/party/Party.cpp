@@ -4838,23 +4838,18 @@ int Party::bestPartyWideUtilitySkillValue(std::string_view skillName, bool requi
 
 bool Party::canIdentifyItem(const ItemDefinition &itemDefinition) const
 {
-    if (hiredNpcHasProfession(m_hiredNpcFollowers, 4))
-    {
-        return true;
-    }
-
     const Character *pInspector = bestPartyWideUtilitySkillMember("IdentifyItem");
-    return pInspector != nullptr && ItemRuntime::canCharacterIdentifyItem(*pInspector, itemDefinition);
+    const bool engineAnswer = hiredNpcHasProfession(m_hiredNpcFollowers, 4)
+        || (pInspector != nullptr && ItemRuntime::canCharacterIdentifyItem(*pInspector, itemDefinition));
+    return modCanHandleItem(false, itemDefinition.itemId, engineAnswer);
 }
 
 bool Party::canRepairItem(const ItemDefinition &itemDefinition) const
 {
-    if (hiredNpcCanRepairItemKind(m_hiredNpcFollowers, itemDefinition.equipStat))
-    {
-        return true;
-    }
     const Character *pInspector = bestPartyWideUtilitySkillMember("RepairItem");
-    return pInspector != nullptr && ItemRuntime::canCharacterRepairItem(*pInspector, itemDefinition);
+    const bool engineAnswer = hiredNpcCanRepairItemKind(m_hiredNpcFollowers, itemDefinition.equipStat)
+        || (pInspector != nullptr && ItemRuntime::canCharacterRepairItem(*pInspector, itemDefinition));
+    return modCanHandleItem(true, itemDefinition.itemId, engineAnswer);
 }
 
 bool Party::tryIdentifyMemberInventoryItem(

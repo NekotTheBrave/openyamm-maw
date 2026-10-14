@@ -14,7 +14,9 @@ class SpecialItemEnchantTable;
 class PriceCalculator
 {
 public:
+    // The character's merchant total, the mod's word included (GetMerchantTotalSkill).
     static int playerMerchant(const Character *pCharacter, int effectiveReputation = 0);
+    static int enginePlayerMerchant(const Character &character, int effectiveReputation = 0);
     static int applyMerchantDiscount(const Character *pCharacter, int goldAmount, int effectiveReputation = 0);
     static int itemBuyingPrice(
         const Character *pCharacter,

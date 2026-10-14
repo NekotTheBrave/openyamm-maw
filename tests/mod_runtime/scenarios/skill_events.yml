@@ -1,0 +1,63 @@
+id: mod_runtime.skill_events
+title: The original's skill events decide a character's merchant and disarm-trap totals
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 0
+      food: 1
+      members:
+      - name: Trader
+        class: Thief
+        level: 5
+        skills:
+        - name: Merchant
+          level: 4
+          mastery: 2
+        - name: DisarmTraps
+          level: 3
+          mastery: 1
+        equipment: {}
+      - name: Partner
+        class: Knight
+        level: 5
+        skills: []
+        equipment: {}
+# With no handler the totals are the engine's: Merchant 4 at Expert is 4 x 2 + 7 = 15 (the engine's figure); Disarm
+# Traps 3 at Novice is 3. The partner has neither.
+- mod_lua:
+    code: |
+      return Party[0]:GetMerchant(), Party[0]:GetDisarmTrap(), Party[1]:GetMerchant(), Party[1]:GetDisarmTrap()
+    expect: "15\t3\t0\t0"
+# GetMerchantTotalSkill and GetDisarmTrapTotalSkill name the character and carry the engine's total in Result; what
+# a handler leaves there is the total the game uses (MAW gives every member the party's best).
+- mod_lua:
+    code: |
+      Seen = {}
+      function events.GetMerchantTotalSkill(t)
+        Seen[#Seen + 1] = "merchant " .. t.PlayerIndex .. " " .. t.Result
+        t.Result = 7 + 4 * 2
+      end
+      function events.GetDisarmTrapTotalSkill(t)
+        Seen[#Seen + 1] = "disarm " .. t.PlayerIndex .. " " .. t.Result .. tostring(t.Player == Party[1])
+        t.Result = 3
+      end
+      return Party[1]:GetMerchant(), Party[1]:GetDisarmTrap(), table.concat(Seen, "; ")
+    expect: "15\t3\tmerchant 1 0; disarm 1 0true"
+# Key events say whether Alt, Ctrl and Shift are held (the key itself counts), and Keys.IsPressed follows the keys
+# the scripts saw go down and up. The events are fed here as the game feeds them (0x12 is Alt, 0x41 A).
+- mod_lua:
+    code: |
+      Keys_ = {}
+      function events.KeyDown(t) Keys_[#Keys_ + 1] = "down " .. t.Key .. " alt " .. tostring(t.Alt) end
+      function events.KeyUp(t) Keys_[#Keys_ + 1] = "up " .. t.Key .. " alt " .. tostring(t.Alt) end
+      ModRT.key(true, 0x12, false, true, false, false)
+      local held = Keys.IsPressed(0x12)
+      ModRT.key(true, 0x41, false, true, false, false)
+      ModRT.key(false, 0x12, false, true, false, false)
+      return table.concat(Keys_, "; "), held, Keys.IsPressed(0x12), Keys.IsPressed(0x41)
+    expect: "down 18 alt true; down 65 alt true; up 18 alt true\ttrue\tfalse\ttrue"

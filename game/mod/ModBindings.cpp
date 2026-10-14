@@ -6,6 +6,7 @@
 #include "game/gameplay/GameplayRuntimeInterfaces.h"
 #include "game/items/ItemEnchantRuntime.h"
 #include "game/items/ItemGenerator.h"
+#include "game/items/PriceCalculator.h"
 #include "game/mod/ModHooks.h"
 #include "game/mod/ModHost.h"
 #include "game/party/Party.h"
@@ -483,6 +484,19 @@ int nativePlayerGet(lua_State *pLuaState)
     if (field == "RecoveryDelay")
     {
         lua_pushinteger(pLuaState, static_cast<lua_Integer>(std::lround(pCharacter->recoverySecondsRemaining * 60.0f)));
+        return 1;
+    }
+
+    // The character's merchant and disarm-trap totals as the game uses them, the mod's word included.
+    if (field == "GetMerchant")
+    {
+        lua_pushinteger(pLuaState, PriceCalculator::playerMerchant(pCharacter));
+        return 1;
+    }
+
+    if (field == "GetDisarmTrap")
+    {
+        lua_pushinteger(pLuaState, GameMechanics::resolveCharacterDisarmTrapValue(*pCharacter));
         return 1;
     }
 

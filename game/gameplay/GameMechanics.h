@@ -304,7 +304,9 @@ public:
     static int statisticEffect(int value);
     static int resolveCharacterPerceptionValue(const Character &character);
     static int resolvePartyPerceptionValue(const Party &party);
+    // The character's disarm-trap total, the mod's word included (GetDisarmTrapTotalSkill).
     static int resolveCharacterDisarmTrapValue(const Character &character);
+    static int resolveEngineDisarmTrapValue(const Character &character);
     static bool partyDetectsSecretFaces(const Party &party, const MapStatsEntry &map);
     static bool canSelectInGameplay(const Character &character);
     static bool canTakeGameplayAction(const Character &character);

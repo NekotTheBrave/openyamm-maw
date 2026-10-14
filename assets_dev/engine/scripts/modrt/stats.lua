@@ -166,6 +166,30 @@ function Stats.itemValue(value)
     return wholeNumber(event.Value, value)
 end
 
+-- A character's total in a skill the game asks of one character: GetMerchantTotalSkill or GetDisarmTrapTotalSkill,
+-- with the engine's answer in Result.
+function Stats.playerSkillTotal(eventName, slot, value)
+    local player = Party[slot]
+
+    if not player then
+        return value
+    end
+
+    local event = {Result = value, Player = player, PlayerIndex = player:GetIndex()}
+    ModRT.fire(eventName, event)
+    return wholeNumber(event.Result, value)
+end
+
+-- Whether the party can identify (repair) the event's item: CanIdentifyItem (CanRepairItem), with the engine's
+-- answer in CanIdentify (CanRepair) and the active member as Player.
+function Stats.canHandleItem(repair, answer)
+    local event = {Item = ModRT.Bindings.eventItem, Player = Party[math.max(0, Game.CurrentPlayer or 0)]}
+    local field = repair and "CanRepair" or "CanIdentify"
+    event[field] = answer
+    ModRT.fire(repair and "CanRepairItem" or "CanIdentifyItem", event)
+    return event[field] == true
+end
+
 -- The player is about to take an action: the original's Action event, raised for the actions the engine reports
 -- (23 attack, 25 the quick spell key or an attack spell). A handler that does the action itself sets t.Handled. A
 -- handler may ask for another game action in its place with DoGameAction, which the game then takes (MAW has a

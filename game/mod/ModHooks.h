@@ -42,6 +42,14 @@ constexpr int Attack = 23;
 constexpr int QuickSpell = 25;
 }
 
+// A character's total in a skill the game asks of one character (the original's GetMerchantTotalSkill and
+// GetDisarmTrapTotalSkill events).
+enum class ModPlayerSkillTotal
+{
+    Merchant,
+    DisarmTrap,
+};
+
 // A random item being made. `treasureLevel` is the original's "strength", 1 to 6 (7 for artifacts); `mode` says
 // what it is made for: 0 anything, 1 a shop's shelf, 2 a monster's body, 3 a chest.
 struct ModItemGeneration
@@ -186,6 +194,11 @@ public:
     // What an item is worth; `engineValue` is the engine's answer. Asked for wherever the engine prices an item: a
     // tooltip, a shop's offer, the cost of identifying or repairing it, what a corpse or chest holds.
     virtual int itemValue(const InventoryItem &item, int engineValue) = 0;
+    // A character's total in a skill; `engineValue` is the engine's answer.
+    virtual int playerSkillTotal(ModPlayerSkillTotal kind, const Character &character, int engineValue) = 0;
+    // Whether the party can identify (or repair) an item of this kind (the original's CanIdentifyItem and
+    // CanRepairItem); `engineAnswer` is the engine's.
+    virtual bool canHandleItem(bool repair, uint32_t itemId, bool engineAnswer) = 0;
     // The player is about to take an action (the original's Action event, which comes before the game acts).
     virtual ModPlayerActionResult playerAction(int action, int param, int param2) = 0;
     // A dead monster's loot is about to be rolled (the original's PickCorpse, which there comes when the body is
@@ -211,6 +224,11 @@ void setActiveModHooks(IModHooks *pModHooks);
 
 // Runs the mod's event over the texts of an item's information box; without a mod runtime they stay as they are.
 void modItemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh = false);
+
+// The mod's word on a character's skill total, and on whether an item can be identified or repaired; the engine's
+// without a mod runtime.
+int modPlayerSkillTotal(ModPlayerSkillTotal kind, const Character &character, int engineValue);
+bool modCanHandleItem(bool repair, uint32_t itemId, bool engineAnswer);
 
 // Runs the mod's Action event; nothing handled and nothing asked for without a mod runtime.
 ModPlayerActionResult modPlayerAction(int action, int param = 0, int param2 = 0);

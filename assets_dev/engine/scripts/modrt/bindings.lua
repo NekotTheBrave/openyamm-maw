@@ -741,6 +741,9 @@ local function playerObject(playerIndex)
             GetAttackDelay = function(_, ranged)
                 return modrt.playerGet(playerIndex, ranged and "GetAttackDelayRanged" or "GetAttackDelay")
             end,
+            -- The character's merchant and disarm-trap totals, as the game uses them.
+            GetMerchant = function() return modrt.playerGet(playerIndex, "GetMerchant") end,
+            GetDisarmTrap = function() return modrt.playerGet(playerIndex, "GetDisarmTrap") end,
             -- The character is busy for this many ticks from now (RecoveryDelay).
             SetRecoveryDelay = function(_, ticks)
                 return modrt.playerSet(playerIndex, "RecoveryDelay", floor(ticks or 0))
@@ -1572,6 +1575,12 @@ function Question(text, questionText)
     Message(text)
     return ""
 end
+
+-- Keys.IsPressed(key): whether the key (a Windows virtual key, as const.Keys numbers them) is held, as far as the
+-- key events that reached the scripts say.
+rawset(Keys, "IsPressed", function(key)
+    return ModRT.keysDown[key] == true
+end)
 
 -- What is under the mouse pointer. Not bound yet: nothing (Kind 0); a monster would be Kind 3.
 rawset(Mouse, "GetTarget", function()

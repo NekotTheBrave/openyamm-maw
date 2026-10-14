@@ -189,9 +189,21 @@ function ModRT.tick(deltaSeconds)
     end
 end
 
-function ModRT.key(pressed, virtualKey, isRepeat)
+-- Keys held, by the original's key numbers (Windows virtual keys), for Keys.IsPressed.
+ModRT.keysDown = {}
+
+function ModRT.key(pressed, virtualKey, isRepeat, alt, ctrl, shift)
+    ModRT.keysDown[virtualKey] = pressed or nil
+    -- The modifiers come from the engine, which knows them even when their own key events were missed (focus lost
+    -- with Alt held).
+    ModRT.keysDown[0x12] = alt and (virtualKey ~= 0x12 or pressed) or nil
+    ModRT.keysDown[0x11] = ctrl and (virtualKey ~= 0x11 or pressed) or nil
+    ModRT.keysDown[0x10] = shift and (virtualKey ~= 0x10 or pressed) or nil
     local eventName = pressed and "KeyDown" or "KeyUp"
-    ModRT.fire(eventName, {Key = virtualKey, Repeat = isRepeat, Handled = false})
+    ModRT.fire(eventName, {
+        Key = virtualKey, Repeat = isRepeat, Handled = false,
+        Alt = alt == true, Ctrl = ctrl == true, Shift = shift == true,
+    })
 end
 
 function ModRT.console(code)
@@ -280,6 +292,10 @@ local function dispatchKind(kind, ...)
         return ModRT.Stats.itemValue(...)
     elseif kind == "itemTooltip" then
         return ModRT.Stats.itemTooltip(...)
+    elseif kind == "playerSkillTotal" then
+        return ModRT.Stats.playerSkillTotal(...)
+    elseif kind == "canHandleItem" then
+        return ModRT.Stats.canHandleItem(...)
     elseif kind == "action" then
         return ModRT.Stats.action(...)
     elseif kind == "pickCorpse" then

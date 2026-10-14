@@ -26,6 +26,18 @@ void modItemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh
     }
 }
 
+int modPlayerSkillTotal(ModPlayerSkillTotal kind, const Character &character, int engineValue)
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks != nullptr ? pModHooks->playerSkillTotal(kind, character, engineValue) : engineValue;
+}
+
+bool modCanHandleItem(bool repair, uint32_t itemId, bool engineAnswer)
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks != nullptr ? pModHooks->canHandleItem(repair, itemId, engineAnswer) : engineAnswer;
+}
+
 ModPlayerActionResult modPlayerAction(int action, int param, int param2)
 {
     IModHooks *pModHooks = activeModHooks();

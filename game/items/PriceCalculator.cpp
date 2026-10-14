@@ -4,6 +4,7 @@
 #include "game/tables/HouseTable.h"
 #include "game/items/ItemEnchantRuntime.h"
 #include "game/items/ItemEnchantTables.h"
+#include "game/mod/ModHooks.h"
 #include "game/tables/ItemTable.h"
 #include "game/party/Party.h"
 #include "game/party/SkillData.h"
@@ -132,6 +133,16 @@ int PriceCalculator::playerMerchant(const Character *pCharacter, int effectiveRe
     {
         return 0;
     }
+
+    return modPlayerSkillTotal(
+        ModPlayerSkillTotal::Merchant,
+        *pCharacter,
+        enginePlayerMerchant(*pCharacter, effectiveReputation));
+}
+
+int PriceCalculator::enginePlayerMerchant(const Character &character, int effectiveReputation)
+{
+    const Character *pCharacter = &character;
 
     const CharacterSkill *pMerchant = pCharacter->findSkill("Merchant");
     const int merchantBonus = std::max(0, pCharacter->merchantBonus);

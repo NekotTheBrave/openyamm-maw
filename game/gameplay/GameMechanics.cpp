@@ -3415,6 +3415,11 @@ int GameMechanics::resolveCharacterPerceptionValue(const Character &character)
 
 int GameMechanics::resolveCharacterDisarmTrapValue(const Character &character)
 {
+    return modPlayerSkillTotal(ModPlayerSkillTotal::DisarmTrap, character, resolveEngineDisarmTrapValue(character));
+}
+
+int GameMechanics::resolveEngineDisarmTrapValue(const Character &character)
+{
     static const std::string DisarmTrapSkillName = "DisarmTraps";
 
     const CharacterSkill *pSkill = character.findSkillByCanonicalName(DisarmTrapSkillName);
