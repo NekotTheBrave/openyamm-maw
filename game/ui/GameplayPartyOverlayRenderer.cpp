@@ -1556,7 +1556,7 @@ std::string quickReferenceSpellName(const Character &character, const SpellTable
         return pSpell->shortName;
     }
 
-    return character.quickSpellName;
+    return pSpell != nullptr ? pSpell->name : character.quickSpellName;
 }
 
 uint32_t quickReferencePartyFame(const Party &party)
@@ -8550,6 +8550,15 @@ void GameplayPartyOverlayRenderer::renderCharacterOverlay(
         armorClassValue = formatSheetValue(summary.armorClass);
         conditionValue = summary.conditionText;
         quickSpellValue = summary.quickSpellText;
+
+        // The name the spell has now (a mod may have renamed it); the character keeps the table's.
+        if (const SpellEntry *pQuickSpell =
+                context.spellTable() != nullptr && pCharacter != nullptr && !pCharacter->quickSpellName.empty()
+                    ? context.spellTable()->findByName(pCharacter->quickSpellName)
+                    : nullptr)
+        {
+            quickSpellValue = pQuickSpell->name;
+        }
         ageValue = summary.ageText;
         levelValue = formatSheetValue(summary.level);
         experienceValue = summary.experienceText;

@@ -2,6 +2,7 @@
 
 #include "game/tables/ItemTable.h"
 #include "game/tables/MergedBaseTables.h"
+#include "game/mod/ModHooks.h"
 #include "game/party/SpellIds.h"
 #include "game/party/SpellSchool.h"
 
@@ -980,9 +981,13 @@ InventoryItemUseResult InventoryItemUseRuntime::useItemOnMember(
                     SpeechId::CantLearnSpell);
             }
 
-            const SkillMastery requiredMastery = requiredMasteryForSpell(*spellId);
+            // The mod has the last word on the mastery the spell takes (the original's CanLearnSpell); above
+            // Grandmaster it cannot be learned from a book at all.
+            const int requiredMastery =
+                modCanLearnSpell(*pTargetMember, *spellId, static_cast<int>(requiredMasteryForSpell(*spellId)));
 
-            if (requiredMastery != SkillMastery::None && pSkill->mastery < requiredMastery)
+            if (requiredMastery > static_cast<int>(SkillMastery::None)
+                && static_cast<int>(pSkill->mastery) < requiredMastery)
             {
                 return makeFailure(
                     result.action,

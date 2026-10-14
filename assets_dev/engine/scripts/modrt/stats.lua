@@ -203,6 +203,16 @@ function Stats.canTeachSkillMastery(slot, skill, mastery, cost, allow, text)
     return event.Allow and true or false, math.floor(newCost), tostring(event.Text or text)
 end
 
+-- The member in `slot` is about to learn a spell from a book: the original's CanLearnSpell. NeedMastery comes in as
+-- the game's (1 to 4) and goes out as the handlers leave it; above 4 the spell cannot be learned (MAW's Death Knights,
+-- Elementalists and the Thief line get their spells from it instead).
+function Stats.canLearnSpell(slot, spell, needMastery)
+    local player = Party[slot]
+    local event = {Player = player, PlayerIndex = player and player:GetIndex(), Spell = spell, NeedMastery = needMastery}
+    ModRT.fire("CanLearnSpell", event)
+    return math.floor(tonumber(event.NeedMastery) or needMastery)
+end
+
 -- The information box of a row of the stats page, for Game.CurrentPlayer: the original's BuildStatInformationBox.
 -- Stat is the row (0 to 6 the statistics, 7 hit points, 8 spell points, 9 armor class, 10 condition, 11 quick
 -- spell, 12 age, 13 level, 14 experience, 15 attack, 16 melee damage, 17 shoot, 18 ranged damage, 19 to 24 the

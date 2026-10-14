@@ -105,6 +105,7 @@ bool SpellTable::loadFromRows(const std::vector<std::vector<std::string>> &rows)
         SpellEntry entry = {};
         entry.id = std::stoi(row[0]);
         entry.name = row[2];
+        entry.lookupName = entry.name;
         entry.normalizedName = canonicalLegacySpellAlias(normalizeName(entry.name));
         entry.schoolName = row.size() > 3 ? row[3] : "";
         entry.shortName = row.size() > 4 ? row[4] : "";
@@ -164,6 +165,22 @@ const SpellEntry *SpellTable::findByName(const std::string &name) const
     }
 
     return &m_entries[entryIt->second];
+}
+
+bool SpellTable::renameSpell(int id, const std::string &name)
+{
+    const auto entryIt = m_entryIndexById.find(id);
+
+    if (entryIt == m_entryIndexById.end() || name.empty())
+    {
+        return false;
+    }
+
+    m_entries[entryIt->second].name = name;
+    // Another spell's own name is not taken over.
+    m_entryIndexByNormalizedName.try_emplace(canonicalLegacySpellAlias(normalizeName(name)), entryIt->second);
+    m_entryIndexByNormalizedName.try_emplace(compactName(name), entryIt->second);
+    return true;
 }
 
 const std::vector<SpellEntry> &SpellTable::entries() const

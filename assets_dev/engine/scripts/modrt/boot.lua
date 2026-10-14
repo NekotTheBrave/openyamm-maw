@@ -304,6 +304,8 @@ local function dispatchKind(kind, ...)
         return ModRT.Stats.trainingTime(...)
     elseif kind == "statInformationBox" then
         return ModRT.Stats.statInformationBox(...)
+    elseif kind == "canLearnSpell" then
+        return ModRT.Stats.canLearnSpell(...)
     elseif kind == "pickCorpse" then
         return ModRT.Stats.pickCorpse(...)
     elseif kind == "generateItem" then

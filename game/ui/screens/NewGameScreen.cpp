@@ -3,6 +3,7 @@
 #include "game/audio/GameAudioSystem.h"
 #include "game/debug/GameplayDebugTrace.h"
 #include "game/gameplay/GameMechanics.h"
+#include "game/mod/ModHooks.h"
 #include "game/party/SkillData.h"
 #include "game/party/SpeechIds.h"
 #include "game/ui/GameplayUiSkin.h"
@@ -223,8 +224,66 @@ std::string canonicalNameToken(const std::string &value)
 
 std::string classIconTextureName(const std::string &className)
 {
-    const std::string token = canonicalNameToken(className);
-    return "hud_x2/menus/classes/" + (token == "lich" ? "necromancer" : token) + ".png";
+    std::string token = canonicalNameToken(className);
+
+    // MAW's classes have no icon of their own: the nearest there is.
+    if (token == "lich")
+    {
+        token = "necromancer";
+    }
+    else if (token == "seraphim")
+    {
+        token = "paladin";
+    }
+    else if (token == "deathknight")
+    {
+        token = "knight";
+    }
+    else if (token == "shaman")
+    {
+        token = "druid";
+    }
+    else if (token == "elementalist")
+    {
+        token = "sorcerer";
+    }
+    else if (token == "peasant")
+    {
+        token = "monk";
+    }
+
+    return "hud_x2/menus/classes/" + token + ".png";
+}
+
+// MAW's free choice at character creation (its MenuChooseCharacter.lua: "free class/portrait selection is always
+// on"): any portrait may start as any class that begins a line of classes, the lowest step of its kind; kind 0 is
+// no line (unused numbers).
+std::vector<uint32_t> freeChoiceClassIds(const MergedClassExtraTable &classExtraTable)
+{
+    std::vector<uint32_t> classIds;
+
+    for (const MergedClassExtraEntry &entry : classExtraTable.entries())
+    {
+        if (entry.kind == 0)
+        {
+            continue;
+        }
+
+        const bool lowestStep = std::none_of(
+            classExtraTable.entries().begin(),
+            classExtraTable.entries().end(),
+            [&entry](const MergedClassExtraEntry &other)
+            {
+                return other.kind == entry.kind && other.promotionStep < entry.promotionStep;
+            });
+
+        if (lowestStep)
+        {
+            classIds.push_back(entry.classId);
+        }
+    }
+
+    return classIds;
 }
 
 std::vector<std::string> splitTabLine(const std::string &line)
@@ -869,16 +928,30 @@ void NewGameScreen::rebuildCandidates()
 
         std::vector<uint32_t> availableClassIds;
 
-        for (const std::string &className : *pAllowedClasses)
+        // With a mod loaded, MAW's free choice: race and continent do not narrow the classes.
+        if (activeModHooks() != nullptr)
         {
-            const std::optional<uint32_t> classId = m_pGameData->classSkillTable().classIdForName(className);
-
-            if (!classId.has_value())
+            for (const uint32_t classId : freeChoiceClassIds(m_pGameData->mergedClassExtraTable()))
             {
-                continue;
+                if (m_pGameData->classSkillTable().classNameForId(classId).has_value())
+                {
+                    availableClassIds.push_back(classId);
+                }
             }
+        }
+        else
+        {
+            for (const std::string &className : *pAllowedClasses)
+            {
+                const std::optional<uint32_t> classId = m_pGameData->classSkillTable().classIdForName(className);
 
-            availableClassIds.push_back(startingCasterClassId(*classId, *pContinent));
+                if (!classId.has_value())
+                {
+                    continue;
+                }
+
+                availableClassIds.push_back(startingCasterClassId(*classId, *pContinent));
+            }
         }
 
         if (availableClassIds.empty())

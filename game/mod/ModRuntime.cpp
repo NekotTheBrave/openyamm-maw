@@ -1671,6 +1671,34 @@ bool ModRuntime::canHandleItem(bool repair, uint32_t itemId, bool engineAnswer)
     return answer;
 }
 
+int ModRuntime::canLearnSpell(const Character &character, uint32_t spellId, int engineMastery)
+{
+    Party *pParty = m_active && m_host.party ? m_host.party() : nullptr;
+    const std::optional<size_t> slot = pParty != nullptr ? findModPartySlot(*pParty, character) : std::nullopt;
+
+    if (!slot || !beginDispatch("canLearnSpell"))
+    {
+        return engineMastery;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(*slot));
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(spellId));
+    lua_pushinteger(m_pLuaState, engineMastery);
+    int mastery = engineMastery;
+
+    if (endDispatch(3, 1))
+    {
+        if (lua_isnumber(m_pLuaState, -1))
+        {
+            mastery = static_cast<int>(lua_tointeger(m_pLuaState, -1));
+        }
+
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return mastery;
+}
+
 void ModRuntime::statInformationBox(int stat, std::string &text)
 {
     if (!m_active || !m_host.party || m_host.party() == nullptr || !beginDispatch("statInformationBox"))

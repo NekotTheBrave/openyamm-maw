@@ -471,8 +471,43 @@ def convert_class_starting_skills(base, maw, ours):
         if '/' in header and name_key(header) != 'n/u':
             row_alias[name_key(header)] = [name_key(part) for part in header.split('/')]
 
-    return merge_grid('Class Starting Skills.txt -> class_starting_skills.txt', transpose(base), transpose(maw),
-                      ours, row_alias=row_alias, column_alias=STARTING_SKILL_NAMES)
+    result = merge_grid('Class Starting Skills.txt -> class_starting_skills.txt', transpose(base), transpose(maw),
+                        ours, row_alias=row_alias, column_alias=STARTING_SKILL_NAMES)
+
+    if result.rows is not None:
+        add_new_starting_classes(result, maw)
+
+    return result
+
+
+# MAW's own starting classes, by the class number the starting-skill column is found by. The Merge keeps starting
+# skills by pairs of classes (column = class number // 2), and MAW's labels for its new pairs are stale ("Death
+# Knight" twice, "Druid", "Sorcerer"), so the columns are read by position and given the classes' own names.
+NEW_STARTING_CLASSES = {'Seraphim': 53, 'Death Knight': 56, 'Shaman': 59, 'Elementalist': 62}
+
+
+def add_new_starting_classes(result, maw):
+    ours_columns = unique_keys(result.rows[0])
+    existing = {name_key(cell(row, 0)) for row in result.rows}
+
+    for class_name, class_id in NEW_STARTING_CLASSES.items():
+        if name_key(class_name) in existing:
+            continue
+
+        maw_column = class_id // 2 + 1
+        values = {}
+
+        for maw_row in maw[1:]:
+            skill = name_key(cell(maw_row, 0))
+
+            for key in STARTING_SKILL_NAMES.get(skill, [skill]):
+                values[key] = cell(maw_row, maw_column).strip() or '-'
+
+        row = [class_name] + [values.get(key, '-') if key else '' for key in ours_columns[1:]]
+        result.rows.append(row)
+        result.rows_added += 1
+
+    result.notes.append(f'starting classes MAW added, read by class number: {", ".join(NEW_STARTING_CLASSES)}')
 
 
 # MAW archive table (zMaw.T.lod / mmmerge.T.lod name) -> OpenYAMM path under data_tables

@@ -413,6 +413,25 @@ local function skillsObject(playerIndex, path)
     })
 end
 
+-- Party[i].Spells[spell]: whether the character knows the spell; writes teach or take it away.
+local SpellCount = 132
+
+local function spellsObject(playerIndex, path)
+    return boundObject(path, {
+        index = function(id)
+            id = floor(id)
+            return id >= 1 and id <= SpellCount and modrt.playerSpellGet(playerIndex, id) or false
+        end,
+        newindex = function(id, value)
+            id = floor(id)
+            return id >= 1 and id <= SpellCount
+                and modrt.playerSpellSet(playerIndex, id, value ~= nil and value ~= false and value ~= 0)
+        end,
+        get = sizeFields(function() return SpellCount + 1 end),
+        range = function() return 0, SpellCount end,
+    })
+end
+
 local equippedItemAt = cached(function(key)
     local playerIndex, slot = key >> 8, key & 0xFF
     return itemObject(playerIndex, "equip", slot, "Party[].Items[]")
@@ -625,6 +644,7 @@ end
 local function playerObject(playerIndex)
     local path = "Party[]"
     local skills = skillsObject(playerIndex, path .. ".Skills")
+    local spells = spellsObject(playerIndex, path .. ".Spells")
     local items = itemsObject(playerIndex, path .. ".Items")
     -- EquippedItems[slot] is the item's number in Items, 0 for an empty slot.
     local equipped = boundObject(path .. ".EquippedItems", {
@@ -665,6 +685,8 @@ local function playerObject(playerIndex)
         get = function(key)
             if key == "Skills" then
                 return skills
+            elseif key == "Spells" then
+                return spells
             elseif key == "Items" then
                 return items
             elseif key == "EquippedItems" then
@@ -1348,9 +1370,7 @@ local spellsTxt = boundObject("Game.Spells", {
 local stdItemsTxt = enchantTable("Game.StdItemsTxt", false, 9)
 
 -- Game.SpellsTxt[id]: a spell's texts, Name, ShortName, Description and Normal, Expert, Master, GM (what each mastery
--- gives). Writes reach the spellbook, except the name: the engine finds spells by name, so a name a script gives a
--- spell (MAW calls Vampiric Weapon "Vampiric Aura") is what scripts read back, and the game keeps its own.
-local spellNameWrites = {}
+-- gives). Writes reach the spellbook, the name included (MAW's Death Knights call Heal "Blood Leech").
 local SpellTextFields = {
     Name = true, ShortName = true, Description = true, Normal = true, Expert = true, Master = true, GM = true,
 }
@@ -1362,10 +1382,6 @@ local function spellTextRow(id)
                 return nil
             end
 
-            if key == "Name" and spellNameWrites[id] ~= nil then
-                return spellNameWrites[id]
-            end
-
             return modrt.spellTextGet(id, key)
         end,
         set = function(key, value)
@@ -1373,14 +1389,7 @@ local function spellTextRow(id)
                 return false
             end
 
-            value = tostring(value)
-
-            if key == "Name" then
-                spellNameWrites[id] = value
-                return true
-            end
-
-            return modrt.spellTextSet(id, key, value)
+            return modrt.spellTextSet(id, key, tostring(value))
         end,
     })
 end

@@ -75,6 +75,12 @@ void modCanTeachSkillMastery(ModTeachSkillMasteryEvent &event)
     }
 }
 
+int modCanLearnSpell(const Character &character, uint32_t spellId, int engineMastery)
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks != nullptr ? pModHooks->canLearnSpell(character, spellId, engineMastery) : engineMastery;
+}
+
 void modStatInformationBox(int stat, std::string &text)
 {
     if (IModHooks *pModHooks = activeModHooks())

@@ -830,7 +830,7 @@ int nativePlayerSet(lua_State *pLuaState)
         }
 
         (field == "QuickSpell" ? pCharacter->quickSpellName : pCharacter->attackSpellName) =
-            pSpell != nullptr ? pSpell->name : std::string();
+            pSpell != nullptr ? pSpell->lookupName : std::string();
         lua_pushboolean(pLuaState, true);
         return 1;
     }
@@ -838,6 +838,29 @@ int nativePlayerSet(lua_State *pLuaState)
     if (field == "Name")
     {
         pCharacter->name = luaL_checkstring(pLuaState, 3);
+        lua_pushboolean(pLuaState, true);
+        return 1;
+    }
+
+    // A new class by number (MAW promotes within a line of classes this way): the character takes its name, and
+    // hit points and spell points follow the class's factors.
+    if (field == "Class")
+    {
+        const Party *pParty = partyFromHost(pLuaState);
+        const ClassSkillTable *pClassSkillTable = pParty != nullptr ? pParty->classSkillTable() : nullptr;
+        const int64_t classId = integerArgument(pLuaState, 3);
+        const std::optional<std::string> className = pClassSkillTable != nullptr && classId >= 0
+            ? pClassSkillTable->classNameForId(static_cast<uint32_t>(classId))
+            : std::nullopt;
+
+        if (!className)
+        {
+            lua_pushboolean(pLuaState, false);
+            return 1;
+        }
+
+        pCharacter->className = *className;
+        GameMechanics::refreshCharacterBaseResources(*pCharacter, false, pParty->classMultiplierTable());
         lua_pushboolean(pLuaState, true);
         return 1;
     }
@@ -1112,6 +1135,40 @@ int nativePartyRefreshBonuses(lua_State *pLuaState)
     }
 
     return 0;
+}
+
+// modrt.playerSpellGet(player, spell): whether the character knows the spell (Party[i].Spells[spell]).
+int nativePlayerSpellGet(lua_State *pLuaState)
+{
+    const Character *pCharacter = playerArgument(pLuaState, 1);
+    const int64_t spellId = integerArgument(pLuaState, 2);
+    lua_pushboolean(pLuaState, pCharacter != nullptr && spellId > 0 && pCharacter->knowsSpell(static_cast<uint32_t>(spellId)));
+    return 1;
+}
+
+// modrt.playerSpellSet(player, spell, known): the character learns or forgets the spell.
+int nativePlayerSpellSet(lua_State *pLuaState)
+{
+    Character *pCharacter = playerArgument(pLuaState, 1);
+    const int64_t spellId = integerArgument(pLuaState, 2);
+
+    if (pCharacter == nullptr || spellId <= 0)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    if (lua_toboolean(pLuaState, 3))
+    {
+        pCharacter->learnSpell(static_cast<uint32_t>(spellId));
+    }
+    else
+    {
+        pCharacter->forgetSpell(static_cast<uint32_t>(spellId));
+    }
+
+    lua_pushboolean(pLuaState, true);
+    return 1;
 }
 
 int nativePlayerSkillSet(lua_State *pLuaState)
@@ -3124,8 +3181,8 @@ int nativeSpellTextGet(lua_State *pLuaState)
     return 1;
 }
 
-// modrt.spellTextSet(id, field, text): the spellbook shows the text from then on. Not the name: the engine finds
-// spells by name (a quick spell is kept by its name), so a script's name for a spell stays with the scripts.
+// modrt.spellTextSet(id, field, text): the spellbook shows the text from then on. A name is the spell's name the
+// game shows; it is found by it as well as by the table's name, which quick spells are kept by.
 int nativeSpellTextSet(lua_State *pLuaState)
 {
     const GameDataLoader *pData = dataFromHost(pLuaState);
@@ -3135,8 +3192,16 @@ int nativeSpellTextSet(lua_State *pLuaState)
     const char *pText = luaL_checklstring(pLuaState, 3, &length);
     const SpellEntry *pEntry =
         pData != nullptr ? pData->getSpellTable().findById(static_cast<int>(spellId)) : nullptr;
-    std::string *pField =
-        pEntry != nullptr && field != "Name" ? spellTextField(const_cast<SpellEntry &>(*pEntry), field) : nullptr;
+    if (pEntry != nullptr && field == "Name")
+    {
+        // The table belongs to the game's data loader, which hands it out read-only; it is not a constant object.
+        lua_pushboolean(
+            pLuaState,
+            const_cast<SpellTable &>(pData->getSpellTable()).renameSpell(pEntry->id, std::string(pText, length)));
+        return 1;
+    }
+
+    std::string *pField = pEntry != nullptr ? spellTextField(const_cast<SpellEntry &>(*pEntry), field) : nullptr;
 
     if (pField == nullptr)
     {
@@ -3677,6 +3742,8 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"playerConditionSet", nativePlayerConditionSet},
         {"playerSkillGet", nativePlayerSkillGet},
         {"playerSkillSet", nativePlayerSkillSet},
+        {"playerSpellGet", nativePlayerSpellGet},
+        {"playerSpellSet", nativePlayerSpellSet},
         {"partyRefreshBonuses", nativePartyRefreshBonuses},
         {"itemGet", nativeItemGet},
         {"itemSet", nativeItemSet},

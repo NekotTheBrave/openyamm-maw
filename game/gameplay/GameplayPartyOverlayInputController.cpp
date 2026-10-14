@@ -1566,7 +1566,7 @@ void GameplayPartyOverlayInputController::handleSpellbookOverlayInput(
                     return;
                 }
 
-                if (pActiveMember->quickSpellName == pSpellEntry->name)
+                if (pActiveMember->quickSpellName == pSpellEntry->lookupName)
                 {
                     pActiveMember->quickSpellName.clear();
                     context.spellbook().selectedSpellId = 0;
@@ -1580,7 +1580,7 @@ void GameplayPartyOverlayInputController::handleSpellbookOverlayInput(
                     return;
                 }
 
-                pActiveMember->quickSpellName = pSpellEntry->name;
+                pActiveMember->quickSpellName = pSpellEntry->lookupName;
 
                 if (context.audioSystem() != nullptr)
                 {
@@ -1640,7 +1640,7 @@ void GameplayPartyOverlayInputController::handleSpellbookOverlayInput(
                     return;
                 }
 
-                if (pActiveMember->attackSpellName == pSpellEntry->name)
+                if (pActiveMember->attackSpellName == pSpellEntry->lookupName)
                 {
                     pActiveMember->attackSpellName.clear();
                     context.spellbook().selectedSpellId = 0;
@@ -1654,7 +1654,7 @@ void GameplayPartyOverlayInputController::handleSpellbookOverlayInput(
                     return;
                 }
 
-                pActiveMember->attackSpellName = pSpellEntry->name;
+                pActiveMember->attackSpellName = pSpellEntry->lookupName;
 
                 if (context.audioSystem() != nullptr)
                 {

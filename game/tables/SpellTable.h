@@ -11,6 +11,9 @@ struct SpellEntry
 {
     int id = 0;
     std::string name;
+    // The name the spell has in the table, which stays when a mod renames it (MAW's Death Knights call Heal "Blood
+    // Leech"): what quick spells and attack spells are kept by.
+    std::string lookupName;
     std::string normalizedName;
     std::string schoolName;
     std::string shortName;
@@ -45,6 +48,8 @@ public:
     bool loadFromRows(const std::vector<std::vector<std::string>> &rows);
     const SpellEntry *findById(int id) const;
     const SpellEntry *findByName(const std::string &name) const;
+    // A mod's name for a spell: shown from then on, and found by as well as by the table's.
+    bool renameSpell(int id, const std::string &name);
     const std::vector<SpellEntry> &entries() const;
 
 private:

@@ -1,0 +1,63 @@
+id: mod_runtime.maw.new_classes
+title: MAW's own classes are classes of the game's (a Death Knight)
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's classes 53 to 64 (Seraphim, Death Knight, Shaman, Elementalist and their promotions) come from its tables.
+# The scenario's party fixture checks classes before the mod's tables are in, so the character starts a Knight and
+# becomes a Death Knight (56) by number, as MAW's scripts change classes. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Mordred
+        class: Knight
+        level: 1
+        skills:
+        - name: Axe
+          level: 1
+          mastery: 1
+        - name: Plate
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      pl.Class = 56
+      pl.Skills[const.Skills.Dark] = JoinSkill(1, 1)
+      return pl.Class, Game.ClassNames[pl.Class], MawCore.Classes.is(pl, "dk")
+    expect: "56\tDeath Knight\ttrue"
+# Party[i].Spells is the character's spells. A Death Knight's spells are MAW's to give: opening the spellbook (the
+# original's Action 105) gives one per mastery of Water, Body and Dark Magic, Dark Normal giving spell 91.
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      local before = pl.Spells[91]
+      events.call("Action", {Action = 105, Param = 0, Param2 = 0, Handled = false})
+      local known = {}
+      for i = 1, 132 do if pl.Spells[i] then known[#known + 1] = i end end
+      return before, table.concat(known, ",")
+    expect: "false\t91"
+# MAW promotes within a line by number: a Death Lord (57) has its class's hit points.
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      local hp = pl:GetFullHP()
+      pl.Class = 57
+      return pl.Class, Game.ClassNames[pl.Class], pl:GetFullHP() > hp
+    expect: "57\tDeath Lord\ttrue"
+# Learning a spell from a book raises CanLearnSpell with the mastery the game asks (NeedMastery); MAW asks more than
+# Grandmaster of its Death Knights, who get their spells from the spellbook rule above. A Knight keeps the game's.
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      local deathLord = ModRT.Stats.canLearnSpell(0, 2, 1)
+      pl.Class = 16
+      return deathLord, ModRT.Stats.canLearnSpell(0, 2, 1)
+    expect: "5\t1"

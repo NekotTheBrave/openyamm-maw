@@ -248,6 +248,9 @@ public:
     // statistics, 7 hit points ... 18 ranged damage, 19 to 24 the resistances), as the mod leaves it (the original's
     // BuildStatInformationBox). `text` comes in as the engine's.
     virtual void statInformationBox(int stat, std::string &text) = 0;
+    // A character is about to learn a spell from a book: the mastery of its school it takes (the original's
+    // CanLearnSpell, NeedMastery: 1 to 4, above 4 not at all). `engineMastery` is the engine's.
+    virtual int canLearnSpell(const Character &character, uint32_t spellId, int engineMastery) = 0;
 };
 
 IModHooks *activeModHooks();
@@ -269,6 +272,9 @@ float modTrainingMinutes(float engineMinutes);
 
 // Runs the mod's BuildStatInformationBox event over `text`; it stays the engine's without a mod.
 void modStatInformationBox(int stat, std::string &text);
+
+// Runs the mod's CanLearnSpell event and returns the mastery the spell takes, `engineMastery` without a mod.
+int modCanLearnSpell(const Character &character, uint32_t spellId, int engineMastery);
 
 // A skill's number in the Merge's numbering (the skills a mod adds included), for the events that name skills by it.
 std::optional<int> modMergeSkillId(const std::string &skillName);

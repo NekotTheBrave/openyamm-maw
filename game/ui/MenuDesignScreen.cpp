@@ -535,10 +535,17 @@ void MenuDesignScreen::drawConfirmation()
     const bool twoColumns = m_confirmation->twoColumns;
     const bool list = m_confirmation->choices.size() > 3;
     const int total = int(m_confirmation->choices.size());
-    const int count = twoColumns ? total : std::min(8, total);
-    const int columns = twoColumns ? std::min(2, count) : 1;
+    const int columns = twoColumns ? std::min(2, total) : 1;
+    // Two columns show as many rows as the window has room for and scroll the rest (MAW's classes make the class
+    // list longer than the window).
+    const int totalRows = (total + columns - 1) / std::max(1, columns);
+    const int fittingRows =
+        std::max(3, int((float(frameHeight()) / designScale() - 60.0f - 172.0f) / 46.0f));
+    const int visibleRows = twoColumns ? std::min(totalRows, fittingRows) : 0;
+    const bool rowsScroll = twoColumns && totalRows > visibleRows;
+    const int count = twoColumns ? std::min(total, visibleRows * columns) : std::min(8, total);
     const auto *pPanel = m_designLayouts.findElement("MenuConfirmationPanel");
-    const float height = twoColumns ? 172.0f + ((count + columns - 1) / columns) * 46
+    const float height = twoColumns ? 172.0f + visibleRows * 46
                                    : list ? 155.0f + count * 25 : pPanel->height;
     const float verticalShift = (pPanel->height - height) / 2 * designScale();
     const auto modalRect = [this, verticalShift](const std::string &id)
@@ -586,6 +593,12 @@ void MenuDesignScreen::drawConfirmation()
                                             std::max(0, int(m_confirmation->choices.size()) - count));
         m_focus.clear();
     }
+    // In two columns the scroll counts rows.
+    const int maxRowScroll = std::max(0, totalRows - visibleRows);
+    if (!m_confirmationNew && rowsScroll && mouseWheelDelta() != 0)
+    {
+        m_confirmation->scroll = std::clamp(m_confirmation->scroll - int(mouseWheelDelta()), 0, maxRowScroll);
+    }
     int navigation = 0;
     if (keyPressed(SDL_SCANCODE_DOWN))
     {
@@ -629,18 +642,74 @@ void MenuDesignScreen::drawConfirmation()
             index = total - 1;
         }
         m_focus = "modal-" + std::to_string(index);
-        m_confirmation->scroll = std::clamp(m_confirmation->scroll, std::max(0, index - count + 1), index);
+
+        if (twoColumns)
+        {
+            const int row = index / columns;
+            m_confirmation->scroll = std::clamp(m_confirmation->scroll, std::max(0, row - visibleRows + 1), row);
+        }
+        else
+        {
+            m_confirmation->scroll = std::clamp(m_confirmation->scroll, std::max(0, index - count + 1), index);
+        }
+    }
+    if (rowsScroll)
+    {
+        // A scrollbar along the right of the rows: drag the thumb, or click the track to move a page.
+        const float scale = designScale();
+        const Rect track{panel.x + panel.width - 30 * scale, panel.y + 126 * scale, 12 * scale,
+                         (visibleRows * 46 - 8) * scale};
+        const float thumbHeight = std::max(20 * scale, track.height * visibleRows / totalRows);
+        const float travel = track.height - thumbHeight;
+        float thumbY = track.y + (maxRowScroll > 0 ? travel * m_confirmation->scroll / maxRowScroll : 0.0f);
+
+        if (!leftMouseDown())
+        {
+            m_scrollDragOffset.reset();
+        }
+
+        if (!m_confirmationNew && leftMouseJustPressed() && pointerInside(track))
+        {
+            if (mouseY() >= thumbY && mouseY() <= thumbY + thumbHeight)
+            {
+                m_scrollDragOffset = mouseY() - thumbY;
+            }
+            else
+            {
+                m_confirmation->scroll = std::clamp(
+                    m_confirmation->scroll + (mouseY() < thumbY ? -visibleRows : visibleRows), 0, maxRowScroll);
+            }
+        }
+
+        if (m_scrollDragOffset && travel > 0)
+        {
+            const float position = std::clamp((mouseY() - track.y - *m_scrollDragOffset) / travel, 0.0f, 1.0f);
+            m_confirmation->scroll = int(std::lround(position * maxRowScroll));
+        }
+
+        thumbY = track.y + (maxRowScroll > 0 ? travel * m_confirmation->scroll / maxRowScroll : 0.0f);
+        drawSolidRect({track.x + 4.5f * scale, track.y, 3 * scale, track.height}, 0xff29382au);
+        drawSolidRect({track.x + 3 * scale, thumbY, 6 * scale, thumbHeight},
+                      m_scrollDragOffset || pointerInside(track) ? 0xff90bedau : 0xff6a8dacu);
     }
     for (int i = 0; i < count; ++i)
     {
-        const int index = i + (list && !twoColumns ? m_confirmation->scroll : 0);
+        const int index = i + (twoColumns ? m_confirmation->scroll * columns : list ? m_confirmation->scroll : 0);
+
+        if (index >= total)
+        {
+            break;
+        }
+
         const float scale = designScale();
         const Rect body = modalRect("MenuConfirmationBody");
         const float width = list ? body.width - 18 * scale : (body.width - 8 * scale) / count - 6 * scale;
         Rect rect = modalRect("MenuConfirmationCancelButton");
         if (twoColumns)
         {
-            const float width = (panel.width - 72 * scale - (columns - 1) * 12 * scale) / columns;
+            // Room for the scrollbar when the rows scroll.
+            const float width =
+                (panel.width - 72 * scale - (rowsScroll ? 18 * scale : 0) - (columns - 1) * 12 * scale) / columns;
             rect = {panel.x + 36 * scale + (i % columns) * (width + 12 * scale),
                     panel.y + (126 + (i / columns) * 46) * scale, width, 38 * scale};
         }
