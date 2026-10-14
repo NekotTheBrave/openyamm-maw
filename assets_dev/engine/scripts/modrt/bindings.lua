@@ -1929,7 +1929,7 @@ rawset(Mouse, "Item", setmetatable({}, {
     end,
 }))
 
--- What is under the mouse pointer. Not bound yet: nothing (Kind 0); a monster would be Kind 3.
+-- What is under the mouse pointer: the monster whose information box is being built (Kind 3), else nothing (Kind 0).
 rawset(Mouse, "GetTarget", function()
-    return {Kind = 0, Index = 0}
+    return Bindings.mouseTarget or {Kind = 0, Index = 0}
 end)

@@ -236,6 +236,61 @@ function Stats.canLearnSpell(slot, spell, needMastery)
     return math.floor(tonumber(event.NeedMastery) or needMastery)
 end
 
+-- The information box of monster `index` (Map.Monsters), as the original's BuildMonsterInformationBox has it: each
+-- row a table with its Text (label, tab stop and value), the effects and resistances lists of such tables under their
+-- headers, and the Identified flags (the game shows everything it shows). Mouse:GetTarget() is the monster meanwhile.
+-- A handler setting a row to false leaves it out. Returns the texts.
+function Stats.monsterInformationBox(index, texts)
+    local event = {MonsterIndex = index, Monster = Map.Monsters[index], Identified = true}
+
+    for _, name in ipairs({"Name", "HitPoints", "ArmorClass", "Attack", "Damage", "SpellFirst", "SpellSecond"}) do
+        event[name] = {Text = texts[name]}
+        event["Identified" .. name] = true
+    end
+
+    for _, pair in ipairs({{"EffectsHeader", "Effects"}, {"ResistancesHeader", "Resistances"}}) do
+        local header, items = pair[1], pair[2]
+        event[header] = {Text = texts[header]}
+        event[items] = {}
+
+        for i, text in ipairs(texts[items] or {}) do
+            event[items][i] = {Text = text, Id = items == "Resistances" and i - 1 or nil}
+        end
+
+        event["Identified" .. items] = true
+    end
+
+    ModRT.Bindings.mouseTarget = {Kind = 3, Index = index}
+    local ok = ModRT.protectedCall(function() ModRT.fire("BuildMonsterInformationBox", event) end,
+        "BuildMonsterInformationBox")
+    ModRT.Bindings.mouseTarget = nil
+
+    local function text(row)
+        if row == false or row == nil then
+            return ""
+        end
+
+        return tostring(row.Text or "")
+    end
+
+    local result = {}
+
+    for _, name in ipairs({"Name", "HitPoints", "ArmorClass", "Attack", "Damage", "SpellFirst", "SpellSecond",
+            "EffectsHeader", "ResistancesHeader"}) do
+        result[name] = ok and text(event[name]) or texts[name]
+    end
+
+    for _, items in ipairs({"Effects", "Resistances"}) do
+        result[items] = {}
+
+        for i, original in ipairs(texts[items] or {}) do
+            result[items][i] = ok and type(event[items]) == "table" and text(event[items][i]) or original
+        end
+    end
+
+    return result
+end
+
 -- The party member in `slot` would put on the held item, `itemId` (Mouse.Item), and the game lets them: the
 -- original's CanWearItem, which handlers answer by setting Available to false. Returns whether they may.
 function Stats.canWearItem(slot, itemId)

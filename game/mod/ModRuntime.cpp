@@ -1713,6 +1713,101 @@ bool ModRuntime::potionEffect(uint32_t potionId, int power)
     return handled;
 }
 
+void ModRuntime::monsterInformationBox(ModMonsterInfoBox &box)
+{
+    if (!m_active || !beginDispatch("monsterInformationBox"))
+    {
+        return;
+    }
+
+    const auto setText = [this](const char *pName, const std::string &text)
+    {
+        lua_pushlstring(m_pLuaState, text.data(), text.size());
+        lua_setfield(m_pLuaState, -2, pName);
+    };
+    const auto setList = [this](const char *pName, const std::vector<std::string> &texts)
+    {
+        lua_createtable(m_pLuaState, static_cast<int>(texts.size()), 0);
+
+        for (size_t index = 0; index < texts.size(); ++index)
+        {
+            lua_pushlstring(m_pLuaState, texts[index].data(), texts[index].size());
+            lua_rawseti(m_pLuaState, -2, static_cast<lua_Integer>(index + 1));
+        }
+
+        lua_setfield(m_pLuaState, -2, pName);
+    };
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(box.actorIndex));
+    lua_newtable(m_pLuaState);
+    setText("Name", box.name);
+    setText("HitPoints", box.hitPoints);
+    setText("ArmorClass", box.armorClass);
+    setText("Attack", box.attack);
+    setText("Damage", box.damage);
+    setText("SpellFirst", box.spellFirst);
+    setText("SpellSecond", box.spellSecond);
+    setText("EffectsHeader", box.effectsHeader);
+    setList("Effects", box.effects);
+    setText("ResistancesHeader", box.resistancesHeader);
+    setList("Resistances", box.resistances);
+
+    if (!endDispatch(2, 1))
+    {
+        return;
+    }
+
+    if (lua_istable(m_pLuaState, -1))
+    {
+        const auto getText = [this](const char *pName, std::string &text)
+        {
+            lua_getfield(m_pLuaState, -1, pName);
+
+            if (lua_type(m_pLuaState, -1) == LUA_TSTRING)
+            {
+                text = lua_tostring(m_pLuaState, -1);
+            }
+
+            lua_pop(m_pLuaState, 1);
+        };
+        const auto getList = [this](const char *pName, std::vector<std::string> &texts)
+        {
+            lua_getfield(m_pLuaState, -1, pName);
+
+            if (lua_istable(m_pLuaState, -1))
+            {
+                for (size_t index = 0; index < texts.size(); ++index)
+                {
+                    lua_rawgeti(m_pLuaState, -1, static_cast<lua_Integer>(index + 1));
+
+                    if (lua_type(m_pLuaState, -1) == LUA_TSTRING)
+                    {
+                        texts[index] = lua_tostring(m_pLuaState, -1);
+                    }
+
+                    lua_pop(m_pLuaState, 1);
+                }
+            }
+
+            lua_pop(m_pLuaState, 1);
+        };
+
+        getText("Name", box.name);
+        getText("HitPoints", box.hitPoints);
+        getText("ArmorClass", box.armorClass);
+        getText("Attack", box.attack);
+        getText("Damage", box.damage);
+        getText("SpellFirst", box.spellFirst);
+        getText("SpellSecond", box.spellSecond);
+        getText("EffectsHeader", box.effectsHeader);
+        getList("Effects", box.effects);
+        getText("ResistancesHeader", box.resistancesHeader);
+        getList("Resistances", box.resistances);
+    }
+
+    lua_pop(m_pLuaState, 1);
+}
+
 bool ModRuntime::canWearItem(const Character &character, uint32_t itemId)
 {
     Party *pParty = m_active && m_host.party ? m_host.party() : nullptr;

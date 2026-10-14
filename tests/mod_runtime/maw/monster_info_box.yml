@@ -1,0 +1,41 @@
+id: mod_runtime.maw.monster_info_box
+title: MAW's BuildMonsterInformationBox puts its own damage, the monster's level and experience in the box
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# The game hands the box's rows, as the original lays them out, to the mod while it shows a monster's information
+# (right click); Mouse:GetTarget() is the monster meanwhile. MAW shows the damage its own formula deals, the
+# monster's level above its armor class, and what killing it is worth under the effects. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 5
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      local index = 0
+      local texts = {
+        Name = "Goblin", HitPoints = "Hit Points\t100" .. "10 / 10", ArmorClass = "Armor Class\t1005",
+        Attack = "Attack\t050Physical", Damage = "Damage\t0501d4", SpellFirst = "", SpellSecond = "",
+        EffectsHeader = "Effects", Effects = {}, ResistancesHeader = "Resistances",
+        Resistances = {"Fire\t0700", "Air\t0700", "Water\t0700", "Earth\t0700", "Mind\t0700", "Spirit\t0700",
+          "Body\t0700", "Light\t0700", "Dark\t0700", "Physical\t0700"},
+      }
+      local before = ModRT.totalErrorCount
+      local box = ModRT.Stats.monsterInformationBox(index, texts)
+      return box.Damage:match("^Attack") ~= nil, box.Damage:match("%d+%-%d+") ~= nil,
+        box.ArmorClass:match("^Level") ~= nil, box.EffectsHeader:match("Experience: %d+") ~= nil,
+        ModRT.totalErrorCount - before, Mouse:GetTarget().Kind
+    expect: "true\ttrue\ttrue\ttrue\t0\t0"

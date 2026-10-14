@@ -10454,6 +10454,94 @@ void GameplayPartyOverlayRenderer::renderActorInspectOverlay(GameplayScreenRunti
                 actorState.spell2SkillMastery,
                 pSpellTable)
             : std::string()};
+    // The box's texts as the original lays them out, which a mod may change (MAW's BuildMonsterInformationBox shows
+    // its own damage, the monster's level and experience). Asked at most every quarter second for a monster.
+    const auto layoutLabelText = [&context](const char *pLayoutId)
+    {
+        const GameplayScreenRuntime::HudLayoutElement *pLayout = context.findHudLayoutElement(pLayoutId);
+        return pLayout != nullptr ? pLayout->labelText : std::string();
+    };
+    const auto joinRows = [](const std::vector<std::string> &rows)
+    {
+        std::string joined;
+
+        for (const std::string &row : rows)
+        {
+            if (!row.empty() && row != "-" && row != "0")
+            {
+                joined += (joined.empty() ? "" : "\n") + row;
+            }
+        }
+
+        return joined;
+    };
+    static constexpr std::array<const char *, 10> ResistanceNames = {
+        "Fire", "Air", "Water", "Earth", "Mind", "Spirit", "Body", "Light", "Dark", "Physical"};
+    const std::array<int, 10> resistanceValues = {
+        pStats->fireResistance, pStats->airResistance, pStats->waterResistance, pStats->earthResistance,
+        pStats->mindResistance, pStats->spiritResistance, pStats->bodyResistance, pStats->lightResistance,
+        pStats->darkResistance, pStats->physicalResistance};
+    ModMonsterInfoBox originalBox = {};
+    originalBox.actorIndex = actorInspect.runtimeActorIndex;
+    originalBox.name = !actorInspect.displayNameOverride.empty()
+        ? actorInspect.displayNameOverride
+        : actorState.displayName;
+    originalBox.hitPoints = layoutLabelText("ActorInspectHitPointsLabel") + "\t100"
+        + std::to_string(std::max(0, actorState.currentHp)) + " / " + std::to_string(std::max(0, actorState.maxHp));
+    originalBox.armorClass =
+        layoutLabelText("ActorInspectArmorClassLabel") + "\t100" + std::to_string(actorState.armorClass);
+    originalBox.attack = layoutLabelText("ActorInspectAttackLabel") + "\t050" + joinRows(attackRows);
+    originalBox.damage = layoutLabelText("ActorInspectDamageLabel") + "\t050" + joinRows(damageRows);
+    originalBox.spellFirst =
+        spellRows[0].empty() ? std::string() : layoutLabelText("ActorInspectSpellLabel") + "\t040" + spellRows[0];
+    originalBox.spellSecond = spellRows[1];
+    originalBox.effectsHeader = layoutLabelText("ActorInspectEffectsHeader");
+    originalBox.resistancesHeader = layoutLabelText("ActorInspectResistancesHeader");
+
+    for (size_t index = 0; index < ResistanceNames.size(); ++index)
+    {
+        originalBox.resistances.push_back(
+            layoutLabelText((std::string("ActorInspectResistance") + ResistanceNames[index] + "Label").c_str())
+            + "\t070" + formatMonsterResistanceText(resistanceValues[index]));
+    }
+
+    static ModMonsterInfoBox s_modBoxOriginal = {};
+    static ModMonsterInfoBox s_modBox = {};
+    static uint64_t s_modBoxTicks = 0;
+    const uint64_t nowTicks = SDL_GetTicks();
+
+    if (activeModHooks() == nullptr)
+    {
+        s_modBox = originalBox;
+    }
+    else if (s_modBoxOriginal.actorIndex != originalBox.actorIndex || nowTicks - s_modBoxTicks >= 250
+        || s_modBoxOriginal.name != originalBox.name)
+    {
+        s_modBoxOriginal = originalBox;
+        s_modBox = originalBox;
+        modMonsterInformationBox(s_modBox);
+        s_modBoxTicks = nowTicks;
+    }
+
+    const ModMonsterInfoBox &modBox = s_modBox;
+    const ModMonsterInfoBox &shownOriginal = activeModHooks() == nullptr ? originalBox : s_modBoxOriginal;
+    const auto textLineCount = [](const std::string &text)
+    {
+        return text.empty() ? size_t(0) : size_t(std::count(text.begin(), text.end(), '\n') + 1);
+    };
+    const bool modHitPoints = modBox.hitPoints != shownOriginal.hitPoints;
+    const bool modArmorClass = modBox.armorClass != shownOriginal.armorClass;
+    const bool modAttack = modBox.attack != shownOriginal.attack;
+    const bool modDamage = modBox.damage != shownOriginal.damage;
+    const bool modSpells =
+        modBox.spellFirst != shownOriginal.spellFirst || modBox.spellSecond != shownOriginal.spellSecond;
+    const bool modEffectsHeader = modBox.effectsHeader != shownOriginal.effectsHeader;
+    // Lines a mod's rows take beyond the engine's: they push what is below them down.
+    const size_t hitPointsExtraLines = modHitPoints ? std::max<size_t>(1, textLineCount(modBox.hitPoints)) - 1 : 0;
+    const size_t armorClassExtraLines =
+        modArmorClass ? std::max<size_t>(1, textLineCount(modBox.armorClass)) - 1 : 0;
+    const size_t effectsHeaderExtraLines =
+        modEffectsHeader ? std::max<size_t>(1, textLineCount(modBox.effectsHeader)) - 1 : 0;
     const GameplayScreenRuntime::HudLayoutElement *pRootLayout =
         context.findHudLayoutElement("ActorInspectRoot");
     const GameplayScreenRuntime::HudLayoutElement *pPreviewLayout =
@@ -10533,12 +10621,24 @@ void GameplayPartyOverlayRenderer::renderActorInspectOverlay(GameplayScreenRunti
 
             return std::max<size_t>(1, lineCount);
         };
-    const size_t extraAttackLines = visualLineCountForLayout("ActorInspectAttackValue", attackRows) - 1;
-    const size_t extraDamageLines = visualLineCountForLayout("ActorInspectDamageValue", damageRows) - 1;
-    const size_t extraSpellLines = visualLineCountForLayout("ActorInspectSpellValue", spellRows) - 1;
+    const auto modRowLines = [&textLineCount](bool changed, const std::string &text, size_t engineLines)
+    {
+        return changed ? std::max<size_t>(1, textLineCount(text)) - 1 : engineLines;
+    };
+    const size_t extraAttackLines =
+        modRowLines(modAttack, modBox.attack, visualLineCountForLayout("ActorInspectAttackValue", attackRows) - 1);
+    const size_t extraDamageLines =
+        modRowLines(modDamage, modBox.damage, visualLineCountForLayout("ActorInspectDamageValue", damageRows) - 1);
+    const size_t extraSpellLines = modSpells
+        ? std::max<size_t>(1, textLineCount(modBox.spellFirst) + textLineCount(modBox.spellSecond)) - 1
+        : visualLineCountForLayout("ActorInspectSpellValue", spellRows) - 1;
+    const size_t rightExtraLines =
+        hitPointsExtraLines + armorClassExtraLines + extraAttackLines + extraDamageLines + extraSpellLines;
+    // The effects list has some room below it before the box's foot.
+    const size_t leftExtraLines = effectsHeaderExtraLines > 2 ? effectsHeaderExtraLines - 2 : 0;
     const float rootHeight =
         (pRootLayout->height
-            + static_cast<float>(extraAttackLines + extraDamageLines + extraSpellLines) * compactStatLineAdvance)
+            + static_cast<float>(std::max(rightExtraLines, leftExtraLines)) * compactStatLineAdvance)
         * popupScale;
     const float popupGap = 12.0f * popupScale;
     float rootX = actorInspect.sourceX + actorInspect.sourceWidth + popupGap;
@@ -11020,117 +11120,163 @@ void GameplayPartyOverlayRenderer::renderActorInspectOverlay(GameplayScreenRunti
             return std::max(dynamicStatLineAdvance, lineOffset);
         };
 
-    for (const char *pLabelId : {
-             "ActorInspectHitPointsLabel",
-             "ActorInspectArmorClassLabel",
-             "ActorInspectEffectsHeader"})
-    {
-        const GameplayScreenRuntime::HudLayoutElement *pLayout =
-            context.findHudLayoutElement(pLabelId);
-
-        if (pLayout != nullptr)
+    // A row the mod changed: its lines drawn from the label's place across to the value's right edge (the text's
+    // own tab stops place its value), one under another. Returns the height they take.
+    const auto renderModRow =
+        [&context, &resolveLayout, dynamicStatLineAdvance](
+            const char *pLabelId,
+            const char *pValueId,
+            const std::string &text,
+            float yOffset)
         {
-            renderTextForLayout(pLabelId, pLayout->labelText);
-        }
-    }
+            const GameplayScreenRuntime::HudLayoutElement *pLayout = context.findHudLayoutElement(pLabelId);
+            const std::optional<GameplayResolvedHudLayoutElement> resolved = resolveLayout(pLabelId);
+            const std::optional<GameplayResolvedHudLayoutElement> resolvedValue =
+                pValueId != nullptr ? resolveLayout(pValueId) : std::nullopt;
 
-    const std::string actorInspectTitle = !actorInspect.displayNameOverride.empty()
-        ? actorInspect.displayNameOverride
-        : actorState.displayName;
-    renderTextForLayout("ActorInspectTitle", actorInspectTitle);
-    renderTextForLayout(
-        "ActorInspectHitPointsValue",
-        std::to_string(std::max(0, actorState.currentHp)) + " / " + std::to_string(std::max(0, actorState.maxHp)));
-    renderTextForLayout("ActorInspectArmorClassValue", std::to_string(actorState.armorClass));
-    if (const GameplayScreenRuntime::HudLayoutElement *pAttackLabel =
-            context.findHudLayoutElement("ActorInspectAttackLabel"))
+            if (pLayout == nullptr || !resolved || text.empty())
+            {
+                return 0.0f;
+            }
+
+            GameplayResolvedHudLayoutElement row = *resolved;
+
+            if (resolvedValue)
+            {
+                row.width = std::max(row.width, resolvedValue->x + resolvedValue->width - row.x);
+            }
+
+            float lineOffset = 0.0f;
+            size_t start = 0;
+
+            while (start <= text.size())
+            {
+                const size_t end = text.find('\n', start);
+                const std::string line = text.substr(start, end == std::string::npos ? std::string::npos : end - start);
+
+                if (!line.empty())
+                {
+                    GameplayResolvedHudLayoutElement adjusted = row;
+                    adjusted.y += yOffset + lineOffset;
+                    context.renderLayoutLabel(*pLayout, adjusted, line);
+                }
+
+                lineOffset += dynamicStatLineAdvance;
+
+                if (end == std::string::npos)
+                {
+                    break;
+                }
+
+                start = end + 1;
+            }
+
+            return lineOffset;
+        };
+    float rowShift = 0.0f;
+
+    if (modHitPoints)
     {
-        renderTextForLayout("ActorInspectAttackLabel", pAttackLabel->labelText);
+        rowShift += std::max(0.0f, renderModRow(
+            "ActorInspectHitPointsLabel", "ActorInspectHitPointsValue", modBox.hitPoints, 0.0f)
+            - dynamicStatLineAdvance);
     }
-
-    const float attackHeight = renderMultilineTextForLayout("ActorInspectAttackValue", attackRows, 0.0f);
-    const float damageOffset = std::max(0.0f, attackHeight - dynamicStatLineAdvance);
-
-    if (const GameplayScreenRuntime::HudLayoutElement *pDamageLabel =
-            context.findHudLayoutElement("ActorInspectDamageLabel"))
+    else
     {
-        renderTextForLayout("ActorInspectDamageLabel", pDamageLabel->labelText, damageOffset);
+        renderTextForLayout("ActorInspectHitPointsLabel", layoutLabelText("ActorInspectHitPointsLabel"));
+        renderTextForLayout(
+            "ActorInspectHitPointsValue",
+            std::to_string(std::max(0, actorState.currentHp)) + " / "
+                + std::to_string(std::max(0, actorState.maxHp)));
     }
 
-    const float damageHeight = renderMultilineTextForLayout("ActorInspectDamageValue", damageRows, damageOffset);
+    if (modArmorClass)
+    {
+        rowShift += std::max(0.0f, renderModRow(
+            "ActorInspectArmorClassLabel", "ActorInspectArmorClassValue", modBox.armorClass, rowShift)
+            - dynamicStatLineAdvance);
+    }
+    else
+    {
+        renderTextForLayout("ActorInspectArmorClassLabel", layoutLabelText("ActorInspectArmorClassLabel"), rowShift);
+        renderTextForLayout("ActorInspectArmorClassValue", std::to_string(actorState.armorClass), rowShift);
+    }
+
+    renderTextForLayout("ActorInspectTitle", modBox.name);
+    float attackHeight = 0.0f;
+
+    if (modAttack)
+    {
+        attackHeight = renderModRow("ActorInspectAttackLabel", "ActorInspectAttackValue", modBox.attack, rowShift);
+    }
+    else
+    {
+        renderTextForLayout("ActorInspectAttackLabel", layoutLabelText("ActorInspectAttackLabel"), rowShift);
+        attackHeight = renderMultilineTextForLayout("ActorInspectAttackValue", attackRows, rowShift);
+    }
+
+    const float damageOffset = rowShift + std::max(0.0f, attackHeight - dynamicStatLineAdvance);
+    float damageHeight = 0.0f;
+
+    if (modDamage)
+    {
+        damageHeight = renderModRow("ActorInspectDamageLabel", "ActorInspectDamageValue", modBox.damage, damageOffset);
+    }
+    else
+    {
+        renderTextForLayout("ActorInspectDamageLabel", layoutLabelText("ActorInspectDamageLabel"), damageOffset);
+        damageHeight = renderMultilineTextForLayout("ActorInspectDamageValue", damageRows, damageOffset);
+    }
+
     const float spellOffset = damageOffset + std::max(0.0f, damageHeight - dynamicStatLineAdvance);
+    float spellHeight = 0.0f;
 
-    if (const GameplayScreenRuntime::HudLayoutElement *pSpellLabel =
-            context.findHudLayoutElement("ActorInspectSpellLabel"))
+    if (modSpells)
     {
-        renderTextForLayout("ActorInspectSpellLabel", pSpellLabel->labelText, spellOffset);
+        spellHeight = renderModRow("ActorInspectSpellLabel", "ActorInspectSpellValue", modBox.spellFirst, spellOffset);
+        spellHeight += renderModRow(
+            "ActorInspectSpellLabel", "ActorInspectSpellValue", modBox.spellSecond, spellOffset + spellHeight);
+    }
+    else
+    {
+        renderTextForLayout("ActorInspectSpellLabel", layoutLabelText("ActorInspectSpellLabel"), spellOffset);
+        spellHeight = renderMultilineTextForLayout("ActorInspectSpellValue", spellRows, spellOffset);
     }
 
-    const float spellHeight = renderMultilineTextForLayout("ActorInspectSpellValue", spellRows, spellOffset);
     const float resistanceOffset = spellOffset + std::max(0.0f, spellHeight - dynamicStatLineAdvance);
-    renderTextForLayout("ActorInspectEffectsBody", effectsText);
+    float effectsBodyOffset = 0.0f;
 
-    for (const char *pLabelId : {
-             "ActorInspectResistancesHeader",
-             "ActorInspectResistanceFireLabel",
-             "ActorInspectResistanceAirLabel",
-             "ActorInspectResistanceWaterLabel",
-             "ActorInspectResistanceEarthLabel",
-             "ActorInspectResistanceMindLabel",
-             "ActorInspectResistanceSpiritLabel",
-             "ActorInspectResistanceBodyLabel",
-             "ActorInspectResistanceLightLabel",
-             "ActorInspectResistanceDarkLabel",
-             "ActorInspectResistancePhysicalLabel"})
+    if (modEffectsHeader)
     {
-        const GameplayScreenRuntime::HudLayoutElement *pLayout =
-            context.findHudLayoutElement(pLabelId);
-
-        if (pLayout != nullptr)
-        {
-            renderTextForLayout(pLabelId, pLayout->labelText, resistanceOffset);
-        }
+        effectsBodyOffset = std::max(0.0f,
+            renderModRow("ActorInspectEffectsHeader", nullptr, modBox.effectsHeader, 0.0f) - dynamicStatLineAdvance);
+    }
+    else
+    {
+        renderTextForLayout("ActorInspectEffectsHeader", modBox.effectsHeader);
     }
 
-    renderTextForLayout(
-        "ActorInspectResistanceFireValue",
-        formatMonsterResistanceText(pStats->fireResistance),
-        resistanceOffset);
-    renderTextForLayout(
-        "ActorInspectResistanceAirValue",
-        formatMonsterResistanceText(pStats->airResistance),
-        resistanceOffset);
-    renderTextForLayout(
-        "ActorInspectResistanceWaterValue",
-        formatMonsterResistanceText(pStats->waterResistance),
-        resistanceOffset);
-    renderTextForLayout(
-        "ActorInspectResistanceEarthValue",
-        formatMonsterResistanceText(pStats->earthResistance),
-        resistanceOffset);
-    renderTextForLayout(
-        "ActorInspectResistanceMindValue",
-        formatMonsterResistanceText(pStats->mindResistance),
-        resistanceOffset);
-    renderTextForLayout(
-        "ActorInspectResistanceSpiritValue",
-        formatMonsterResistanceText(pStats->spiritResistance),
-        resistanceOffset);
-    renderTextForLayout(
-        "ActorInspectResistanceBodyValue",
-        formatMonsterResistanceText(pStats->bodyResistance),
-        resistanceOffset);
-    renderTextForLayout(
-        "ActorInspectResistanceLightValue",
-        formatMonsterResistanceText(pStats->lightResistance),
-        resistanceOffset);
-    renderTextForLayout(
-        "ActorInspectResistanceDarkValue",
-        formatMonsterResistanceText(pStats->darkResistance),
-        resistanceOffset);
-    renderTextForLayout(
-        "ActorInspectResistancePhysicalValue",
-        formatMonsterResistanceText(pStats->physicalResistance),
-        resistanceOffset);
+    renderTextForLayout("ActorInspectEffectsBody", effectsText, effectsBodyOffset);
+
+    renderTextForLayout("ActorInspectResistancesHeader", modBox.resistancesHeader, resistanceOffset);
+
+    for (size_t index = 0; index < ResistanceNames.size(); ++index)
+    {
+        const std::string labelId = std::string("ActorInspectResistance") + ResistanceNames[index] + "Label";
+        const std::string valueId = std::string("ActorInspectResistance") + ResistanceNames[index] + "Value";
+        const std::string &text = index < modBox.resistances.size() ? modBox.resistances[index] : std::string();
+        const std::string &original =
+            index < shownOriginal.resistances.size() ? shownOriginal.resistances[index] : std::string();
+
+        if (text != original)
+        {
+            renderModRow(labelId.c_str(), valueId.c_str(), text, resistanceOffset);
+            continue;
+        }
+
+        renderTextForLayout(labelId.c_str(), layoutLabelText(labelId.c_str()), resistanceOffset);
+        renderTextForLayout(
+            valueId.c_str(), formatMonsterResistanceText(resistanceValues[index]), resistanceOffset);
+    }
 }
 } // namespace OpenYAMM::Game

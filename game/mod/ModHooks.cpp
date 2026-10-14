@@ -115,6 +115,14 @@ bool modPotionEffect(uint32_t potionId, int power, InventoryItem &target)
     return handled;
 }
 
+void modMonsterInformationBox(ModMonsterInfoBox &box)
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->monsterInformationBox(box);
+    }
+}
+
 bool modCanWearItem(const Character &character, uint32_t itemId)
 {
     IModHooks *pModHooks = activeModHooks();

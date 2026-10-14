@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace OpenYAMM::Game
 {
@@ -163,6 +164,26 @@ struct ModTeachSkillMasteryEvent
 
 class Party;
 
+// The texts of a monster's information box (right click), as the original lays them out: a row is its label, a
+// tab stop and its value ("Hit Points\t100" then the value). A mod may change any of them, or empty a row.
+struct ModMonsterInfoBox
+{
+    size_t actorIndex = 0;
+    std::string name;
+    std::string hitPoints;
+    std::string armorClass;
+    std::string attack;
+    std::string damage;
+    std::string spellFirst;
+    std::string spellSecond;
+    std::string effectsHeader;
+    std::vector<std::string> effects;
+    std::string resistancesHeader;
+    std::vector<std::string> resistances;
+
+    bool operator==(const ModMonsterInfoBox &other) const = default;
+};
+
 class IModHooks
 {
 public:
@@ -258,6 +279,8 @@ public:
     // The character may put on the held item, item `itemId`, as far as the game goes (the original's CanWearItem):
     // whether the mod lets it.
     virtual bool canWearItem(const Character &character, uint32_t itemId) = 0;
+    // The monster's information box is being shown (the original's BuildMonsterInformationBox).
+    virtual void monsterInformationBox(ModMonsterInfoBox &box) = 0;
     // The held item is used on the party member in `memberIndex` (the original's UseMouseItem; Mouse.Item is the
     // item): whether the game may go on with its own use of it.
     virtual bool useMouseItem(size_t memberIndex) = 0;
@@ -315,6 +338,9 @@ bool modPotionEffect(uint32_t potionId, int power, InventoryItem &target);
 std::optional<std::string> modMapEventHint(uint16_t eventId);
 // Whether a mod removed the current map's own lines for event `eventId`; false without a mod.
 bool modMapEventRemoved(uint16_t eventId);
+
+// Runs the mod's BuildMonsterInformationBox event over the box's texts; they stay the engine's without a mod.
+void modMonsterInformationBox(ModMonsterInfoBox &box);
 
 // Runs the mod's CanWearItem event for the held item the game would let the character put on: whether the mod lets
 // it too (true without a mod).
