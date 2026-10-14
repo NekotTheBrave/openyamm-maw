@@ -1,0 +1,57 @@
+id: mod_runtime.maw.map_events
+title: MAW's map scripts add and replace the maps' events, and their evt commands do what the game's do
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's Maps/out02.lua (its port) puts handlers on events of faces its edited Ravenshore adds: 2666 takes the party
+# to Enroth. The game runs the event as it runs one the player clicks on; MAW's MoveToMap has a picture, so the game
+# asks first, as the original does. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out02.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 5
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      return Map.Name, evt.map[2666] ~= nil, evt.hint[2666], modrt.runCommandEvent(2666)
+    expect: "out02.odm\ttrue\tEnroth\ttrue"
+- advance_runtime: {seconds: 0.5}
+- assert:
+    dialog:
+      active: true
+      actions:
+      - label: OK
+      - label: Close
+- select_topic:
+    action_id: 0
+- advance_runtime: {seconds: 1}
+# New Sorpigal's map script is MAW's now: its Shrine of Luck (event 261, the map's own lines removed) gives +10 Luck
+# the first time, and its status text is string 25 of the map's .str file.
+- mod_lua:
+    code: |
+      local before = Party[0].LuckBase
+      local first = modrt.runCommandEvent(261)
+      local after = Party[0].LuckBase
+      return Map.Name, evt.hint[261], first, after - before, Party.QBits[1237], Game.MapEvtLines.Count
+    expect: "oute3.odm\tShrine of Luck\ttrue\t10\ttrue\t1"
+# A command given outside an event runs as an event of its own; MAW's map variables are numbered as MMExtension
+# numbers them.
+- mod_lua:
+    code: |
+      evt.Set{"MapVar4", 7}
+      local cmp = evt.Cmp{"MapVar4", Value = 7}
+      local more = evt.Cmp{"MapVar4", Value = 8}
+      return cmp, more
+    expect: "true\tfalse"

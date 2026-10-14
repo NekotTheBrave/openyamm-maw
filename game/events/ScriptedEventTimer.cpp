@@ -1,4 +1,5 @@
 #include "game/events/ScriptedEventTimer.h"
+#include "game/mod/ModHooks.h"
 
 #include <algorithm>
 #include <cmath>
@@ -262,7 +263,15 @@ bool updateScriptedEventTimers(
             continue;
         }
 
-        executedAny = executeTimer(state.definition) || executedAny;
+        // A map event a mod removed (Game.MapEvtLines:RemoveEvent) takes its timer with it; the mod sets its own.
+        const bool removedByMod = state.definition.scope == ScriptedEventScope::Map
+            && modMapEventRemoved(static_cast<uint16_t>(state.definition.eventId));
+
+        if (!removedByMod)
+        {
+            executedAny = executeTimer(state.definition) || executedAny;
+        }
+
         advanceTimerAfterFire(state, currentGameMinutes);
     }
 

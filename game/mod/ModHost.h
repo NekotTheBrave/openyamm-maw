@@ -32,5 +32,7 @@ struct ModHost
     std::function<InventoryItem *()> heldItem;
     // Puts an item on the mouse pointer in place of the one there; nullptr takes it off.
     std::function<void(const InventoryItem *)> setHeldItem;
+    // Brings up the dialogue an event left waiting (a travel prompt, an NPC), as the next frame would.
+    std::function<void()> presentPendingDialogue;
 };
 }

@@ -1710,6 +1710,87 @@ bool ModRuntime::potionEffect(uint32_t potionId, int power)
     return handled;
 }
 
+bool ModRuntime::hasMapEvent(uint16_t eventId)
+{
+    if (!m_active || !beginDispatch("hasMapEvent"))
+    {
+        return false;
+    }
+
+    lua_pushinteger(m_pLuaState, eventId);
+    bool has = false;
+
+    if (endDispatch(1, 1))
+    {
+        has = lua_toboolean(m_pLuaState, -1) != 0;
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return has;
+}
+
+int ModRuntime::mapEvent(uint16_t eventId)
+{
+    if (!m_active || !beginDispatch("mapEvent"))
+    {
+        return 0;
+    }
+
+    lua_pushinteger(m_pLuaState, eventId);
+    int flags = 0;
+
+    if (endDispatch(1, 1))
+    {
+        flags = lua_isinteger(m_pLuaState, -1) ? static_cast<int>(lua_tointeger(m_pLuaState, -1)) : 0;
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return flags;
+}
+
+bool ModRuntime::mapEventHint(uint16_t eventId, std::string &hint)
+{
+    if (!m_active || !beginDispatch("mapEventHint"))
+    {
+        return false;
+    }
+
+    lua_pushinteger(m_pLuaState, eventId);
+    bool found = false;
+
+    if (endDispatch(1, 1))
+    {
+        if (lua_type(m_pLuaState, -1) == LUA_TSTRING)
+        {
+            hint = lua_tostring(m_pLuaState, -1);
+            found = true;
+        }
+
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return found;
+}
+
+bool ModRuntime::mapEventRemoved(uint16_t eventId)
+{
+    if (!m_active || !beginDispatch("mapEventRemoved"))
+    {
+        return false;
+    }
+
+    lua_pushinteger(m_pLuaState, eventId);
+    bool removed = false;
+
+    if (endDispatch(1, 1))
+    {
+        removed = lua_toboolean(m_pLuaState, -1) != 0;
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return removed;
+}
+
 int ModRuntime::canLearnSpell(const Character &character, uint32_t spellId, int engineMastery)
 {
     Party *pParty = m_active && m_host.party ? m_host.party() : nullptr;

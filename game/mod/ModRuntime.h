@@ -95,6 +95,10 @@ public:
     int canLearnSpell(const Character &character, uint32_t spellId, int engineMastery) override;
     bool useMouseItem(size_t memberIndex) override;
     bool potionEffect(uint32_t potionId, int power) override;
+    bool hasMapEvent(uint16_t eventId) override;
+    int mapEvent(uint16_t eventId) override;
+    bool mapEventHint(uint16_t eventId, std::string &hint) override;
+    bool mapEventRemoved(uint16_t eventId) override;
     void pickCorpse(size_t actorIndex, ModCorpseLoot &loot) override;
     void generateItem(ModItemGeneration &generation) override;
     void itemGenerated(InventoryItem &item, const ModItemGeneration &generation) override;

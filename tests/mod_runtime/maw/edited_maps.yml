@@ -1,0 +1,42 @@
+id: mod_runtime.maw.edited_maps
+title: MAW's own maps load in place of the game's, outdoor ones with or without a bake for them
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# The maps come from MAW's zMaw.games.lod through tools/maw/convert_maps.py into the mod's asset overlay. MAW's
+# d08 has its spawn points in another order than the game's: the first monster made from a spawn point stands on
+# MAW's first one (the game's first is at 576,384). Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: d08.blv
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 5
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      local m = Map.Monsters[1]
+      return Map.Name, m.X, m.Y
+    expect: "d08.blv\t768\t-512"
+# out05 lights as the game's map does (the game's bake, restamped for MAW's file); oute3's terrain and models
+# changed, so it loads with the classic lighting until one is baked for it.
+- load_map:
+    map: out05.odm
+- mod_lua:
+    code: return Map.Name
+    expect: "out05.odm"
+- load_map:
+    map: oute3.odm
+- mod_lua:
+    code: return Map.Name
+    expect: "oute3.odm"

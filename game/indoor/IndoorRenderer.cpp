@@ -1,4 +1,5 @@
 #include "game/render/RuntimeShader.h"
+#include "game/mod/ModHooks.h"
 #include "game/render/CinematicGrading.h"
 #include "game/indoor/IndoorRenderer.h"
 #include "game/render/WaterGeometry.h"
@@ -1421,6 +1422,11 @@ std::optional<std::string> resolveIndoorEventHintText(
         return std::nullopt;
     }
 
+    if (std::optional<std::string> modHint = modMapEventHint(eventId))
+    {
+        return modHint;
+    }
+
     const std::optional<ScriptedEventProgram> &localEventProgram = pSceneRuntime->localEventProgram();
 
     if (localEventProgram)
@@ -1469,6 +1475,11 @@ std::optional<std::string> resolveIndoorLocalEventHintText(
     if (pSceneRuntime == nullptr || eventId == 0)
     {
         return std::nullopt;
+    }
+
+    if (std::optional<std::string> modHint = modMapEventHint(eventId))
+    {
+        return modHint;
     }
 
     const std::optional<ScriptedEventProgram> &localEventProgram = pSceneRuntime->localEventProgram();

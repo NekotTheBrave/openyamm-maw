@@ -851,12 +851,22 @@ local playersArray = boundObject("Party.PlayersArray", {
     end,
 })
 
+-- Party.QBits[bit]: the party's quest bits, read and written.
+local partyQBits = boundObject("Party.QBits", {
+    index = function(index)
+        return modrt.questBitGet(index)
+    end,
+    newindex = function(index, value)
+        return modrt.questBitSet(index, value and value ~= 0)
+    end,
+})
+
 Party = boundObject("Party", {
     owned = "Party",
     bound = {
         Gold = true, Food = true, BankGold = true, Count = true, count = true, High = true, high = true,
         CurrentPlayer = true, X = true, Y = true, Z = true, YawRadians = true, PlayersArray = true,
-        SpellBuffs = true,
+        SpellBuffs = true, QBits = true,
     },
     index = function(index)
         if index >= 0 and index < partyCount() then
@@ -875,6 +885,8 @@ Party = boundObject("Party", {
             return playersArray
         elseif key == "SpellBuffs" then
             return partySpellBuffs
+        elseif key == "QBits" then
+            return partyQBits
         end
 
         return modrt.partyGet(key)

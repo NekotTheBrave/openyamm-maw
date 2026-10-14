@@ -81,6 +81,25 @@ bool modUseMouseItem(size_t memberIndex)
     return pModHooks == nullptr || pModHooks->useMouseItem(memberIndex);
 }
 
+std::optional<std::string> modMapEventHint(uint16_t eventId)
+{
+    IModHooks *pModHooks = activeModHooks();
+    std::string hint;
+
+    if (pModHooks == nullptr || eventId == 0 || !pModHooks->mapEventHint(eventId, hint) || hint.empty())
+    {
+        return std::nullopt;
+    }
+
+    return hint;
+}
+
+bool modMapEventRemoved(uint16_t eventId)
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks != nullptr && eventId != 0 && pModHooks->mapEventRemoved(eventId);
+}
+
 bool modPotionEffect(uint32_t potionId, int power, InventoryItem &target)
 {
     IModHooks *pModHooks = activeModHooks();

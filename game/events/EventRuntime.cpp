@@ -8,6 +8,7 @@
 #include "game/gameplay/HouseInteraction.h"
 #include "game/gameplay/ReputationRuntime.h"
 #include "game/items/ItemGenerator.h"
+#include "game/mod/ModHooks.h"
 #include "game/party/Party.h"
 #include "game/party/SkillData.h"
 #include "game/outdoor/OutdoorMechanismRuntime.h"
@@ -8732,6 +8733,178 @@ bool invokeLuaHandler(
 
     return true;
 }
+
+// The event session a mod's handler is running in, for the event commands it gives (callActiveEventFunction).
+LuaSessionCache *g_pModEventSession = nullptr;
+
+// Copies a plain value (tables of plain values included) from one Lua state onto another's stack.
+void copyLuaValue(lua_State *pFrom, int index, lua_State *pTo, int depth)
+{
+    index = lua_absindex(pFrom, index);
+    luaL_checkstack(pTo, 3, "copying an event value");
+
+    switch (lua_type(pFrom, index))
+    {
+        case LUA_TBOOLEAN:
+            lua_pushboolean(pTo, lua_toboolean(pFrom, index));
+            return;
+
+        case LUA_TNUMBER:
+            if (lua_isinteger(pFrom, index))
+            {
+                lua_pushinteger(pTo, lua_tointeger(pFrom, index));
+            }
+            else
+            {
+                lua_pushnumber(pTo, lua_tonumber(pFrom, index));
+            }
+
+            return;
+
+        case LUA_TSTRING:
+        {
+            size_t length = 0;
+            const char *pText = lua_tolstring(pFrom, index, &length);
+            lua_pushlstring(pTo, pText, length);
+            return;
+        }
+
+        case LUA_TTABLE:
+            if (depth > 4)
+            {
+                break;
+            }
+
+            lua_newtable(pTo);
+            lua_pushnil(pFrom);
+
+            while (lua_next(pFrom, index) != 0)
+            {
+                const int keyType = lua_type(pFrom, -2);
+
+                if (keyType == LUA_TNUMBER || keyType == LUA_TSTRING)
+                {
+                    copyLuaValue(pFrom, -2, pTo, depth + 1);
+                    copyLuaValue(pFrom, -1, pTo, depth + 1);
+                    lua_rawset(pTo, -3);
+                }
+
+                lua_pop(pFrom, 1);
+            }
+
+            return;
+
+        default:
+            break;
+    }
+
+    lua_pushnil(pTo);
+}
+
+// A mod's handlers for the event (the original's evt.map[id]) run before the map's own, in the event's context, so
+// the event commands they give are the engine's. Returns the mod's ModMapEvent flags.
+int runModMapEvent(const EventRuntime &eventRuntime, uint16_t eventId, LuaExecutionContext &executionContext)
+{
+    IModHooks *pModHooks = activeModHooks();
+
+    if (pModHooks == nullptr || eventRuntime.m_luaSessionCache == nullptr || !pModHooks->hasMapEvent(eventId))
+    {
+        return 0;
+    }
+
+    LuaSessionCache &session = *eventRuntime.m_luaSessionCache;
+    LuaSessionCache *pPreviousSession = g_pModEventSession;
+    LuaExecutionContext *pPreviousContext = session.pExecutionContext;
+    session.pExecutionContext = &executionContext;
+    g_pModEventSession = &session;
+    executionContext.currentEventId = eventId;
+    executionContext.selector = {};
+    executionContext.pendingMessageText.reset();
+
+    if (executionContext.pRuntimeState != nullptr)
+    {
+        if (!executionContext.preserveRuntimeOutputsOnBegin)
+        {
+            prepareRuntimeStateForEventExecution(
+                *executionContext.pRuntimeState,
+                executionContext.pSceneEventContext,
+                !executionContext.preservePendingOutputsOnBegin);
+        }
+
+        executionContext.initialMessageCount = executionContext.pRuntimeState->messages.size();
+    }
+
+    const int flags = pModHooks->mapEvent(eventId);
+    session.pExecutionContext = pPreviousContext;
+    g_pModEventSession = pPreviousSession;
+    return flags;
+}
+}
+
+int callActiveEventFunction(lua_State *pFrom, const char *pPath, int firstArg)
+{
+    LuaSessionCache *pSession = g_pModEventSession;
+
+    if (pSession == nullptr || pSession->pExecutionContext == nullptr || pPath == nullptr)
+    {
+        return -1;
+    }
+
+    lua_State *pTo = pSession->lua.state();
+    const int base = lua_gettop(pTo);
+    lua_pushglobaltable(pTo);
+    std::string_view path = pPath;
+
+    while (!path.empty())
+    {
+        const size_t dot = path.find('.');
+        const std::string segment(path.substr(0, dot));
+        path = dot == std::string_view::npos ? std::string_view() : path.substr(dot + 1);
+
+        if (!lua_istable(pTo, -1))
+        {
+            lua_settop(pTo, base);
+            lua_pushfstring(pFrom, "no event value %s", pPath);
+            return -2;
+        }
+
+        lua_getfield(pTo, -1, segment.c_str());
+        lua_remove(pTo, -2);
+    }
+
+    if (!lua_isfunction(pTo, -1))
+    {
+        copyLuaValue(pTo, -1, pFrom, 0);
+        lua_settop(pTo, base);
+        return 1;
+    }
+
+    const int argumentCount = std::max(0, lua_gettop(pFrom) - firstArg + 1);
+    luaL_checkstack(pTo, argumentCount + 2, "event command arguments");
+
+    for (int index = 0; index < argumentCount; ++index)
+    {
+        copyLuaValue(pFrom, firstArg + index, pTo, 0);
+    }
+
+    if (lua_pcall(pTo, argumentCount, LUA_MULTRET, 0) != LUA_OK)
+    {
+        const char *pMessage = lua_tostring(pTo, -1);
+        lua_pushstring(pFrom, pMessage != nullptr ? pMessage : "event command failed");
+        lua_settop(pTo, base);
+        return -2;
+    }
+
+    const int resultCount = lua_gettop(pTo) - base;
+    luaL_checkstack(pFrom, resultCount + 2, "event command results");
+
+    for (int index = 1; index <= resultCount; ++index)
+    {
+        copyLuaValue(pTo, base + index, pFrom, 0);
+    }
+
+    lua_settop(pTo, base);
+    return resultCount;
 }
 
 bool EventRuntimeState::hasFacetInvisibleOverride(uint32_t faceId) const
@@ -9203,6 +9376,27 @@ bool EventRuntime::executeEventById(
 
     const bool allowLocalScope = !requiredScope || *requiredScope == ScriptedEventScope::Map;
     const bool allowGlobalScope = !requiredScope || *requiredScope == ScriptedEventScope::Global;
+
+    if (eventId == ModCommandEventId)
+    {
+        return (runModMapEvent(*this, eventId, executionContext) & ModMapEventRan) != 0;
+    }
+
+    // A continued event (an answer to its question) is the engine's own handler resuming.
+    const int modFlags = allowLocalScope && !continueStep ? runModMapEvent(*this, eventId, executionContext) : 0;
+    const bool modRan = (modFlags & ModMapEventRan) != 0;
+
+    if ((modFlags & ModMapEventReplaces) != 0)
+    {
+        return modRan;
+    }
+
+    if (modRan)
+    {
+        // What the mod's handlers set going (a map move, a message) stays for the map's own lines to add to.
+        executionContext.preserveRuntimeOutputsOnBegin = true;
+    }
+
     const auto localIterator = m_luaSessionCache->localScope.handlers.find(eventId);
 
     if (allowLocalScope && localIterator != m_luaSessionCache->localScope.handlers.end())
@@ -9228,7 +9422,7 @@ bool EventRuntime::executeEventById(
                 pSceneEventContext);
         }
 
-        return invoked;
+        return invoked || modRan;
     }
 
     if (allowLocalScope && localProgram && localProgram->isHintOnlyEvent(eventId))
@@ -9238,7 +9432,7 @@ bool EventRuntime::executeEventById(
 
     if (!allowGlobalFallback || !allowGlobalScope)
     {
-        return false;
+        return modRan;
     }
 
     const auto globalIterator = m_luaSessionCache->globalScope.handlers.find(eventId);
@@ -9267,7 +9461,7 @@ bool EventRuntime::executeEventById(
                 pSceneEventContext);
         }
 
-        return invoked;
+        return invoked || modRan;
     }
 
     if (globalProgram && globalProgram->isHintOnlyEvent(eventId))
@@ -9275,7 +9469,7 @@ bool EventRuntime::executeEventById(
         return true;
     }
 
-    return false;
+    return modRan;
 }
 
 bool EventRuntime::executeNpcTopicEventById(

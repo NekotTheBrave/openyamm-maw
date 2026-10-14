@@ -20,6 +20,8 @@
 #include <utility>
 #include <vector>
 
+struct lua_State;
+
 namespace OpenYAMM::Game
 {
 class Party;
@@ -785,4 +787,13 @@ public:
     const HouseTable *m_pHouseTable = nullptr;
     const NpcDialogTable *m_pNpcDialogTable = nullptr;
 };
+
+// The event a mod's event commands run as when the mod gives them outside a map event (from a LoadMap handler or a
+// timer): the game runs it like any map event, and the mod's queued commands are its handler.
+inline constexpr uint16_t ModCommandEventId = 0xFFFF;
+
+// While a mod's handler for a map event runs, calls the engine's event value at `pPath` ("evt.MoveToMap") with the
+// values of `pFrom` from `firstArg` on and pushes its results onto `pFrom`; a value that is not a function is pushed
+// as it is. Returns the number of values pushed, -1 when no event is running, -2 with the error message pushed.
+int callActiveEventFunction(lua_State *pFrom, const char *pPath, int firstArg);
 }

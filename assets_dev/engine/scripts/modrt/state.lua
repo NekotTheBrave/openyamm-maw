@@ -139,6 +139,8 @@ function State.syncMap()
         ModRT.Bindings.resetMapMonsters()
     end
 
+    ModRT.Events.removeScope("map")
+    ModRT.MapEvents.reset()
     State.currentMap = mapName
     State.freshSession = false
     mapvars = State.mapVarsByMap[mapName] or {}
@@ -147,6 +149,7 @@ function State.syncMap()
     -- WasInGame: the party arrived from another map of the same game. WasLoaded: the map already had saved state.
     local wasLoaded = next(mapvars) ~= nil
     ModRT.fire("BeforeLoadMap", wasInGame, wasLoaded)
+    ModRT.Loader.loadMapScripts(mapName)
     ModRT.fire("LoadMapScripts", wasInGame)
     ModRT.fire("LoadMap", wasInGame, wasLoaded)
     ModRT.fire("AfterLoadMap", wasInGame, wasLoaded)

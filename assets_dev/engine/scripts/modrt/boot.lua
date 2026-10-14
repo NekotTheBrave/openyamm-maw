@@ -110,6 +110,7 @@ loadRuntimeScript("state.lua")
 loadRuntimeScript("combat.lua")
 loadRuntimeScript("stats.lua")
 loadRuntimeScript("merge.lua")
+loadRuntimeScript("mapevents.lua")
 loadRuntimeScript("loader.lua")
 loadRuntimeScript("report.lua")
 loadRuntimeScript("selftest.lua")
@@ -310,6 +311,14 @@ local function dispatchKind(kind, ...)
         return ModRT.Stats.useMouseItem(...)
     elseif kind == "potionEffect" then
         return ModRT.Stats.potionEffect(...)
+    elseif kind == "hasMapEvent" then
+        return ModRT.MapEvents.has(...)
+    elseif kind == "mapEvent" then
+        return ModRT.MapEvents.run(...)
+    elseif kind == "mapEventHint" then
+        return ModRT.MapEvents.hint(...)
+    elseif kind == "mapEventRemoved" then
+        return ModRT.MapEvents.removedEvent(...)
     elseif kind == "pickCorpse" then
         return ModRT.Stats.pickCorpse(...)
     elseif kind == "generateItem" then

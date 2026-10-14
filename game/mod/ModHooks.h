@@ -260,6 +260,23 @@ public:
     // event item is (the original's evt.PotionEffects[potionId](false, item, power)): whether the mod has an effect
     // for that potion, which then took the use over.
     virtual bool potionEffect(uint32_t potionId, int power) = 0;
+    // Map events a mod adds to or takes over from the map's own (the original's evt.map[id] handlers and
+    // Game.MapEvtLines:RemoveEvent(id)): whether the mod has anything for event `eventId` of the current map.
+    virtual bool hasMapEvent(uint16_t eventId) = 0;
+    // Runs the mod's handlers for the event, within it: ModMapEvent flags.
+    virtual int mapEvent(uint16_t eventId) = 0;
+    // The mod's hint for the event (the original's evt.hint[id]), shown when the player points at what it is on.
+    virtual bool mapEventHint(uint16_t eventId, std::string &hint) = 0;
+    // Whether the mod removed the map's own lines for the event (their timer goes with them).
+    virtual bool mapEventRemoved(uint16_t eventId) = 0;
+};
+
+// mapEvent's answer: the mod ran handlers, and the map's own lines for the event are removed (the mod's replace
+// them).
+enum ModMapEvent : int
+{
+    ModMapEventRan = 1,
+    ModMapEventReplaces = 2,
 };
 
 IModHooks *activeModHooks();
@@ -288,6 +305,11 @@ bool modUseMouseItem(size_t memberIndex);
 // Runs the mod's potion effect for the held potion used on `target`: whether the mod took the use over (false
 // without a mod, or when it has no effect for that potion).
 bool modPotionEffect(uint32_t potionId, int power, InventoryItem &target);
+
+// The mod's hint for event `eventId` of the current map (the original's evt.hint[id]); none without a mod.
+std::optional<std::string> modMapEventHint(uint16_t eventId);
+// Whether a mod removed the current map's own lines for event `eventId`; false without a mod.
+bool modMapEventRemoved(uint16_t eventId);
 
 // Runs the mod's CanLearnSpell event and returns the mastery the spell takes, `engineMastery` without a mod.
 int modCanLearnSpell(const Character &character, uint32_t spellId, int engineMastery);

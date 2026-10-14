@@ -1,7 +1,7 @@
 -- Loads mod scripts in the order MMExtension does, so a mod's file-name ordering keeps its meaning:
 --   startup:  Structs/*.lua, Structs/After/*.lua, General/*.lua
 --   session:  Global/*.lua (each new game or load)
---   map:      Maps/<map>.lua (not wired yet)
+--   map:      Maps/<map>.lua (each time the party enters the map)
 -- Files a mod ships only to override the Merge base are skipped by default: OpenYAMM implements the base natively.
 
 local ModRT = ModRT
@@ -363,6 +363,37 @@ function Loader.loadStartupScripts()
     runFolder("Structs/After")
     runFolder("General")
     ModRT.log("info", "startup scripts loaded: " .. #Loader.files .. " files seen")
+end
+
+-- Runs the scripts of the map the party enters (Maps/<map name>.lua, any case). What they register belongs to the
+-- map and goes when the party leaves it.
+function Loader.loadMapScripts(mapName)
+    local wanted = (mapName:gsub("%.%w+$", "") .. ".lua"):lower()
+    ModRT.Events.scope = "map"
+
+    for _, mod in ipairs(config.mods) do
+        local found = nil
+
+        for _, name in ipairs(listLuaFiles(mod.path .. "/Scripts/Maps")) do
+            if name:lower() == wanted then
+                found = name
+            end
+        end
+
+        if not found and mod.port and mod.port ~= "" then
+            for _, name in ipairs(listLuaFiles(mod.port .. "/Scripts/Maps")) do
+                if name:lower() == wanted then
+                    found = name
+                end
+            end
+        end
+
+        if found then
+            runFile(mod, "Maps/" .. found)
+        end
+    end
+
+    ModRT.Events.scope = "startup"
 end
 
 -- Runs the per-playthrough scripts. Called for every new game and every load: what the previous run registered is

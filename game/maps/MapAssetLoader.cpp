@@ -9,6 +9,7 @@
 #include "game/maps/MapIdentity.h"
 #include "game/maps/MapPresentation.h"
 #include "game/maps/StaleLightingNote.h"
+#include "game/mod/ModHooks.h"
 #include "game/maps/OutdoorSceneYml.h"
 #include "game/maps/TerrainTileData.h"
 #include "game/indoor/IndoorGeometryUtils.h"
@@ -4674,49 +4675,59 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
                     *assetInfo.outdoorMapData,
                     lightingError);
 
-                if (!lightingData)
+                // A mod's own map (MAW's edited maps) can come without a bake for its geometry; it is then lit the
+                // classic way, as with lightmaps turned off, until one is baked.
+                if (!lightingData && activeModHooks() != nullptr)
+                {
+                    std::cerr << "No baked lighting for " << map.fileName << " as a mod has it (" << lightingError
+                              << "); using classic lighting\n";
+                }
+                else if (!lightingData)
                 {
                     std::cerr << "Failed to parse cooked outdoor lighting for " << map.fileName
                               << ": " << lightingError << '\n';
                     return std::nullopt;
                 }
 
-                if (assetInfo.outdoorMapData->sceneProfile == OutdoorSceneProfile::BModelWorld)
+                if (lightingData)
                 {
-                    scaleOutdoorLightingBrightness(
-                        *lightingData,
-                        assetInfo.outdoorMapData->lightmapBrightnessScale);
-                }
-
-                // A bake older than a source it was baked from (a model or binding changed since) still loads during
-                // development; the stale bakes are noted for a re-bake before release (StaleLightingNote.h).
-                std::vector<std::string> staleSources;
-                for (const OutdoorLightingData::Dependency &dependency : lightingData->dependencies)
-                {
-                    const std::optional<std::vector<uint8_t>> bytes =
-                        assetFileSystem.readBinaryFile(dependency.path);
-                    if (!bytes || outdoorLightingContentHash(*bytes) != dependency.hash)
+                    if (assetInfo.outdoorMapData->sceneProfile == OutdoorSceneProfile::BModelWorld)
                     {
-                        staleSources.push_back(dependency.path);
+                        scaleOutdoorLightingBrightness(
+                            *lightingData,
+                            assetInfo.outdoorMapData->lightmapBrightnessScale);
                     }
+
+                    // A bake older than a source it was baked from (a model or binding changed since) still loads during
+                    // development; the stale bakes are noted for a re-bake before release (StaleLightingNote.h).
+                    std::vector<std::string> staleSources;
+                    for (const OutdoorLightingData::Dependency &dependency : lightingData->dependencies)
+                    {
+                        const std::optional<std::vector<uint8_t>> bytes =
+                            assetFileSystem.readBinaryFile(dependency.path);
+                        if (!bytes || outdoorLightingContentHash(*bytes) != dependency.hash)
+                        {
+                            staleSources.push_back(dependency.path);
+                        }
+                    }
+                    if (!staleSources.empty())
+                    {
+                        std::cerr << "Stale baked lighting: " << *lightingDataPath << " is older than "
+                                  << staleSources.front() << (staleSources.size() > 1 ? " and others" : "")
+                                  << "; re-bake it before release\n";
+                    }
+                    if (assetFileSystem.resolvePhysicalPath(*lightingDataPath)
+                        && !assetFileSystem.getDevelopmentRoot().empty()
+                        && !updateStaleLightingNote(assetFileSystem.getDevelopmentRoot() / StaleLightingNoteFileName,
+                            *lightingDataPath, staleSources))
+                    {
+                        std::cerr << "Could not update " << StaleLightingNoteFileName << '\n';
+                    }
+                    assetInfo.lightingDataPath = *lightingDataPath;
+                    assetInfo.lightingDataSize = lightingDataBytes->size();
+                    assetInfo.outdoorMapData->lightingData = std::move(*lightingData);
+                    logStageComplete("cooked outdoor lighting loaded");
                 }
-                if (!staleSources.empty())
-                {
-                    std::cerr << "Stale baked lighting: " << *lightingDataPath << " is older than "
-                              << staleSources.front() << (staleSources.size() > 1 ? " and others" : "")
-                              << "; re-bake it before release\n";
-                }
-                if (assetFileSystem.resolvePhysicalPath(*lightingDataPath)
-                    && !assetFileSystem.getDevelopmentRoot().empty()
-                    && !updateStaleLightingNote(assetFileSystem.getDevelopmentRoot() / StaleLightingNoteFileName,
-                        *lightingDataPath, staleSources))
-                {
-                    std::cerr << "Could not update " << StaleLightingNoteFileName << '\n';
-                }
-                assetInfo.lightingDataPath = *lightingDataPath;
-                assetInfo.lightingDataSize = lightingDataBytes->size();
-                assetInfo.outdoorMapData->lightingData = std::move(*lightingData);
-                logStageComplete("cooked outdoor lighting loaded");
             }
 
             if (!applyTerrainTileDescriptorAttributes(assetFileSystem, *assetInfo.outdoorMapData))

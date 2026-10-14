@@ -2930,6 +2930,15 @@ GameApplication::GameApplication(const Engine::ApplicationConfig &config)
             }
         }
     };
+    modHost.presentPendingDialogue = [this]()
+    {
+        GameplayScreenRuntime &screen = m_gameSession.gameplayScreenRuntime();
+
+        if (screen.hasPendingEventDialog() && !screen.activeEventDialog().isActive)
+        {
+            screen.ensurePendingEventDialogPresented(true);
+        }
+    };
     modHost.currentCharScreen = [this]()
     {
         switch (m_gameSession.gameplayScreenRuntime().characterScreenReadOnly().page)

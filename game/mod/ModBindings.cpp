@@ -1,6 +1,7 @@
 #include "game/mod/ModBindings.h"
 
 #include "game/data/GameDataLoader.h"
+#include "game/events/EventRuntime.h"
 #include "game/events/ISceneEventContext.h"
 #include "game/gameplay/GameMechanics.h"
 #include "game/gameplay/GameplayRuntimeInterfaces.h"
@@ -1135,6 +1136,32 @@ int nativePartyRefreshBonuses(lua_State *pLuaState)
     }
 
     return 0;
+}
+
+// modrt.questBitGet(bit): whether the party has quest bit `bit` set (Party.QBits[bit]).
+int nativeQuestBitGet(lua_State *pLuaState)
+{
+    const Party *pParty = partyFromHost(pLuaState);
+    const int64_t bit = integerArgument(pLuaState, 1);
+    lua_pushboolean(pLuaState, pParty != nullptr && bit > 0 && pParty->hasQuestBit(static_cast<uint32_t>(bit)));
+    return 1;
+}
+
+// modrt.questBitSet(bit, value): sets or clears quest bit `bit`; whether there was a party to set it on.
+int nativeQuestBitSet(lua_State *pLuaState)
+{
+    Party *pParty = partyFromHost(pLuaState);
+    const int64_t bit = integerArgument(pLuaState, 1);
+
+    if (pParty == nullptr || bit <= 0)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    pParty->setQuestBit(static_cast<uint32_t>(bit), lua_toboolean(pLuaState, 2) != 0);
+    lua_pushboolean(pLuaState, true);
+    return 1;
 }
 
 // modrt.playerSpellGet(player, spell): whether the character knows the spell (Party[i].Spells[spell]).
@@ -3087,6 +3114,54 @@ int nativeInventoryPut(lua_State *pLuaState)
 
 // modrt.heldItemSet([item]): puts an item (a table as inventoryTake gives; its kind's size when it gives none) on the
 // mouse pointer in place of the one there, or takes it off when none is given.
+// modrt.eventCall(path, ...): within a map event a mod's handler is running in, calls the engine's event value at
+// `path` ("evt.MoveToMap"; a value that is no function is returned as it is) and returns its results.
+int nativeEventCall(lua_State *pLuaState)
+{
+    const char *pPath = luaL_checkstring(pLuaState, 1);
+    const int top = lua_gettop(pLuaState);
+    const int resultCount = callActiveEventFunction(pLuaState, pPath, 2);
+
+    if (resultCount == -1)
+    {
+        return luaL_error(pLuaState, "%s used outside a map event", pPath);
+    }
+
+    if (resultCount == -2)
+    {
+        return lua_error(pLuaState);
+    }
+
+    (void)top;
+    return resultCount;
+}
+
+// modrt.runCommandEvent([eventId]): runs a map event as the game runs one (what the player clicked on, say); without
+// an id, the event the mod's queued event commands are the handler of (ModCommandEventId). Whether it ran.
+int nativeRunCommandEvent(lua_State *pLuaState)
+{
+    const ModHost *pHost = hostFromUpvalue(pLuaState);
+    IGameplayWorldRuntime *pWorld = pHost != nullptr && pHost->world ? pHost->world() : nullptr;
+    const lua_Integer eventId = luaL_optinteger(pLuaState, 1, ModCommandEventId);
+
+    if (pWorld == nullptr || eventId <= 0 || eventId > ModCommandEventId)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    size_t previousMessageCount = 0;
+    const bool executed = pWorld->executeMapEvent(static_cast<uint16_t>(eventId), previousMessageCount);
+
+    if (executed && pHost->presentPendingDialogue)
+    {
+        pHost->presentPendingDialogue();
+    }
+
+    lua_pushboolean(pLuaState, executed);
+    return 1;
+}
+
 int nativeHeldItemSet(lua_State *pLuaState)
 {
     const ModHost *pHost = hostFromUpvalue(pLuaState);
@@ -3992,6 +4067,8 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"playerSpellGet", nativePlayerSpellGet},
         {"playerSpellSet", nativePlayerSpellSet},
         {"partyRefreshBonuses", nativePartyRefreshBonuses},
+        {"questBitGet", nativeQuestBitGet},
+        {"questBitSet", nativeQuestBitSet},
         {"itemGet", nativeItemGet},
         {"itemSet", nativeItemSet},
         {"itemTxtGet", nativeItemTxtGet},
@@ -4011,6 +4088,8 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"inventoryPut", nativeInventoryPut},
         {"heldItemPresent", nativeHeldItemPresent},
         {"heldItemSet", nativeHeldItemSet},
+        {"eventCall", nativeEventCall},
+        {"runCommandEvent", nativeRunCommandEvent},
         {"skillRegister", nativeSkillRegister},
         {"houseOfferSkill", nativeHouseOfferSkill},
         {"statDescription", nativeStatDescription},

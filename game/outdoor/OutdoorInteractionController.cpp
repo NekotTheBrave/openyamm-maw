@@ -1,4 +1,5 @@
 #include "game/outdoor/OutdoorInteractionController.h"
+#include "game/mod/ModHooks.h"
 #include "game/gameplay/InteractiveDecorationRules.h"
 #include "game/outdoor/OutdoorGameView.h"
 #include "game/outdoor/OutdoorBillboardRenderer.h"
@@ -1507,6 +1508,11 @@ std::optional<std::string> OutdoorInteractionController::resolveEventHintText(
     if (eventId == 0)
     {
         return std::nullopt;
+    }
+
+    if (std::optional<std::string> modHint = modMapEventHint(eventId))
+    {
+        return modHint;
     }
 
     if (view.m_pOutdoorSceneRuntime != nullptr)

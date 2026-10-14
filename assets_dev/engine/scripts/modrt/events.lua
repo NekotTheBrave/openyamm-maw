@@ -194,5 +194,13 @@ function Events.new(label)
         __newindex = function(_, name, handler)
             add(name, handler)
         end,
+        -- evt.map[id] (map events by number; a name reads as nil): the event's handlers, `last` the newest.
+        __index = not isMain and function(_, name)
+            local list = type(name) == "number" and handlers[name] or nil
+
+            if list then
+                return {first = list[1], last = list[#list], count = #list}
+            end
+        end or nil,
     })
 end
