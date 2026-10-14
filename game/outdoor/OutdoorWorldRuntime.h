@@ -714,6 +714,7 @@ public:
         float targetZ);
     bool debugSpawnEncounterFromSpawnPoint(size_t spawnIndex, uint32_t countOverride = 0);
     bool setMapActorDead(size_t actorIndex, bool isDead, bool emitAudio = true);
+    ModPointInfo modPointInfo(float x, float y, float z) const override;
     bool applyPartyAttackToMapActor(size_t actorIndex, int damage, float partyX, float partyY, float partyZ);
     bool applyPartyAttackMeleeDamage(
         size_t actorIndex,

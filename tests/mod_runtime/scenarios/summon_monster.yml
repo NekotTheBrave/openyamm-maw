@@ -1,0 +1,50 @@
+id: mod_runtime.summon_monster
+title: Scripts can put a monster on the map and ask where a point stands
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 100
+      food: 5
+      members:
+      - name: Caller
+        class: Knight
+        level: 1
+        skills: []
+        equipment: {}
+# The ground under the party is about where the party stands, and an outdoor map has no rooms.
+- mod_lua:
+    code: |
+      local ground = Map.GetGroundLevel(Party.X, Party.Y)
+      return math.abs(ground - Party.Z) < 200, Map.RoomFromPoint(Party.X, Party.Y, Party.Z), Map.Monsters.Limit
+    expect: "true\t0\t3000"
+# SummonMonster adds one monster of the kind, on the point, alive and hostile, and returns its record: the last
+# of the list. What a script then writes to it is the monster's own.
+- mod_lua:
+    code: |
+      local before = Map.Monsters.Count
+      local x, y = Party.X + 400, Party.Y + 100
+      local z = Map.GetGroundLevel(x, y)
+      local m, index = SummonMonster(1, x, y, z)
+      m.Group = 77
+      return Map.Monsters.Count - before, index == before, m == Map.Monsters[index], m.Id, m.X == x, m.Y == y,
+        m.HP > 0 and m.HP == m.FullHP, m.Hostile, m.IsDead, m.AIState ~= 11, Map.Monsters[index].Group
+    expect: "1\ttrue\ttrue\t1\ttrue\ttrue\ttrue\ttrue\tfalse\ttrue\t77"
+# A kind that does not exist adds nothing.
+- mod_lua:
+    code: |
+      local before = Map.Monsters.Count
+      return SummonMonster(30000, Party.X, Party.Y, Party.Z) == nil, Map.Monsters.Count - before
+    expect: "true\t0"
+# The summoned monster is one of the map's: it can be hit (the handler sees it) and it stays through a save and load.
+- save_game: mod_summon_monster
+- load_game: mod_summon_monster
+- mod_lua:
+    code: |
+      local last = Map.Monsters[Map.Monsters.High]
+      return last.Id, last.Group, last.HP > 0
+    expect: "1\t77\ttrue"

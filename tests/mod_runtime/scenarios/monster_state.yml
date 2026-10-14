@@ -66,10 +66,22 @@ steps:
 # while the others close in on the party.
 - mod_lua:
     code: |
+      -- All of one kind, the most numerous hostile one, and every other monster taken off the map: monsters of
+      -- different kinds fight each other, and a blow knocks its target back whatever its speed.
+      local byKind, kind = {}, nil
+      for index, monster in Map.Monsters do
+        if monster.Hostile and not monster.IsDead and monster.AIState ~= 19 then
+          byKind[monster.Id] = (byKind[monster.Id] or 0) + 1
+          if not kind or byKind[monster.Id] > byKind[kind] then kind = monster.Id end
+        end
+      end
+      for index, monster in Map.Monsters do
+        if monster.Id ~= kind then monster.AIState = const.AIState.Removed end
+      end
       Stopped, Movers = {}, {}
       local placed = 0
       for index, monster in Map.Monsters do
-        if placed < 8 and monster.Hostile and not monster.IsDead and monster.AIState ~= 19 then
+        if placed < 8 and monster.Id == kind and monster.Hostile and not monster.IsDead and monster.AIState ~= 19 then
           local angle = placed * math.pi / 4
           monster.X = math.floor(Party.X + math.cos(angle) * 1200)
           monster.Y = math.floor(Party.Y + math.sin(angle) * 1200)
@@ -83,8 +95,20 @@ steps:
           placed = placed + 1
         end
       end
-      return placed
-    expect: "8"
+      return placed >= 4
+    expect: "true"
+# A monster put down on something (a tree, another monster) is first pushed clear of it, whatever its speed; where
+# each one stands is noted once that has settled.
+- advance_runtime: {seconds: 1}
+- mod_lua:
+    code: |
+      for _, list in ipairs{Stopped, Movers} do
+        for _, entry in ipairs(list) do
+          entry[2], entry[3] = entry[1].X, entry[1].Y
+        end
+      end
+      return #Stopped > 1 and #Movers > 1
+    expect: "true"
 - advance_runtime: {seconds: 4}
 - mod_lua:
     code: |

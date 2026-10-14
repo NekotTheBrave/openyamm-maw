@@ -11183,14 +11183,32 @@ bool IndoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFie
                 return false;
             }
 
-            if (value <= 0)
             {
-                m_mapActorAiStates[actorIndex].modMoveSpeed.reset();
-            }
-            else
-            {
-                m_mapActorAiStates[actorIndex].modMoveSpeed =
-                    static_cast<uint16_t>(std::clamp<int64_t>(value, 1, UINT16_MAX));
+                MapActorAiState &aiState = m_mapActorAiStates[actorIndex];
+                const MonsterTable::MonsterStatsEntry *pStats =
+                    m_pMonsterTable != nullptr ? m_pMonsterTable->findStatsById(aiState.monsterId) : nullptr;
+                const int kindSpeed =
+                    aiState.movementSpeed != 0 ? aiState.movementSpeed : pStats != nullptr ? pStats->speed : 0;
+                const int oldSpeed = aiState.modMoveSpeed ? *aiState.modMoveSpeed : kindSpeed;
+
+                if (value <= 0)
+                {
+                    aiState.modMoveSpeed.reset();
+                }
+                else
+                {
+                    aiState.modMoveSpeed = static_cast<uint16_t>(std::clamp<int64_t>(value, 1, UINT16_MAX));
+                }
+
+                // The step the actor is in the middle of was set off at the old speed; it goes on at the new one.
+                if (oldSpeed > 0)
+                {
+                    const float scale =
+                        static_cast<float>(aiState.modMoveSpeed.value_or(static_cast<uint16_t>(kindSpeed)))
+                        / static_cast<float>(oldSpeed);
+                    aiState.velocityX *= scale;
+                    aiState.velocityY *= scale;
+                }
             }
 
             return true;
@@ -11301,6 +11319,50 @@ void IndoorWorldRuntime::collectProjectilePresentationState(
         state.isSettled = true;
         projectiles.push_back(std::move(state));
     }
+}
+
+IGameplayWorldRuntime::ModPointInfo IndoorWorldRuntime::modPointInfo(float x, float y, float z) const
+{
+    ModPointInfo info = {};
+
+    if (m_pIndoorMapData == nullptr || m_pIndoorMapData->vertices.empty())
+    {
+        return info;
+    }
+
+    RuntimeGeometryCache &runtimeGeometry = runtimeGeometryCache();
+    const int16_t sectorId = resolveIndoorPointSector(
+        m_pIndoorMapData,
+        runtimeGeometry.vertices,
+        &runtimeGeometry.geometryCache,
+        {x, y, z},
+        -1);
+
+    // Sector 0 is the original's "no room" as well, so a point in it counts as in none.
+    if (sectorId <= 0)
+    {
+        return info;
+    }
+
+    info.room = sectorId;
+    const IndoorFloorSample floorSample = sampleIndoorFloor(
+        *m_pIndoorMapData,
+        runtimeGeometry.vertices,
+        x,
+        y,
+        z,
+        IndoorWorldItemFloorSampleRise,
+        IndoorWorldItemFloorSampleDrop,
+        sectorId,
+        nullptr,
+        &runtimeGeometry.geometryCache);
+
+    if (floorSample.hasFloor)
+    {
+        info.floorZ = floorSample.height;
+    }
+
+    return info;
 }
 
 bool IndoorWorldRuntime::actorRuntimeState(size_t actorIndex, GameplayRuntimeActorState &state) const

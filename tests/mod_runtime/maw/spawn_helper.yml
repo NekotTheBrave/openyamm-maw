@@ -1,0 +1,63 @@
+id: mod_runtime.maw.spawn_helper
+title: MAW's own spawn helper puts monsters on the map, and MAW then treats them as the map's
+world: mm6
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Valerie
+        class: Knight
+        level: 1
+        might: 18
+        intellect: 9
+        personality: 9
+        endurance: 15
+        accuracy: 15
+        speed: 15
+        luck: 11
+        skills:
+        - name: Axe
+          level: 1
+          mastery: 1
+        - name: Bow
+          level: 1
+          mastery: 1
+        - name: Sword
+          level: 1
+          mastery: 1
+        - name: Plate
+          level: 1
+          mastery: 1
+        equipment:
+          main_hand: 11
+          armor: 94
+          bow: 849
+# pseudoSpawnpoint is what MAW spawns everything with (boss adds, respawns, summons, bounty hunts, the arena): it
+# picks points around the one given, checks them against the map, and calls SummonMonster. Three first tier
+# Goblins near the party. Run with the MAW mods.yml.
+- mod_lua:
+    code: |
+      Before = Map.Monsters.Count
+      Spawned = pseudoSpawnpoint{monster = 550, x = Party.X + 600, y = Party.Y, z = Party.Z, count = 3,
+        powerChances = {100, 0, 0}, radius = 256, group = 2,
+        transform = function(mon) mon.ShowOnMap = true mon.Hostile = true end}
+      local first = Spawned[1]
+      local distance = math.sqrt((first.X - Party.X - 600) ^ 2 + (first.Y - Party.Y) ^ 2)
+      return #Spawned, Map.Monsters.Count - Before, first.Id, first.Group, distance <= 257, first.HP > 0,
+        first.Z == Map.GetGroundLevel(first.X, first.Y)
+    expect: "3\t3\t550\t2\ttrue\ttrue\ttrue"
+# MAW notices the longer list and works its own numbers out for the newcomers: a Goblin's 21 hit points and level 2,
+# as for the map's own Goblins (parity_new_sorpigal_monsters.yml).
+- advance_runtime: {seconds: 2}
+- mod_lua:
+    code: |
+      local first = Spawned[1]
+      return first.FullHP, first.Level, getMonsterLevel(first), first.Experience, first.IsDead
+    expect: "21\t2\t2\t46\tfalse"

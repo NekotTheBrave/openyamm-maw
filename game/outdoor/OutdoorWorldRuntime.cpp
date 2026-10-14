@@ -14123,9 +14123,20 @@ bool OutdoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFi
         case GameplayModActorField::MoveSpeed:
         {
             const MonsterTable::MonsterStatsEntry *pStats =
-                value <= 0 && m_pMonsterTable != nullptr ? m_pMonsterTable->findStatsById(actor.monsterId) : nullptr;
+                m_pMonsterTable != nullptr ? m_pMonsterTable->findStatsById(actor.monsterId) : nullptr;
+            const int kindSpeed = pStats != nullptr ? pStats->speed : 0;
+            const int oldSpeed = actor.moveSpeed > 0 ? actor.moveSpeed : kindSpeed;
             actor.moveSpeed = static_cast<uint16_t>(
-                std::clamp<int64_t>(pStats != nullptr ? pStats->speed : value, 0, UINT16_MAX));
+                std::clamp<int64_t>(value <= 0 ? kindSpeed : value, 0, UINT16_MAX));
+
+            // The step the actor is in the middle of was set off at the old speed; it goes on at the new one.
+            if (oldSpeed > 0)
+            {
+                const float scale = static_cast<float>(actor.moveSpeed) / static_cast<float>(oldSpeed);
+                actor.velocityX *= scale;
+                actor.velocityY *= scale;
+            }
+
             return true;
         }
         case GameplayModActorField::AiType:
@@ -14136,6 +14147,19 @@ bool OutdoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFi
     }
 
     return false;
+}
+
+IGameplayWorldRuntime::ModPointInfo OutdoorWorldRuntime::modPointInfo(float x, float y, float z) const
+{
+    static_cast<void>(z);
+    ModPointInfo info = {};
+
+    if (m_pOutdoorMapData != nullptr)
+    {
+        info.floorZ = sampleOutdoorTerrainHeight(*m_pOutdoorMapData, x, y);
+    }
+
+    return info;
 }
 
 bool OutdoorWorldRuntime::actorRuntimeState(size_t actorIndex, GameplayRuntimeActorState &state) const

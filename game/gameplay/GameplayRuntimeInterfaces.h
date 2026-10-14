@@ -674,6 +674,21 @@ public:
         static_cast<void>(value);
         return false;
     }
+    // Where a point stands, for mods that place monsters. Outdoors `room` is 0 and the floor is the ground under
+    // the point. Indoors `room` is the sector the point is in, 0 when it is in none (inside a wall, outside the
+    // map), and the floor is the one under the point, if there is one within reach.
+    struct ModPointInfo
+    {
+        int room = 0;
+        std::optional<float> floorZ;
+    };
+    virtual ModPointInfo modPointInfo(float x, float y, float z) const
+    {
+        static_cast<void>(x);
+        static_cast<void>(y);
+        static_cast<void>(z);
+        return {};
+    }
     virtual bool actorRuntimeState(size_t actorIndex, GameplayRuntimeActorState &state) const = 0;
     // Gold plus item value left in a dead actor's corpse (its loot is rolled at death); nullopt without corpse loot.
     virtual std::optional<uint32_t> corpseLootValue(size_t actorIndex) const

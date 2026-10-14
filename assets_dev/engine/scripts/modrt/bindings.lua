@@ -1320,6 +1320,9 @@ function Bindings.resetMapMonsters()
     modrt.mapMonstersResetSpeed()
 end
 
+local MapMonsterLimit = 3000
+local monsterSizes = sizeFields(monsterCount)
+
 local mapMonsters = boundObject("Map.Monsters", {
     index = function(index)
         if index >= 0 and index < monsterCount() then
@@ -1328,16 +1331,29 @@ local mapMonsters = boundObject("Map.Monsters", {
 
         return nil
     end,
-    get = sizeFields(monsterCount),
+    get = function(key)
+        -- The engine has no limit on a map's monsters; this is the Merge's, which scripts leave room under.
+        if key == "Limit" or key == "limit" then
+            return MapMonsterLimit
+        end
+
+        return monsterSizes(key)
+    end,
     range = function() return 0, monsterCount() - 1 end,
 })
 
+-- The original's sign for "no floor here".
+local NoFloorLevel = -30000
+
 Map = boundObject("Map", {
     owned = "Map",
-    bound = {Monsters = true, Name = true, MapStatsIndex = true, IndoorOrOutdoor = true},
+    bound = {Monsters = true, Name = true, MapStatsIndex = true, IndoorOrOutdoor = true, TilesetsFile = true},
     get = function(key)
         if key == "Monsters" then
             return mapMonsters
+        elseif key == "TilesetsFile" then
+            -- Which of the Merge's three tile tables the map uses. The engine keeps one.
+            return 0
         elseif key == "Name" then
             return modrt.gameGet("MapFileName")
         elseif key == "MapStatsIndex" then
@@ -1369,5 +1385,40 @@ Map = boundObject("Map", {
         IsOutdoors = function()
             return modrt.gameGet("IsIndoor") == false
         end,
+        -- The height of the ground under a point of an outdoor map.
+        GetGroundLevel = function(x, y)
+            local room, level = modrt.mapPointInfo(x, y, 0)
+            return level and floor(level) or 0
+        end,
+        -- The room (sector) of an indoor map a point is in; 0 when it is in none, as inside a wall.
+        RoomFromPoint = function(x, y, z)
+            if type(x) == "table" then
+                x, y, z = x.X, x.Y, x.Z
+            end
+
+            return (modrt.mapPointInfo(x, y, z or 0)) or 0
+        end,
+        -- The height of the floor under a point.
+        GetFloorLevel = function(x, y, z, room)
+            local found, level = modrt.mapPointInfo(x, y, z or 0)
+            return level and floor(level) or NoFloorLevel
+        end,
     },
 })
+
+-- SummonMonster(id, x, y, z, treasure, place): puts one monster of the kind on the map and returns its record. The
+-- engine scatters what it summons around the point, so the monster is then put on the point, as in the original.
+-- A summoned monster is hostile to the party whatever its kind. `place` (which slot of the list to reuse) has no
+-- meaning here; the monster's treasure is its kind's either way.
+function SummonMonster(id, x, y, z, treasure, place)
+    x, y, z = x or Party.X, y or Party.Y, z or Party.Z
+    local index = modrt.summonMonster(floor(id), x, y, z)
+
+    if not index then
+        return nil
+    end
+
+    local monster = Map.Monsters[index]
+    monster.X, monster.Y, monster.Z = floor(x), floor(y), floor(z)
+    return monster, index
+end

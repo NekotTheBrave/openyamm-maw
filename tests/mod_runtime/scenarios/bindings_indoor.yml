@@ -58,3 +58,14 @@ steps:
       return before ~= 5 and before ~= 11, removed[1], removed[2], removed[3], back[1], back[2], back[3], hidden,
         m.AIState ~= 19, m.Velocity == speed + 50, m.AIType, m.MoveSpeed == Game.MonstersTxt[m.Id].MoveSpeed
     expect: "true\t11\t0\ttrue\ttrue\ttrue\tfalse\t19\ttrue\ttrue\t0\ttrue"
+# Where a point stands indoors: the party is in a room with a floor under it, and a point far outside the map is
+# in none. A monster summoned beside the party joins the map's list.
+- mod_lua:
+    code: |
+      local before = Map.Monsters.Count
+      local room = Map.RoomFromPoint(Party.X, Party.Y, Party.Z + 10)
+      local floorLevel = Map.GetFloorLevel(Party.X, Party.Y, Party.Z + 10, room)
+      local m = SummonMonster(1, Party.X, Party.Y, Party.Z)
+      return room > 0, math.abs(floorLevel - Party.Z) < 64, Map.RoomFromPoint(Party.X + 100000, Party.Y, Party.Z),
+        Map.GetFloorLevel(Party.X + 100000, Party.Y, Party.Z, 0), Map.Monsters.Count - before, m.Id, m.HP > 0
+    expect: "true\ttrue\t0\t-30000\t1\t1\ttrue"

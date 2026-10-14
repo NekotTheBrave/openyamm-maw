@@ -426,6 +426,7 @@ public:
         float x,
         float y,
         float z) override;
+    ModPointInfo modPointInfo(float x, float y, float z) const override;
     bool summonHostileMonsterById(
         int16_t monsterId,
         uint32_t count,

@@ -2480,6 +2480,14 @@ int nativeMapMonsterSet(lua_State *pLuaState)
     IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
     const int64_t actorIndex = integerArgument(pLuaState, 1);
     const std::optional<GameplayModActorField> actorField = actorFieldFromName(luaL_checkstring(pLuaState, 2));
+
+    // A field the engine does not keep (a flag, say, written as true) stays with the script.
+    if (!actorField.has_value() || !lua_isnumber(pLuaState, 3))
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
     int64_t value = integerArgument(pLuaState, 3);
 
     // To the engine a speed of 0 is "its kind's speed". A script's 0 means a monster that does not move, so it is
@@ -2495,6 +2503,65 @@ int nativeMapMonsterSet(lua_State *pLuaState)
         && pWorld->setModActorField(static_cast<size_t>(actorIndex), *actorField, value);
     lua_pushboolean(pLuaState, handled);
     return 1;
+}
+
+// modrt.summonMonster(id, x, y, z): puts one monster of that kind on the map near the point, hostile to the
+// party, and returns its index in Map.Monsters, or nothing when the engine could not place one.
+int nativeSummonMonster(lua_State *pLuaState)
+{
+    IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+    const int64_t monsterId = integerArgument(pLuaState, 1);
+
+    if (pWorld == nullptr || monsterId <= 0 || monsterId > INT16_MAX)
+    {
+        return 0;
+    }
+
+    const size_t countBefore = pWorld->mapActorCount();
+
+    if (!pWorld->summonHostileMonsterById(
+            static_cast<int16_t>(monsterId),
+            1,
+            static_cast<float>(luaL_checknumber(pLuaState, 2)),
+            static_cast<float>(luaL_checknumber(pLuaState, 3)),
+            static_cast<float>(luaL_checknumber(pLuaState, 4)),
+            0)
+        || pWorld->mapActorCount() != countBefore + 1)
+    {
+        return 0;
+    }
+
+    lua_pushinteger(pLuaState, static_cast<lua_Integer>(countBefore));
+    return 1;
+}
+
+// modrt.mapPointInfo(x, y, z): the room the point is in (0 outdoors, and indoors when it is in none) and the height
+// of the floor or ground under it, or nothing for the height when there is none.
+int nativeMapPointInfo(lua_State *pLuaState)
+{
+    const IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+
+    if (pWorld == nullptr)
+    {
+        return 0;
+    }
+
+    const IGameplayWorldRuntime::ModPointInfo info = pWorld->modPointInfo(
+        static_cast<float>(luaL_checknumber(pLuaState, 1)),
+        static_cast<float>(luaL_checknumber(pLuaState, 2)),
+        static_cast<float>(luaL_optnumber(pLuaState, 3, 0.0)));
+    lua_pushinteger(pLuaState, info.room);
+
+    if (info.floorZ)
+    {
+        lua_pushnumber(pLuaState, *info.floorZ);
+    }
+    else
+    {
+        lua_pushnil(pLuaState);
+    }
+
+    return 2;
 }
 
 // modrt.mapMonstersResetSpeed(): every map monster moves at its kind's speed again. The original engine does not
@@ -2682,6 +2749,8 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"mapMonsterGet", nativeMapMonsterGet},
         {"mapMonsterSet", nativeMapMonsterSet},
         {"mapMonstersResetSpeed", nativeMapMonstersResetSpeed},
+        {"summonMonster", nativeSummonMonster},
+        {"mapPointInfo", nativeMapPointInfo},
         {"gameGet", nativeGameGet},
         {"castSpell", nativeCastSpell},
         {"showStatusText", nativeShowStatusText},

@@ -1,0 +1,104 @@
+id: mod_runtime.melee_event_indoor
+title: Indoors too a party blow and a monster's blow raise the damage events, and the handlers' results apply
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: d05.blv
+    party:
+      gold: 100
+      food: 5
+      members:
+      - name: Striker
+        class: Knight
+        level: 60
+        might: 30
+        endurance: 3000
+        accuracy: 200
+        skills:
+        - name: Sword
+          level: 6
+          mastery: 2
+        equipment:
+          main_hand: 1
+# Indoors the party attacks what it can see: a monster has to be on screen and in line of sight. ProbeRound fans
+# hostile monsters out in front of the party, far enough (260) to be in view and inside a blow's reach (407). A
+# ring close around the party, as the outdoor scenario uses, puts them below the view and nothing is hit. Some of
+# the fan lands behind a wall, so each round only counts on some of them.
+- mod_lua:
+    code: |
+      Dealt, Taken = {}, {}
+      function events.CalcDamageToMonster(t)
+        local attack, targetIndex = WhoHitMonster()
+        Dealt[#Dealt + 1] = {
+          kind = t.DamageKind, byPlayer = t.ByPlayer, playerIndex = t.PlayerIndex,
+          samePlayer = attack ~= nil and attack.Player == t.Player, monsterIndex = t.MonsterIndex,
+          targetIndex = targetIndex, hpBefore = t.Monster.HP, rawPositive = t.Damage > 0,
+        }
+        t.Result = 1234
+      end
+      function events.CalcDamageToPlayer(t)
+        local attack = WhoHitPlayer()
+        Taken[#Taken + 1] = {
+          byMonster = attack ~= nil and attack.Monster ~= nil, playerIndex = t.PlayerIndex, hpBefore = t.Player.HP,
+        }
+        t.Result = 7
+      end
+      function ProbeRound()
+        for condition = 0, Party[0].Conditions.High do
+          Party[0].Conditions[condition] = 0
+        end
+        Party[0].HP = Party[0].FullHPBase
+        local placed = 0
+        for i = 0, Map.Monsters.High do
+          local m = Map.Monsters[i]
+          if placed < 12 and m.Hostile and not m.IsDead then
+            local angle = (placed - 6) * math.pi / 40
+            m.X = math.floor(Party.X + math.cos(angle) * 260)
+            m.Y = math.floor(Party.Y + math.sin(angle) * 260)
+            m.Z = Party.Z
+            -- Only until the first blow lands: its monster's loss is counted in 1234s afterwards.
+            if #Dealt == 0 then m.HP = 30000 end
+            placed = placed + 1
+          end
+        end
+        return placed
+      end
+      return ProbeRound() > 0
+    expect: "true"
+- press_action: {action: attack, seconds: 3}
+- mod_lua: {code: "return ProbeRound() > 0", expect: "true"}
+- press_action: {action: attack, seconds: 3}
+- mod_lua: {code: "return ProbeRound() > 0", expect: "true"}
+- press_action: {action: attack, seconds: 3}
+# The party's blows: physical, by the party's member, on the monster the event names, and the handler's 1234 is
+# what the monster lost.
+- mod_lua:
+    code: |
+      local hit = Dealt[1]
+      if not hit then return "no blow landed" end
+      local lost = hit.hpBefore - Map.Monsters[hit.monsterIndex].HP
+      return #Dealt > 0, hit.kind, hit.byPlayer, hit.playerIndex, hit.samePlayer, hit.monsterIndex == hit.targetIndex,
+        hit.rawPositive, lost > 0 and lost % 1234 == 0
+    expect: "true\t4\ttrue\t0\ttrue\ttrue\ttrue\ttrue"
+# The monsters' blows on the party: the event names the attacker, and the handler's 7 is what each one took.
+- mod_lua:
+    code: |
+      local hit = Taken[1]
+      if not hit then return "no blow taken" end
+      return #Taken > 0, hit.byMonster, hit.playerIndex
+    expect: "true\ttrue\t0"
+- mod_lua:
+    code: |
+      Party[0].HP = Party[0].FullHPBase
+      TakenBefore, HpBefore = #Taken, Party[0].HP
+      return ProbeRound() > 0
+    expect: "true"
+- advance_runtime: {seconds: 10}
+- mod_lua:
+    code: |
+      local blows = #Taken - TakenBefore
+      return blows > 0, HpBefore - Party[0].HP == 7 * blows
+    expect: "true\ttrue"
