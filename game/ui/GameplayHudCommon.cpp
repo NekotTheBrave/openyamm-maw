@@ -1301,16 +1301,83 @@ bgfx::TextureHandle GameplayHudCommon::ensureHudFontMainTextureColor(
     return colorTextures.back().textureHandle;
 }
 
+size_t GameplayHudCommon::hudColorCodeLength(const std::string &text, size_t index)
+{
+    if (index >= text.size() || text[index] != '\f')
+    {
+        return 0;
+    }
+
+    size_t length = 1;
+
+    while (length < 6 && index + length < text.size() && text[index + length] >= '0' && text[index + length] <= '9')
+    {
+        ++length;
+    }
+
+    return length;
+}
+
+bool GameplayHudCommon::hasHudColorCodes(const std::string &text)
+{
+    return text.find('\f') != std::string::npos;
+}
+
+std::vector<GameplayHudCommon::HudColorRun> GameplayHudCommon::splitHudColorRuns(const std::string &text)
+{
+    std::vector<HudColorRun> runs(1);
+
+    for (size_t index = 0; index < text.size(); ++index)
+    {
+        const size_t codeLength = hudColorCodeLength(text, index);
+
+        if (codeLength == 0)
+        {
+            runs.back().text.push_back(text[index]);
+            continue;
+        }
+
+        const int color = codeLength > 1 ? std::stoi(text.substr(index + 1, codeLength - 1)) : 0;
+        std::optional<uint32_t> colorAbgr;
+
+        if (color != 0)
+        {
+            const uint32_t red = ((static_cast<uint32_t>(color) >> 11) & 31u) * 255u / 31u;
+            const uint32_t green = ((static_cast<uint32_t>(color) >> 5) & 63u) * 255u / 63u;
+            const uint32_t blue = (static_cast<uint32_t>(color) & 31u) * 255u / 31u;
+            colorAbgr = 0xff000000u | (blue << 16) | (green << 8) | red;
+        }
+
+        if (!runs.back().text.empty())
+        {
+            runs.push_back({});
+        }
+
+        runs.back().colorAbgr = colorAbgr;
+        index += codeLength - 1;
+    }
+
+    return runs;
+}
+
 float GameplayHudCommon::measureHudTextWidth(const GameplayHudFontData &font, const std::string &text)
 {
     float widthPixels = 0.0f;
     uint8_t previous = 0;
 
-    for (unsigned char character : text)
+    for (size_t index = 0; index < text.size(); ++index)
     {
+        const unsigned char character = static_cast<unsigned char>(text[index]);
+
         if (character == '\r' || character == '\n')
         {
             break;
+        }
+
+        if (const size_t codeLength = hudColorCodeLength(text, index); codeLength > 0)
+        {
+            index += codeLength - 1;
+            continue;
         }
 
         if (character < font.firstChar || character > font.lastChar)
@@ -1427,6 +1494,29 @@ std::vector<std::string> GameplayHudCommon::wrapHudTextToWidth(
         lines.push_back(currentLine);
     }
 
+    // A colour runs on over a line break: each line after the first starts in the colour the one before it ended in.
+    std::string openColor;
+
+    for (std::string &line : lines)
+    {
+        const std::string startColor = openColor;
+
+        for (size_t index = 0; index < line.size(); ++index)
+        {
+            if (const size_t codeLength = hudColorCodeLength(line, index); codeLength > 0)
+            {
+                const std::string code = line.substr(index, codeLength);
+                openColor = code == "\f00000" ? std::string() : code;
+                index += codeLength - 1;
+            }
+        }
+
+        if (!startColor.empty())
+        {
+            line.insert(0, startColor);
+        }
+    }
+
     return lines;
 }
 
@@ -1447,11 +1537,19 @@ void GameplayHudCommon::renderHudFontLayer(
     float penX = textX;
     uint8_t previous = 0;
 
-    for (unsigned char character : text)
+    for (size_t index = 0; index < text.size(); ++index)
     {
+        const unsigned char character = static_cast<unsigned char>(text[index]);
+
         if (character == '\r' || character == '\n')
         {
             break;
+        }
+
+        if (const size_t codeLength = hudColorCodeLength(text, index); codeLength > 0)
+        {
+            index += codeLength - 1;
+            continue;
         }
 
         if (character < font.firstChar || character > font.lastChar)
@@ -1587,14 +1685,21 @@ void GameplayHudCommon::renderLayoutLabel(
     textX = std::round(textX);
     textY = std::round(textY);
 
-    bgfx::TextureHandle coloredMainTextureHandle = ensureHudFontColorFn(*pFont, layout.textColorAbgr);
-
-    if (!bgfx::isValid(coloredMainTextureHandle))
-    {
-        coloredMainTextureHandle = pFont->mainTextureHandle;
-    }
-
     renderHudFontLayerFn(*pFont, pFont->shadowTextureHandle, clampedLabel, textX, textY, fontScale);
-    renderHudFontLayerFn(*pFont, coloredMainTextureHandle, clampedLabel, textX, textY, fontScale);
+
+    // Each run of the text in its own colour, the label's own where the text names none.
+    for (const HudColorRun &run : splitHudColorRuns(clampedLabel))
+    {
+        bgfx::TextureHandle coloredMainTextureHandle =
+            ensureHudFontColorFn(*pFont, run.colorAbgr.value_or(layout.textColorAbgr));
+
+        if (!bgfx::isValid(coloredMainTextureHandle))
+        {
+            coloredMainTextureHandle = pFont->mainTextureHandle;
+        }
+
+        renderHudFontLayerFn(*pFont, coloredMainTextureHandle, run.text, textX, textY, fontScale);
+        textX += measureHudTextWidth(*pFont, run.text) * fontScale;
+    }
 }
 } // namespace OpenYAMM::Game

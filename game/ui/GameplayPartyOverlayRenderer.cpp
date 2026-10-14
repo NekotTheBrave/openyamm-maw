@@ -5955,7 +5955,7 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
     // A mod's own wording of the box (the original's BuildItemInformationBox). The box has one line for the type
     // and one row for the basic statistic, and a mod's texts may run over several lines each, so whatever follows
     // the first line of the type goes, with the statistic and the enchantment, into the block under it, which
-    // wraps. The original's colour marks are taken out: the box draws in one colour.
+    // wraps. The original's colour marks stay in: the box draws them.
     if (!showBrokenOnly && !showUnidentifiedOnly && activeModHooks() != nullptr)
     {
         ModItemTooltip texts = {
@@ -5970,14 +5970,14 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
 
         if (!(texts == engineTexts))
         {
-            itemName = stripMm8ColorCodes(texts.name);
-            itemDescription = stripMm8ColorCodes(texts.description);
-            const std::string typeText = stripMm8ColorCodes(texts.type);
+            itemName = texts.name;
+            itemDescription = texts.description;
+            const std::string &typeText = texts.type;
             const size_t firstLineEnd = typeText.find('\n');
             itemTypeLine = typeText.substr(0, firstLineEnd);
             std::string block = firstLineEnd == std::string::npos ? std::string {} : typeText.substr(firstLineEnd + 1);
 
-            for (const std::string &part : {stripMm8ColorCodes(texts.basicStat), stripMm8ColorCodes(texts.enchantment)})
+            for (const std::string &part : {texts.basicStat, texts.enchantment})
             {
                 if (!part.empty())
                 {
@@ -6452,8 +6452,17 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
 
             for (const std::string &wrappedLine : specialDetailLines)
             {
-                context.renderHudFontLayer(*pDetailFont, pDetailFont->shadowTextureHandle, wrappedLine, textX, textY, detailFontScale);
-                context.renderHudFontLayer(*pDetailFont, coloredMainTextureHandle, wrappedLine, textX, textY, detailFontScale);
+                if (GameplayHudCommon::hasHudColorCodes(wrappedLine))
+                {
+                    context.renderHudTextColored(
+                        *pDetailFont, wrappedLine, textX, textY, detailFontScale, pDetailValueLayout->textColorAbgr);
+                }
+                else
+                {
+                    context.renderHudFontLayer(*pDetailFont, pDetailFont->shadowTextureHandle, wrappedLine, textX, textY, detailFontScale);
+                    context.renderHudFontLayer(*pDetailFont, coloredMainTextureHandle, wrappedLine, textX, textY, detailFontScale);
+                }
+
                 textY += detailLineHeight;
             }
         }
@@ -6505,6 +6514,14 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
         {
             const float y = clip.y + i * bodyLineHeight;
             const std::string &line = descriptionLines[i + interaction.itemInspectScrollLines];
+
+            if (GameplayHudCommon::hasHudColorCodes(line))
+            {
+                context.renderHudTextColored(
+                    *pBodyFont, line, clip.x, y, popupScale, pDescriptionLayout->textColorAbgr, &clip);
+                continue;
+            }
+
             context.renderHudFontLayer(*pBodyFont, pBodyFont->shadowTextureHandle, line,
                 clip.x, y, popupScale, &clip);
             context.renderHudFontLayer(*pBodyFont, main, line, clip.x, y, popupScale, &clip);

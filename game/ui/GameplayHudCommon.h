@@ -256,6 +256,19 @@ public:
         uint32_t colorAbgr,
         std::vector<GameplayHudFontColorTextureData> &colorTextures);
     static float measureHudTextWidth(const GameplayHudFontData &font, const std::string &text);
+
+    // Coloured text, as the original marks it: a form feed and five digits, a 16-bit colour (5 bits red, 6 green,
+    // 5 blue), with 00000 for "back to the text's own colour". The marks take no room and draw nothing.
+    struct HudColorRun
+    {
+        std::string text;
+        std::optional<uint32_t> colorAbgr;
+    };
+    // The length of the colour mark at `index`, 0 when there is none.
+    static size_t hudColorCodeLength(const std::string &text, size_t index);
+    static bool hasHudColorCodes(const std::string &text);
+    // The text cut where its colour changes; a run without a colour is in the text's own.
+    static std::vector<HudColorRun> splitHudColorRuns(const std::string &text);
     static std::string clampHudTextToWidth(const GameplayHudFontData &font, const std::string &text, float maxWidth);
     static std::vector<std::string> wrapHudTextToWidth(
         const GameplayHudFontData &font,

@@ -3860,6 +3860,26 @@ float GameplayScreenRuntime::measureHudTextWidth(const HudFontHandle &font, cons
     return uiRuntime().measureHudTextWidth(font, text);
 }
 
+void GameplayScreenRuntime::renderHudTextColored(
+    const HudFontHandle &font,
+    const std::string &text,
+    float textX,
+    float textY,
+    float fontScale,
+    uint32_t defaultColorAbgr,
+    const GameplayResolvedHudLayoutElement *pClip) const
+{
+    renderHudFontLayer(font, font.shadowTextureHandle, text, textX, textY, fontScale, pClip);
+
+    for (const GameplayHudCommon::HudColorRun &run : GameplayHudCommon::splitHudColorRuns(text))
+    {
+        const bgfx::TextureHandle textureHandle =
+            ensureHudFontMainTextureColor(font, run.colorAbgr.value_or(defaultColorAbgr));
+        renderHudFontLayer(font, textureHandle, run.text, textX, textY, fontScale, pClip);
+        textX += measureHudTextWidth(font, run.text) * fontScale;
+    }
+}
+
 std::vector<std::string> GameplayScreenRuntime::wrapHudTextToWidth(
     const HudFontHandle &font,
     const std::string &text,

@@ -386,6 +386,16 @@ public:
         const ResolvedHudLayoutElement *pClip = nullptr) const;
     std::optional<HudFontHandle> findHudFont(const std::string &fontName) const;
     float measureHudTextWidth(const HudFontHandle &font, const std::string &text) const;
+    // A line of text with the original's colour marks honoured: shadow, then each run in its colour, the default
+    // where the text names none.
+    void renderHudTextColored(
+        const HudFontHandle &font,
+        const std::string &text,
+        float textX,
+        float textY,
+        float fontScale,
+        uint32_t defaultColorAbgr,
+        const GameplayResolvedHudLayoutElement *pClip = nullptr) const;
     std::vector<std::string> wrapHudTextToWidth(
         const HudFontHandle &font,
         const std::string &text,
