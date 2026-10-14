@@ -1,0 +1,57 @@
+id: mod_runtime.monster_buffs
+title: Map.Monsters[i].SpellBuffs reach the engine's spell effects on the monster
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 100
+      food: 5
+      members:
+      - name: Watcher
+        class: Knight
+        level: 60
+        endurance: 3000
+        skills: []
+        equipment: {}
+# A monster's spell effects by const.MonsterBuff: ExpireTime is game time (128 ticks to the second, 0 when off). MAW
+# stuns with Paralyze (6) and slows with Slow (7), whose Power is the slowing factor. A paralyzed monster stays where
+# it is.
+- mod_lua:
+    code: |
+      Target = nil
+      for i = 0, Map.Monsters.High do
+        local m = Map.Monsters[i]
+        if m.Hostile and not m.IsDead then Target = i break end
+      end
+      local m = Map.Monsters[Target]
+      m.X, m.Y, m.Z = Party.X + 1500, Party.Y, Party.Z
+      local buff = m.SpellBuffs[const.MonsterBuff.Paralyze]
+      local before = buff.ExpireTime
+      buff.ExpireTime = Game.Time + 128 * 5
+      local left = buff.ExpireTime - Game.Time
+      StartX, StartY = m.X, m.Y
+      return before, left > 128 * 4 and left <= 128 * 5
+    expect: "0\ttrue"
+- advance_runtime: {seconds: 2}
+- mod_lua:
+    code: |
+      local m = Map.Monsters[Target]
+      local left = m.SpellBuffs[6].ExpireTime - Game.Time
+      return m.X == StartX and m.Y == StartY, left > 0 and left < 128 * 4
+    expect: "true\ttrue"
+- advance_runtime: {seconds: 4}
+- mod_lua:
+    code: |
+      local m = Map.Monsters[Target]
+      local slow = m.SpellBuffs[const.MonsterBuff.Slow]
+      slow.ExpireTime = Game.Time + 128 * 10
+      slow.Power = 4
+      -- Stoned (5) is not an effect the engine has: what a script writes stays with the script.
+      m.SpellBuffs[5].ExpireTime = 12345
+      return m.SpellBuffs[6].ExpireTime, slow.Power, slow.ExpireTime > Game.Time, m.SpellBuffs[5].ExpireTime,
+        m.SpellBuffs.Count
+    expect: "0\t4\ttrue\t12345\t26"

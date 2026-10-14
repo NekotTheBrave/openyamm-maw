@@ -186,6 +186,13 @@ struct GameplayCombatFeedbackEvent
     bool killed = false;
 };
 
+// One of a map actor's spell effects as a mod sees it: the seconds it has left and its power.
+struct GameplayModActorBuff
+{
+    float remainingSeconds = 0.0f;
+    int power = 0;
+};
+
 enum class GameplayActorControlMode : uint8_t
 {
     None = 0,
@@ -674,6 +681,25 @@ public:
         static_cast<void>(actorIndex);
         static_cast<void>(field);
         static_cast<void>(value);
+        return false;
+    }
+    // Mod runtime access to one of a map actor's spell effects, in the original's numbering (const.MonsterBuff; see
+    // ModActorBuffs.h). False when the actor or the effect is not available.
+    virtual bool modActorBuff(size_t actorIndex, int buffId, GameplayModActorBuff &buff) const
+    {
+        static_cast<void>(actorIndex);
+        static_cast<void>(buffId);
+        static_cast<void>(buff);
+        return false;
+    }
+    virtual bool setModActorBuff(
+        size_t actorIndex, int buffId, const GameplayModActorBuff &buff, bool setSeconds, bool setPower)
+    {
+        static_cast<void>(actorIndex);
+        static_cast<void>(buffId);
+        static_cast<void>(buff);
+        static_cast<void>(setSeconds);
+        static_cast<void>(setPower);
         return false;
     }
     // Where a point stands, for mods that place monsters. Outdoors `room` is 0 and the floor is the ground under

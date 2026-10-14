@@ -41,7 +41,8 @@ steps:
           bow: 849
 # pseudoSpawnpoint is what MAW spawns everything with (boss adds, respawns, summons, bounty hunts, the arena): it
 # picks points around the one given, checks them against the map, and calls SummonMonster. Three first tier
-# Goblins near the party. Run with the MAW mods.yml.
+# Goblins near the party, on the ground: within a couple of units of it, as a point on a slope can round either way
+# (one run in six or so came out one off). Run with the MAW mods.yml.
 - mod_lua:
     code: |
       Before = Map.Monsters.Count
@@ -51,7 +52,7 @@ steps:
       local first = Spawned[1]
       local distance = math.sqrt((first.X - Party.X - 600) ^ 2 + (first.Y - Party.Y) ^ 2)
       return #Spawned, Map.Monsters.Count - Before, first.Id, first.Group, distance <= 257, first.HP > 0,
-        first.Z == Map.GetGroundLevel(first.X, first.Y)
+        math.abs(first.Z - Map.GetGroundLevel(first.X, first.Y)) <= 2
     expect: "3\t3\t550\t2\ttrue\ttrue\ttrue"
 # MAW notices the longer list and works its own numbers out for the newcomers: a Goblin's 21 hit points and level 2,
 # as for the map's own Goblins (parity_new_sorpigal_monsters.yml).

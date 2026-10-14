@@ -356,6 +356,9 @@ public:
     size_t mapActorCount() const override;
     bool modActorField(size_t actorIndex, GameplayModActorField field, int64_t &value) const override;
     bool setModActorField(size_t actorIndex, GameplayModActorField field, int64_t value) override;
+    bool modActorBuff(size_t actorIndex, int buffId, GameplayModActorBuff &buff) const override;
+    bool setModActorBuff(
+        size_t actorIndex, int buffId, const GameplayModActorBuff &buff, bool setSeconds, bool setPower) override;
     const MapActorAiState *mapActorAiState(size_t actorIndex) const;
     std::vector<int16_t> activatedIndoorSectorIds() const;
     size_t bloodSplatCount() const;

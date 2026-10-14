@@ -659,6 +659,9 @@ public:
     size_t mapActorCount() const override;
     bool modActorField(size_t actorIndex, GameplayModActorField field, int64_t &value) const override;
     bool setModActorField(size_t actorIndex, GameplayModActorField field, int64_t value) override;
+    bool modActorBuff(size_t actorIndex, int buffId, GameplayModActorBuff &buff) const override;
+    bool setModActorBuff(
+        size_t actorIndex, int buffId, const GameplayModActorBuff &buff, bool setSeconds, bool setPower) override;
     bool actorRuntimeState(size_t actorIndex, GameplayRuntimeActorState &state) const override;
     std::optional<uint32_t> corpseLootValue(size_t actorIndex) const override;
     bool setMapActorPosition(size_t actorIndex, float x, float y, float z) override;

@@ -546,7 +546,13 @@ struct HouseVideoPlayer::StreamingSession
 
     void stop()
     {
-        stopRequested.store(true);
+        // Under the queue's lock: the worker checks the flag under it just before it sleeps, and a flag set in
+        // between (with its wake-up) would leave it asleep for good, and stop() waiting on it (skipping a cutscene
+        // hung the game).
+        {
+            std::lock_guard<std::mutex> lock(queueMutex);
+            stopRequested.store(true);
+        }
 
         if (worker.joinable())
         {

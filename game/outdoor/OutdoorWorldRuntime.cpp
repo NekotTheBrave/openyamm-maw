@@ -1,4 +1,5 @@
 #include "game/outdoor/OutdoorWorldRuntime.h"
+#include "game/gameplay/ModActorBuffs.h"
 #include "game/gameplay/ActorVocalizationRules.h"
 #include "game/audio/ActorAudioRules.h"
 
@@ -14027,6 +14028,18 @@ bool OutdoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField
     }
 
     return false;
+}
+
+bool OutdoorWorldRuntime::modActorBuff(size_t actorIndex, int buffId, GameplayModActorBuff &buff) const
+{
+    return actorIndex < m_mapActors.size() && readModActorBuff(m_mapActors[actorIndex], buffId, buff);
+}
+
+bool OutdoorWorldRuntime::setModActorBuff(
+    size_t actorIndex, int buffId, const GameplayModActorBuff &buff, bool setSeconds, bool setPower)
+{
+    return actorIndex < m_mapActors.size()
+        && writeModActorBuff(m_mapActors[actorIndex], buffId, buff, setSeconds, setPower);
 }
 
 bool OutdoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorField field, int64_t value)

@@ -2926,6 +2926,104 @@ int nativeMapMonsterSet(lua_State *pLuaState)
     return 1;
 }
 
+// modrt.monsterBuffGet(actor, buff): a map monster's spell effect (const.MonsterBuff): the seconds it has left and
+// its power; nothing when the engine has no such effect.
+int nativeMonsterBuffGet(lua_State *pLuaState)
+{
+    const IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+    const int64_t actorIndex = integerArgument(pLuaState, 1);
+    const int64_t buffId = integerArgument(pLuaState, 2);
+    GameplayModActorBuff buff = {};
+
+    if (pWorld == nullptr || actorIndex < 0
+        || !pWorld->modActorBuff(static_cast<size_t>(actorIndex), static_cast<int>(buffId), buff))
+    {
+        return 0;
+    }
+
+    lua_pushnumber(pLuaState, buff.remainingSeconds);
+    lua_pushinteger(pLuaState, buff.power);
+    return 2;
+}
+
+// modrt.monsterBuffSet(actor, buff, seconds, power): sets what is given (nil leaves it). False when the engine has
+// no such effect.
+int nativeMonsterBuffSet(lua_State *pLuaState)
+{
+    IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+    const int64_t actorIndex = integerArgument(pLuaState, 1);
+    const int64_t buffId = integerArgument(pLuaState, 2);
+    const bool setSeconds = lua_isnumber(pLuaState, 3);
+    const bool setPower = lua_isnumber(pLuaState, 4);
+    GameplayModActorBuff buff = {};
+    buff.remainingSeconds = setSeconds ? static_cast<float>(lua_tonumber(pLuaState, 3)) : 0.0f;
+    buff.power = setPower ? static_cast<int>(lua_tointeger(pLuaState, 4)) : 0;
+    lua_pushboolean(
+        pLuaState,
+        pWorld != nullptr && actorIndex >= 0
+            && pWorld->setModActorBuff(
+                static_cast<size_t>(actorIndex), static_cast<int>(buffId), buff, setSeconds, setPower));
+    return 1;
+}
+
+// The texts of a Game.SpellsTxt row and where the spell entry keeps them: what the spellbook shows of a spell.
+std::string *spellTextField(SpellEntry &entry, const std::string &field)
+{
+    if (field == "Name") return &entry.name;
+    if (field == "ShortName") return &entry.shortName;
+    if (field == "Description") return &entry.description;
+    if (field == "Normal") return &entry.normalText;
+    if (field == "Expert") return &entry.expertText;
+    if (field == "Master") return &entry.masterText;
+    if (field == "GM") return &entry.grandmasterText;
+    return nullptr;
+}
+
+// modrt.spellTextGet(id, field): a text of a spell (see spellTextField); nothing for a spell or field there is not.
+int nativeSpellTextGet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t spellId = integerArgument(pLuaState, 1);
+    const SpellEntry *pEntry =
+        pData != nullptr ? pData->getSpellTable().findById(static_cast<int>(spellId)) : nullptr;
+    // The table belongs to the game's data loader, which hands it out read-only; it is not a constant object.
+    const std::string *pText =
+        pEntry != nullptr ? spellTextField(const_cast<SpellEntry &>(*pEntry), luaL_checkstring(pLuaState, 2)) : nullptr;
+
+    if (pText == nullptr)
+    {
+        return 0;
+    }
+
+    pushString(pLuaState, *pText);
+    return 1;
+}
+
+// modrt.spellTextSet(id, field, text): the spellbook shows the text from then on. Not the name: the engine finds
+// spells by name (a quick spell is kept by its name), so a script's name for a spell stays with the scripts.
+int nativeSpellTextSet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t spellId = integerArgument(pLuaState, 1);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+    size_t length = 0;
+    const char *pText = luaL_checklstring(pLuaState, 3, &length);
+    const SpellEntry *pEntry =
+        pData != nullptr ? pData->getSpellTable().findById(static_cast<int>(spellId)) : nullptr;
+    std::string *pField =
+        pEntry != nullptr && field != "Name" ? spellTextField(const_cast<SpellEntry &>(*pEntry), field) : nullptr;
+
+    if (pField == nullptr)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    pField->assign(pText, length);
+    lua_pushboolean(pLuaState, true);
+    return 1;
+}
+
 // The four figures of a Game.Spells row by mastery, Normal to GM, and where the spell entry keeps them.
 struct SpellMasteryField
 {
@@ -3478,6 +3576,10 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"mapStatsSet", nativeMapStatsSet},
         {"mapMonsterGet", nativeMapMonsterGet},
         {"mapMonsterSet", nativeMapMonsterSet},
+        {"monsterBuffGet", nativeMonsterBuffGet},
+        {"spellTextGet", nativeSpellTextGet},
+        {"spellTextSet", nativeSpellTextSet},
+        {"monsterBuffSet", nativeMonsterBuffSet},
         {"mapMonstersResetSpeed", nativeMapMonstersResetSpeed},
         {"summonMonster", nativeSummonMonster},
         {"summonItem", nativeSummonItem},

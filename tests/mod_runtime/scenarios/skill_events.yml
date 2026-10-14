@@ -87,3 +87,16 @@ steps:
       Game.GlobalTxt[47] = before
       return before, written, Game.GlobalTxt[144]
     expect: "Condition\tM/R:1/0||\tMight"
+# Game.SpellsTxt[id] has each spell's own texts. A name a script gives one spell is that spell's alone (MAW renames
+# spell 91 "Vampiric Aura"; when the table was unbound every spell read back the last name written, and Ice Bolt
+# showed as Vampiric Aura). A description written reaches the spellbook's entry.
+- mod_lua:
+    code: |
+      Game.SpellsTxt[91].Name = "Vampiric Aura"
+      local before = Game.SpellsTxt[2].Description
+      Game.SpellsTxt[2].Description = "A test description."
+      local written = Game.SpellsTxt[2].Description
+      Game.SpellsTxt[2].Description = before
+      return Game.SpellsTxt[26].Name, Game.SpellsTxt[91].Name, Game.SpellsTxt[2].Name, written,
+        Game.SpellsTxt[2].Description == before
+    expect: "Ice Bolt\tVampiric Aura\tFire Bolt\tA test description.\ttrue"

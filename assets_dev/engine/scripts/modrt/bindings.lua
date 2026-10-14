@@ -250,6 +250,12 @@ function Bindings.ensureConstants()
         Stunned = 8, Fidget = 9, Interact = 10, Removed = 11, RangedAttack2 = 12, CastSpell = 13, Stoned = 14,
         Paralyzed = 15, Resurrect = 16, Summoned = 17, RangedAttack4 = 18, Invisible = 19,
     })
+    fallback("MonsterBuff", {
+        Null = 0, Charm = 1, Summoned = 2, ShrinkingRay = 3, Fear = 4, Stoned = 5, Paralyze = 6, Slow = 7,
+        Berserk = 8, MassDistortion = 9, Fate = 10, Enslave = 11, DayOfProtection = 12, HourOfPower = 13, Shield = 14,
+        StoneSkin = 15, Bless = 16, Heroism = 17, Haste = 18, PainReflection = 19, Hammerhands = 20,
+        ArmorHalved = 21, MeleeOnly = 22, DamageHalved = 23, Wander = 24, Mistform = 25,
+    })
 
     -- MMExtension's constants describe plain MM8. Merge renumbers races, classes and monster kinds in scripts
     -- that are not run here (they patch the original executable), so its numbering is restated.
@@ -1310,6 +1316,59 @@ local spellsTxt = boundObject("Game.Spells", {
 })
 local stdItemsTxt = enchantTable("Game.StdItemsTxt", false, 9)
 
+-- Game.SpellsTxt[id]: a spell's texts, Name, ShortName, Description and Normal, Expert, Master, GM (what each mastery
+-- gives). Writes reach the spellbook, except the name: the engine finds spells by name, so a name a script gives a
+-- spell (MAW calls Vampiric Weapon "Vampiric Aura") is what scripts read back, and the game keeps its own.
+local spellNameWrites = {}
+local SpellTextFields = {
+    Name = true, ShortName = true, Description = true, Normal = true, Expert = true, Master = true, GM = true,
+}
+
+local function spellTextRow(id)
+    return boundObject("Game.SpellsTxt[]", {
+        get = function(key)
+            if not SpellTextFields[key] then
+                return nil
+            end
+
+            if key == "Name" and spellNameWrites[id] ~= nil then
+                return spellNameWrites[id]
+            end
+
+            return modrt.spellTextGet(id, key)
+        end,
+        set = function(key, value)
+            if not SpellTextFields[key] then
+                return false
+            end
+
+            value = tostring(value)
+
+            if key == "Name" then
+                spellNameWrites[id] = value
+                return true
+            end
+
+            return modrt.spellTextSet(id, key, value)
+        end,
+    })
+end
+
+local spellTextRowAt = cached(spellTextRow)
+local spellTexts = boundObject("Game.SpellsTxt", {
+    index = function(id)
+        id = floor(id)
+
+        if id < 0 or id > (modrt.spellTxtGet(0, "#") or 0) then
+            return nil
+        end
+
+        return spellTextRowAt(id)
+    end,
+    get = sizeFields(function() return (modrt.spellTxtGet(0, "#") or 0) + 1 end),
+    range = function() return 0, modrt.spellTxtGet(0, "#") or 0 end,
+})
+
 -- Rows are numbered from 1, as monsters are. Scripts walk the table from 1 to High and expect a row at every
 -- number, so High is the end of the unbroken run from 1: the Merge's monsters. OpenYAMM numbers a few monsters
 -- of its own far above them; those rows can be reached by number but are not part of the walk.
@@ -1485,6 +1544,7 @@ Game = boundObject("Game", {
         SkillDesMaster = true, SkillDesGM = true, ClassDescriptions = true,
         CurrentPlayer = true, Time = true, Classes = true, ClassNames = true, ClassesExtra = true,
         HouseScreen = true, GlobalTxt = true, CurrentCharScreen = true, NPCText = true, HouseRules = true,
+        SpellsTxt = true,
     },
     get = function(key)
         if key == "ItemsTxt" then
@@ -1501,6 +1561,8 @@ Game = boundObject("Game", {
             return npcText
         elseif key == "HouseRules" then
             return houseRules
+        elseif key == "SpellsTxt" then
+            return spellTexts
         elseif key == "CurrentCharScreen" then
             -- The character screen's page, by const.CharScreens: 100 stats, 101 skills, 102 awards, 103 inventory.
             return modrt.gameGet("CurrentCharScreen") or 100
@@ -1557,6 +1619,68 @@ end
 
 -- A monster on the map: its own fields first, then its kind's row.
 local mapMonsterCache = {}
+-- Fields of monster spell effects the engine does not keep (Skill, Caster, Bits, and whole effects it has no
+-- field for), by monster and effect; they stay with the scripts.
+local monsterBuffWrites = {}
+-- Game time runs at 128 ticks to the real second, which is how the engine counts an effect's time.
+local TicksPerSecond = 128
+local MonsterBuffCount = 26
+
+-- Map.Monsters[i].SpellBuffs[b]: a monster's spell effects by const.MonsterBuff. ExpireTime (game time, 0 when the
+-- effect is off) and Power are the engine's; see ModActorBuffs.h for which effects it has.
+local function monsterSpellBuffs(index)
+    local buffs = {}
+
+    local function buff(id)
+        local key = index .. ":" .. id
+
+        return setmetatable({}, {
+            __index = function(_, field)
+                local seconds, power = modrt.monsterBuffGet(index, id)
+                local stash = monsterBuffWrites[key]
+
+                if seconds ~= nil and field == "ExpireTime" then
+                    return seconds > 0 and Game.Time + floor(seconds * TicksPerSecond) or 0
+                elseif seconds ~= nil and field == "Power" then
+                    return power
+                end
+
+                return stash and stash[field] or 0
+            end,
+            __newindex = function(_, field, value)
+                value = tonumber(value) or 0
+
+                if field == "ExpireTime" then
+                    local seconds = math.max(0, (value - Game.Time) / TicksPerSecond)
+
+                    if modrt.monsterBuffSet(index, id, seconds, nil) then
+                        return
+                    end
+                elseif field == "Power" and modrt.monsterBuffSet(index, id, nil, floor(value)) then
+                    return
+                end
+
+                monsterBuffWrites[key] = monsterBuffWrites[key] or {}
+                monsterBuffWrites[key][field] = value
+            end,
+        })
+    end
+
+    return boundObject("Map.Monsters[].SpellBuffs", {
+        index = function(id)
+            id = floor(id)
+
+            if id < 0 or id >= MonsterBuffCount then
+                return nil
+            end
+
+            buffs[id] = buffs[id] or buff(id)
+            return buffs[id]
+        end,
+        get = sizeFields(function() return MonsterBuffCount end),
+        range = function() return 0, MonsterBuffCount - 1 end,
+    })
+end
 
 local function mapMonster(index)
     local monster = mapMonsterCache[index]
@@ -1577,6 +1701,8 @@ local function mapMonster(index)
             GetIndex = function()
                 return index
             end,
+            -- Not a method: the record hands out its entries as they are.
+            SpellBuffs = monsterSpellBuffs(index),
         })
         mapMonsterCache[index] = monster
     end
@@ -1588,6 +1714,7 @@ end
 -- gave a monster: a map's monsters start every arrival at their kind's speed, as in the original.
 function Bindings.resetMapMonsters()
     mapMonsterCache = {}
+    monsterBuffWrites = {}
     modrt.mapMonstersResetSpeed()
 end
 

@@ -1,4 +1,5 @@
 #include "game/indoor/IndoorWorldRuntime.h"
+#include "game/gameplay/ModActorBuffs.h"
 
 #include "game/gameplay/InteractiveDecorationRules.h"
 #include "game/gameplay/ActorVocalizationRules.h"
@@ -11048,6 +11049,19 @@ bool IndoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField 
     }
 
     return false;
+}
+
+bool IndoorWorldRuntime::modActorBuff(size_t actorIndex, int buffId, GameplayModActorBuff &buff) const
+{
+    return actorIndex < m_mapActorAiStates.size()
+        && readModActorBuff(m_mapActorAiStates[actorIndex].spellEffects, buffId, buff);
+}
+
+bool IndoorWorldRuntime::setModActorBuff(
+    size_t actorIndex, int buffId, const GameplayModActorBuff &buff, bool setSeconds, bool setPower)
+{
+    return actorIndex < m_mapActorAiStates.size()
+        && writeModActorBuff(m_mapActorAiStates[actorIndex].spellEffects, buffId, buff, setSeconds, setPower);
 }
 
 bool IndoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorField field, int64_t value)
