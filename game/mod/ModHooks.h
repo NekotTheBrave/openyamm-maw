@@ -142,6 +142,19 @@ struct ModPlayerCastSpellEvent
     bool handled = false;
 };
 
+// A teacher is asked for a skill mastery (the original's CanTeachSkillMastery). The fields come in as the engine's
+// verdict: whether it would teach, for how much gold, and what the teacher says; the mod may change any of them.
+// `mastery` is 2 Expert, 3 Master, 4 Grandmaster.
+struct ModTeachSkillMasteryEvent
+{
+    size_t partyMemberIndex = 0;
+    std::string skillName;
+    int mastery = 0;
+    int cost = 0;
+    bool allow = false;
+    std::string text;
+};
+
 class Party;
 
 class IModHooks
@@ -224,6 +237,11 @@ public:
     // skills in armor class, the weapon skills in attack and damage. `statId` is the original engine's statistic
     // number (7 HP, 8 SP, 9 armor class, 25 melee attack, 26 melee damage, 29 ranged attack, 30 ranged damage).
     virtual int skillStatBonus(const Character &character, int statId, int engineBonus) = 0;
+    // A teacher is asked for a skill mastery; see ModTeachSkillMasteryEvent.
+    virtual void canTeachSkillMastery(ModTeachSkillMasteryEvent &event) = 0;
+    // The active member has trained a level: how long the training takes, in game minutes (the original's
+    // CalcTrainingTime). `engineMinutes` is the engine's.
+    virtual float trainingMinutes(float engineMinutes) = 0;
 };
 
 IModHooks *activeModHooks();
@@ -236,6 +254,12 @@ void modItemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh
 // without a mod runtime.
 int modPlayerSkillTotal(ModPlayerSkillTotal kind, const Character &character, int engineValue);
 bool modCanHandleItem(bool repair, uint32_t itemId, bool engineAnswer);
+
+// Runs the mod's CanTeachSkillMastery event; the event stays the engine's without a mod runtime.
+void modCanTeachSkillMastery(ModTeachSkillMasteryEvent &event);
+
+// Runs the mod's CalcTrainingTime event and returns the training's game minutes, `engineMinutes` without a mod.
+float modTrainingMinutes(float engineMinutes);
 
 // Runs the mod's Action event; nothing handled and nothing asked for without a mod runtime.
 ModPlayerActionResult modPlayerAction(int action, int param = 0, int param2 = 0);

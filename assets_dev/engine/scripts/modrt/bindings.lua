@@ -1215,6 +1215,45 @@ local globalTxt = boundObject("Game.GlobalTxt", {
     end,
 })
 
+-- Game.HouseRules.Training[i].Quality: the highest level the training halls of the original's number i train to
+-- (MAW raises them). Other house rules are not bound.
+local trainingRules = boundObject("Game.HouseRules.Training", {
+    index = function(index)
+        index = floor(index)
+
+        if modrt.trainingLevel(index) == nil then
+            return nil
+        end
+
+        return setmetatable({}, {
+            __index = function(_, key)
+                if key == "Quality" then
+                    return modrt.trainingLevel(index)
+                end
+            end,
+            __newindex = function(_, key, value)
+                if key == "Quality" then
+                    modrt.trainingLevel(index, floor(tonumber(value) or 0))
+                end
+            end,
+        })
+    end,
+})
+local houseRules = boundObject("Game.HouseRules", {
+    get = function(key)
+        if key == "Training" then
+            return trainingRules
+        end
+    end,
+})
+
+-- Game.NPCText[id]: the game's NPC texts (what teachers and other people say), read-only.
+local npcText = boundObject("Game.NPCText", {
+    index = function(id)
+        return modrt.npcText(floor(id))
+    end,
+})
+
 -- Game.ClassDescriptions[class]: what the game says of a class.
 local classDescriptions = boundObject("Game.ClassDescriptions", {
     index = function(class)
@@ -1445,7 +1484,7 @@ Game = boundObject("Game", {
         SkillNames = true, SkillDescriptions = true, SkillDesNormal = true, SkillDesExpert = true,
         SkillDesMaster = true, SkillDesGM = true, ClassDescriptions = true,
         CurrentPlayer = true, Time = true, Classes = true, ClassNames = true, ClassesExtra = true,
-        HouseScreen = true, GlobalTxt = true, CurrentCharScreen = true,
+        HouseScreen = true, GlobalTxt = true, CurrentCharScreen = true, NPCText = true, HouseRules = true,
     },
     get = function(key)
         if key == "ItemsTxt" then
@@ -1458,6 +1497,10 @@ Game = boundObject("Game", {
             return classDescriptions
         elseif key == "GlobalTxt" then
             return globalTxt
+        elseif key == "NPCText" then
+            return npcText
+        elseif key == "HouseRules" then
+            return houseRules
         elseif key == "CurrentCharScreen" then
             -- The character screen's page, by const.CharScreens: 100 stats, 101 skills, 102 awards, 103 inventory.
             return modrt.gameGet("CurrentCharScreen") or 100

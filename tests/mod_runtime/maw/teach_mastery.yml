@@ -1,0 +1,39 @@
+id: mod_runtime.maw.teach_mastery
+title: MAW's rules for a teacher's skill mastery (CanTeachSkillMastery)
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# A teacher asks the mod before teaching a mastery (the original's CanTeachSkillMastery), with the game's verdict
+# (allow, cost, what the teacher says). MAW sets a skill level each mastery needs (Expert 4, Master 7, Grandmaster
+# 10) and a price that grows with the masteries the character already has. The event is raised by the game's
+# teacher dialogue; here it is run through the same dispatcher. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 5000
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 1
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+# Sword 1 is short of Expert's 4: no teaching, and the teacher says so (NPC text 128).
+- mod_lua:
+    code: |
+      return ModRT.Stats.canTeachSkillMastery(0, const.Skills.Sword, 2, 500, true,
+        "Become Expert in Sword for 500 gold")
+    expect: "false\t500\tYou don't meet the requirements, and cannot be taught until you do."
+# Sword 8 is enough; MAW's price for a first Expert is 1000 gold, and the offer says so.
+- mod_lua:
+    code: |
+      Party[0].Skills[const.Skills.Sword] = JoinSkill(8, 1)
+      return ModRT.Stats.canTeachSkillMastery(0, const.Skills.Sword, 2, 500, true,
+        "Become Expert in Sword for 500 gold")
+    expect: "true\t1000\tBecome Expert in Sword for 1000 gold"

@@ -1485,6 +1485,11 @@ const HouseEntry *HouseTable::resolvePackageSourceServiceId(
     return aliasIt != m_serviceAliases.end() ? get(aliasIt->second) : nullptr;
 }
 
+std::unordered_map<uint32_t, HouseEntry> &HouseTable::entriesForWrite()
+{
+    return m_entries;
+}
+
 const std::unordered_map<uint32_t, HouseEntry> &HouseTable::entries() const
 {
     return m_entries;

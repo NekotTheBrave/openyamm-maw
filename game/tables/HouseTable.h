@@ -193,6 +193,8 @@ public:
         const std::string &packageId,
         uint32_t sourceServiceId) const;
     const std::unordered_map<uint32_t, HouseEntry> &entries() const;
+    // The entries to change (a mod's house rules, such as a training hall's highest level).
+    std::unordered_map<uint32_t, HouseEntry> &entriesForWrite();
 
 private:
     bool loadAnimationRows(

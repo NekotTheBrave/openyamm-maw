@@ -15,6 +15,7 @@
 #include "game/tables/CharacterDollTable.h"
 #include "game/tables/ClassMultiplierTable.h"
 #include "game/tables/ClassSkillTable.h"
+#include "game/tables/HouseTable.h"
 #include "game/tables/ItemTable.h"
 #include "game/tables/MapStats.h"
 #include "game/tables/MonsterTable.h"
@@ -2668,6 +2669,67 @@ int nativeClassDescription(lua_State *pLuaState)
     return 1;
 }
 
+// modrt.trainingLevel(index[, level]): the highest level the training halls of the original's training hall number
+// `index` (Game.HouseRules.Training, 1 up) train to, set when `level` is given. Nil for a number no hall has.
+int nativeTrainingLevel(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t index = integerArgument(pLuaState, 1);
+
+    if (pData == nullptr || index <= 0)
+    {
+        return 0;
+    }
+
+    const bool write = lua_isnumber(pLuaState, 2);
+    const int level = write ? static_cast<int>(lua_tointeger(pLuaState, 2)) : 0;
+    // The table belongs to the game's data loader, which hands it out read-only; it is not a constant object.
+    HouseTable &houses = const_cast<HouseTable &>(pData->getHouseTable());
+    std::optional<int> found;
+
+    for (auto &[houseId, entry] : houses.entriesForWrite())
+    {
+        const uint32_t ruleIndex = entry.typeIndex != 0 ? entry.typeIndex : entry.mapId;
+
+        if (entry.type != "Training" || ruleIndex != static_cast<uint32_t>(index))
+        {
+            continue;
+        }
+
+        if (write)
+        {
+            entry.trainingMaxLevel = level;
+        }
+
+        found = entry.trainingMaxLevel;
+    }
+
+    if (!found)
+    {
+        return 0;
+    }
+
+    lua_pushinteger(pLuaState, *found);
+    return 1;
+}
+
+// modrt.npcText(id): one of the game's NPC texts (Game.NPCText), nil where there is none.
+int nativeNpcText(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t id = integerArgument(pLuaState, 1);
+    const std::optional<std::string> text =
+        pData != nullptr && id >= 0 ? pData->getNpcDialogTable().getText(static_cast<uint32_t>(id)) : std::nullopt;
+
+    if (!text)
+    {
+        return 0;
+    }
+
+    pushString(pLuaState, *text);
+    return 1;
+}
+
 // modrt.globalTextSet(index, text): the game shows the text where it shows that interface text (the stats page's
 // labels); an empty text gives it its own back.
 int nativeGlobalTextSet(lua_State *pLuaState)
@@ -3407,6 +3469,8 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"classSkillGet", nativeClassSkillGet},
         {"classSkillSet", nativeClassSkillSet},
         {"globalTextSet", nativeGlobalTextSet},
+        {"npcText", nativeNpcText},
+        {"trainingLevel", nativeTrainingLevel},
         {"skillTextGet", nativeSkillTextGet},
         {"skillTextSet", nativeSkillTextSet},
         {"classDescription", nativeClassDescription},

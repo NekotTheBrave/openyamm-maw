@@ -190,6 +190,33 @@ function Stats.canHandleItem(repair, answer)
     return event[field] == true
 end
 
+-- A teacher is asked for a mastery of a skill (Merge's numbering) for the member in `slot`: the original's
+-- CanTeachSkillMastery. Mastery is 2 Expert, 3 Master, 4 Grandmaster; Allow, Cost and Text come in as the game's
+-- verdict (Text what the teacher says: the offer, or why not). Returns them as the handlers leave them.
+function Stats.canTeachSkillMastery(slot, skill, mastery, cost, allow, text)
+    local event = {
+        Skill = skill, Mastery = mastery, Cost = cost, Allow = allow, Text = text, Player = Party[slot],
+        PlayerIndex = slot,
+    }
+    ModRT.fire("CanTeachSkillMastery", event)
+    local newCost = tonumber(event.Cost) or cost
+    return event.Allow and true or false, math.floor(newCost), tostring(event.Text or text)
+end
+
+-- The active member (Game.CurrentPlayer) has trained a level: the original's CalcTrainingTime, with Time in ticks
+-- (256 to the game minute). Takes and returns game minutes.
+function Stats.trainingTime(minutes)
+    local event = {Time = math.floor(minutes * 256), Player = Party[math.max(0, Game.CurrentPlayer or 0)]}
+    ModRT.fire("CalcTrainingTime", event)
+    local ticks = tonumber(event.Time)
+
+    if not ticks or ticks ~= ticks then
+        return minutes
+    end
+
+    return math.max(0, ticks) / 256
+end
+
 -- The player is about to take an action: the original's Action event, raised for the actions the engine reports
 -- (23 attack, 25 the quick spell key or an attack spell). A handler that does the action itself sets t.Handled. A
 -- handler may ask for another game action in its place with DoGameAction, which the game then takes (MAW has a

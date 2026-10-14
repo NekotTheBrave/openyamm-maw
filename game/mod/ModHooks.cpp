@@ -64,6 +64,20 @@ bool modCanHandleItem(bool repair, uint32_t itemId, bool engineAnswer)
     return pModHooks != nullptr ? pModHooks->canHandleItem(repair, itemId, engineAnswer) : engineAnswer;
 }
 
+void modCanTeachSkillMastery(ModTeachSkillMasteryEvent &event)
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->canTeachSkillMastery(event);
+    }
+}
+
+float modTrainingMinutes(float engineMinutes)
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks != nullptr ? pModHooks->trainingMinutes(engineMinutes) : engineMinutes;
+}
+
 ModPlayerActionResult modPlayerAction(int action, int param, int param2)
 {
     IModHooks *pModHooks = activeModHooks();

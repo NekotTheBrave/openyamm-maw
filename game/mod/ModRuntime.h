@@ -89,6 +89,8 @@ public:
     ModPlayerActionResult playerAction(int action, int param, int param2) override;
     int playerSkillTotal(ModPlayerSkillTotal kind, const Character &character, int engineValue) override;
     bool canHandleItem(bool repair, uint32_t itemId, bool engineAnswer) override;
+    void canTeachSkillMastery(ModTeachSkillMasteryEvent &event) override;
+    float trainingMinutes(float engineMinutes) override;
     void pickCorpse(size_t actorIndex, ModCorpseLoot &loot) override;
     void generateItem(ModItemGeneration &generation) override;
     void itemGenerated(InventoryItem &item, const ModItemGeneration &generation) override;

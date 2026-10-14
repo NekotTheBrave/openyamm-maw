@@ -1668,6 +1668,75 @@ bool ModRuntime::canHandleItem(bool repair, uint32_t itemId, bool engineAnswer)
     return answer;
 }
 
+float ModRuntime::trainingMinutes(float engineMinutes)
+{
+    if (!m_active || !m_host.party || m_host.party() == nullptr || !beginDispatch("trainingTime"))
+    {
+        return engineMinutes;
+    }
+
+    lua_pushnumber(m_pLuaState, engineMinutes);
+    float minutes = engineMinutes;
+
+    if (endDispatch(1, 1))
+    {
+        if (lua_isnumber(m_pLuaState, -1))
+        {
+            minutes = std::max(0.0f, static_cast<float>(lua_tonumber(m_pLuaState, -1)));
+        }
+
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return minutes;
+}
+
+void ModRuntime::canTeachSkillMastery(ModTeachSkillMasteryEvent &event)
+{
+    std::optional<size_t> skillId;
+
+    for (size_t id = 0; id < MergeSkillCount; ++id)
+    {
+        if (canonicalSkillName(mergeSkillName(id)) == canonicalSkillName(event.skillName))
+        {
+            skillId = id;
+            break;
+        }
+    }
+
+    if (!skillId || !m_active || !m_host.party || m_host.party() == nullptr
+        || !beginDispatch("canTeachSkillMastery"))
+    {
+        return;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(event.partyMemberIndex));
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(*skillId));
+    lua_pushinteger(m_pLuaState, event.mastery);
+    lua_pushinteger(m_pLuaState, event.cost);
+    lua_pushboolean(m_pLuaState, event.allow);
+    lua_pushlstring(m_pLuaState, event.text.data(), event.text.size());
+
+    if (endDispatch(6, 3))
+    {
+        event.allow = lua_toboolean(m_pLuaState, -3) != 0;
+
+        if (lua_isnumber(m_pLuaState, -2))
+        {
+            event.cost = std::max(0, static_cast<int>(lua_tointeger(m_pLuaState, -2)));
+        }
+
+        if (lua_isstring(m_pLuaState, -1))
+        {
+            size_t length = 0;
+            const char *pText = lua_tolstring(m_pLuaState, -1, &length);
+            event.text.assign(pText, length);
+        }
+
+        lua_pop(m_pLuaState, 3);
+    }
+}
+
 ModPlayerActionResult ModRuntime::playerAction(int action, int param, int param2)
 {
     ModPlayerActionResult result = {};

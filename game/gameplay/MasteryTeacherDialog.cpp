@@ -1,6 +1,7 @@
 #include "game/gameplay/MasteryTeacherDialog.h"
 
 #include "game/gameplay/GameMechanics.h"
+#include "game/mod/ModHooks.h"
 #include "game/tables/MergedBaseTables.h"
 #include "game/tables/NpcDialogTable.h"
 #include "game/party/Party.h"
@@ -488,7 +489,9 @@ std::optional<MasteryTeacherEvaluation> evaluateMasteryTeacherTopic(
     return evaluateSkillMasteryTraining(request, party, classSkillTable, npcDialogTable);
 }
 
-std::optional<MasteryTeacherEvaluation> evaluateSkillMasteryTraining(
+namespace
+{
+std::optional<MasteryTeacherEvaluation> engineSkillMasteryTraining(
     const SkillMasteryTrainingRequest &request,
     const Party &party,
     const ClassSkillTable &classSkillTable,
@@ -603,6 +606,45 @@ std::optional<MasteryTeacherEvaluation> evaluateSkillMasteryTraining(
         "Become " + masteryDisplayName(evaluation.targetMastery)
         + " in " + displaySkillName(evaluation.skillName)
         + " for " + std::to_string(evaluation.cost) + " gold";
+    return evaluation;
+}
+}
+
+std::optional<MasteryTeacherEvaluation> evaluateSkillMasteryTraining(
+    const SkillMasteryTrainingRequest &request,
+    const Party &party,
+    const ClassSkillTable &classSkillTable,
+    const NpcDialogTable &npcDialogTable
+)
+{
+    std::optional<MasteryTeacherEvaluation> evaluation =
+        engineSkillMasteryTraining(request, party, classSkillTable, npcDialogTable);
+
+    if (!evaluation)
+    {
+        return evaluation;
+    }
+
+    // The mod has the last word, as in the original (MAW asks skill levels and gold of its own). A mod that asks
+    // for more gold than the party has gets the engine's answer to that.
+    ModTeachSkillMasteryEvent event = {};
+    event.partyMemberIndex = party.activeMemberIndex();
+    event.skillName = evaluation->skillName;
+    event.mastery = static_cast<int>(evaluation->targetMastery);
+    event.cost = evaluation->cost;
+    event.allow = evaluation->approved;
+    event.text = evaluation->displayText;
+    modCanTeachSkillMastery(event);
+    evaluation->approved = event.allow;
+    evaluation->cost = event.cost;
+    evaluation->displayText = event.text;
+
+    if (evaluation->approved && party.gold() < evaluation->cost)
+    {
+        evaluation->approved = false;
+        evaluation->displayText = npcTextOrFallback(npcDialogTable, 125, "You do not have enough gold.");
+    }
+
     return evaluation;
 }
 

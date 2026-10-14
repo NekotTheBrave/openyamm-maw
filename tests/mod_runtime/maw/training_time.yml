@@ -1,0 +1,40 @@
+id: mod_runtime.maw.training_time
+title: MAW's level training takes two days and is counted per continent (CalcTrainingTime)
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# A level trained at a training hall raises CalcTrainingTime (Time in ticks, 256 to the minute) for the member who
+# trained. MAW makes every training two days, and counts the first member's trainings per continent (Jadame here).
+# The event is raised by the game's training hall; here it is run through the same dispatcher. Run with the MAW
+# mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 5000
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 1
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      local continent = TownPortalControls.MapOfContinent(Map.MapStatsIndex)
+      local before = vars.trainings[continent]
+      local minutes = ModRT.Stats.trainingTime(10000)
+      return minutes, vars.trainings[continent] - before
+    expect: "2880\t1"
+# MAW raises the highest level each training hall of the current continent trains to, on every map load, through
+# Game.HouseRules.Training[i].Quality: the Jadame halls (20 to 29) from the Merge's 15 and 20 to 30 and 40.
+- mod_lua:
+    code: |
+      return Game.HouseRules.Training[20].Quality, Game.HouseRules.Training[24].Quality,
+        Game.HouseRules.Training[1].Quality
+    expect: "30\t40\t5"

@@ -2,6 +2,7 @@
 
 #include "game/debug/GameplayDebugTrace.h"
 #include "game/gameplay/BountyHuntRuntime.h"
+#include "game/mod/ModHooks.h"
 #include "game/events/EvtEnums.h"
 #include "game/tables/ClassSkillTable.h"
 #include "game/gameplay/HouseServiceRuntime.h"
@@ -2019,6 +2020,10 @@ HouseActionResult performHouseAction(
 
             party.addGold(-price);
             bool trainingRoundAdvanced = true;
+            // The mod's word on how long the training takes comes with each member's training, as in the original
+            // (MAW counts trainings by them); the time passes when the round is done.
+            const float trainingMinutes = modTrainingMinutes(
+                pWorldRuntime != nullptr ? oeTrainingDurationMinutes(houseEntry, pWorldRuntime->gameMinutes()) : 0.0f);
 
             if (pWorldRuntime != nullptr)
             {
@@ -2040,7 +2045,6 @@ HouseActionResult performHouseAction(
 
                 if (pWorldRuntime != nullptr)
                 {
-                    const float trainingMinutes = oeTrainingDurationMinutes(houseEntry, pWorldRuntime->gameMinutes());
                     pWorldRuntime->advanceGameMinutes(trainingMinutes);
                     party.advanceTimedStates(trainingMinutes * 60.0f);
                 }
