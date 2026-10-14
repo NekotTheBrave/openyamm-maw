@@ -2408,6 +2408,11 @@ std::optional<GameplayModActorField> actorFieldFromName(const std::string &field
         {"Group", GameplayModActorField::Group},
         {"NameId", GameplayModActorField::UniqueNameId},
         {"Ally", GameplayModActorField::Ally},
+        {"AIState", GameplayModActorField::AiState},
+        // The original keeps a monster's speed twice: MoveSpeed in its copy of the table row, which nothing moves
+        // by, and Velocity, which it moves by. Only the second is the engine's.
+        {"Velocity", GameplayModActorField::MoveSpeed},
+        {"AIType", GameplayModActorField::AiType},
     };
     const std::unordered_map<std::string, GameplayModActorField>::const_iterator it = fields.find(field);
     return it != fields.end() ? std::optional<GameplayModActorField>(it->second) : std::nullopt;
@@ -2436,7 +2441,11 @@ int nativeMapMonsterGet(lua_State *pLuaState)
         return 1;
     }
 
-    if (field == "Hostile" || field == "IsDead")
+    // The original's flags (bits of the monster's record). The engine has one notion of hostility, so the flag for
+    // "shown as hostile" is the same answer; "shown on the map" is every monster that is not hidden.
+    const bool hostileFlag = field == "Hostile" || field == "ShowAsHostile";
+
+    if (hostileFlag || field == "IsDead" || field == "Invisible" || field == "ShowOnMap")
     {
         GameplayRuntimeActorState state = {};
 
@@ -2445,7 +2454,12 @@ int nativeMapMonsterGet(lua_State *pLuaState)
             return 0;
         }
 
-        lua_pushboolean(pLuaState, field == "Hostile" ? state.hostileToParty : state.isDead);
+        lua_pushboolean(
+            pLuaState,
+            hostileFlag ? state.hostileToParty
+                : field == "IsDead" ? state.isDead
+                : field == "Invisible" ? state.isInvisible
+                : !state.isInvisible);
         return 1;
     }
 
@@ -2466,12 +2480,40 @@ int nativeMapMonsterSet(lua_State *pLuaState)
     IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
     const int64_t actorIndex = integerArgument(pLuaState, 1);
     const std::optional<GameplayModActorField> actorField = actorFieldFromName(luaL_checkstring(pLuaState, 2));
+    int64_t value = integerArgument(pLuaState, 3);
+
+    // To the engine a speed of 0 is "its kind's speed". A script's 0 means a monster that does not move, so it is
+    // kept as 1, which is as good as standing still.
+    if (actorField == GameplayModActorField::MoveSpeed)
+    {
+        value = std::max<int64_t>(1, value);
+    }
+
     const bool handled = pWorld != nullptr
         && actorField.has_value()
         && actorIndex >= 0
-        && pWorld->setModActorField(static_cast<size_t>(actorIndex), *actorField, integerArgument(pLuaState, 3));
+        && pWorld->setModActorField(static_cast<size_t>(actorIndex), *actorField, value);
     lua_pushboolean(pLuaState, handled);
     return 1;
+}
+
+// modrt.mapMonstersResetSpeed(): every map monster moves at its kind's speed again. The original engine does not
+// keep a monster's speed across a map load (a real game's guards read 400 after MAW's speed-up on first arrival and
+// 400 again after a save and load, where a kept 400 would have been raised to 500), so the runtime calls this on
+// every arrival, before the map's events.
+int nativeMapMonstersResetSpeed(lua_State *pLuaState)
+{
+    IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+
+    if (pWorld != nullptr)
+    {
+        for (size_t actorIndex = 0; actorIndex < pWorld->mapActorCount(); ++actorIndex)
+        {
+            pWorld->setModActorField(actorIndex, GameplayModActorField::MoveSpeed, 0);
+        }
+    }
+
+    return 0;
 }
 
 // --- game ------------------------------------------------------------------------------------------------------------
@@ -2639,6 +2681,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"mapStatsSet", nativeMapStatsSet},
         {"mapMonsterGet", nativeMapMonsterGet},
         {"mapMonsterSet", nativeMapMonsterSet},
+        {"mapMonstersResetSpeed", nativeMapMonstersResetSpeed},
         {"gameGet", nativeGameGet},
         {"castSpell", nativeCastSpell},
         {"showStatusText", nativeShowStatusText},

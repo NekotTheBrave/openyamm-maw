@@ -144,6 +144,38 @@ void setActiveModHooks(IModHooks *pModHooks);
 // const.Damage: the original engine's number for a kind of damage, which is how mods name it.
 int mm8DamageKind(CombatDamageType damageType);
 
+// const.AIState: the original engine's numbers for what a map monster is doing. Scripts mostly ask whether a
+// monster is dead (5), gone (11) or hidden (19).
+namespace Mm8AiState
+{
+constexpr int Stand = 0;
+constexpr int Active = 1;
+constexpr int MeleeAttack = 2;
+constexpr int RangedAttack = 3;
+constexpr int Dying = 4;
+constexpr int Dead = 5;
+constexpr int Pursue = 6;
+constexpr int Flee = 7;
+constexpr int Stunned = 8;
+constexpr int Removed = 11;
+constexpr int Paralyzed = 15;
+constexpr int Invisible = 19;
+}
+
+// What an actor is doing, for mm8AiState. `motion` is the engine's motion state as a number: both world runtimes
+// number theirs alike (standing 0, wandering, pursuing, fleeing, stunned, attacking, dying, dead 7).
+struct ModActorActivity
+{
+    int motion = 0;
+    bool dead = false;
+    bool invisible = false;
+    bool rangedAttack = false;
+    bool paralyzed = false;
+};
+
+// A dead actor that is also hidden is the original's "removed": no body, nothing to interact with.
+int mm8AiState(const ModActorActivity &activity);
+
 // Runs the mod's event for damage to a party member and returns the damage to apply, which is
 // event.resolvedDamage when no mod runtime is present.
 int modDamageToPlayer(const ModDamageToPlayerEvent &event);

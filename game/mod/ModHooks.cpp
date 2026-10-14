@@ -18,6 +18,39 @@ void setActiveModHooks(IModHooks *pModHooks)
     g_pActiveModHooks = pModHooks;
 }
 
+int mm8AiState(const ModActorActivity &activity)
+{
+    if (activity.dead || activity.motion == 7)
+    {
+        return activity.invisible ? Mm8AiState::Removed : Mm8AiState::Dead;
+    }
+
+    if (activity.invisible)
+    {
+        return Mm8AiState::Invisible;
+    }
+
+    if (activity.motion == 6)
+    {
+        return Mm8AiState::Dying;
+    }
+
+    if (activity.paralyzed)
+    {
+        return Mm8AiState::Paralyzed;
+    }
+
+    switch (activity.motion)
+    {
+        case 1: return Mm8AiState::Active;
+        case 2: return Mm8AiState::Pursue;
+        case 3: return Mm8AiState::Flee;
+        case 4: return Mm8AiState::Stunned;
+        case 5: return activity.rangedAttack ? Mm8AiState::RangedAttack : Mm8AiState::MeleeAttack;
+        default: return Mm8AiState::Stand;
+    }
+}
+
 int mm8DamageKind(CombatDamageType damageType)
 {
     switch (damageType)

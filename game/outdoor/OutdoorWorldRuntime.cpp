@@ -14013,6 +14013,16 @@ bool OutdoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField
         case GameplayModActorField::Group: value = pActor->group; return true;
         case GameplayModActorField::UniqueNameId: value = pActor->uniqueNameId; return true;
         case GameplayModActorField::Ally: value = pActor->ally; return true;
+        case GameplayModActorField::AiState:
+            value = mm8AiState({
+                .motion = static_cast<int>(pActor->aiState),
+                .dead = pActor->isDead,
+                .invisible = pActor->isInvisible,
+                .rangedAttack = pActor->animation == ActorAnimation::AttackRanged,
+                .paralyzed = pActor->paralyzeRemainingSeconds > 0.0f});
+            return true;
+        case GameplayModActorField::MoveSpeed: value = pActor->moveSpeed; return true;
+        case GameplayModActorField::AiType: value = static_cast<int64_t>(pActor->aiType); return true;
     }
 
     return false;
@@ -14070,6 +14080,56 @@ bool OutdoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFi
         }
         case GameplayModActorField::Ally:
             actor.ally = static_cast<uint32_t>(std::clamp<int64_t>(value, 0, UINT32_MAX));
+            return true;
+        case GameplayModActorField::AiState:
+            if (value == Mm8AiState::Removed)
+            {
+                // Gone without a death: no experience, no body, no loot.
+                actor.isDead = true;
+                actor.currentHp = 0;
+                actor.aiState = ActorAiState::Dead;
+                actor.animation = ActorAnimation::Dead;
+                actor.animationTimeTicks = 0.0f;
+                actor.actionSeconds = 0.0f;
+                actor.velocityX = 0.0f;
+                actor.velocityY = 0.0f;
+                actor.velocityZ = 0.0f;
+                actor.isInvisible = true;
+            }
+            else if (value == Mm8AiState::Invisible)
+            {
+                actor.isInvisible = true;
+            }
+            else if (value == Mm8AiState::Dead || value == Mm8AiState::Dying)
+            {
+                if (!actor.isDead)
+                {
+                    setMapActorDead(actorIndex, true, false);
+                }
+            }
+            else
+            {
+                // Any state of a living, visible monster: what it does next is the AI's to decide, but a dead or
+                // hidden one is brought back (MAW respawns monsters by writing 0 here).
+                if (actor.isDead)
+                {
+                    setMapActorDead(actorIndex, false, false);
+                }
+
+                m_mapActors[actorIndex].isInvisible = false;
+            }
+
+            return true;
+        case GameplayModActorField::MoveSpeed:
+        {
+            const MonsterTable::MonsterStatsEntry *pStats =
+                value <= 0 && m_pMonsterTable != nullptr ? m_pMonsterTable->findStatsById(actor.monsterId) : nullptr;
+            actor.moveSpeed = static_cast<uint16_t>(
+                std::clamp<int64_t>(pStats != nullptr ? pStats->speed : value, 0, UINT16_MAX));
+            return true;
+        }
+        case GameplayModActorField::AiType:
+            actor.aiType = static_cast<GameplayActorAiType>(std::clamp<int64_t>(value, 0, 3));
             return true;
         case GameplayModActorField::MonsterId:
             return false;

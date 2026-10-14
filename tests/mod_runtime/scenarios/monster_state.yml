@@ -1,0 +1,116 @@
+id: mod_runtime.monster_state
+title: A map monster's state, speed and AI type are the engine's own, and scripts can remove, hide and bring back
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 100
+      food: 5
+      members:
+      - name: Warden
+        class: Knight
+        level: 1
+        skills: []
+        equipment: {}
+# AIState in the original's numbers (const.AIState). A living monster is in none of dead (5), removed (11) and
+# hidden (19). Removing one leaves it dead and gone without a kill; writing 0 brings it back at full hit points.
+- mod_lua:
+    code: |
+      local m = Map.Monsters[0]
+      local before = m.AIState
+      Kills = 0
+      function events.MonsterKilled() Kills = Kills + 1 end
+      m.AIState = const.AIState.Removed
+      local removed = {m.AIState, m.HP, m.IsDead}
+      m.AIState = 0
+      return before ~= 5 and before ~= 11 and before ~= 19, removed[1], removed[2], removed[3],
+        m.AIState ~= 11 and m.AIState ~= 5, m.HP == m.FullHP, m.IsDead, Kills
+    expect: "true\t11\t0\ttrue\ttrue\ttrue\tfalse\t0"
+# Hidden and shown again, with the original's flags following (Invisible, ShowOnMap; ShowAsHostile is the engine's
+# one notion of hostility); dead (with its body, 5) and brought back.
+- mod_lua:
+    code: |
+      local m = Map.Monsters[1]
+      m.AIState = const.AIState.Invisible
+      local hidden = {m.AIState, m.Invisible, m.ShowOnMap}
+      m.AIState = 0
+      local shown = {m.AIState ~= 19, m.Invisible, m.ShowOnMap, m.ShowAsHostile == m.Hostile}
+      m.AIState = const.AIState.Dead
+      local dead = {m.AIState, m.IsDead}
+      m.AIState = 0
+      return table.concat({tostring(hidden[1]), tostring(hidden[2]), tostring(hidden[3])}, " "),
+        table.concat({tostring(shown[1]), tostring(shown[2]), tostring(shown[3]), tostring(shown[4])}, " "),
+        dead[1], dead[2], m.IsDead, m.HP == m.FullHP, Map.Monsters[2].AIState ~= 19
+    expect: "19 true false\ttrue false true true\t5\ttrue\tfalse\ttrue\ttrue"
+# Speed and AI type belong to the one monster: the write does not reach its kind's row or its neighbours. Velocity
+# is the speed the monster moves by; MoveSpeed is its copy of the table's figure, as in the original, and stays.
+- mod_lua:
+    code: |
+      local m = Map.Monsters[0]
+      local row = Game.MonstersTxt[m.Id]
+      local other
+      for index, monster in Map.Monsters do
+        if index ~= 0 and monster.Id == m.Id then other = monster break end
+      end
+      local speed, aiType = m.Velocity, m.AIType
+      m.Velocity = speed + 123
+      m.AIType = 0
+      return speed > 0, m.Velocity == speed + 123, m.MoveSpeed == row.MoveSpeed, m.AIType, row.AIType == aiType,
+        other == nil or (other.Velocity == speed and other.AIType == aiType)
+    expect: "true\ttrue\ttrue\t0\ttrue\ttrue"
+# The engine goes by the monster's own speed: one given a speed of 0 stays where it is (the engine keeps that as 1)
+# while the others close in on the party.
+- mod_lua:
+    code: |
+      Stopped, Movers = {}, {}
+      local placed = 0
+      for index, monster in Map.Monsters do
+        if placed < 8 and monster.Hostile and not monster.IsDead and monster.AIState ~= 19 then
+          local angle = placed * math.pi / 4
+          monster.X = math.floor(Party.X + math.cos(angle) * 1200)
+          monster.Y = math.floor(Party.Y + math.sin(angle) * 1200)
+          monster.Z = Party.Z
+          if placed % 2 == 0 then
+            monster.Velocity = 0
+            Stopped[#Stopped + 1] = {monster, monster.X, monster.Y}
+          else
+            Movers[#Movers + 1] = {monster, monster.X, monster.Y}
+          end
+          placed = placed + 1
+        end
+      end
+      return placed
+    expect: "8"
+- advance_runtime: {seconds: 4}
+- mod_lua:
+    code: |
+      local function moved(list)
+        local count = 0
+        for _, entry in ipairs(list) do
+          local monster, x, y = entry[1], entry[2], entry[3]
+          if math.abs(monster.X - x) + math.abs(monster.Y - y) > 60 then count = count + 1 end
+        end
+        return count
+      end
+      return moved(Stopped), moved(Movers) > 0
+    expect: "0\ttrue"
+# A speed a script gave a monster lasts until the map is next loaded, as in the original: after a save and a load
+# the monster moves at its kind's speed again. (Its AI type is its own and stays.)
+- mod_lua:
+    code: |
+      local m = Map.Monsters[0]
+      KindSpeed = Game.MonstersTxt[m.Id].MoveSpeed
+      m.Velocity = KindSpeed + 77
+      return m.Velocity == KindSpeed + 77
+    expect: "true"
+- save_game: mod_monster_state
+- load_game: mod_monster_state
+- mod_lua:
+    code: |
+      local m = Map.Monsters[0]
+      return m.Velocity == Game.MonstersTxt[m.Id].MoveSpeed, m.AIType
+    expect: "true\t0"

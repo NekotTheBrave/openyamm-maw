@@ -63,6 +63,8 @@ public:
         uint16_t collisionHeight = 128;
         uint16_t projectileHitRadius = 32;
         uint16_t movementSpeed = 0;
+        // A speed a mod's script gave this one monster, in place of its kind's.
+        std::optional<uint16_t> modMoveSpeed;
         float bolsterRewardMultiplier = 1.0f;
         GameplayActorAiType aiType = GameplayActorAiType::Normal;
         bool canFly = false;

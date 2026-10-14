@@ -240,11 +240,12 @@ local function dumpMonsters(out)
 			resistances[#resistances + 1] = kind .. ":" .. text(try(function() return mon.Resistances[kind] end))
 		end
 		out[#out + 1] = string.format(
-			"  #%d id=%d %s dist=%d level=%d mawLevel=%s hp=%s/%s (raw %d/%d) ac=%d exp=%d aiType=%s speed=%s hostile=%s",
+			"  #%d id=%d %s dist=%d level=%d mawLevel=%s hp=%s/%s (raw %d/%d) ac=%d exp=%d aiType=%s speed=%s velocity=%s aiState=%s hostile=%s",
 			entry.index, mon.Id, monsterName(mon), entry.distance, mon.Level,
 			text(try(function() return getMonsterLevel(mon) end)), text(hp), text(maxHp), mon.HP, mon.FullHP,
 			mon.ArmorClass, mon.Experience, text(try(function() return mon.AIType end)),
-			text(try(function() return mon.MoveSpeed end)), text(try(function() return mon.Hostile end)))
+			text(try(function() return mon.MoveSpeed end)), text(try(function() return mon.Velocity end)),
+			text(try(function() return mon.AIState end)), text(try(function() return mon.Hostile end)))
 		out[#out + 1] = string.format(
 			"      attack1 type=%d %dd%d+%d missile=%d   attack2 chance=%d type=%d %dd%d+%d missile=%d   spell=%d chance=%d",
 			mon.Attack1.Type, mon.Attack1.DamageDiceCount, mon.Attack1.DamageDiceSides, mon.Attack1.DamageAdd,

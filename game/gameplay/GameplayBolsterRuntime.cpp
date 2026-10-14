@@ -1,5 +1,6 @@
 #include "game/gameplay/GameplayBolsterRuntime.h"
 
+#include "game/mod/ModHooks.h"
 #include "game/party/Party.h"
 #include "game/tables/MapStats.h"
 #include "game/tables/MergedBaseTables.h"
@@ -719,11 +720,15 @@ GameplayMonsterBolsterResult resolveGameplayMonsterBolster(
     result.spell2SkillLevel = stats.spell2SkillLevel;
     result.spell2SkillMastery = stats.spell2SkillMastery;
 
+    // A mod that runs the original's scripts scales monsters itself (MAW rewrites the whole monster table by
+    // difficulty and party level), so the engine's bolster is off whenever a mod runtime is present, whatever the
+    // setting says: the two would multiply.
     if (context.pMap == nullptr
         || context.pMonsterTable == nullptr
         || context.pBolsterMapTable == nullptr
         || context.pBolsterMonsterTable == nullptr
         || !context.bolsterMonstersEnabled
+        || activeModHooks() != nullptr
         || stats.id == 0)
     {
         return result;

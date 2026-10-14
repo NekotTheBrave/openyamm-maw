@@ -130,6 +130,13 @@ enum class GameplayModActorField : uint8_t
     // Which placed-monster name the actor goes by; 0 is its kind's own name.
     UniqueNameId,
     Ally,
+    // What the actor is doing, in the original engine's numbers (const.AIState; see mm8AiState). A write of
+    // Removed, Invisible or Dead puts the actor in that state, any other brings a dead or hidden actor back.
+    AiState,
+    // The actor's own speed and AI type (GameplayActorAiType's numbers, which are the original's). Writing a speed
+    // of 0 gives the actor its kind's speed back.
+    MoveSpeed,
+    AiType,
 };
 
 struct GameplayRuntimeActorState

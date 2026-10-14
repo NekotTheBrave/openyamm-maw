@@ -238,6 +238,11 @@ function Bindings.ensureConstants()
         Poison2 = 8, Disease2 = 9, Poison3 = 10, Disease3 = 11, Paralyzed = 12, Unconscious = 13, Dead = 14,
         Stoned = 15, Eradicated = 16, Zombie = 17, Good = 18,
     })
+    fallback("AIState", {
+        Stand = 0, Active = 1, MeleeAttack = 2, RangedAttack = 3, Dying = 4, Dead = 5, Pursue = 6, Flee = 7,
+        Stunned = 8, Fidget = 9, Interact = 10, Removed = 11, RangedAttack2 = 12, CastSpell = 13, Stoned = 14,
+        Paralyzed = 15, Resurrect = 16, Summoned = 17, RangedAttack4 = 18, Invisible = 19,
+    })
 
     -- MMExtension's constants describe plain MM8. Merge renumbers races, classes and monster kinds in scripts
     -- that are not run here (they patch the original executable), so its numbering is restated.
@@ -1308,9 +1313,11 @@ local function mapMonster(index)
     return monster
 end
 
--- What scripts wrote to the monsters of one map does not carry over to the next.
+-- What scripts wrote to the monsters of one map does not carry over to the next, and neither does the speed they
+-- gave a monster: a map's monsters start every arrival at their kind's speed, as in the original.
 function Bindings.resetMapMonsters()
     mapMonsterCache = {}
+    modrt.mapMonstersResetSpeed()
 end
 
 local mapMonsters = boundObject("Map.Monsters", {

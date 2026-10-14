@@ -8181,7 +8181,8 @@ void IndoorWorldRuntime::applyIndoorActorMovementIntegration(
 
     const float collisionRadius = static_cast<float>(aiState.collisionRadius);
     const float collisionHeight = static_cast<float>(aiState.collisionHeight);
-    const uint16_t moveSpeed = aiState.movementSpeed != 0 ? aiState.movementSpeed : uint16_t(pStats->speed);
+    const uint16_t moveSpeed = aiState.modMoveSpeed.value_or(
+        aiState.movementSpeed != 0 ? aiState.movementSpeed : uint16_t(pStats->speed));
     const GameplayActorService fallbackActorService = {};
     const GameplayActorService *pActorService =
         m_pGameplayActorService != nullptr ? m_pGameplayActorService : &fallbackActorService;
@@ -9347,7 +9348,7 @@ std::optional<ActorAiFacts> IndoorWorldRuntime::collectIndoorActorAiFacts(
     facts.stats.armorClass = pActorService->effectiveArmorClass(bolster.armorClass, aiState.spellEffects);
     facts.stats.radius = radius;
     facts.stats.height = height;
-    facts.stats.moveSpeed = bolster.moveSpeed;
+    facts.stats.moveSpeed = aiState.modMoveSpeed.value_or(bolster.moveSpeed);
     facts.stats.canFly = aiState.canFly;
     facts.stats.hasSpell1 = pStats->hasSpell1 || bolster.generatedSpell1Id != 0;
     facts.stats.hasSpell2 = pStats->hasSpell2 || bolster.generatedSpell2Id != 0;
@@ -9607,7 +9608,7 @@ std::optional<ActorAiFacts> IndoorWorldRuntime::collectIndoorActorAiFacts(
     facts.movement.wanderRadius = aiState.wanderRadius;
     facts.movement.effectiveMoveSpeed =
         pActorService->effectiveActorMoveSpeed(
-            bolster.moveSpeed,
+            aiState.modMoveSpeed.value_or(bolster.moveSpeed),
             pStats->speed,
             aiState.spellEffects.slowMoveMultiplier,
             aiState.spellEffects.darkGraspRemainingSeconds > 0.0f);
@@ -11012,6 +11013,37 @@ bool IndoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField 
         case GameplayModActorField::Group: value = actor.group; return true;
         case GameplayModActorField::UniqueNameId: value = actor.uniqueNameIndex; return true;
         case GameplayModActorField::Ally: value = actor.ally; return true;
+        case GameplayModActorField::AiState:
+        case GameplayModActorField::MoveSpeed:
+        case GameplayModActorField::AiType:
+        {
+            const MapActorAiState *pAiState =
+                actorIndex < m_mapActorAiStates.size() ? &m_mapActorAiStates[actorIndex] : nullptr;
+
+            if (field == GameplayModActorField::AiState)
+            {
+                value = mm8AiState({
+                    .motion = pAiState != nullptr ? static_cast<int>(pAiState->motionState) : 0,
+                    .dead = pAiState != nullptr
+                        ? pAiState->motionState == ActorAiMotionState::Dead
+                        : actor.hp <= 0,
+                    .invisible = (actor.attributes & static_cast<uint32_t>(EvtActorAttribute::Invisible)) != 0,
+                    .rangedAttack = pAiState != nullptr
+                        && pAiState->animationState == ActorAiAnimationState::AttackRanged,
+                    .paralyzed = pAiState != nullptr && pAiState->spellEffects.paralyzeRemainingSeconds > 0.0f});
+                return true;
+            }
+
+            if (pAiState == nullptr)
+            {
+                return false;
+            }
+
+            value = field == GameplayModActorField::MoveSpeed
+                ? static_cast<int64_t>(pAiState->modMoveSpeed.value_or(pAiState->movementSpeed))
+                : static_cast<int64_t>(pAiState->aiType);
+            return true;
+        }
     }
 
     return false;
@@ -11081,6 +11113,95 @@ bool IndoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFie
             return true;
         case GameplayModActorField::Ally:
             actor.ally = static_cast<uint32_t>(std::clamp<int64_t>(value, 0, UINT32_MAX));
+            return true;
+        case GameplayModActorField::AiState:
+        {
+            MapActorAiState *pAiState =
+                actorIndex < m_mapActorAiStates.size() ? &m_mapActorAiStates[actorIndex] : nullptr;
+            const uint32_t invisibleBit = static_cast<uint32_t>(EvtActorAttribute::Invisible);
+            const bool isDead = pAiState != nullptr
+                ? pAiState->motionState == ActorAiMotionState::Dead
+                : actor.hp <= 0;
+            const auto settle =
+                [&](ActorAiMotionState motionState, ActorAiAnimationState animationState)
+                {
+                    if (pAiState != nullptr)
+                    {
+                        pAiState->motionState = motionState;
+                        pAiState->animationState = animationState;
+                        pAiState->animationTimeTicks = 0.0f;
+                        pAiState->actionSeconds = 0.0f;
+                        pAiState->attackImpactTriggered = false;
+                        pAiState->velocityX = 0.0f;
+                        pAiState->velocityY = 0.0f;
+                        pAiState->velocityZ = 0.0f;
+                    }
+
+                    actor.currentActionAnimation = indoorActionAnimationFromActorAi(animationState);
+                };
+
+            if (value == Mm8AiState::Removed || value == Mm8AiState::Dead || value == Mm8AiState::Dying)
+            {
+                // Without a death: no experience and no event. Removed leaves no body either.
+                if (!isDead)
+                {
+                    actor.hp = 0;
+                    settle(ActorAiMotionState::Dead, ActorAiAnimationState::Dead);
+                }
+
+                if (value == Mm8AiState::Removed)
+                {
+                    actor.attributes |= invisibleBit;
+                }
+            }
+            else if (value == Mm8AiState::Invisible)
+            {
+                actor.attributes |= invisibleBit;
+            }
+            else
+            {
+                // Any state of a living, visible monster: what it does next is the AI's to decide, but a dead or
+                // hidden one is brought back (MAW respawns monsters by writing 0 here).
+                if (isDead)
+                {
+                    const MonsterTable::MonsterStatsEntry *pStats = m_pMonsterTable != nullptr
+                        ? m_pMonsterTable->findStatsById(resolveIndoorActorStatsId(actor))
+                        : nullptr;
+                    actor.hp = static_cast<int16_t>(
+                        std::clamp(pStats != nullptr ? pStats->hitPoints : 1, 1, static_cast<int>(INT16_MAX)));
+                    settle(ActorAiMotionState::Standing, ActorAiAnimationState::Standing);
+                }
+
+                actor.attributes &= ~invisibleBit;
+            }
+
+            return true;
+        }
+        case GameplayModActorField::MoveSpeed:
+            if (actorIndex >= m_mapActorAiStates.size())
+            {
+                return false;
+            }
+
+            if (value <= 0)
+            {
+                m_mapActorAiStates[actorIndex].modMoveSpeed.reset();
+            }
+            else
+            {
+                m_mapActorAiStates[actorIndex].modMoveSpeed =
+                    static_cast<uint16_t>(std::clamp<int64_t>(value, 1, UINT16_MAX));
+            }
+
+            return true;
+        case GameplayModActorField::AiType:
+            if (actorIndex >= m_mapActorAiStates.size())
+            {
+                return false;
+            }
+
+            m_mapActorAiStates[actorIndex].aiType =
+                static_cast<GameplayActorAiType>(std::clamp<int64_t>(value, 0, 3));
             return true;
         case GameplayModActorField::MonsterId:
         case GameplayModActorField::MaxHp:
