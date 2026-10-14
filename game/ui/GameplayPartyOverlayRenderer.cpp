@@ -6957,6 +6957,14 @@ void GameplayPartyOverlayRenderer::renderCharacterInspectOverlay(GameplayScreenR
 
         for (const std::string &line : bodyLines)
         {
+            // A mod's text may colour its figures (MAW's stat boxes).
+            if (GameplayHudCommon::hasHudColorCodes(line))
+            {
+                context.renderHudTextColored(*pBodyFont, line, textX, textY, popupScale, pBodyLayout->textColorAbgr);
+                textY += bodyLineHeight;
+                continue;
+            }
+
             context.renderHudFontLayer(*pBodyFont, pBodyFont->shadowTextureHandle, line, textX, textY, popupScale);
             context.renderHudFontLayer(*pBodyFont, coloredMainTextureHandle, line, textX, textY, popupScale);
             textY += bodyLineHeight;

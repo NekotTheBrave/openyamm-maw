@@ -1327,13 +1327,38 @@ size_t GameplayHudCommon::hudTabStopLength(const std::string &text, size_t index
 
     for (size_t digit = 1; digit <= 3; ++digit)
     {
-        if (text[index + digit] < '0' || text[index + digit] > '9')
+        const char character = text[index + digit];
+
+        if (character != ' ' && (character < '0' || character > '9'))
         {
             return 0;
         }
     }
 
     return 4;
+}
+
+int GameplayHudCommon::hudTabStopValue(const std::string &text, size_t index)
+{
+    int value = 0;
+    bool digits = false;
+
+    for (size_t digit = 1; digit <= 3 && index + digit < text.size(); ++digit)
+    {
+        const char character = text[index + digit];
+
+        if (character >= '0' && character <= '9')
+        {
+            value = value * 10 + (character - '0');
+            digits = true;
+        }
+        else if (digits)
+        {
+            break;
+        }
+    }
+
+    return value;
 }
 
 bool GameplayHudCommon::hasHudColorCodes(const std::string &text)
@@ -1357,7 +1382,7 @@ std::vector<GameplayHudCommon::HudColorRun> GameplayHudCommon::splitHudColorRuns
                 runs.back().colorAbgr = colorAbgr;
             }
 
-            runs.back().tabStop = std::stoi(text.substr(index + 1, 3));
+            runs.back().tabStop = hudTabStopValue(text, index);
             index += tabLength - 1;
             continue;
         }
@@ -1396,6 +1421,7 @@ std::vector<GameplayHudCommon::HudColorRun> GameplayHudCommon::splitHudColorRuns
 float GameplayHudCommon::measureHudTextWidth(const GameplayHudFontData &font, const std::string &text)
 {
     float widthPixels = 0.0f;
+    float widestPixels = 0.0f;
     uint8_t previous = 0;
 
     for (size_t index = 0; index < text.size(); ++index)
@@ -1415,7 +1441,9 @@ float GameplayHudCommon::measureHudTextWidth(const GameplayHudFontData &font, co
 
         if (const size_t tabLength = hudTabStopLength(text, index); tabLength > 0)
         {
-            widthPixels = std::max(widthPixels, static_cast<float>(std::stoi(text.substr(index + 1, 3))));
+            // The pen goes to the stop, back as well as forwards; the width is the furthest it got.
+            widestPixels = std::max(widestPixels, widthPixels);
+            widthPixels = static_cast<float>(hudTabStopValue(text, index));
             index += tabLength - 1;
             previous = 0;
             continue;
@@ -1432,7 +1460,7 @@ float GameplayHudCommon::measureHudTextWidth(const GameplayHudFontData &font, co
         previous = character;
     }
 
-    return std::max(0.0f, widthPixels);
+    return std::max({0.0f, widthPixels, widestPixels});
 }
 
 std::string GameplayHudCommon::clampHudTextToWidth(
@@ -1603,7 +1631,7 @@ void GameplayHudCommon::renderHudFontLayer(
 
         if (const size_t tabLength = hudTabStopLength(text, index); tabLength > 0)
         {
-            penX = std::max(penX, textX + static_cast<float>(std::stoi(text.substr(index + 1, 3))) * fontScale);
+            penX = textX + static_cast<float>(hudTabStopValue(text, index)) * fontScale;
             index += tabLength - 1;
             previous = 0;
             continue;
@@ -1751,7 +1779,7 @@ void GameplayHudCommon::renderLayoutLabel(
     {
         if (run.tabStop)
         {
-            textX = std::max(textX, lineStartX + static_cast<float>(*run.tabStop) * fontScale);
+            textX = lineStartX + static_cast<float>(*run.tabStop) * fontScale;
         }
 
         bgfx::TextureHandle coloredMainTextureHandle =

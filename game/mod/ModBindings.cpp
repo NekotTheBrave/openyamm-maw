@@ -2713,6 +2713,37 @@ int nativeTrainingLevel(lua_State *pLuaState)
     return 1;
 }
 
+// modrt.statDescription(stat[, text]): the description of one of the seven statistics, 0 Might to 6 Luck
+// (Game.StatsDescriptions), set when text is given.
+int nativeStatDescription(lua_State *pLuaState)
+{
+    static const char *const statNames[] = {
+        "Might", "Intellect", "Personality", "Endurance", "Accuracy", "Speed", "Luck"};
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t stat = integerArgument(pLuaState, 1);
+
+    if (pData == nullptr || stat < 0 || stat >= 7)
+    {
+        return 0;
+    }
+
+    // The table belongs to the game's data loader, which hands it out read-only; it is not a constant object.
+    CharacterInspectTable &table = const_cast<CharacterInspectTable &>(pData->getCharacterInspectTable());
+
+    if (lua_isstring(pLuaState, 2))
+    {
+        size_t length = 0;
+        const char *pText = lua_tolstring(pLuaState, 2, &length);
+        table.statForWrite(statNames[stat]).description.assign(pText, length);
+        lua_pushboolean(pLuaState, true);
+        return 1;
+    }
+
+    const StatInspectEntry *pEntry = table.getStat(statNames[stat]);
+    pushString(pLuaState, pEntry != nullptr ? pEntry->description : std::string());
+    return 1;
+}
+
 // modrt.npcText(id): one of the game's NPC texts (Game.NPCText), nil where there is none.
 int nativeNpcText(lua_State *pLuaState)
 {
@@ -3568,6 +3599,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"classSkillSet", nativeClassSkillSet},
         {"globalTextSet", nativeGlobalTextSet},
         {"npcText", nativeNpcText},
+        {"statDescription", nativeStatDescription},
         {"trainingLevel", nativeTrainingLevel},
         {"skillTextGet", nativeSkillTextGet},
         {"skillTextSet", nativeSkillTextSet},

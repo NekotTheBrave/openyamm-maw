@@ -3,6 +3,7 @@
 
 #include "game/gameplay/GameMechanics.h"
 #include "game/gameplay/GameplayInputFrame.h"
+#include "game/mod/ModHooks.h"
 #include "game/party/SkillData.h"
 #include "game/party/SpellSchool.h"
 #include "game/tables/ItemTable.h"
@@ -14,6 +15,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -670,6 +672,35 @@ void GameplayHudOverlaySupport::updateCharacterInspectOverlay(
             if (!recoverySupplement.empty())
             {
                 overlay.body += "\n\n" + recoverySupplement;
+            }
+
+            // The mod's word on the text (the original's BuildStatInformationBox), by the row's number in the
+            // original: the rows after skill points, in order. The box is built on every frame it shows; the mod's
+            // answer for the same row and text is reused for a quarter of a second (MAW's damage recount is long).
+            if (const size_t rowIndex = static_cast<size_t>(&row - CharacterStatRows.data()); rowIndex > 0)
+            {
+                struct CachedStatBox
+                {
+                    int stat = -1;
+                    std::string engineText;
+                    std::string text;
+                    std::chrono::steady_clock::time_point time;
+                };
+                static CachedStatBox cached;
+                const int stat = static_cast<int>(rowIndex) - 1;
+                const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+
+                if (cached.stat != stat || cached.engineText != overlay.body
+                    || now - cached.time > std::chrono::milliseconds(250))
+                {
+                    cached.stat = stat;
+                    cached.engineText = overlay.body;
+                    cached.text = overlay.body;
+                    cached.time = now;
+                    modStatInformationBox(stat, cached.text);
+                }
+
+                overlay.body = cached.text;
             }
 
             overlay.sourceX = rowRect.x;

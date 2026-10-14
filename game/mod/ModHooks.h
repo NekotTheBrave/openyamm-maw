@@ -242,6 +242,10 @@ public:
     // The active member has trained a level: how long the training takes, in game minutes (the original's
     // CalcTrainingTime). `engineMinutes` is the engine's.
     virtual float trainingMinutes(float engineMinutes) = 0;
+    // The text of the stats page's information box for the row `stat` (the original's numbering: 0 to 6 the
+    // statistics, 7 hit points ... 18 ranged damage, 19 to 24 the resistances), as the mod leaves it (the original's
+    // BuildStatInformationBox). `text` comes in as the engine's.
+    virtual void statInformationBox(int stat, std::string &text) = 0;
 };
 
 IModHooks *activeModHooks();
@@ -260,6 +264,9 @@ void modCanTeachSkillMastery(ModTeachSkillMasteryEvent &event);
 
 // Runs the mod's CalcTrainingTime event and returns the training's game minutes, `engineMinutes` without a mod.
 float modTrainingMinutes(float engineMinutes);
+
+// Runs the mod's BuildStatInformationBox event over `text`; it stays the engine's without a mod.
+void modStatInformationBox(int stat, std::string &text);
 
 // Runs the mod's Action event; nothing handled and nothing asked for without a mod runtime.
 ModPlayerActionResult modPlayerAction(int action, int param = 0, int param2 = 0);

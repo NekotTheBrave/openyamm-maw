@@ -91,6 +91,7 @@ public:
     bool canHandleItem(bool repair, uint32_t itemId, bool engineAnswer) override;
     void canTeachSkillMastery(ModTeachSkillMasteryEvent &event) override;
     float trainingMinutes(float engineMinutes) override;
+    void statInformationBox(int stat, std::string &text) override;
     void pickCorpse(size_t actorIndex, ModCorpseLoot &loot) override;
     void generateItem(ModItemGeneration &generation) override;
     void itemGenerated(InventoryItem &item, const ModItemGeneration &generation) override;

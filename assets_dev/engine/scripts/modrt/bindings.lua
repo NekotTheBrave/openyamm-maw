@@ -1253,6 +1253,18 @@ local houseRules = boundObject("Game.HouseRules", {
     end,
 })
 
+-- Game.StatsDescriptions[0..6]: what the stats page's information box says of Might to Luck.
+local statsDescriptions = boundObject("Game.StatsDescriptions", {
+    index = function(stat)
+        return modrt.statDescription(floor(stat))
+    end,
+    newindex = function(stat, value)
+        return modrt.statDescription(floor(stat), tostring(value))
+    end,
+    get = sizeFields(function() return 7 end),
+    range = function() return 0, 6 end,
+})
+
 -- Game.NPCText[id]: the game's NPC texts (what teachers and other people say), read-only.
 local npcText = boundObject("Game.NPCText", {
     index = function(id)
@@ -1544,7 +1556,7 @@ Game = boundObject("Game", {
         SkillDesMaster = true, SkillDesGM = true, ClassDescriptions = true,
         CurrentPlayer = true, Time = true, Classes = true, ClassNames = true, ClassesExtra = true,
         HouseScreen = true, GlobalTxt = true, CurrentCharScreen = true, NPCText = true, HouseRules = true,
-        SpellsTxt = true,
+        SpellsTxt = true, StatsDescriptions = true,
     },
     get = function(key)
         if key == "ItemsTxt" then
@@ -1563,6 +1575,8 @@ Game = boundObject("Game", {
             return houseRules
         elseif key == "SpellsTxt" then
             return spellTexts
+        elseif key == "StatsDescriptions" then
+            return statsDescriptions
         elseif key == "CurrentCharScreen" then
             -- The character screen's page, by const.CharScreens: 100 stats, 101 skills, 102 awards, 103 inventory.
             return modrt.gameGet("CurrentCharScreen") or 100

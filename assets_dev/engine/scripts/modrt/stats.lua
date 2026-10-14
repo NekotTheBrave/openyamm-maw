@@ -203,6 +203,16 @@ function Stats.canTeachSkillMastery(slot, skill, mastery, cost, allow, text)
     return event.Allow and true or false, math.floor(newCost), tostring(event.Text or text)
 end
 
+-- The information box of a row of the stats page, for Game.CurrentPlayer: the original's BuildStatInformationBox.
+-- Stat is the row (0 to 6 the statistics, 7 hit points, 8 spell points, 9 armor class, 10 condition, 11 quick
+-- spell, 12 age, 13 level, 14 experience, 15 attack, 16 melee damage, 17 shoot, 18 ranged damage, 19 to 24 the
+-- resistances); Text comes in as the game's. Returns the text the handlers leave.
+function Stats.statInformationBox(stat, text)
+    local event = {Stat = stat, Text = text}
+    ModRT.fire("BuildStatInformationBox", event)
+    return tostring(event.Text or text)
+end
+
 -- The active member (Game.CurrentPlayer) has trained a level: the original's CalcTrainingTime, with Time in ticks
 -- (256 to the game minute). Takes and returns game minutes.
 function Stats.trainingTime(minutes)

@@ -3883,7 +3883,7 @@ void GameplayScreenRuntime::renderHudTextColored(
     {
         if (run.tabStop)
         {
-            textX = std::max(textX, lineStartX + static_cast<float>(*run.tabStop) * fontScale);
+            textX = lineStartX + static_cast<float>(*run.tabStop) * fontScale;
         }
 
         const bgfx::TextureHandle textureHandle =

@@ -263,12 +263,16 @@ public:
     {
         std::string text;
         std::optional<uint32_t> colorAbgr;
-        // The run starts at this distance from the start of the line, in the font's pixels (a tab stop).
+        // The run starts at this distance from the start of the line, in the font's pixels (a tab stop, which may
+        // go back).
         std::optional<int> tabStop;
     };
-    // The original's tab stop: a tab and three digits, "go on from this many pixels into the line". The length of
-    // the one at `index`, 0 when there is none.
+    // The original's tab stop: a tab and three characters read as a number, "go on from this many pixels into the
+    // line", forwards or back (MAW's recount tables go back to the line's start and pad with spaces). The original reads them as a number does (spaces before the digits; all spaces is 0, which does not
+    // move), and MAW's tables pad with spaces after a tab. The length of the one at `index`, 0 when there is none.
     static size_t hudTabStopLength(const std::string &text, size_t index);
+    // The position the tab stop at `index` names, in the font's pixels.
+    static int hudTabStopValue(const std::string &text, size_t index);
     // The length of the colour mark at `index`, 0 when there is none.
     static size_t hudColorCodeLength(const std::string &text, size_t index);
     static bool hasHudColorCodes(const std::string &text);

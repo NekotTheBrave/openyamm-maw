@@ -1,0 +1,40 @@
+id: mod_runtime.maw.stat_info_box
+title: MAW's texts for the stats page's information boxes (BuildStatInformationBox)
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# The stats page's information box raises BuildStatInformationBox with the row's number in the original (0 to 6 the
+# statistics, 7 hit points ... 15 attack ... 18 ranged damage) and the game's text; MAW writes its own figures in.
+# The event is raised by the stats page; here it is run through the same dispatcher. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 1
+        might: 18
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment:
+          main_hand: 11
+- mod_lua:
+    code: |
+      local function box(stat)
+        return ModRT.Stats.statInformationBox(stat, "Engine text.")
+      end
+      local might = box(0)
+      return Game.StatsDescriptions[0] ~= "", might:find(Game.StatsDescriptions[0], 1, true) == 1,
+        might:find("Bonus Melee/Bow Damage:", 1, true) ~= nil,
+        box(9):find("Physical damage reduction vs level", 1, true) ~= nil,
+        box(11):find("Currently Active Legendary effects:", 1, true) == 1,
+        box(15):find("Hit chance", 1, true) ~= nil,
+        box(12) == "Engine text."
+    expect: "true\ttrue\ttrue\ttrue\ttrue\ttrue\ttrue"

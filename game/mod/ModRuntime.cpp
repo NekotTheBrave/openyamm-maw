@@ -1668,6 +1668,29 @@ bool ModRuntime::canHandleItem(bool repair, uint32_t itemId, bool engineAnswer)
     return answer;
 }
 
+void ModRuntime::statInformationBox(int stat, std::string &text)
+{
+    if (!m_active || !m_host.party || m_host.party() == nullptr || !beginDispatch("statInformationBox"))
+    {
+        return;
+    }
+
+    lua_pushinteger(m_pLuaState, stat);
+    lua_pushlstring(m_pLuaState, text.data(), text.size());
+
+    if (endDispatch(2, 1))
+    {
+        if (lua_isstring(m_pLuaState, -1))
+        {
+            size_t length = 0;
+            const char *pText = lua_tolstring(m_pLuaState, -1, &length);
+            text.assign(pText, length);
+        }
+
+        lua_pop(m_pLuaState, 1);
+    }
+}
+
 float ModRuntime::trainingMinutes(float engineMinutes)
 {
     if (!m_active || !m_host.party || m_host.party() == nullptr || !beginDispatch("trainingTime"))

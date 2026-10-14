@@ -72,6 +72,14 @@ void modCanTeachSkillMastery(ModTeachSkillMasteryEvent &event)
     }
 }
 
+void modStatInformationBox(int stat, std::string &text)
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->statInformationBox(stat, text);
+    }
+}
+
 float modTrainingMinutes(float engineMinutes)
 {
     IModHooks *pModHooks = activeModHooks();
