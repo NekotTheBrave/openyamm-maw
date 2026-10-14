@@ -3,6 +3,7 @@
 #include "game/data/GameDataLoader.h"
 #include "game/gameplay/GameMechanics.h"
 #include "game/gameplay/GameplayRuntimeInterfaces.h"
+#include "game/items/ItemEnchantRuntime.h"
 #include "game/mod/ModHooks.h"
 #include "game/mod/ModHost.h"
 #include "game/party/Party.h"
@@ -1101,10 +1102,40 @@ constexpr std::array<EquipmentSlotMembers, 16> EquipmentSlots = {{
 }};
 
 // Arguments: player index, "inv" | "equip", zero-based index within that group.
+InventoryItem *g_pModEventItem = nullptr;
+
+void itemViewOfInventoryItem(InventoryItem &item, ItemView &view)
+{
+    view.pItemId = &item.objectDescriptionId;
+    view.pIdentified = &item.identified;
+    view.pBroken = &item.broken;
+    view.pStolen = &item.stolen;
+    view.pStandardEnchantId = &item.standardEnchantId;
+    view.pStandardEnchantPower = &item.standardEnchantPower;
+    view.pSpecialEnchantId = &item.specialEnchantId;
+    view.pCurrentCharges = &item.currentCharges;
+    view.pMaxCharges = &item.maxCharges;
+    view.pModData = &item.modData;
+    view.pInventoryItem = &item;
+}
+
 bool itemViewArgument(lua_State *pLuaState, ItemView &view)
 {
-    Character *pCharacter = playerArgument(pLuaState, 1);
     const std::string group = luaL_checkstring(pLuaState, 2);
+
+    // The item of the event being handled; it belongs to no party member.
+    if (group == "event")
+    {
+        if (g_pModEventItem == nullptr)
+        {
+            return false;
+        }
+
+        itemViewOfInventoryItem(*g_pModEventItem, view);
+        return true;
+    }
+
+    Character *pCharacter = playerArgument(pLuaState, 1);
     const int64_t index = integerArgument(pLuaState, 3);
 
     if (pCharacter == nullptr || index < 0)
@@ -1119,18 +1150,7 @@ bool itemViewArgument(lua_State *pLuaState, ItemView &view)
             return false;
         }
 
-        InventoryItem &item = pCharacter->inventory[static_cast<size_t>(index)];
-        view.pItemId = &item.objectDescriptionId;
-        view.pIdentified = &item.identified;
-        view.pBroken = &item.broken;
-        view.pStolen = &item.stolen;
-        view.pStandardEnchantId = &item.standardEnchantId;
-        view.pStandardEnchantPower = &item.standardEnchantPower;
-        view.pSpecialEnchantId = &item.specialEnchantId;
-        view.pCurrentCharges = &item.currentCharges;
-        view.pMaxCharges = &item.maxCharges;
-        view.pModData = &item.modData;
-        view.pInventoryItem = &item;
+        itemViewOfInventoryItem(pCharacter->inventory[static_cast<size_t>(index)], view);
         return true;
     }
 
@@ -1236,6 +1256,43 @@ int nativeItemGet(lua_State *pLuaState)
     else if (field == "GridY" && view.pInventoryItem != nullptr)
     {
         lua_pushinteger(pLuaState, view.pInventoryItem->gridY);
+    }
+    else if (field == "Value")
+    {
+        // What the game takes the item to be worth (Item:GetValue), a mod's own valuation included.
+        const GameDataLoader *pData = dataFromHost(pLuaState);
+        const ItemDefinition *pDefinition = pData != nullptr ? pData->getItemTable().get(*view.pItemId) : nullptr;
+
+        if (pDefinition == nullptr)
+        {
+            return 0;
+        }
+
+        // An equipped item is kept as its slot's fields; priced as the item they make up.
+        InventoryItem item = {};
+        item.objectDescriptionId = *view.pItemId;
+        item.identified = *view.pIdentified;
+        item.broken = *view.pBroken;
+        item.stolen = *view.pStolen;
+        item.standardEnchantId = *view.pStandardEnchantId;
+        item.standardEnchantPower = *view.pStandardEnchantPower;
+        item.specialEnchantId = *view.pSpecialEnchantId;
+        item.currentCharges = *view.pCurrentCharges;
+        item.maxCharges = *view.pMaxCharges;
+        item.modData = *view.pModData;
+
+        if (view.pInventoryItem != nullptr)
+        {
+            item = *view.pInventoryItem;
+        }
+
+        lua_pushinteger(
+            pLuaState,
+            ItemEnchantRuntime::itemValue(
+                item,
+                *pDefinition,
+                &pData->getStandardItemEnchantTable(),
+                &pData->getSpecialItemEnchantTable()));
     }
     else
     {
@@ -2505,6 +2562,151 @@ int nativeMapMonsterSet(lua_State *pLuaState)
     return 1;
 }
 
+// modrt.enchantTxtGet(special, index, field[, slot]): a row of the special (Game.SpcItemsTxt) or standard
+// (Game.StdItemsTxt) enchant table, numbered from 0 as the original's are (an item's Bonus2 - 1, Bonus - 1).
+// "#" is the number of rows. ChanceForSlot takes the slot, numbered from 0.
+int nativeEnchantTxtGet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const bool special = lua_toboolean(pLuaState, 1);
+    const int64_t index = integerArgument(pLuaState, 2);
+    const std::string field = luaL_checkstring(pLuaState, 3);
+    const int64_t slot = luaL_optinteger(pLuaState, 4, -1);
+
+    if (pData == nullptr)
+    {
+        return 0;
+    }
+
+    if (field == "#")
+    {
+        lua_pushinteger(
+            pLuaState,
+            static_cast<lua_Integer>(special
+                ? pData->getSpecialItemEnchantTable().entries().size()
+                : pData->getStandardItemEnchantTable().entries().size()));
+        return 1;
+    }
+
+    if (index < 0 || index >= UINT16_MAX)
+    {
+        return 0;
+    }
+
+    const uint16_t enchantId = static_cast<uint16_t>(index + 1);
+
+    if (special)
+    {
+        const SpecialItemEnchantEntry *pEntry = pData->getSpecialItemEnchantTable().get(enchantId);
+
+        if (pEntry == nullptr)
+        {
+            return 0;
+        }
+
+        if (field == "NameAdd")
+        {
+            pushString(pLuaState, pEntry->suffix);
+        }
+        else if (field == "BonusStat")
+        {
+            pushString(pLuaState, pEntry->name);
+        }
+        else if (field == "Value")
+        {
+            lua_pushinteger(pLuaState, pEntry->priceModifier.amount);
+        }
+        else if (field == "Lvl")
+        {
+            // The table's letter, A to D, as the original's 0 to 3.
+            lua_pushinteger(
+                pLuaState,
+                pEntry->rarityLevel >= 'A' && pEntry->rarityLevel <= 'D' ? pEntry->rarityLevel - 'A' : 0);
+        }
+        else if (field == "ChanceForSlot" && slot >= 0 && static_cast<size_t>(slot) < pEntry->slotWeights.size())
+        {
+            lua_pushinteger(pLuaState, pEntry->slotWeights[static_cast<size_t>(slot)]);
+        }
+        else
+        {
+            return 0;
+        }
+
+        return 1;
+    }
+
+    const StandardItemEnchantEntry *pEntry = pData->getStandardItemEnchantTable().get(enchantId);
+
+    if (pEntry == nullptr)
+    {
+        return 0;
+    }
+
+    if (field == "NameAdd")
+    {
+        pushString(pLuaState, pEntry->suffix);
+    }
+    else if (field == "BonusStat")
+    {
+        pushString(pLuaState, pEntry->statName);
+    }
+    else if (field == "ChanceForSlot" && slot >= 0 && static_cast<size_t>(slot) < pEntry->slotValues.size())
+    {
+        lua_pushinteger(pLuaState, pEntry->slotValues[static_cast<size_t>(slot)]);
+    }
+    else
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+// modrt.itemTooltip(player, group, index, name, type, basicStat, enchantment, description): the five texts of the
+// item's information box after the scripts' BuildItemInformationBox handlers, given the engine's five. The game
+// asks the same of the scripts when it draws the box; this is the way to see the answer without drawing it.
+int nativeItemTooltip(lua_State *pLuaState)
+{
+    ItemView view = {};
+
+    if (!itemViewArgument(pLuaState, view))
+    {
+        return 0;
+    }
+
+    InventoryItem item = {};
+    item.objectDescriptionId = *view.pItemId;
+    item.identified = *view.pIdentified;
+    item.broken = *view.pBroken;
+    item.stolen = *view.pStolen;
+    item.standardEnchantId = *view.pStandardEnchantId;
+    item.standardEnchantPower = *view.pStandardEnchantPower;
+    item.specialEnchantId = *view.pSpecialEnchantId;
+    item.currentCharges = *view.pCurrentCharges;
+    item.maxCharges = *view.pMaxCharges;
+    item.modData = *view.pModData;
+
+    ModItemTooltip texts = {};
+    std::string *const fields[] = {
+        &texts.name, &texts.type, &texts.basicStat, &texts.enchantment, &texts.description};
+
+    for (int index = 0; index < 5; ++index)
+    {
+        size_t length = 0;
+        const char *pText = luaL_optlstring(pLuaState, 4 + index, "", &length);
+        fields[index]->assign(pText, length);
+    }
+
+    modItemTooltip(item, texts, true);
+
+    for (const std::string *pField : fields)
+    {
+        lua_pushlstring(pLuaState, pField->data(), pField->size());
+    }
+
+    return 5;
+}
+
 // modrt.summonMonster(id, x, y, z): puts one monster of that kind on the map near the point, hostile to the
 // party, and returns its index in Map.Monsters, or nothing when the engine could not place one.
 int nativeSummonMonster(lua_State *pLuaState)
@@ -2712,6 +2914,13 @@ int nativeStatisticEffect(lua_State *pLuaState)
 }
 }
 
+InventoryItem *setModEventItem(InventoryItem *pItem)
+{
+    InventoryItem *pPrevious = g_pModEventItem;
+    g_pModEventItem = pItem;
+    return pPrevious;
+}
+
 void registerModBindings(lua_State *pLuaState, const ModHost &host)
 {
     struct NativeFunction
@@ -2750,6 +2959,8 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"mapMonsterSet", nativeMapMonsterSet},
         {"mapMonstersResetSpeed", nativeMapMonstersResetSpeed},
         {"summonMonster", nativeSummonMonster},
+        {"itemTooltip", nativeItemTooltip},
+        {"enchantTxtGet", nativeEnchantTxtGet},
         {"mapPointInfo", nativeMapPointInfo},
         {"gameGet", nativeGameGet},
         {"castSpell", nativeCastSpell},

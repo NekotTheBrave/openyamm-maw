@@ -1,0 +1,50 @@
+id: mod_runtime.item_value
+title: CalcItemValue decides what the game takes an item to be worth
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 0
+      food: 1
+      members:
+      - name: Appraiser
+        class: Knight
+        level: 3
+        skills:
+        - name: Sword
+          level: 2
+          mastery: 1
+        equipment:
+          main_hand: 1
+# With no handler an item is worth what the engine says: the Iron Longsword's 20 from the item table.
+- mod_lua:
+    code: |
+      local sword = Party[0]:GetActiveItem(1)
+      return sword:GetValue(), sword:T().Value
+    expect: "20\t20"
+# The event names the item being priced and carries the engine's value; what the handler leaves in Value is the
+# item's worth from then on, wherever the engine prices it. Writing to the item from the handler changes nothing:
+# pricing an item does not alter it.
+- mod_lua:
+    code: |
+      Seen = {}
+      function Appraise(t)
+        Seen[#Seen + 1] = t.Item.Number .. ":" .. t.Value .. ":" .. tostring(t.Item.Identified)
+        t.Item.BonusStrength = 99
+        t.Value = t.Value * 3 + t.Item.Number
+      end
+      events.CalcItemValue = Appraise
+      local sword = Party[0]:GetActiveItem(1)
+      return sword:GetValue(), Seen[1], #Seen, sword.BonusStrength, Party[0]:GetActiveItem(1):GetValue()
+    expect: "61\t1:20:true\t1\t0\t61"
+# A value that is not a number leaves the engine's.
+- mod_lua:
+    code: |
+      events.Remove("CalcItemValue", Appraise)
+      function events.CalcItemValue(t) t.Value = "dear" end
+      return Party[0]:GetActiveItem(1):GetValue()
+    expect: "20"

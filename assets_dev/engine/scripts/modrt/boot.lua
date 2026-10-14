@@ -276,6 +276,10 @@ local function dispatchKind(kind, ...)
         return ModRT.Stats.statisticEffect(...)
     elseif kind == "attackDelay" then
         return ModRT.Stats.attackDelay(...)
+    elseif kind == "itemValue" then
+        return ModRT.Stats.itemValue(...)
+    elseif kind == "itemTooltip" then
+        return ModRT.Stats.itemTooltip(...)
     elseif kind == "skillStatBonus" then
         return ModRT.Stats.skillStatBonus(...)
     end

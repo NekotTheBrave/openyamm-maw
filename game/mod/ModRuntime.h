@@ -84,6 +84,8 @@ public:
     bool deferBonusRebuild() override;
     int statisticEffect(int value, int engineEffect) override;
     int attackDelay(const Character &character, bool ranged, int engineTicks) override;
+    int itemValue(const InventoryItem &item, int engineValue) override;
+    void itemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh) override;
     int skillStatBonus(const Character &character, int statId, int engineBonus) override;
     // Takes the scripts' answer for one statistic of the member whose bonuses are being rebuilt: what the items
     // give and what magic gives.
@@ -148,6 +150,19 @@ private:
     // times while drawing one frame, and the scripts answer from a formula.
     std::unordered_map<int, int> m_statisticEffects;
     int m_attackDelayDepth = 0;
+    int m_itemValueDepth = 0;
+
+    // The information box is built again on every frame it is on screen. The scripts' answer for the same item
+    // and the same engine texts is kept for a short while instead of being asked for sixty times a second.
+    struct ItemTooltipCache
+    {
+        bool valid = false;
+        std::chrono::steady_clock::time_point time;
+        std::string itemKey;
+        ModItemTooltip engineTexts;
+        ModItemTooltip modTexts;
+    };
+    ItemTooltipCache m_itemTooltipCache;
     int m_skillStatDepth = 0;
     bool m_enabled = false;
     bool m_configured = false;

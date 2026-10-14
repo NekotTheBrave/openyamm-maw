@@ -75,9 +75,40 @@ steps:
         armor:T().Name, armor:T().Mod1DiceCount + armor:T().Mod2,
         getItemValue(sword), getItemValue(armor), getItemValue(bow)
     expect: "Iron Broadsword\t3-9\t60\tCrude Crossbow\t3-9\t80\tRusty Breastplate\t18\t20\t300\t10"
+# Those values are what the game itself now takes the items to be worth (tooltips, shops, identifying, repairing):
+# MAW answers the engine through CalcItemValue.
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      return pl:GetActiveItem(1):GetValue(), pl:GetActiveItem(3):GetValue(), pl:GetActiveItem(2):GetValue()
+    expect: "20\t300\t10"
 # MAW's own "M/R: 3/2" and "Vitality: 48".
 - mod_lua:
     code: |
       local melee, ranged, spell, vitality = calcPowerVitality(Party[0], true)
       return tostring(melee), tostring(ranged), tostring(vitality)
     expect: "3\t2\t48"
+# The information boxes, as the real game shows them (parity/Sword.png, Armor.png, Crossbow.png): MAW adds the
+# attack speed under the type, gives the damage as a range, and ends the description with the level required. The
+# texts handed in are the engine's own wording for these items; lines are joined with "|" here, colours left out.
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      local engine = {
+        [1] = {Type = "Type: Broadsword", BasicStat = "Attack: +0   Damage: 3d3"},
+        [3] = {Type = "Type: Plate Armor", BasicStat = "Armor: +18"},
+        [2] = {Type = "Type: Crossbow", BasicStat = "Shoot: +0   Damage: 3d3"},
+      }
+      local out = {}
+      for _, slot in ipairs{1, 3, 2} do
+        local item = pl:GetActiveItem(slot)
+        local texts = engine[slot]
+        texts.Name, texts.Enchantment, texts.Description = item:T().Name, "", "Notes."
+        local box = item:BuildInformationBox(texts)
+        out[#out + 1] = table.concat({box.Name, box.Type, box.BasicStat, box.Enchantment, box.Description}, "; ")
+      end
+      return (table.concat(out, " ## "):gsub("\f%d%d%d%d%d", ""):gsub("\n", "|"))
+    expect: >-
+      Iron Broadsword; Type: Broadsword|Attack Speed: 0.6; Attack: +0  Damage: 3-9; ; Notes.||Level Required: 1 ##
+      Rusty Breastplate; Type: Plate Armor; Armor: +18; ; Notes.||Level Required: 1 ##
+      Crude Crossbow; Type: Crossbow|Attack Speed: 0.8; Attack: +0  Damage: 3-9; ; Notes.||Level Required: 1

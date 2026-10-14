@@ -289,9 +289,26 @@ local function itemObject(playerIndex, group, index, path)
             T = function(self)
                 return Game.ItemsTxt[self.Number]
             end,
+            -- What the game takes the item to be worth.
+            GetValue = function(self)
+                return modrt.itemGet(playerIndex, group, index, "Value") or 0
+            end,
+            -- Not the original's: the item's information box after the scripts' handlers, as a table of Name,
+            -- Type, BasicStat, Enchantment and Description, starting from the texts given.
+            BuildInformationBox = function(self, texts)
+                texts = texts or {}
+                local name, typeText, basicStat, enchantment, description = modrt.itemTooltip(playerIndex, group,
+                    index, texts.Name or "", texts.Type or "", texts.BasicStat or "", texts.Enchantment or "",
+                    texts.Description or "")
+                return {Name = name, Type = typeText, BasicStat = basicStat, Enchantment = enchantment,
+                    Description = description}
+            end,
         },
     })
 end
+
+-- The item of the event being handled, when it is not one a party member holds.
+Bindings.eventItem = itemObject(0, "event", 0, "Item(event)")
 
 local emptyItem = boundObject("Item(empty)", {
     get = function(key)
@@ -1074,6 +1091,43 @@ local itemsTxt = boundObject("Game.ItemsTxt", {
     get = sizeFields(function() return modrt.itemTxtGet(0, "#") or 0 end),
 })
 
+-- The enchant tables: Game.SpcItemsTxt (an item's Bonus2 - 1) and Game.StdItemsTxt (its Bonus - 1), numbered from
+-- 0. Read only; what a script writes to a row stays with the script.
+local function enchantTable(path, special, slotCount)
+    local function count()
+        return modrt.enchantTxtGet(special, 0, "#") or 0
+    end
+
+    local row = tableRow(path .. "[]", function(id, key)
+        if key == "ChanceForSlot" then
+            return boundObject(path .. "[].ChanceForSlot", {
+                index = function(slot)
+                    return modrt.enchantTxtGet(special, id, "ChanceForSlot", floor(slot)) or 0
+                end,
+                get = sizeFields(function() return slotCount end),
+                range = function() return 0, slotCount - 1 end,
+            })
+        end
+
+        return modrt.enchantTxtGet(special, id, key)
+    end)
+
+    return boundObject(path, {
+        index = function(id)
+            if id < 0 or id >= count() then
+                return nil
+            end
+
+            return row(floor(id))
+        end,
+        get = sizeFields(count),
+        range = function() return 0, count() - 1 end,
+    })
+end
+
+local spcItemsTxt = enchantTable("Game.SpcItemsTxt", true, 12)
+local stdItemsTxt = enchantTable("Game.StdItemsTxt", false, 9)
+
 -- Rows are numbered from 1, as monsters are. Scripts walk the table from 1 to High and expect a row at every
 -- number, so High is the end of the unbroken run from 1: the Merge's monsters. OpenYAMM numbers a few monsters
 -- of its own far above them; those rows can be reached by number but are not part of the walk.
@@ -1239,11 +1293,16 @@ Game = boundObject("Game", {
     owned = "Game",
     bound = {
         ItemsTxt = true, MonstersTxt = true, CharacterPortraits = true, MapStats = true, PlaceMonTxt = true,
+        SpcItemsTxt = true, StdItemsTxt = true,
         CurrentPlayer = true, Time = true, Classes = true, ClassNames = true, ClassesExtra = true,
     },
     get = function(key)
         if key == "ItemsTxt" then
             return itemsTxt
+        elseif key == "SpcItemsTxt" then
+            return spcItemsTxt
+        elseif key == "StdItemsTxt" then
+            return stdItemsTxt
         elseif key == "MonstersTxt" then
             return monstersTxt
         elseif key == "CharacterPortraits" then

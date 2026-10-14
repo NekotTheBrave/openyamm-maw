@@ -250,8 +250,9 @@ end
 
 -- Text markup of the original engine: 16-bit colour, column alignment.
 function RGB(r, g, b)
-    r, g, b = math.floor(r), math.floor(g), math.floor(b)
-    return (b + 0x40 * ((g & 0xFC) + 0x20 * r)) // 8
+    -- 16-bit colour, five bits of red, six of green, five of blue: the low bits of each go first.
+    r, g, b = math.floor(r) & 0xF8, math.floor(g) & 0xFC, math.floor(b) & 0xF8
+    return (b + 0x40 * (g + 0x20 * r)) // 8
 end
 
 function StrLeft(value)

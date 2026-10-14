@@ -1,0 +1,80 @@
+id: mod_runtime.item_tooltip
+title: BuildItemInformationBox rewords an item's information box
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 0
+      food: 1
+      members:
+      - name: Reader
+        class: Knight
+        level: 3
+        skills:
+        - name: Sword
+          level: 2
+          mastery: 1
+        equipment:
+          main_hand: 1
+# item:BuildInformationBox(texts) is this runtime's own: it puts the texts given through the scripts' handlers, as
+# the game does with its own texts when it draws the box. With no handler they come back as they went in.
+- mod_lua:
+    code: |
+      local sword = Party[0]:GetActiveItem(1)
+      local box = sword:BuildInformationBox{Name = "Iron Longsword", Type = "Type: Sword",
+        BasicStat = "Attack: +0   Damage: 2d3", Enchantment = "", Description = "A sword."}
+      return box.Name, box.Type, box.BasicStat, box.Enchantment, box.Description
+    expect: "Iron Longsword\tType: Sword\tAttack: +0   Damage: 2d3\t\tA sword."
+# The original raises the event three times for one box, and a handler tells the calls apart by which texts are
+# there: Type, BasicStat and Enchantment; then Description; then Name. Each call names the item.
+- mod_lua:
+    code: |
+      Calls = {}
+      function events.BuildItemInformationBox(t)
+        local present = {}
+        for _, field in ipairs{"Type", "BasicStat", "Enchantment", "Description", "Name"} do
+          if t[field] ~= nil then present[#present + 1] = field end
+        end
+        Calls[#Calls + 1] = table.concat(present, "+") .. "@" .. t.Item.Number
+        if t.Type then
+          t.Type = t.Type .. "\nReach: long"
+          t.BasicStat = "Damage: 2-6"
+          t.Enchantment = StrColor(100, 100, 100, "Might +X")
+        elseif t.Description then
+          t.Description = t.Description .. "\n\nLevel Required: 1"
+        elseif t.Name then
+          t.Name = StrColor(255, 255, 255, "Fine " .. t.Name)
+        end
+      end
+      local sword = Party[0]:GetActiveItem(1)
+      local box = sword:BuildInformationBox{Name = "Iron Longsword", Type = "Type: Sword",
+        BasicStat = "Attack: +0   Damage: 2d3", Enchantment = "", Description = "A sword."}
+      local function plain(text)
+        return (text:gsub("\f%d%d%d%d%d", ""):gsub("\n", "|"))
+      end
+      return table.concat(Calls, " "), plain(box.Name), plain(box.Type), box.BasicStat, plain(box.Enchantment),
+        plain(box.Description), box.Name:sub(1, 6) == "\f65535", box.Enchantment:sub(1, 6) == "\f25388"
+    expect: "Type+BasicStat+Enchantment@1 Description@1 Name@1\tFine Iron Longsword\tType: Sword|Reach: long\tDamage: 2-6\tMight +X\tA sword.||Level Required: 1\ttrue\ttrue"
+# A handler that leaves something other than text in a field leaves the game's text there.
+- mod_lua:
+    code: |
+      function events.BuildItemInformationBox(t)
+        if t.Name then t.Name = {} end
+      end
+      local box = Party[0]:GetActiveItem(1):BuildInformationBox{Name = "Iron Longsword"}
+      return (box.Name:gsub("\f%d%d%d%d%d", ""))
+    expect: "Iron Longsword"
+# The enchant tables a box is worded from: Game.SpcItemsTxt, by an item's Bonus2 - 1, and Game.StdItemsTxt, by its
+# Bonus - 1, both numbered from 0. Value is the special enchant's price figure, Lvl its treasure level (0 to 3 for
+# the table's A to D), ChanceForSlot its weight for each kind of equipment.
+- mod_lua:
+    code: |
+      local special, standard = Game.SpcItemsTxt, Game.StdItemsTxt
+      return special[0].NameAdd, special[0].BonusStat, special[0].Value, special[0].Lvl, special[0].ChanceForSlot[0],
+        special[0].ChanceForSlot.Count, special.High == special.Count - 1, tostring(special[special.Count]),
+        standard[0].NameAdd, standard[0].BonusStat, standard[0].ChanceForSlot.Count, standard.Count
+    expect: "of Protection\t+10 to all Resistances.\t1000\t1\t0\t12\ttrue\tnil\tof Might\tMight\t9\t25"

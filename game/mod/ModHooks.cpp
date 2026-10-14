@@ -18,6 +18,41 @@ void setActiveModHooks(IModHooks *pModHooks)
     g_pActiveModHooks = pModHooks;
 }
 
+void modItemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh)
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->itemTooltip(item, texts, fresh);
+    }
+}
+
+std::string stripMm8ColorCodes(const std::string &text)
+{
+    std::string result;
+    result.reserve(text.size());
+
+    for (size_t index = 0; index < text.size(); ++index)
+    {
+        if (text[index] == '\f')
+        {
+            size_t digits = 0;
+
+            while (digits < 5 && index + 1 + digits < text.size()
+                && text[index + 1 + digits] >= '0' && text[index + 1 + digits] <= '9')
+            {
+                ++digits;
+            }
+
+            index += digits;
+            continue;
+        }
+
+        result.push_back(text[index]);
+    }
+
+    return result;
+}
+
 int mm8AiState(const ModActorActivity &activity)
 {
     if (activity.dead || activity.motion == 7)

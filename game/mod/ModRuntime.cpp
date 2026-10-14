@@ -1605,6 +1605,111 @@ int ModRuntime::attackDelay(const Character &character, bool ranged, int engineT
     return ticks;
 }
 
+int ModRuntime::itemValue(const InventoryItem &item, int engineValue)
+{
+    // The scripts price an item from its own fields; one that asked the engine for another item's value from
+    // inside its handler would come back here, and deeper than that is a loop.
+    if (!m_active || m_itemValueDepth >= 2 || !m_host.party || m_host.party() == nullptr)
+    {
+        return engineValue;
+    }
+
+    if (!beginDispatch("itemValue"))
+    {
+        return engineValue;
+    }
+
+    // The handlers see the item as Item fields over a copy: pricing an item does not change it.
+    InventoryItem eventItem = item;
+    InventoryItem *pPreviousEventItem = setModEventItem(&eventItem);
+    ++m_itemValueDepth;
+    lua_pushinteger(m_pLuaState, engineValue);
+    int value = engineValue;
+
+    if (endDispatch(1, 1))
+    {
+        if (lua_isnumber(m_pLuaState, -1))
+        {
+            value = static_cast<int>(
+                std::clamp<lua_Number>(std::floor(lua_tonumber(m_pLuaState, -1) + 0.5), 0.0, 2000000000.0));
+        }
+
+        lua_pop(m_pLuaState, 1);
+    }
+
+    --m_itemValueDepth;
+    setModEventItem(pPreviousEventItem);
+    return value;
+}
+
+void ModRuntime::itemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh)
+{
+    if (!m_active || !m_host.party || m_host.party() == nullptr)
+    {
+        return;
+    }
+
+    // What the scripts say depends on the item and on who is looking at it.
+    const std::string itemKey =
+        std::to_string(item.objectDescriptionId) + '/' + std::to_string(item.standardEnchantId) + '/'
+        + std::to_string(item.standardEnchantPower) + '/' + std::to_string(item.specialEnchantId) + '/'
+        + std::to_string(item.currentCharges) + '/' + std::to_string(item.maxCharges) + '/'
+        + std::to_string(item.modData.charges) + '/' + std::to_string(item.modData.maxCharges) + '/'
+        + std::to_string(item.modData.bonusExpireTime) + '/' + (item.identified ? 'i' : '-')
+        + (item.broken ? 'b' : '-') + '/' + std::to_string(m_host.party()->activeMemberIndex());
+    const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+
+    if (!fresh
+        && m_itemTooltipCache.valid
+        && m_itemTooltipCache.itemKey == itemKey
+        && m_itemTooltipCache.engineTexts == texts
+        && now - m_itemTooltipCache.time < std::chrono::milliseconds(250))
+    {
+        texts = m_itemTooltipCache.modTexts;
+        return;
+    }
+
+    if (!beginDispatch("itemTooltip"))
+    {
+        return;
+    }
+
+    const ModItemTooltip engineTexts = texts;
+    InventoryItem eventItem = item;
+    InventoryItem *pPreviousEventItem = setModEventItem(&eventItem);
+    std::string *const fields[] = {
+        &texts.name, &texts.type, &texts.basicStat, &texts.enchantment, &texts.description};
+
+    for (const std::string *pField : fields)
+    {
+        lua_pushlstring(m_pLuaState, pField->data(), pField->size());
+    }
+
+    if (endDispatch(5, 5))
+    {
+        for (int index = 0; index < 5; ++index)
+        {
+            const int stackIndex = -5 + index;
+
+            if (lua_type(m_pLuaState, stackIndex) == LUA_TSTRING)
+            {
+                size_t length = 0;
+                const char *pText = lua_tolstring(m_pLuaState, stackIndex, &length);
+                fields[index]->assign(pText, length);
+            }
+        }
+
+        lua_pop(m_pLuaState, 5);
+    }
+
+    setModEventItem(pPreviousEventItem);
+    m_itemTooltipCache.valid = true;
+    m_itemTooltipCache.time = now;
+    m_itemTooltipCache.itemKey = itemKey;
+    m_itemTooltipCache.engineTexts = engineTexts;
+    m_itemTooltipCache.modTexts = texts;
+}
+
 int ModRuntime::skillStatBonus(const Character &character, int statId, int engineBonus)
 {
     // A handler that asks for the statistic it is computing would come straight back here.

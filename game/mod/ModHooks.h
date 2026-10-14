@@ -5,11 +5,25 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 
 namespace OpenYAMM::Game
 {
 // Points in gameplay where a mod may change the outcome. Gameplay code asks activeModHooks() and, when a mod runtime
 // is present, lets it adjust the value; with no runtime the pointer is null and gameplay is untouched.
+
+// The texts of an item's information box, as the original's BuildItemInformationBox event names them: the item's
+// name, its type line, its basic statistic ("Damage: 2d3", "Armor: +18"), its enchantment line, its description.
+struct ModItemTooltip
+{
+    std::string name;
+    std::string type;
+    std::string basicStat;
+    std::string enchantment;
+    std::string description;
+
+    bool operator==(const ModItemTooltip &) const = default;
+};
 
 // The party hits a map actor. `rawDamage` is the attack's damage before the target's resistances, `resolvedDamage`
 // what the engine would apply after them; the hook returns the damage to apply.
@@ -131,6 +145,13 @@ public:
     // `ranged` is true for the bow slot and false for whatever the main hand does. `engineTicks` is the engine's
     // answer; the hook returns the ticks to use.
     virtual int attackDelay(const Character &character, bool ranged, int engineTicks) = 0;
+    // What an item is worth; `engineValue` is the engine's answer. Asked for wherever the engine prices an item: a
+    // tooltip, a shop's offer, the cost of identifying or repairing it, what a corpse or chest holds.
+    virtual int itemValue(const InventoryItem &item, int engineValue) = 0;
+    // The texts of the item's information box; `texts` come in as the engine's and go out as the mod leaves them.
+    // The box is built on every frame it shows, so the answer for the same item and texts is reused for a moment
+    // unless `fresh` asks the scripts again.
+    virtual void itemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh) = 0;
 
     // The part of a statistic that comes from the character's skills: Bodybuilding in hit points, the armor
     // skills in armor class, the weapon skills in attack and damage. `statId` is the original engine's statistic
@@ -140,6 +161,13 @@ public:
 
 IModHooks *activeModHooks();
 void setActiveModHooks(IModHooks *pModHooks);
+
+// Runs the mod's event over the texts of an item's information box; without a mod runtime they stay as they are.
+void modItemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh = false);
+
+// The original marks coloured text with a form feed and five digits ("\f00000" ends a colour). The engine's text
+// drawing does not know the marks, so they are taken out before a mod's text is shown.
+std::string stripMm8ColorCodes(const std::string &text);
 
 // const.Damage: the original engine's number for a kind of damage, which is how mods name it.
 int mm8DamageKind(CombatDamageType damageType);

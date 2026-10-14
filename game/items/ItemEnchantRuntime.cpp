@@ -1,6 +1,7 @@
 #include "game/items/ItemEnchantRuntime.h"
 
 #include "game/gameplay/GameMechanics.h"
+#include "game/mod/ModHooks.h"
 #include "game/party/SkillData.h"
 #include "game/tables/ItemTable.h"
 #include "game/tables/MonsterTable.h"
@@ -1700,7 +1701,33 @@ std::string ItemEnchantRuntime::displayName(
     return baseName;
 }
 
+int calculateEngineItemValue(
+    const InventoryItem &item,
+    const ItemDefinition &itemDefinition,
+    const StandardItemEnchantTable *pStandardTable,
+    const SpecialItemEnchantTable *pSpecialTable,
+    int minimumValue);
+
+// Every price in the game starts here, so this is where a mod's own valuation comes in.
 int calculateItemValue(
+    const InventoryItem &item,
+    const ItemDefinition &itemDefinition,
+    const StandardItemEnchantTable *pStandardTable,
+    const SpecialItemEnchantTable *pSpecialTable,
+    int minimumValue)
+{
+    const int engineValue =
+        calculateEngineItemValue(item, itemDefinition, pStandardTable, pSpecialTable, minimumValue);
+
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        return std::max(minimumValue, pModHooks->itemValue(item, engineValue));
+    }
+
+    return engineValue;
+}
+
+int calculateEngineItemValue(
     const InventoryItem &item,
     const ItemDefinition &itemDefinition,
     const StandardItemEnchantTable *pStandardTable,

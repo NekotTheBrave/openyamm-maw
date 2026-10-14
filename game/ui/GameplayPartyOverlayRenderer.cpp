@@ -16,6 +16,7 @@
 #include "game/items/ItemEnchantRuntime.h"
 #include "game/items/ItemRuntime.h"
 #include "game/items/PriceCalculator.h"
+#include "game/mod/ModHooks.h"
 #include "game/party/LloydsBeaconRuntime.h"
 #include "game/tables/MonsterTable.h"
 #include "game/tables/RosterTable.h"
@@ -5889,7 +5890,7 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
         && pItemState != nullptr
         && !pItemState->identified
         && ItemRuntime::requiresIdentification(*pItemDefinition);
-    const std::string itemName = ItemRuntime::displayName(
+    std::string itemName = ItemRuntime::displayName(
         resolvedItemState,
         *pItemDefinition,
         context.standardItemEnchantTable(),
@@ -5898,7 +5899,7 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
         showBrokenOnly || showUnidentifiedOnly
             ? std::string {}
             : resolveItemInspectTypeText(pItemState, *pItemDefinition);
-    const std::string itemDetail =
+    std::string itemDetail =
         showBrokenOnly || showUnidentifiedOnly
             ? std::string {}
             : resolveItemInspectDetailText(pItemState, *pItemDefinition);
@@ -5947,8 +5948,47 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
             itemSpecialDetail += (itemSpecialDetail.empty() ? std::string {} : "\n") + setDescription;
         }
     }
-    const std::string itemDescription =
+    std::string itemDescription =
         showBrokenOnly || showUnidentifiedOnly ? std::string {} : pItemDefinition->notes;
+    std::string itemTypeLine = "Type: " + itemType;
+
+    // A mod's own wording of the box (the original's BuildItemInformationBox). The box has one line for the type
+    // and one row for the basic statistic, and a mod's texts may run over several lines each, so whatever follows
+    // the first line of the type goes, with the statistic and the enchantment, into the block under it, which
+    // wraps. The original's colour marks are taken out: the box draws in one colour.
+    if (!showBrokenOnly && !showUnidentifiedOnly && activeModHooks() != nullptr)
+    {
+        ModItemTooltip texts = {
+            .name = itemName,
+            .type = itemTypeLine,
+            .basicStat = itemDetail,
+            .enchantment = itemSpecialDetail,
+            .description = itemDescription,
+        };
+        const ModItemTooltip engineTexts = texts;
+        modItemTooltip(resolvedItemState, texts);
+
+        if (!(texts == engineTexts))
+        {
+            itemName = stripMm8ColorCodes(texts.name);
+            itemDescription = stripMm8ColorCodes(texts.description);
+            const std::string typeText = stripMm8ColorCodes(texts.type);
+            const size_t firstLineEnd = typeText.find('\n');
+            itemTypeLine = typeText.substr(0, firstLineEnd);
+            std::string block = firstLineEnd == std::string::npos ? std::string {} : typeText.substr(firstLineEnd + 1);
+
+            for (const std::string &part : {stripMm8ColorCodes(texts.basicStat), stripMm8ColorCodes(texts.enchantment)})
+            {
+                if (!part.empty())
+                {
+                    block += (block.empty() ? std::string {} : "\n") + part;
+                }
+            }
+
+            itemDetail.clear();
+            itemSpecialDetail = block;
+        }
+    }
     const std::string itemStatusText =
         showBrokenOnly ? "Broken item" : (showUnidentifiedOnly ? "Not identified" : std::string {});
     const bool showStatusOnly = !itemStatusText.empty();
@@ -6326,7 +6366,7 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
         return;
     }
 
-    renderSingleLine("ItemInspectType", "Type: " + itemType);
+    renderSingleLine("ItemInspectType", itemTypeLine);
 
     const std::optional<GameplayScreenRuntime::ResolvedHudLayoutElement> typeRect =
         resolveItemInspectLayout("ItemInspectType");

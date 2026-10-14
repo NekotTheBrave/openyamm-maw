@@ -158,6 +158,33 @@ function Stats.attackDelay(slot, ranged, ticks)
     return wholeNumber(event.Result, ticks)
 end
 
+-- What an item is worth; `value` is the engine's answer. The item is the one the engine is pricing, wherever it is
+-- (a backpack, a shop's shelf, a chest), reached as the event's own item.
+function Stats.itemValue(value)
+    local event = {Item = ModRT.Bindings.eventItem, Value = value}
+    ModRT.fire("CalcItemValue", event)
+    return wholeNumber(event.Value, value)
+end
+
+-- The texts of an item's information box. The original raises BuildItemInformationBox three times for one box:
+-- with Type, Enchantment and BasicStat; with Description; with Name. A handler tells them apart by which is there.
+function Stats.itemTooltip(name, typeText, basicStat, enchantment, description)
+    local item = ModRT.Bindings.eventItem
+    local lines = {Item = item, Type = typeText, Enchantment = enchantment, BasicStat = basicStat}
+    ModRT.fire("BuildItemInformationBox", lines)
+    local body = {Item = item, Description = description}
+    ModRT.fire("BuildItemInformationBox", body)
+    local title = {Item = item, Name = name}
+    ModRT.fire("BuildItemInformationBox", title)
+
+    local function text(value, fallback)
+        return type(value) == "string" and value or type(value) == "number" and tostring(value) or fallback
+    end
+
+    return text(title.Name, name), text(lines.Type, typeText), text(lines.BasicStat, basicStat),
+        text(lines.Enchantment, enchantment), text(body.Description, description)
+end
+
 -- What a character's skills add to one statistic (HP, SP, armor class, attack, damage); `bonus` is the engine's
 -- answer.
 function Stats.skillStatBonus(slot, stat, bonus)
