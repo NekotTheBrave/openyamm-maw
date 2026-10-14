@@ -45,6 +45,8 @@ constexpr int OpenSpellbook = 105;
 constexpr int SelectCharacter = 110;
 // Param: the skill's Merge number (the skill page's raise of a skill with skill points).
 constexpr int RaiseSkill = 121;
+// The held item put on the character's doll (Mouse.Item is the item).
+constexpr int EquipOnDoll = 133;
 // Param: the spell; param 2: the caster's member index (a cast from the spellbook).
 constexpr int CastFromSpellbook = 142;
 // The key that moves to the next member.
@@ -281,6 +283,8 @@ std::optional<int> modMergeSkillId(const std::string &skillName);
 
 // Runs the mod's Action event; nothing handled and nothing asked for without a mod runtime.
 ModPlayerActionResult modPlayerAction(int action, int param = 0, int param2 = 0);
+// The same, with Mouse.Item the item the player holds.
+ModPlayerActionResult modPlayerActionWithHeldItem(int action, InventoryItem &heldItem, int param = 0, int param2 = 0);
 
 // Runs the mod's event for a dead monster's loot and returns what to roll, which is `engineLoot` without a mod
 // runtime.

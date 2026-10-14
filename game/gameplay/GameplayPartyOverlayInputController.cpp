@@ -2893,6 +2893,14 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
                     return;
                 }
 
+                // The mod's Action event comes first, as in the original (MAW changes skills for the moment so
+                // that the game's own one- and two-hand rules come out its way); a handler that takes it over
+                // leaves the game nothing to do.
+                if (modPlayerActionWithHeldItem(Mm8Action::EquipOnDoll, context.heldInventoryItem().item).handled)
+                {
+                    return;
+                }
+
                 const std::optional<CharacterEquipPlan> plan =
                     GameMechanics::resolveCharacterEquipPlan(
                         *pCharacter,
@@ -2983,6 +2991,14 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
                 const bool preferOffHand =
                     resolvedDoll.has_value()
                     && activationX >= resolvedDoll->x + resolvedDoll->width * 0.5f;
+                // The mod's Action event comes first, as in the original (MAW changes skills for the moment so
+                // that the game's own one- and two-hand rules come out its way); a handler that takes it over
+                // leaves the game nothing to do.
+                if (modPlayerActionWithHeldItem(Mm8Action::EquipOnDoll, context.heldInventoryItem().item).handled)
+                {
+                    return;
+                }
+
                 const std::optional<CharacterEquipPlan> plan =
                     GameMechanics::resolveCharacterEquipPlan(
                         *pCharacter,

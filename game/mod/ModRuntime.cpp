@@ -1803,8 +1803,9 @@ ModPlayerActionResult ModRuntime::playerAction(int action, int param, int param2
     lua_pushinteger(m_pLuaState, action);
     lua_pushinteger(m_pLuaState, param);
     lua_pushinteger(m_pLuaState, param2);
+    lua_pushboolean(m_pLuaState, modEventItem() != nullptr);
 
-    if (endDispatch(3, 2))
+    if (endDispatch(4, 2))
     {
         result.handled = lua_toboolean(m_pLuaState, -2) != 0;
         result.requestedAction = lua_isnumber(m_pLuaState, -1) ? static_cast<int>(lua_tointeger(m_pLuaState, -1)) : 0;

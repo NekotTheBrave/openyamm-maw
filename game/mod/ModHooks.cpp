@@ -110,6 +110,14 @@ std::optional<int> modMergeSkillId(const std::string &skillName)
     return std::nullopt;
 }
 
+ModPlayerActionResult modPlayerActionWithHeldItem(int action, InventoryItem &heldItem, int param, int param2)
+{
+    InventoryItem *pPreviousEventItem = setModEventItem(&heldItem);
+    const ModPlayerActionResult result = modPlayerAction(action, param, param2);
+    setModEventItem(pPreviousEventItem);
+    return result;
+}
+
 ModPlayerActionResult modPlayerAction(int action, int param, int param2)
 {
     IModHooks *pModHooks = activeModHooks();

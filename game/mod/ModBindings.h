@@ -23,6 +23,8 @@ std::optional<size_t> findModPartySlot(const Party &party, const Character &char
 // The item an event is about, when it is not one a party member holds (a shop's, a chest's, the one in hand):
 // scripts reach it as the item of group "event". Returns the item that was set before, to be put back.
 InventoryItem *setModEventItem(InventoryItem *pItem);
+// The item the event under way is about, nullptr when there is none.
+InventoryItem *modEventItem();
 
 // Skill names in Merge's numbering, 0..MergeSkillCount-1.
 constexpr size_t MergeSkillCount = 39;

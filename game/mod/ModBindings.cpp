@@ -3716,6 +3716,11 @@ int nativeStatisticEffect(lua_State *pLuaState)
 }
 }
 
+InventoryItem *modEventItem()
+{
+    return g_pModEventItem;
+}
+
 InventoryItem *setModEventItem(InventoryItem *pItem)
 {
     InventoryItem *pPrevious = g_pModEventItem;

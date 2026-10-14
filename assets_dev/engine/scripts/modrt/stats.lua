@@ -241,12 +241,24 @@ end
 -- (23 attack, 25 the quick spell key or an attack spell). A handler that does the action itself sets t.Handled. A
 -- handler may ask for another game action in its place with DoGameAction, which the game then takes (MAW has a
 -- healer short of spell points attack this way). Returns whether it was handled and the action asked for.
-function Stats.action(action, param, param2)
+function Stats.action(action, param, param2, withHeldItem)
     local event = {Action = action, Param = param, Param2 = param2, Handled = false}
     local before = Stats.requestedAction
     Stats.requestedAction = nil
     Stats.inAction = true
+    -- An action about the held item (133, putting it on the doll) has Mouse.Item the item.
+    local previousItem = rawget(Mouse, "Item")
+
+    if withHeldItem then
+        rawset(Mouse, "Item", ModRT.Bindings.eventItem)
+    end
+
     ModRT.fire("Action", event)
+
+    if withHeldItem then
+        rawset(Mouse, "Item", previousItem)
+    end
+
     Stats.inAction = false
     local requested = Stats.requestedAction
     Stats.requestedAction = before
