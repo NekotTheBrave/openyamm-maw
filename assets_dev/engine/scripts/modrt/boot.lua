@@ -306,6 +306,10 @@ local function dispatchKind(kind, ...)
         return ModRT.Stats.statInformationBox(...)
     elseif kind == "canLearnSpell" then
         return ModRT.Stats.canLearnSpell(...)
+    elseif kind == "useMouseItem" then
+        return ModRT.Stats.useMouseItem(...)
+    elseif kind == "potionEffect" then
+        return ModRT.Stats.potionEffect(...)
     elseif kind == "pickCorpse" then
         return ModRT.Stats.pickCorpse(...)
     elseif kind == "generateItem" then

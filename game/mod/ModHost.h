@@ -30,5 +30,7 @@ struct ModHost
     std::function<int()> currentCharScreen;
     // The item the player holds on the mouse pointer, nullptr when none.
     std::function<InventoryItem *()> heldItem;
+    // Puts an item on the mouse pointer in place of the one there; nullptr takes it off.
+    std::function<void(const InventoryItem *)> setHeldItem;
 };
 }

@@ -1338,6 +1338,15 @@ bool itemViewArgument(lua_State *pLuaState, ItemView &view)
     return false;
 }
 
+// A potion's or a reagent's Bonus is its power, as the original keeps it; the game keeps that power where it keeps
+// an enchantment's.
+bool bonusIsPower(lua_State *pLuaState, uint32_t itemId)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const ItemDefinition *pDefinition = pData != nullptr ? pData->getItemTable().get(itemId) : nullptr;
+    return pDefinition != nullptr && (pDefinition->equipStat == "Bottle" || pDefinition->equipStat == "Reagent");
+}
+
 int nativeItemGet(lua_State *pLuaState)
 {
     ItemView view = {};
@@ -1354,7 +1363,9 @@ int nativeItemGet(lua_State *pLuaState)
     }
     else if (field == "Bonus")
     {
-        lua_pushinteger(pLuaState, *view.pStandardEnchantId);
+        lua_pushinteger(
+            pLuaState,
+            bonusIsPower(pLuaState, *view.pItemId) ? *view.pStandardEnchantPower : *view.pStandardEnchantId);
     }
     else if (field == "BonusStrength")
     {
@@ -1474,7 +1485,8 @@ int nativeItemSet(lua_State *pLuaState)
 
     if (field == "Bonus")
     {
-        *view.pStandardEnchantId = clampedInteger<uint16_t>(integerArgument(pLuaState, 5));
+        (bonusIsPower(pLuaState, *view.pItemId) ? *view.pStandardEnchantPower : *view.pStandardEnchantId) =
+            clampedInteger<uint16_t>(integerArgument(pLuaState, 5));
     }
     else if (field == "BonusStrength")
     {
@@ -1529,8 +1541,17 @@ int nativeItemSet(lua_State *pLuaState)
         // way). Only a kind the item table has; what follows from the kind goes with it.
         const GameDataLoader *pData = dataFromHost(pLuaState);
         const int64_t itemId = integerArgument(pLuaState, 5);
+        const ModHost *pHost = hostFromUpvalue(pLuaState);
+        const InventoryItem *pHeld = pHost != nullptr && pHost->heldItem ? pHost->heldItem() : nullptr;
 
-        if (pData == nullptr || itemId <= 0 || pData->getItemTable().get(static_cast<uint32_t>(itemId)) == nullptr)
+        // The held item made nothing: it is used up (MAW's Mouse.Item.Number = 0). The game takes it off the pointer
+        // when the event is over.
+        if (itemId == 0 && view.pInventoryItem != nullptr && view.pInventoryItem == pHeld)
+        {
+            view.pInventoryItem->objectDescriptionId = 0;
+        }
+        else if (pData == nullptr || itemId <= 0
+            || pData->getItemTable().get(static_cast<uint32_t>(itemId)) == nullptr)
         {
             handled = false;
         }
@@ -3064,6 +3085,50 @@ int nativeInventoryPut(lua_State *pLuaState)
     return 1;
 }
 
+// modrt.heldItemSet([item]): puts an item (a table as inventoryTake gives; its kind's size when it gives none) on the
+// mouse pointer in place of the one there, or takes it off when none is given.
+int nativeHeldItemSet(lua_State *pLuaState)
+{
+    const ModHost *pHost = hostFromUpvalue(pLuaState);
+
+    if (pHost == nullptr || !pHost->setHeldItem)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    if (!lua_istable(pLuaState, 1))
+    {
+        pHost->setHeldItem(nullptr);
+        lua_pushboolean(pLuaState, true);
+        return 1;
+    }
+
+    InventoryItem item = inventoryItemFromTable(pLuaState, 1);
+    lua_getfield(pLuaState, 1, "Width");
+    const bool sized = lua_isnumber(pLuaState, -1);
+    lua_pop(pLuaState, 1);
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const ItemDefinition *pDefinition =
+        pData != nullptr ? pData->getItemTable().get(item.objectDescriptionId) : nullptr;
+
+    if (pDefinition == nullptr)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    if (!sized)
+    {
+        item.width = std::max<uint8_t>(1, pDefinition->inventoryWidth);
+        item.height = std::max<uint8_t>(1, pDefinition->inventoryHeight);
+    }
+
+    pHost->setHeldItem(&item);
+    lua_pushboolean(pLuaState, true);
+    return 1;
+}
+
 // modrt.heldItemPresent(): whether the player holds an item on the mouse pointer.
 int nativeHeldItemPresent(lua_State *pLuaState)
 {
@@ -3945,6 +4010,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"inventoryTake", nativeInventoryTake},
         {"inventoryPut", nativeInventoryPut},
         {"heldItemPresent", nativeHeldItemPresent},
+        {"heldItemSet", nativeHeldItemSet},
         {"skillRegister", nativeSkillRegister},
         {"houseOfferSkill", nativeHouseOfferSkill},
         {"statDescription", nativeStatDescription},

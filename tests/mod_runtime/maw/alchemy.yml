@@ -1,0 +1,46 @@
+id: mod_runtime.maw.alchemy
+title: MAW's potions are drunk MAW's way, and its crafting items have their effects
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# A held item used on a party member raises UseMouseItem first (Mouse.Item the item, PlayerSlot the member); MAW
+# drinks its potions (221 to 299) itself and sets Allow to false. A potion's power is its Bonus, as the original
+# keeps it. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 5
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      pl.HP = 1
+      pl.RecoveryDelay = 0
+      modrt.heldItemSet({Number = 222, EnchantPower = 20})
+      local held, power = Mouse.Item.Number, Mouse.Item.Bonus
+      local allow = ModRT.Stats.useMouseItem(0)
+      return held, power, allow, pl.HP > 1, Mouse.Item.Number
+    expect: "222\t20\tfalse\ttrue\t0"
+# MAW's gems and crafting items (potions 71 to 98 of the potion settings table) are evt.PotionEffects functions, which
+# the game calls when one is used on an item in the backpack.
+- mod_lua:
+    code: |
+      local effects = rawget(evt, "PotionEffects")
+      local found = 0
+      for id = 71, 98 do
+        if type(effects[id]) == "function" then found = found + 1 end
+      end
+      return found, type(effects[81]), type(effects[3])
+    expect: "28\tfunction\tnil"

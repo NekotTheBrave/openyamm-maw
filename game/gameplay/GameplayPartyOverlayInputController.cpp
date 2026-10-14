@@ -2527,6 +2527,45 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
                 return;
             }
         }
+
+        // With an item held, the doll is one drop target except for the jewelry overlay's slots, so the worn item
+        // under the pointer is found from what the doll drew, as the pointer finds it with nothing held.
+        if (rightMousePressed
+            && context.heldInventoryItem().active
+            && !isInventorySpellTargetMode
+            && (hoveredCharacterTarget.type == GameplayCharacterPointerTargetType::EquipmentSlot
+                || hoveredCharacterTarget.type == GameplayCharacterPointerTargetType::DollPanel))
+        {
+            std::optional<EquipmentSlot> slot;
+
+            if (hoveredCharacterTarget.type == GameplayCharacterPointerTargetType::EquipmentSlot)
+            {
+                slot = hoveredCharacterTarget.equipmentSlot;
+            }
+            else
+            {
+                for (auto it = context.renderedInspectableHudItems().rbegin();
+                     it != context.renderedInspectableHudItems().rend();
+                     ++it)
+                {
+                    if (it->sourceType == GameplayUiController::ItemInspectSourceType::Equipment
+                        && isVisibleInCharacterDollOverlay(
+                            it->equipmentSlot,
+                            context.characterScreenReadOnly().dollJewelryOverlayOpen)
+                        && context.isOpaqueHudPixelAtPoint(*it, mouseX, mouseY))
+                    {
+                        slot = it->equipmentSlot;
+                        break;
+                    }
+                }
+            }
+
+            if (slot.has_value()
+                && context.itemService().tryUseHeldItemOnEquippedItem(context, selectedPartyMemberIndex, *slot))
+            {
+                return;
+            }
+        }
     }
     else
     {

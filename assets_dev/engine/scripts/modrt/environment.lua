@@ -284,6 +284,9 @@ do
         hint = {},
         house = {},
         str = {},
+        -- evt.PotionEffects[potion] = function(isDrunk, target, power, ...): a potion's own effect, by its number in
+        -- the potion settings table (MAW's gems and crafting items, used on an item in the backpack).
+        PotionEffects = {},
     })
 end
 

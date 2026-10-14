@@ -75,6 +75,27 @@ void modCanTeachSkillMastery(ModTeachSkillMasteryEvent &event)
     }
 }
 
+bool modUseMouseItem(size_t memberIndex)
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks == nullptr || pModHooks->useMouseItem(memberIndex);
+}
+
+bool modPotionEffect(uint32_t potionId, int power, InventoryItem &target)
+{
+    IModHooks *pModHooks = activeModHooks();
+
+    if (pModHooks == nullptr)
+    {
+        return false;
+    }
+
+    InventoryItem *pPreviousEventItem = setModEventItem(&target);
+    const bool handled = pModHooks->potionEffect(potionId, power);
+    setModEventItem(pPreviousEventItem);
+    return handled;
+}
+
 int modCanLearnSpell(const Character &character, uint32_t spellId, int engineMastery)
 {
     IModHooks *pModHooks = activeModHooks();

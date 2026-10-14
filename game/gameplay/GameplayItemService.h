@@ -27,6 +27,11 @@ public:
         uint8_t targetGridX,
         uint8_t targetGridY);
 
+    bool tryUseHeldItemOnEquippedItem(
+        GameplayScreenRuntime &runtime,
+        size_t memberIndex,
+        EquipmentSlot slot);
+
     void updateConnectorStoneRecharge(
         Party &party,
         EventRuntimeState &eventRuntimeState,

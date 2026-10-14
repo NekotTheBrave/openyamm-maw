@@ -2905,6 +2905,31 @@ GameApplication::GameApplication(const Engine::ApplicationConfig &config)
         GameplayUiController::HeldInventoryItemState &held = m_gameSession.gameplayScreenRuntime().heldInventoryItem();
         return held.active ? &held.item : nullptr;
     };
+    modHost.setHeldItem = [this](const InventoryItem *pItem)
+    {
+        GameplayUiController::HeldInventoryItemState &held = m_gameSession.gameplayScreenRuntime().heldInventoryItem();
+        Party *pParty = m_pMapSceneRuntime != nullptr ? &m_pMapSceneRuntime->party()
+            : m_gameSession.partyState() ? &*m_gameSession.partyState() : nullptr;
+        held = {};
+
+        if (pItem != nullptr)
+        {
+            held.active = true;
+            held.item = *pItem;
+        }
+
+        if (pParty != nullptr)
+        {
+            if (pItem != nullptr)
+            {
+                pParty->setHeldItemForQueries(*pItem);
+            }
+            else
+            {
+                pParty->clearHeldItemForQueries();
+            }
+        }
+    };
     modHost.currentCharScreen = [this]()
     {
         switch (m_gameSession.gameplayScreenRuntime().characterScreenReadOnly().page)

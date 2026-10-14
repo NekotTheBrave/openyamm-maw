@@ -93,6 +93,8 @@ public:
     float trainingMinutes(float engineMinutes) override;
     void statInformationBox(int stat, std::string &text) override;
     int canLearnSpell(const Character &character, uint32_t spellId, int engineMastery) override;
+    bool useMouseItem(size_t memberIndex) override;
+    bool potionEffect(uint32_t potionId, int power) override;
     void pickCorpse(size_t actorIndex, ModCorpseLoot &loot) override;
     void generateItem(ModItemGeneration &generation) override;
     void itemGenerated(InventoryItem &item, const ModItemGeneration &generation) override;

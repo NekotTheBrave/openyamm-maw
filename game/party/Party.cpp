@@ -4764,6 +4764,34 @@ bool Party::consumeEquippedWandCharge(size_t memberIndex)
     return true;
 }
 
+bool Party::replaceEquippedItem(size_t memberIndex, EquipmentSlot slot, const InventoryItem &item)
+{
+    Character *pMember = member(memberIndex);
+
+    if (pMember == nullptr || item.objectDescriptionId == 0
+        || ::OpenYAMM::Game::equippedItemId(pMember->equipment, slot) == 0)
+    {
+        return false;
+    }
+
+    ::OpenYAMM::Game::equippedItemId(pMember->equipment, slot) = item.objectDescriptionId;
+    EquippedItemRuntimeState &runtimeState = equippedItemRuntimeState(pMember->equipmentRuntime, slot);
+    runtimeState.identified = item.identified;
+    runtimeState.broken = item.broken;
+    runtimeState.stolen = item.stolen;
+    runtimeState.standardEnchantId = item.standardEnchantId;
+    runtimeState.standardEnchantPower = item.standardEnchantPower;
+    runtimeState.specialEnchantId = item.specialEnchantId;
+    runtimeState.artifactId = item.artifactId;
+    runtimeState.rarity = item.rarity;
+    runtimeState.currentCharges = item.currentCharges;
+    runtimeState.maxCharges = item.maxCharges;
+    runtimeState.temporaryBonusRemainingSeconds = item.temporaryBonusRemainingSeconds;
+    runtimeState.modData = item.modData;
+    refreshDerivedState();
+    return true;
+}
+
 void Party::refreshDerivedState()
 {
     rebuildMagicalBonusesFromBuffs();

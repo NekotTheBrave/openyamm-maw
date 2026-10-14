@@ -203,6 +203,29 @@ function Stats.canTeachSkillMastery(slot, skill, mastery, cost, allow, text)
     return event.Allow and true or false, math.floor(newCost), tostring(event.Text or text)
 end
 
+-- The held item (Mouse.Item) is used on the party member in `slot`: the original's UseMouseItem. A handler that does
+-- the use itself sets Allow to false (MAW drinks its potions its own way). Returns Allow.
+function Stats.useMouseItem(slot)
+    local event = {PlayerSlot = slot, Player = Party[slot], Allow = true}
+    ModRT.fire("UseMouseItem", event)
+    return event.Allow ~= false
+end
+
+-- The held potion is used on an item in the backpack (ModRT.Bindings.eventItem): its evt.PotionEffects function, if
+-- the mod has one, as the original calls it (isDrunk false, the item, the potion's power). Returns whether there was
+-- one.
+function Stats.potionEffect(potion, power)
+    local effect = rawget(evt, "PotionEffects")
+    effect = type(effect) == "table" and effect[potion]
+
+    if type(effect) ~= "function" then
+        return false
+    end
+
+    effect(false, ModRT.Bindings.eventItem, power, 0)
+    return true
+end
+
 -- The member in `slot` is about to learn a spell from a book: the original's CanLearnSpell. NeedMastery comes in as
 -- the game's (1 to 4) and goes out as the handlers leave it; above 4 the spell cannot be learned (MAW's Death Knights,
 -- Elementalists and the Thief line get their spells from it instead).

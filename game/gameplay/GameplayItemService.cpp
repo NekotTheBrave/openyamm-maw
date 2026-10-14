@@ -4,6 +4,7 @@
 #include "game/audio/GameAudioSystem.h"
 #include "game/events/EventRuntime.h"
 #include "game/gameplay/GameMechanics.h"
+#include "game/mod/ModHooks.h"
 #include "game/items/ItemRuntime.h"
 #include "game/gameplay/GameplayScreenRuntime.h"
 #include "game/items/InventoryItemMixingRuntime.h"
@@ -446,6 +447,22 @@ bool GameplayItemService::tryUseHeldItemOnPartyMember(
         return true;
     }
 
+    // The mod's word first (the original's UseMouseItem; MAW drinks its potions its own way). A held item the mod
+    // used up is taken off the pointer.
+    const bool gameMayUse = modUseMouseItem(memberIndex);
+
+    if (heldItem.active && heldItem.item.objectDescriptionId == 0)
+    {
+        heldItem = {};
+        pParty->clearHeldItemForQueries();
+        return true;
+    }
+
+    if (!gameMayUse)
+    {
+        return true;
+    }
+
     const InventoryItemUseResult useResult =
         InventoryItemUseRuntime::useItemOnMember(
             *pParty,
@@ -623,6 +640,63 @@ bool GameplayItemService::tryUseHeldItemOnPartyMember(
     return true;
 }
 
+const MergedPotionSettingEntry *modPotionForHeldItem(
+    const MergedPotionSettingTable &potionSettingTable,
+    uint32_t heldItemId)
+{
+    for (const MergedPotionSettingEntry &entry : potionSettingTable.entries())
+    {
+        if (entry.itemId == heldItemId)
+        {
+            return &entry;
+        }
+    }
+
+    return nullptr;
+}
+
+// The original lets a potion effect (MAW's gems and crafting items) be used on a worn item as well as one in the
+// backpack; the game's own mixing never touches a worn item.
+bool GameplayItemService::tryUseHeldItemOnEquippedItem(
+    GameplayScreenRuntime &runtime,
+    size_t memberIndex,
+    EquipmentSlot slot)
+{
+    GameplayUiController::HeldInventoryItemState &heldItem = m_session.gameplayUiController().heldInventoryItem();
+    Party *pParty = runtime.party();
+    const MergedPotionSettingTable *pPotionSettingTable =
+        m_session.hasDataRepository() ? &m_session.data().mergedPotionSettingTable() : nullptr;
+
+    if (!heldItem.active || pParty == nullptr || pPotionSettingTable == nullptr)
+    {
+        return false;
+    }
+
+    const MergedPotionSettingEntry *pPotion =
+        modPotionForHeldItem(*pPotionSettingTable, heldItem.item.objectDescriptionId);
+    std::optional<InventoryItem> target = pParty->equippedItem(memberIndex, slot);
+
+    if (pPotion == nullptr || !target.has_value()
+        || !modPotionEffect(pPotion->potionId, heldItem.item.standardEnchantPower, *target))
+    {
+        return false;
+    }
+
+    pParty->replaceEquippedItem(memberIndex, slot, *target);
+
+    if (heldItem.item.objectDescriptionId == 0)
+    {
+        heldItem = {};
+        pParty->clearHeldItemForQueries();
+    }
+    else
+    {
+        pParty->setHeldItemForQueries(heldItem.item);
+    }
+
+    return true;
+}
+
 bool GameplayItemService::tryUseHeldItemOnInventoryItem(
     GameplayScreenRuntime &runtime,
     size_t memberIndex,
@@ -650,6 +724,44 @@ bool GameplayItemService::tryUseHeldItemOnInventoryItem(
         || pPotionNoteTable == nullptr)
     {
         return false;
+    }
+
+    // A potion the mod has an effect for (the original's evt.PotionEffects: MAW's gems and crafting items) is the
+    // mod's to use on the item; the game's mixing does not see it. The effect uses it up by making the held item
+    // nothing, or changes it (MAW's Enchanted Amulet copies the item onto the pointer).
+    if (Character *pMember = pParty->member(memberIndex))
+    {
+        const MergedPotionSettingEntry *pPotion =
+            modPotionForHeldItem(*pPotionSettingTable, heldItem.item.objectDescriptionId);
+
+        InventoryItem *pTarget = nullptr;
+
+        for (InventoryItem &candidate : pMember->inventory)
+        {
+            if (targetGridX >= candidate.gridX && targetGridX < candidate.gridX + std::max<uint8_t>(1, candidate.width)
+                && targetGridY >= candidate.gridY
+                && targetGridY < candidate.gridY + std::max<uint8_t>(1, candidate.height))
+            {
+                pTarget = &candidate;
+                break;
+            }
+        }
+
+        if (pPotion != nullptr && pTarget != nullptr
+            && modPotionEffect(pPotion->potionId, heldItem.item.standardEnchantPower, *pTarget))
+        {
+            if (heldItem.item.objectDescriptionId == 0)
+            {
+                heldItem = {};
+                pParty->clearHeldItemForQueries();
+            }
+            else
+            {
+                pParty->setHeldItemForQueries(heldItem.item);
+            }
+
+            return true;
+        }
     }
 
     const InventoryItemMixResult mixResult = InventoryItemMixingRuntime::tryApplyHeldItemToInventoryItem(

@@ -253,6 +253,13 @@ public:
     // A character is about to learn a spell from a book: the mastery of its school it takes (the original's
     // CanLearnSpell, NeedMastery: 1 to 4, above 4 not at all). `engineMastery` is the engine's.
     virtual int canLearnSpell(const Character &character, uint32_t spellId, int engineMastery) = 0;
+    // The held item is used on the party member in `memberIndex` (the original's UseMouseItem; Mouse.Item is the
+    // item): whether the game may go on with its own use of it.
+    virtual bool useMouseItem(size_t memberIndex) = 0;
+    // The held item, potion `potionId` of the potion settings table with power `power`, is used on the item the
+    // event item is (the original's evt.PotionEffects[potionId](false, item, power)): whether the mod has an effect
+    // for that potion, which then took the use over.
+    virtual bool potionEffect(uint32_t potionId, int power) = 0;
 };
 
 IModHooks *activeModHooks();
@@ -274,6 +281,13 @@ float modTrainingMinutes(float engineMinutes);
 
 // Runs the mod's BuildStatInformationBox event over `text`; it stays the engine's without a mod.
 void modStatInformationBox(int stat, std::string &text);
+
+// Runs the mod's UseMouseItem event for the held item used on a party member: whether the game may use it its own
+// way (true without a mod).
+bool modUseMouseItem(size_t memberIndex);
+// Runs the mod's potion effect for the held potion used on `target`: whether the mod took the use over (false
+// without a mod, or when it has no effect for that potion).
+bool modPotionEffect(uint32_t potionId, int power, InventoryItem &target);
 
 // Runs the mod's CanLearnSpell event and returns the mastery the spell takes, `engineMastery` without a mod.
 int modCanLearnSpell(const Character &character, uint32_t spellId, int engineMastery);

@@ -496,6 +496,9 @@ public:
         bool autoStoreDisplacedItem,
         std::optional<InventoryItem> &heldReplacement);
     std::optional<InventoryItem> equippedItem(size_t memberIndex, EquipmentSlot slot) const;
+    // Writes a changed copy of an equipped item (as equippedItem gives it) back onto its slot, in place, and rebuilds
+    // the bonuses it gives. For a mod's effect on an item that stays worn.
+    bool replaceEquippedItem(size_t memberIndex, EquipmentSlot slot, const InventoryItem &item);
     const InventoryItem *memberInventoryItem(size_t memberIndex, uint8_t gridX, uint8_t gridY) const;
     InventoryItem *memberInventoryItemMutable(size_t memberIndex, uint8_t gridX, uint8_t gridY);
     uint32_t equippedItemId(size_t memberIndex, EquipmentSlot slot) const;

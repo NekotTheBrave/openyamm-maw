@@ -1671,6 +1671,45 @@ bool ModRuntime::canHandleItem(bool repair, uint32_t itemId, bool engineAnswer)
     return answer;
 }
 
+bool ModRuntime::useMouseItem(size_t memberIndex)
+{
+    if (!m_active || !m_host.party || m_host.party() == nullptr || !beginDispatch("useMouseItem"))
+    {
+        return true;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(memberIndex));
+    bool allow = true;
+
+    if (endDispatch(1, 1))
+    {
+        allow = lua_toboolean(m_pLuaState, -1) != 0;
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return allow;
+}
+
+bool ModRuntime::potionEffect(uint32_t potionId, int power)
+{
+    if (!m_active || !m_host.party || m_host.party() == nullptr || !beginDispatch("potionEffect"))
+    {
+        return false;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(potionId));
+    lua_pushinteger(m_pLuaState, power);
+    bool handled = false;
+
+    if (endDispatch(2, 1))
+    {
+        handled = lua_toboolean(m_pLuaState, -1) != 0;
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return handled;
+}
+
 int ModRuntime::canLearnSpell(const Character &character, uint32_t spellId, int engineMastery)
 {
     Party *pParty = m_active && m_host.party ? m_host.party() : nullptr;
