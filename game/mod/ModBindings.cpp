@@ -1,6 +1,7 @@
 #include "game/mod/ModBindings.h"
 
 #include "game/data/GameDataLoader.h"
+#include "game/events/ISceneEventContext.h"
 #include "game/gameplay/GameMechanics.h"
 #include "game/gameplay/GameplayRuntimeInterfaces.h"
 #include "game/items/ItemEnchantRuntime.h"
@@ -443,11 +444,14 @@ int nativePlayerGet(lua_State *pLuaState)
     }
 
     // The spell the character casts with the quick-cast key, as a spell number; 0 when none is chosen.
-    if (field == "QuickSpell")
+    // The spell the quick spell key casts, and the one the attack key casts in place of attacking (0: none).
+    if (field == "QuickSpell" || field == "AttackSpell")
     {
         const GameDataLoader *pData = dataFromHost(pLuaState);
-        const SpellEntry *pSpell = pData != nullptr && !pCharacter->quickSpellName.empty()
-            ? pData->getSpellTable().findByName(pCharacter->quickSpellName)
+        const std::string &spellName =
+            field == "QuickSpell" ? pCharacter->quickSpellName : pCharacter->attackSpellName;
+        const SpellEntry *pSpell = pData != nullptr && !spellName.empty()
+            ? pData->getSpellTable().findByName(spellName)
             : nullptr;
         lua_pushinteger(pLuaState, pSpell != nullptr ? pSpell->id : 0);
         return 1;
@@ -470,6 +474,15 @@ int nativePlayerGet(lua_State *pLuaState)
     if (field == "ClassName")
     {
         pushString(pLuaState, pCharacter->className);
+        return 1;
+    }
+
+    // How long the character is still busy after their last action, in the original's ticks. The engine keeps
+    // seconds of real time; a tick there is 1/128 second of game time, which the engine plays 2.13 times slower,
+    // so 60 ticks to the second.
+    if (field == "RecoveryDelay")
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(std::lround(pCharacter->recoverySecondsRemaining * 60.0f)));
         return 1;
     }
 
@@ -694,6 +707,14 @@ int nativePlayerSet(lua_State *pLuaState)
         return 1;
     }
 
+    if (field == "RecoveryDelay")
+    {
+        pCharacter->recoverySecondsRemaining =
+            static_cast<float>(std::clamp<int64_t>(integerArgument(pLuaState, 3), 0, 1000000)) / 60.0f;
+        lua_pushboolean(pLuaState, true);
+        return 1;
+    }
+
     for (const PlayerUnsignedField &entry : PlayerUnsignedFields)
     {
         if (field == entry.pName)
@@ -731,7 +752,7 @@ int nativePlayerSet(lua_State *pLuaState)
         return 1;
     }
 
-    if (field == "QuickSpell")
+    if (field == "QuickSpell" || field == "AttackSpell")
     {
         const GameDataLoader *pData = dataFromHost(pLuaState);
         const int64_t spellId = integerArgument(pLuaState, 3);
@@ -745,7 +766,8 @@ int nativePlayerSet(lua_State *pLuaState)
             return 1;
         }
 
-        pCharacter->quickSpellName = pSpell != nullptr ? pSpell->name : std::string();
+        (field == "QuickSpell" ? pCharacter->quickSpellName : pCharacter->attackSpellName) =
+            pSpell != nullptr ? pSpell->name : std::string();
         lua_pushboolean(pLuaState, true);
         return 1;
     }
@@ -2658,6 +2680,116 @@ int nativeMapMonsterSet(lua_State *pLuaState)
     return 1;
 }
 
+// The four figures of a Game.Spells row by mastery, Normal to GM, and where the spell entry keeps them.
+struct SpellMasteryField
+{
+    const char *pName;
+    int SpellEntry::*pMember;
+    bool SpellEntry::*pModFlag;
+};
+
+constexpr std::array<SpellMasteryField, 8> SpellMasteryFields = {{
+    {"SpellPointsNormal", &SpellEntry::normalManaCost, &SpellEntry::modManaCost},
+    {"SpellPointsExpert", &SpellEntry::expertManaCost, &SpellEntry::modManaCost},
+    {"SpellPointsMaster", &SpellEntry::masterManaCost, &SpellEntry::modManaCost},
+    {"SpellPointsGM", &SpellEntry::grandmasterManaCost, &SpellEntry::modManaCost},
+    {"DelayNormal", &SpellEntry::normalRecoveryTicks, &SpellEntry::modRecovery},
+    {"DelayExpert", &SpellEntry::expertRecoveryTicks, &SpellEntry::modRecovery},
+    {"DelayMaster", &SpellEntry::masterRecoveryTicks, &SpellEntry::modRecovery},
+    {"DelayGM", &SpellEntry::grandmasterRecoveryTicks, &SpellEntry::modRecovery},
+}};
+
+// modrt.spellTxtGet(id, field): a row of Game.Spells, the spell table: SpellPoints<Mastery> and Delay<Mastery> (the
+// cost and the recovery in ticks for Normal, Expert, Master and GM), Name, ShortName. "#" is the highest spell number.
+int nativeSpellTxtGet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t spellId = integerArgument(pLuaState, 1);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+
+    if (pData == nullptr)
+    {
+        return 0;
+    }
+
+    if (field == "#")
+    {
+        int highest = 0;
+
+        for (const SpellEntry &entry : pData->getSpellTable().entries())
+        {
+            highest = std::max(highest, entry.id);
+        }
+
+        lua_pushinteger(pLuaState, highest);
+        return 1;
+    }
+
+    const SpellEntry *pEntry = pData->getSpellTable().findById(static_cast<int>(spellId));
+
+    if (pEntry == nullptr)
+    {
+        return 0;
+    }
+
+    for (const SpellMasteryField &entry : SpellMasteryFields)
+    {
+        if (field == entry.pName)
+        {
+            lua_pushinteger(pLuaState, pEntry->*entry.pMember);
+            return 1;
+        }
+    }
+
+    if (field == "Name")
+    {
+        pushString(pLuaState, pEntry->name);
+        return 1;
+    }
+
+    if (field == "ShortName")
+    {
+        pushString(pLuaState, pEntry->shortName);
+        return 1;
+    }
+
+    return 0;
+}
+
+// modrt.spellTxtSet(id, field, value): the costs and recoveries of a spell. Casting goes by them from then on (MAW
+// sets its own costs for its healing spells this way).
+int nativeSpellTxtSet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t spellId = integerArgument(pLuaState, 1);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+    const SpellEntry *pConstEntry =
+        pData != nullptr ? pData->getSpellTable().findById(static_cast<int>(spellId)) : nullptr;
+
+    if (pConstEntry == nullptr || !lua_isnumber(pLuaState, 3))
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    // The table belongs to the game's data loader, which hands it out read-only; it is not a constant object.
+    SpellEntry &spell = const_cast<SpellEntry &>(*pConstEntry);
+
+    for (const SpellMasteryField &entry : SpellMasteryFields)
+    {
+        if (field == entry.pName)
+        {
+            spell.*entry.pMember = static_cast<int>(std::clamp<int64_t>(integerArgument(pLuaState, 3), 0, 100000));
+            spell.*entry.pModFlag = true;
+            lua_pushboolean(pLuaState, true);
+            return 1;
+        }
+    }
+
+    lua_pushboolean(pLuaState, false);
+    return 1;
+}
+
 // modrt.enchantTxtGet(special, index, field[, slot]): a row of the special (Game.SpcItemsTxt) or standard
 // (Game.StdItemsTxt) enchant table, numbered from 0 as the original's are (an item's Bonus2 - 1, Bonus - 1).
 // "#" is the number of rows. ChanceForSlot takes the slot, numbered from 0.
@@ -2801,6 +2933,34 @@ int nativeItemTooltip(lua_State *pLuaState)
     }
 
     return 5;
+}
+
+// modrt.summonItem(number, x, y, z, speed): puts an item of that kind on the map at the point, as the map events'
+// SummonItem does (thrown at `speed`, 0 to lie where it is). Returns whether the game placed it.
+int nativeSummonItem(lua_State *pLuaState)
+{
+    ISceneEventContext *pScene = dynamic_cast<ISceneEventContext *>(worldFromHost(pLuaState));
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t itemId = integerArgument(pLuaState, 1);
+
+    if (pScene == nullptr || pData == nullptr || itemId <= 0
+        || pData->getItemTable().get(static_cast<uint32_t>(itemId)) == nullptr)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    lua_pushboolean(
+        pLuaState,
+        pScene->summonEventItem(
+            static_cast<uint32_t>(itemId),
+            static_cast<int32_t>(luaL_checknumber(pLuaState, 2)),
+            static_cast<int32_t>(luaL_checknumber(pLuaState, 3)),
+            static_cast<int32_t>(luaL_checknumber(pLuaState, 4)),
+            static_cast<int32_t>(luaL_optinteger(pLuaState, 5, 0)),
+            1,
+            false));
+    return 1;
 }
 
 // modrt.summonMonster(id, x, y, z): puts one monster of that kind on the map near the point, hostile to the
@@ -3055,9 +3215,12 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"mapMonsterSet", nativeMapMonsterSet},
         {"mapMonstersResetSpeed", nativeMapMonstersResetSpeed},
         {"summonMonster", nativeSummonMonster},
+        {"summonItem", nativeSummonItem},
         {"itemTooltip", nativeItemTooltip},
         {"itemRandomize", nativeItemRandomize},
         {"enchantTxtGet", nativeEnchantTxtGet},
+        {"spellTxtGet", nativeSpellTxtGet},
+        {"spellTxtSet", nativeSpellTxtSet},
         {"mapPointInfo", nativeMapPointInfo},
         {"gameGet", nativeGameGet},
         {"castSpell", nativeCastSpell},

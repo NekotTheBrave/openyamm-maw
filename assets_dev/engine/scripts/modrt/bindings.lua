@@ -741,6 +741,10 @@ local function playerObject(playerIndex)
             GetAttackDelay = function(_, ranged)
                 return modrt.playerGet(playerIndex, ranged and "GetAttackDelayRanged" or "GetAttackDelay")
             end,
+            -- The character is busy for this many ticks from now (RecoveryDelay).
+            SetRecoveryDelay = function(_, ticks)
+                return modrt.playerSet(playerIndex, "RecoveryDelay", floor(ticks or 0))
+            end,
         },
     })
 end
@@ -1131,6 +1135,51 @@ local function enchantTable(path, special, slotCount)
 end
 
 local spcItemsTxt = enchantTable("Game.SpcItemsTxt", true, 12)
+
+-- Game.Spells: the spell table by spell number. SpellPoints<Mastery> and Delay<Mastery> read and write the game's
+-- figures (casting goes by a written one); SpellPoints[mastery] and Delay[mastery] are the same by number, 1 Normal
+-- to 4 GM.
+local masteryNames = {"Normal", "Expert", "Master", "GM"}
+
+local spellRow = tableRow("Game.Spells[]", function(id, key)
+    if key == "SpellPoints" or key == "Delay" then
+        return boundObject("Game.Spells[]." .. key, {
+            index = function(mastery)
+                local name = masteryNames[floor(mastery)]
+                return name and modrt.spellTxtGet(id, key .. name) or nil
+            end,
+            newindex = function(mastery, value)
+                local name = masteryNames[floor(mastery)]
+                return name ~= nil and type(value) == "number" and modrt.spellTxtSet(id, key .. name, floor(value))
+            end,
+        })
+    end
+
+    local value = modrt.spellTxtGet(id, key)
+
+    -- A number the engine has no spell for is an empty row, as row 0 is in the original: its figures are 0.
+    if value == nil and (key:sub(1, 11) == "SpellPoints" or key:sub(1, 5) == "Delay") then
+        return 0
+    end
+
+    return value
+end, function(id, key, value)
+    return type(value) == "number" and modrt.spellTxtSet(id, key, floor(value))
+end)
+
+local spellsTxt = boundObject("Game.Spells", {
+    index = function(id)
+        id = floor(id)
+
+        if id < 0 or id > (modrt.spellTxtGet(0, "#") or 0) then
+            return nil
+        end
+
+        return spellRow(id)
+    end,
+    get = sizeFields(function() return (modrt.spellTxtGet(0, "#") or 0) + 1 end),
+    range = function() return 0, modrt.spellTxtGet(0, "#") or 0 end,
+})
 local stdItemsTxt = enchantTable("Game.StdItemsTxt", false, 9)
 
 -- Rows are numbered from 1, as monsters are. Scripts walk the table from 1 to High and expect a row at every
@@ -1298,7 +1347,7 @@ Game = boundObject("Game", {
     owned = "Game",
     bound = {
         ItemsTxt = true, MonstersTxt = true, CharacterPortraits = true, MapStats = true, PlaceMonTxt = true,
-        SpcItemsTxt = true, StdItemsTxt = true,
+        SpcItemsTxt = true, StdItemsTxt = true, Spells = true,
         CurrentPlayer = true, Time = true, Classes = true, ClassNames = true, ClassesExtra = true,
         HouseScreen = true,
     },
@@ -1307,6 +1356,8 @@ Game = boundObject("Game", {
             return itemsTxt
         elseif key == "SpcItemsTxt" then
             return spcItemsTxt
+        elseif key == "Spells" then
+            return spellsTxt
         elseif key == "StdItemsTxt" then
             return stdItemsTxt
         elseif key == "MonstersTxt" then
@@ -1491,3 +1542,38 @@ function SummonMonster(id, x, y, z, treasure, place)
     monster.X, monster.Y, monster.Z = floor(x), floor(y), floor(z)
     return monster, index
 end
+
+-- SummonItem(number, x, y, z, speed): an item of that kind on the map at the point, nil when the game could not
+-- place it. The original returns the map object, whose Item scripts then adjust (MAW sets a reagent's power that
+-- way). Map objects are not bound yet: the object returned takes those writes and they do not reach the item.
+function SummonItem(number, x, y, z, speed)
+    number = floor(number)
+
+    if not modrt.summonItem(number, x or Party.X, y or Party.Y, z or Party.Z, floor(speed or 0)) then
+        return nil
+    end
+
+    return {Item = {Number = number, Bonus = 0, BonusStrength = 0, Bonus2 = 0, Charges = 0, MaxCharges = 0}}
+end
+
+-- The original's message box. Dialogue boxes are not bound yet, so the text goes to the status line, colour marks
+-- and line breaks taken out, and in full to the log.
+function Message(text, keepSound, global)
+    text = tostring(text or "")
+    local line = text:gsub("\f%d%d%d%d%d", ""):gsub("%s*\n%s*", " ")
+    modrt.showStatusText(line)
+    print("[message] " .. text)
+end
+
+SimpleMessage = Message
+
+-- The original asks the player and returns the reply. With no dialogue box to ask in, the reply is empty: no.
+function Question(text, questionText)
+    Message(text)
+    return ""
+end
+
+-- What is under the mouse pointer. Not bound yet: nothing (Kind 0); a monster would be Kind 3.
+rawset(Mouse, "GetTarget", function()
+    return {Kind = 0, Index = 0}
+end)

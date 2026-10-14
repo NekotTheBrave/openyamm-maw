@@ -48,3 +48,11 @@ steps:
       local last = Map.Monsters[Map.Monsters.High]
       return last.Id, last.Group, last.HP > 0
     expect: "1\t77\ttrue"
+# SummonItem puts an item on the ground at a point; the object it returns takes writes to its Item (which do not
+# reach the placed item yet: map objects are not bound). A kind the item table does not have places nothing.
+- mod_lua:
+    code: |
+      local obj = SummonItem(220, Party.X + 200, Party.Y, Party.Z + 100, 100)
+      obj.Item.Bonus = 40
+      return obj ~= nil, obj.Item.Number, SummonItem(250000, Party.X, Party.Y, Party.Z) == nil
+    expect: "true\t220\ttrue"

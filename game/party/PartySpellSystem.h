@@ -164,6 +164,14 @@ class PartySpellSystem
 public:
     static std::optional<PartySpellDescriptor> describeSpell(uint32_t spellId);
 
+    // What casting the spell would cost the party member in spell points, as castSpell works it out; nothing when the
+    // member cannot cast it at all.
+    static std::optional<uint32_t> spellManaCost(
+        const Party &party,
+        const SpellTable &spellTable,
+        size_t casterMemberIndex,
+        uint32_t spellId);
+
     static PartySpellCastResult castSpell(
         Party &party,
         IGameplayWorldRuntime &worldRuntime,

@@ -6,6 +6,7 @@
 #include "game/gameplay/GameplayHeldItemController.h"
 #include "game/gameplay/GameplayScreenRuntime.h"
 #include "game/gameplay/TurnBasedCombatRuntime.h"
+#include "game/mod/ModHooks.h"
 #include "game/party/LloydsBeaconRuntime.h"
 #include "game/party/SpellIds.h"
 
@@ -106,6 +107,25 @@ GameplaySpellService::QuickSpellStartResolution GameplaySpellService::tryStartQu
     {
         runtime.setStatusBarEvent("Unknown quick spell");
         return resolution;
+    }
+
+    // In the original a quick spell the character cannot pay for is a normal attack instead, so pressing the key
+    // keeps a party going through its turns when the casters run dry; MAW counts on it (its own heals call the
+    // attack themselves when short of spell points). Held to whenever a mod runtime is present; with mods off the
+    // engine is as upstream, where the cast fails and the turn stays with the caster.
+    if (activeModHooks() != nullptr)
+    {
+        const std::optional<uint32_t> manaCost = PartySpellSystem::spellManaCost(
+            *pParty,
+            *pSpellTable,
+            pParty->activeMemberIndex(),
+            uint32_t(pSpellEntry->id));
+
+        if (manaCost && !pParty->canSpendSpellPoints(pParty->activeMemberIndex(), static_cast<int>(*manaCost)))
+        {
+            resolution.disposition = QuickSpellStartDisposition::AttackFallback;
+            return resolution;
+        }
     }
 
     if (tryCastSpellFromMember(

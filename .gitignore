@@ -64,6 +64,7 @@ __pycache__/
 
 # Local mod runtime configuration (machine-specific paths)
 /mods.yml
+/mods.checks.yml
 # Generated mod asset overlays (tools/maw/convert_tables.py) and mod runtime logs
 /mods/
 /logs/mod_report.txt

@@ -26,6 +26,12 @@ void modItemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh
     }
 }
 
+ModPlayerActionResult modPlayerAction(int action, int param, int param2)
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks != nullptr ? pModHooks->playerAction(action, param, param2) : ModPlayerActionResult{};
+}
+
 MonsterTable::LootPrototype modCorpseLoot(size_t actorIndex, const MonsterTable::LootPrototype &engineLoot)
 {
     IModHooks *pModHooks = activeModHooks();

@@ -1,0 +1,142 @@
+id: mod_runtime.quick_cast_fallback
+title: The quick spell key makes a normal attack when the character cannot pay for the quick spell
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 100
+      food: 5
+      members:
+      - name: Caster
+        class: Necromancer
+        level: 60
+        intellect: 500
+        endurance: 3000
+        accuracy: 200
+        skills:
+        - name: Fire
+          level: 10
+          mastery: 3
+        - name: Staff
+          level: 5
+          mastery: 1
+        spells: [2]
+        equipment:
+          main_hand: 61
+# Fire Bolt (spell 2) is the quick spell. In the original a quick spell the character cannot pay for is a normal
+# attack instead; with a mod runtime present that holds here. Hostile monsters are ringed close around the caster
+# so that whatever the caster does, there is something to do it to.
+- mod_lua:
+    code: |
+      Casts, Attacks = 0, 0
+      function events.PlayerCastSpell(t) Casts = Casts + 1 end
+      function events.PlayerHitOrMiss(t) Attacks = Attacks + 1 end
+      function ProbeRound(spellPoints)
+        local p = Party[0]
+        for condition = 0, p.Conditions.High do p.Conditions[condition] = 0 end
+        p.HP = p.FullHPBase
+        p.SP = spellPoints
+        local placed = 0
+        for i = 0, Map.Monsters.High do
+          local m = Map.Monsters[i]
+          if placed < 12 and m.Hostile and not m.IsDead then
+            local angle = placed * math.pi / 6
+            m.X = math.floor(Party.X + math.cos(angle) * 130)
+            m.Y = math.floor(Party.Y + math.sin(angle) * 130)
+            m.Z = Party.Z
+            m.HP = 30000
+            placed = placed + 1
+          end
+        end
+        return placed
+      end
+      Party[0].QuickSpell = 2
+      return Party[0].QuickSpell, ProbeRound(0) > 0
+    expect: "2\ttrue"
+# No spell points: the key swings the staff and casts nothing.
+- press_action: {action: cast_ready, seconds: 1}
+- mod_lua: {code: "return ProbeRound(0) > 0", expect: "true"}
+- press_action: {action: cast_ready, seconds: 1}
+- mod_lua: {code: "return ProbeRound(0) > 0", expect: "true"}
+- press_action: {action: cast_ready, seconds: 1}
+- mod_lua:
+    code: |
+      local result = {Casts, Attacks > 0}
+      Casts, Attacks = 0, 0
+      ProbeRound(Party[0].FullSPBase)
+      return result[1], result[2]
+    expect: "0\ttrue"
+# Spell points enough: the key casts the spell.
+- press_action: {action: cast_ready, seconds: 1}
+- mod_lua: {code: "return ProbeRound(Party[0].FullSPBase) > 0", expect: "true"}
+- press_action: {action: cast_ready, seconds: 1}
+- mod_lua:
+    code: |
+      return Casts > 0
+    expect: "true"
+# The same for an attack spell, which a character casts in place of attacking: with no quick spell the quick
+# spell key attacks, and an attack spell the character cannot pay for is a weapon attack. A Sorcerer out of spell
+# points with Fire Bolt as attack spell stopped the quick spell key going round the party (the user's save of
+# 2026-10-14).
+- mod_lua:
+    code: |
+      local p = Party[0]
+      p.QuickSpell, p.AttackSpell = 0, 2
+      Casts, Attacks = 0, 0
+      return p.QuickSpell, p.AttackSpell, ProbeRound(0) > 0
+    expect: "0\t2\ttrue"
+- press_action: {action: cast_ready, seconds: 1}
+- mod_lua: {code: "return ProbeRound(0) > 0", expect: "true"}
+- press_action: {action: cast_ready, seconds: 1}
+- mod_lua: {code: "return ProbeRound(0) > 0", expect: "true"}
+- press_action: {action: cast_ready, seconds: 1}
+- mod_lua:
+    code: |
+      return Casts, Attacks > 0
+    expect: "0\ttrue"
+# The quick spell key raises the original's Action event first (action 25, param 0). A handler that does the action
+# itself sets Handled, and the game casts nothing; recovery it sets with SetRecoveryDelay is the character's
+# (MAW aims its heals this way).
+- mod_lua:
+    code: |
+      local p = Party[0]
+      p.QuickSpell, p.AttackSpell = 2, 0
+      p.RecoveryDelay = 0
+      Seen, Casts, Attacks = {}, 0, 0
+      function events.Action(t)
+        Seen[#Seen + 1] = t.Action .. "/" .. t.Param
+        if t.Action == 25 then
+          t.Handled = true
+          Party[0]:SetRecoveryDelay(90)
+        end
+      end
+      return ProbeRound(Party[0].FullSPBase) > 0
+    expect: "true"
+- press_action: {action: cast_ready, seconds: 0.1}
+- mod_lua:
+    code: |
+      return Seen[1], Casts, Attacks, Party[0].RecoveryDelay > 30
+    expect: "25/0\t0\t0\ttrue"
+# A handler may instead ask for an attack with DoGameAction(23): the character attacks and casts nothing (MAW does
+# this for a healer short of spell points).
+- mod_lua:
+    code: |
+      events.Remove("Action")
+      function events.Action(t)
+        if t.Action == 25 then DoGameAction(23, 0, 0) end
+      end
+      Party[0].RecoveryDelay = 0
+      Casts, Attacks = 0, 0
+      return ProbeRound(Party[0].FullSPBase) > 0
+    expect: "true"
+- press_action: {action: cast_ready, seconds: 1}
+- mod_lua: {code: "return ProbeRound(Party[0].FullSPBase) > 0", expect: "true"}
+- press_action: {action: cast_ready, seconds: 1}
+- mod_lua:
+    code: |
+      return Casts, Attacks > 0
+    expect: "0\ttrue"

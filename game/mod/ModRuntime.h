@@ -86,6 +86,7 @@ public:
     int attackDelay(const Character &character, bool ranged, int engineTicks) override;
     int itemValue(const InventoryItem &item, int engineValue) override;
     void itemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh) override;
+    ModPlayerActionResult playerAction(int action, int param, int param2) override;
     void pickCorpse(size_t actorIndex, ModCorpseLoot &loot) override;
     void generateItem(ModItemGeneration &generation) override;
     void itemGenerated(InventoryItem &item, const ModItemGeneration &generation) override;

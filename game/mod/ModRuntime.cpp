@@ -1605,6 +1605,29 @@ int ModRuntime::attackDelay(const Character &character, bool ranged, int engineT
     return ticks;
 }
 
+ModPlayerActionResult ModRuntime::playerAction(int action, int param, int param2)
+{
+    ModPlayerActionResult result = {};
+
+    if (!m_active || !m_host.party || m_host.party() == nullptr || !beginDispatch("action"))
+    {
+        return result;
+    }
+
+    lua_pushinteger(m_pLuaState, action);
+    lua_pushinteger(m_pLuaState, param);
+    lua_pushinteger(m_pLuaState, param2);
+
+    if (endDispatch(3, 2))
+    {
+        result.handled = lua_toboolean(m_pLuaState, -2) != 0;
+        result.requestedAction = lua_isnumber(m_pLuaState, -1) ? static_cast<int>(lua_tointeger(m_pLuaState, -1)) : 0;
+        lua_pop(m_pLuaState, 2);
+    }
+
+    return result;
+}
+
 void ModRuntime::pickCorpse(size_t actorIndex, ModCorpseLoot &loot)
 {
     if (!m_active || !m_host.party || m_host.party() == nullptr || !beginDispatch("pickCorpse"))

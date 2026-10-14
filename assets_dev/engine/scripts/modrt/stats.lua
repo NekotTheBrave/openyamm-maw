@@ -166,6 +166,30 @@ function Stats.itemValue(value)
     return wholeNumber(event.Value, value)
 end
 
+-- The player is about to take an action: the original's Action event, raised for the actions the engine reports
+-- (23 attack, 25 the quick spell key or an attack spell). A handler that does the action itself sets t.Handled. A
+-- handler may ask for another game action in its place with DoGameAction, which the game then takes (MAW has a
+-- healer short of spell points attack this way). Returns whether it was handled and the action asked for.
+function Stats.action(action, param, param2)
+    local event = {Action = action, Param = param, Param2 = param2, Handled = false}
+    local before = Stats.requestedAction
+    Stats.requestedAction = nil
+    Stats.inAction = true
+    ModRT.fire("Action", event)
+    Stats.inAction = false
+    local requested = Stats.requestedAction
+    Stats.requestedAction = before
+    return event.Handled == true, requested or 0
+end
+
+-- DoGameAction(action, param, param2): asks the game to take an action. Only answered while the Action event is
+-- being handled, where the game takes it in place of the action it was about to take; elsewhere it does nothing.
+function DoGameAction(action, param, param2)
+    if Stats.inAction then
+        Stats.requestedAction = math.floor(action or 0)
+    end
+end
+
 -- A dead monster's loot is about to be rolled. The original raises PickCorpse when the body is searched and then
 -- rolls the loot from the monster's own treasure fields, which handlers rewrite; here the loot is rolled when the
 -- monster dies, so the event comes then, and what the handlers leave in the monster's fields is what is rolled.

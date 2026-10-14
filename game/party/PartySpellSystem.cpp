@@ -1467,6 +1467,45 @@ PartySpellCastResult makeFailure(
 }
 }
 
+std::optional<uint32_t> PartySpellSystem::spellManaCost(
+    const Party &party,
+    const SpellTable &spellTable,
+    size_t casterMemberIndex,
+    uint32_t spellId)
+{
+    const Character *pCaster = party.member(casterMemberIndex);
+    const SpellEntry *pSpellEntry = spellTable.findById(static_cast<int>(spellId));
+
+    if (pCaster == nullptr || pSpellEntry == nullptr)
+    {
+        return std::nullopt;
+    }
+
+    PartySpellCastRequest request = {};
+    request.casterMemberIndex = casterMemberIndex;
+    request.spellId = spellId;
+    uint32_t skillLevel = 0;
+    SkillMastery skillMastery = SkillMastery::None;
+
+    if (!resolveSpellSkill(*pCaster, spellId, request, skillLevel, skillMastery))
+    {
+        return std::nullopt;
+    }
+
+    const std::optional<BackendSpellRule> rule = resolveBackendSpellRule(spellId, skillMastery);
+
+    if (!rule)
+    {
+        return std::nullopt;
+    }
+
+    return static_cast<uint32_t>(std::max(
+        0,
+        ruleHasExplicitManaCost(*rule) && !pSpellEntry->modManaCost
+            ? manaCostForRule(*rule, skillMastery)
+            : std::max(manaCostForSpellEntry(*pSpellEntry, skillMastery), defaultManaCostForSpellId(spellId))));
+}
+
 PartySpellCastResult PartySpellSystem::castSpell(
     Party &party,
     IGameplayWorldRuntime &worldRuntime,
@@ -1563,11 +1602,11 @@ PartySpellCastResult PartySpellSystem::castSpell(
 
     result.manaCost = static_cast<uint32_t>(std::max(
         0,
-        ruleHasExplicitManaCost(*rule)
+        ruleHasExplicitManaCost(*rule) && !pSpellEntry->modManaCost
             ? manaCostForRule(*rule, skillMastery)
             : std::max(manaCostForSpellEntry(*pSpellEntry, skillMastery), defaultManaCostForSpellId(request.spellId))));
     const int baseSpellRecoveryTicks =
-        ruleHasExplicitRecovery(*rule)
+        ruleHasExplicitRecovery(*rule) && !pSpellEntry->modRecovery
             ? recoveryTicksForRule(*rule, skillMastery)
             : recoveryTicksForSpellEntry(*pSpellEntry, skillMastery);
     int spellRecoveryTicks = baseSpellRecoveryTicks;

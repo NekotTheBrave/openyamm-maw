@@ -280,6 +280,8 @@ local function dispatchKind(kind, ...)
         return ModRT.Stats.itemValue(...)
     elseif kind == "itemTooltip" then
         return ModRT.Stats.itemTooltip(...)
+    elseif kind == "action" then
+        return ModRT.Stats.action(...)
     elseif kind == "pickCorpse" then
         return ModRT.Stats.pickCorpse(...)
     elseif kind == "generateItem" then

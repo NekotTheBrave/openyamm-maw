@@ -28,6 +28,10 @@ struct SpellEntry
     int expertRecoveryTicks = 0;
     int masterRecoveryTicks = 0;
     int grandmasterRecoveryTicks = 0;
+    // A mod set the spell's costs or recovery in the table (Game.Spells): casting then goes by the table's figures
+    // here, where it otherwise may go by the engine's own rules for the spell.
+    bool modManaCost = false;
+    bool modRecovery = false;
     int effectSoundId = 0;
     int displayObjectId = 0;
     int impactDisplayObjectId = 0;

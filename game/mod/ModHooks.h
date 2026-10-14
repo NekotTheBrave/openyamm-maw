@@ -26,6 +26,22 @@ struct ModCorpseLoot
     bool allowed = true;
 };
 
+// What the mod made of one of the player's actions (the original's Action event): `handled` when a handler did
+// the action itself, and the game action a handler asked for in its place (DoGameAction), 0 for none.
+struct ModPlayerActionResult
+{
+    bool handled = false;
+    int requestedAction = 0;
+};
+
+// The original's numbers for the actions the event is raised for.
+namespace Mm8Action
+{
+constexpr int Attack = 23;
+// Param 0: the quick spell key; param 1: the attack spell in place of an attack.
+constexpr int QuickSpell = 25;
+}
+
 // A random item being made. `treasureLevel` is the original's "strength", 1 to 6 (7 for artifacts); `mode` says
 // what it is made for: 0 anything, 1 a shop's shelf, 2 a monster's body, 3 a chest.
 struct ModItemGeneration
@@ -170,6 +186,8 @@ public:
     // What an item is worth; `engineValue` is the engine's answer. Asked for wherever the engine prices an item: a
     // tooltip, a shop's offer, the cost of identifying or repairing it, what a corpse or chest holds.
     virtual int itemValue(const InventoryItem &item, int engineValue) = 0;
+    // The player is about to take an action (the original's Action event, which comes before the game acts).
+    virtual ModPlayerActionResult playerAction(int action, int param, int param2) = 0;
     // A dead monster's loot is about to be rolled (the original's PickCorpse, which there comes when the body is
     // searched; here the loot is rolled when the monster dies). `loot` comes in as the engine's.
     virtual void pickCorpse(size_t actorIndex, ModCorpseLoot &loot) = 0;
@@ -193,6 +211,9 @@ void setActiveModHooks(IModHooks *pModHooks);
 
 // Runs the mod's event over the texts of an item's information box; without a mod runtime they stay as they are.
 void modItemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh = false);
+
+// Runs the mod's Action event; nothing handled and nothing asked for without a mod runtime.
+ModPlayerActionResult modPlayerAction(int action, int param = 0, int param2 = 0);
 
 // Runs the mod's event for a dead monster's loot and returns what to roll, which is `engineLoot` without a mod
 // runtime.

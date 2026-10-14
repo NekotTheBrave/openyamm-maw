@@ -689,7 +689,49 @@ GameplayActionController::PartyAttackExecutionResult GameplayActionController::e
         party.clearPartyBuff(PartyBuffId::Invisibility);
     }
 
+    // A character with an attack spell casts it instead of attacking. In the original one who cannot pay for it
+    // attacks with the weapon instead, which keeps the attack key going round the party when the casters run dry.
+    // Held to whenever a mod runtime is present; with mods off the engine is as upstream, where the cast fails
+    // and the turn stays with the caster.
+    bool attackSpellAffordable = true;
+
+    // The mod's Action event for the attack spell comes first, as in the original (action 25, param 1): a handler may
+    // cast it its own way, or ask for a weapon attack in its place.
     if (!pAttacker->attackSpellName.empty())
+    {
+        const ModPlayerActionResult modAction = modPlayerAction(Mm8Action::QuickSpell, 1);
+
+        if (modAction.requestedAction == Mm8Action::Attack)
+        {
+            attackSpellAffordable = false;
+        }
+        else if (modAction.handled)
+        {
+            if (!GameMechanics::canTakeGameplayAction(*pAttacker))
+            {
+                party.switchToNextReadyMember();
+            }
+
+            return result;
+        }
+    }
+
+    if (!pAttacker->attackSpellName.empty() && attackSpellAffordable && activeModHooks() != nullptr
+        && config.pSpellTable != nullptr)
+    {
+        const SpellEntry *pAttackSpellEntry = config.pSpellTable->findByName(pAttacker->attackSpellName);
+        const std::optional<uint32_t> manaCost = pAttackSpellEntry != nullptr
+            ? PartySpellSystem::spellManaCost(
+                party,
+                *config.pSpellTable,
+                actingMemberIndex,
+                static_cast<uint32_t>(pAttackSpellEntry->id))
+            : std::nullopt;
+        attackSpellAffordable =
+            !manaCost || party.canSpendSpellPoints(actingMemberIndex, static_cast<int>(*manaCost));
+    }
+
+    if (!pAttacker->attackSpellName.empty() && attackSpellAffordable)
     {
         AttackCastResult attackCastResult = {};
 

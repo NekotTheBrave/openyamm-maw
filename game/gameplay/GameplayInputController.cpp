@@ -9,6 +9,7 @@
 #include "game/gameplay/GameplaySpellActionController.h"
 #include "game/gameplay/GameplaySpellService.h"
 #include "game/gameplay/TurnBasedCombatRuntime.h"
+#include "game/mod/ModHooks.h"
 
 #include <SDL3/SDL.h>
 
@@ -760,7 +761,32 @@ GameplaySharedInputFrameResult GameplayInputController::updateSharedGameplayInpu
                 }
             }
 
+            // The mod's Action event comes first, as in the original: a handler may cast the quick spell its own way
+            // (MAW aims heals at the most hurt member itself) or ask for an attack in its place.
+            ModPlayerActionResult modAction = {};
+
             if (!quickCastHandledByTurnBasedMode && config.canBeginQuickCast && context.worldRuntime() != nullptr)
+            {
+                modAction = modPlayerAction(Mm8Action::QuickSpell, 0);
+            }
+
+            if (modAction.requestedAction == Mm8Action::Attack)
+            {
+                quickCastResult = GameplayActionController::QuickCastActionResult::AttackFallback;
+            }
+            else if (modAction.handled)
+            {
+                quickCastResult = GameplayActionController::QuickCastActionResult::CastStarted;
+
+                if (Party *pParty = context.party();
+                    pParty != nullptr
+                    && pParty->activeMember() != nullptr
+                    && !GameMechanics::canTakeGameplayAction(*pParty->activeMember()))
+                {
+                    pParty->switchToNextReadyMember();
+                }
+            }
+            else if (!quickCastHandledByTurnBasedMode && config.canBeginQuickCast && context.worldRuntime() != nullptr)
             {
                 const GameplaySpellActionController::SpellActionResult spellActionResult =
                     GameplaySpellActionController::tryBeginQuickSpellCast(

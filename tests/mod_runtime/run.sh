@@ -100,6 +100,11 @@ unset OPENYAMM_DISABLE_MODS
 
 # --- with the user's mods.yml (MAW) ----------------------------------------------------------------------------------
 if [ -f mods.yml ]; then
+    # The checks compare against numbers taken at MAW difficulty, whatever the user has set for play: they run on a
+    # copy of mods.yml with the difficulty set to MAW. It sits beside mods.yml, as the paths in it are relative to it.
+    checkConfig="mods.checks.yml"
+    sed -E 's/^([[:space:]]*difficulty:).*/\1 MAW/' mods.yml > "$checkConfig"
+    export OPENYAMM_MODS_CONFIG="$PWD/$checkConfig"
     maw_load
 
     # The arena scenario is not run with MAW: the game picks arena monsters by their level in the monster table,
@@ -112,6 +117,9 @@ if [ -f mods.yml ]; then
     for path in "$tests"/maw/*.yml; do
         scenario "$(basename "$path" .yml) (MAW)" "$path"
     done
+
+    unset OPENYAMM_MODS_CONFIG
+    rm -f "$checkConfig"
 else
     echo "mods.yml not found: MAW checks skipped"
 fi
