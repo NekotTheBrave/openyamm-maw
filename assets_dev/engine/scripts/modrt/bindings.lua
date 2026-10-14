@@ -293,6 +293,11 @@ local function itemObject(playerIndex, group, index, path)
             GetValue = function(self)
                 return modrt.itemGet(playerIndex, group, index, "Value") or 0
             end,
+            -- The item becomes a new random one of that treasure level, made by the game's generator. The
+            -- original's `type` (which kind of item) and `alwaysEnchant` are not followed.
+            Randomize = function(self, strength, itemType, alwaysEnchant)
+                return modrt.itemRandomize(playerIndex, group, index, floor(strength or 1))
+            end,
             -- Not the original's: the item's information box after the scripts' handlers, as a table of Name,
             -- Type, BasicStat, Enchantment and Description, starting from the texts given.
             BuildInformationBox = function(self, texts)
@@ -1295,6 +1300,7 @@ Game = boundObject("Game", {
         ItemsTxt = true, MonstersTxt = true, CharacterPortraits = true, MapStats = true, PlaceMonTxt = true,
         SpcItemsTxt = true, StdItemsTxt = true,
         CurrentPlayer = true, Time = true, Classes = true, ClassNames = true, ClassesExtra = true,
+        HouseScreen = true,
     },
     get = function(key)
         if key == "ItemsTxt" then
@@ -1319,6 +1325,10 @@ Game = boundObject("Game", {
             return classesExtra
         elseif key == "CurrentPlayer" then
             return modrt.partyGet("CurrentPlayer")
+        elseif key == "HouseScreen" then
+            -- Which screen of a house's dialogue is up. Houses are not bound yet; the one thing scripts ask is
+            -- whether an item is being made for a shop's shelf, which is the buying screen, 2.
+            return ModRT.Stats.itemGenerationMode == 1 and 2 or 0
         elseif key == "Time" then
             -- MMExtension counts game time in ticks, 256 to the game minute.
             local minutes = modrt.gameGet("GameMinutes")

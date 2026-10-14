@@ -44,6 +44,9 @@ public:
         Party *pParty,
         std::mt19937 &rng,
         const std::function<bool(const ItemDefinition &)> &filter = {});
+    // After an item's kind was changed (a mod rewriting a generated item, a script writing Item.Number): what
+    // follows from the kind (size in the backpack, rarity, a wand's charges) is taken from the new kind.
+    static void applyItemKind(InventoryItem &item, uint32_t itemId, const ItemTable &itemTable);
     static std::optional<uint32_t> chooseRandomBaseItem(
         const ItemTable &itemTable,
         int treasureLevel,

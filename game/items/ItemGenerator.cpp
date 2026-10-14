@@ -3,6 +3,7 @@
 #include "game/items/ItemEnchantRuntime.h"
 #include "game/items/ItemEnchantTables.h"
 #include "game/items/ItemRuntime.h"
+#include "game/mod/ModHooks.h"
 #include "game/tables/ItemTable.h"
 
 #include <algorithm>
@@ -147,7 +148,83 @@ InventoryItem ItemGenerator::makeInventoryItem(
     return item;
 }
 
+void ItemGenerator::applyItemKind(InventoryItem &item, uint32_t itemId, const ItemTable &itemTable)
+{
+    const InventoryItem fresh = makeInventoryItem(itemId, itemTable, ItemGenerationMode::Generic);
+    item.objectDescriptionId = itemId;
+    item.width = fresh.width;
+    item.height = fresh.height;
+    item.rarity = fresh.rarity;
+    item.artifactId = fresh.artifactId;
+    item.currentCharges = fresh.currentCharges;
+    item.maxCharges = fresh.maxCharges;
+}
+
+namespace
+{
+std::optional<InventoryItem> generateRandomEngineInventoryItem(
+    const ItemTable &itemTable,
+    const StandardItemEnchantTable &standardItemEnchantTable,
+    const SpecialItemEnchantTable &specialItemEnchantTable,
+    const ItemGenerationRequest &request,
+    Party *pParty,
+    std::mt19937 &rng,
+    const std::function<bool(const ItemDefinition &)> &filter);
+}
+
+// Every random item in the game is made here (a shop's shelf, a monster's body, a chest, a map event), so this is
+// where a mod's own item rules come in: before, to change the treasure level; after, to rewrite the item.
 std::optional<InventoryItem> ItemGenerator::generateRandomInventoryItem(
+    const ItemTable &itemTable,
+    const StandardItemEnchantTable &standardItemEnchantTable,
+    const SpecialItemEnchantTable &specialItemEnchantTable,
+    const ItemGenerationRequest &request,
+    Party *pParty,
+    std::mt19937 &rng,
+    const std::function<bool(const ItemDefinition &)> &filter)
+{
+    IModHooks *pModHooks = activeModHooks();
+
+    if (pModHooks == nullptr)
+    {
+        return generateRandomEngineInventoryItem(
+            itemTable, standardItemEnchantTable, specialItemEnchantTable, request, pParty, rng, filter);
+    }
+
+    ModItemGeneration generation = {
+        .treasureLevel = request.treasureLevel,
+        .mode = static_cast<int>(request.mode),
+    };
+    pModHooks->generateItem(generation);
+    ItemGenerationRequest modRequest = request;
+    modRequest.treasureLevel = generation.treasureLevel;
+    std::optional<InventoryItem> item = generateRandomEngineInventoryItem(
+        itemTable, standardItemEnchantTable, specialItemEnchantTable, modRequest, pParty, rng, filter);
+
+    if (item)
+    {
+        const uint32_t engineItemId = item->objectDescriptionId;
+        pModHooks->itemGenerated(*item, generation);
+
+        if (item->objectDescriptionId != engineItemId)
+        {
+            if (itemTable.get(item->objectDescriptionId) == nullptr)
+            {
+                item->objectDescriptionId = engineItemId;
+            }
+            else
+            {
+                applyItemKind(*item, item->objectDescriptionId, itemTable);
+            }
+        }
+    }
+
+    return item;
+}
+
+namespace
+{
+std::optional<InventoryItem> generateRandomEngineInventoryItem(
     const ItemTable &itemTable,
     const StandardItemEnchantTable &standardItemEnchantTable,
     const SpecialItemEnchantTable &specialItemEnchantTable,
@@ -170,7 +247,7 @@ std::optional<InventoryItem> ItemGenerator::generateRandomInventoryItem(
             return std::nullopt;
         }
 
-        InventoryItem item = makeInventoryItem(*rareItemId, itemTable, request.mode);
+        InventoryItem item = ItemGenerator::makeInventoryItem(*rareItemId, itemTable, request.mode);
 
         if (pParty != nullptr)
         {
@@ -186,7 +263,7 @@ std::optional<InventoryItem> ItemGenerator::generateRandomInventoryItem(
 
         if (rareItemId)
         {
-            InventoryItem item = makeInventoryItem(*rareItemId, itemTable, request.mode);
+            InventoryItem item = ItemGenerator::makeInventoryItem(*rareItemId, itemTable, request.mode);
 
             if (pParty != nullptr)
             {
@@ -197,14 +274,14 @@ std::optional<InventoryItem> ItemGenerator::generateRandomInventoryItem(
         }
     }
 
-    const std::optional<uint32_t> itemId = chooseRandomBaseItem(itemTable, request.treasureLevel, rng, filter);
+    const std::optional<uint32_t> itemId = ItemGenerator::chooseRandomBaseItem(itemTable, request.treasureLevel, rng, filter);
 
     if (!itemId)
     {
         return std::nullopt;
     }
 
-    InventoryItem item = makeInventoryItem(*itemId, itemTable, request.mode);
+    InventoryItem item = ItemGenerator::makeInventoryItem(*itemId, itemTable, request.mode);
     const ItemDefinition *pItemDefinition = itemTable.get(*itemId);
 
     if (pItemDefinition != nullptr && pItemDefinition->equipStat == "WeaponW")
@@ -291,6 +368,7 @@ std::optional<InventoryItem> ItemGenerator::generateRandomInventoryItem(
     }
 
     return item;
+}
 }
 
 std::optional<uint32_t> ItemGenerator::chooseRandomBaseItem(

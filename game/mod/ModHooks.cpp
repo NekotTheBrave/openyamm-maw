@@ -26,6 +26,42 @@ void modItemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh
     }
 }
 
+MonsterTable::LootPrototype modCorpseLoot(size_t actorIndex, const MonsterTable::LootPrototype &engineLoot)
+{
+    IModHooks *pModHooks = activeModHooks();
+
+    if (pModHooks == nullptr)
+    {
+        return engineLoot;
+    }
+
+    ModCorpseLoot loot = {
+        .goldDiceCount = engineLoot.goldDiceRolls,
+        .goldDiceSides = engineLoot.goldDiceSides,
+        .itemPercent = engineLoot.itemChance,
+        .itemLevel = engineLoot.itemLevel,
+    };
+    pModHooks->pickCorpse(actorIndex, loot);
+
+    if (!loot.allowed)
+    {
+        return {};
+    }
+
+    MonsterTable::LootPrototype result = engineLoot;
+    result.goldDiceRolls = std::max(0, loot.goldDiceCount);
+    result.goldDiceSides = std::max(0, loot.goldDiceSides);
+    result.itemChance = std::clamp(loot.itemPercent, 0, 100);
+    result.itemLevel = std::clamp(loot.itemLevel, 0, 7);
+
+    if (loot.anyItemKind || result.itemKind == MonsterTable::LootItemKind::None)
+    {
+        result.itemKind = MonsterTable::LootItemKind::Any;
+    }
+
+    return result;
+}
+
 std::string stripMm8ColorCodes(const std::string &text)
 {
     std::string result;

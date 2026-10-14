@@ -14023,6 +14023,7 @@ bool OutdoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField
             return true;
         case GameplayModActorField::MoveSpeed: value = pActor->moveSpeed; return true;
         case GameplayModActorField::AiType: value = static_cast<int64_t>(pActor->aiType); return true;
+        case GameplayModActorField::CarriedItem: value = pActor->specialItemId; return true;
     }
 
     return false;
@@ -14143,6 +14144,7 @@ bool OutdoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFi
             actor.aiType = static_cast<GameplayActorAiType>(std::clamp<int64_t>(value, 0, 3));
             return true;
         case GameplayModActorField::MonsterId:
+        case GameplayModActorField::CarriedItem:
             return false;
     }
 
@@ -17374,7 +17376,9 @@ bool OutdoorWorldRuntime::ensureMapActorCorpseView(size_t actorIndex)
         buildMonsterCorpseView(
             actor.displayName,
             actor.proceduralDeathLoot
-                ? gameplayBolsterLootPrototype(pStats->loot, pStats->hitPoints, actor.bolsterRewardMultiplier)
+                ? modCorpseLoot(
+                    actorIndex,
+                    gameplayBolsterLootPrototype(pStats->loot, pStats->hitPoints, actor.bolsterRewardMultiplier))
                 : MonsterTable::LootPrototype {},
             m_pItemTable,
             m_pParty,

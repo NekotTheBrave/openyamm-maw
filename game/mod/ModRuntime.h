@@ -86,6 +86,9 @@ public:
     int attackDelay(const Character &character, bool ranged, int engineTicks) override;
     int itemValue(const InventoryItem &item, int engineValue) override;
     void itemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh) override;
+    void pickCorpse(size_t actorIndex, ModCorpseLoot &loot) override;
+    void generateItem(ModItemGeneration &generation) override;
+    void itemGenerated(InventoryItem &item, const ModItemGeneration &generation) override;
     int skillStatBonus(const Character &character, int statId, int engineBonus) override;
     // Takes the scripts' answer for one statistic of the member whose bonuses are being rebuilt: what the items
     // give and what magic gives.
@@ -151,6 +154,7 @@ private:
     std::unordered_map<int, int> m_statisticEffects;
     int m_attackDelayDepth = 0;
     int m_itemValueDepth = 0;
+    int m_itemGenerationDepth = 0;
 
     // The information box is built again on every frame it is on screen. The scripts' answer for the same item
     // and the same engine texts is kept for a short while instead of being asked for sixty times a second.

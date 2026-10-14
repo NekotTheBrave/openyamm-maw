@@ -1605,6 +1605,88 @@ int ModRuntime::attackDelay(const Character &character, bool ranged, int engineT
     return ticks;
 }
 
+void ModRuntime::pickCorpse(size_t actorIndex, ModCorpseLoot &loot)
+{
+    if (!m_active || !m_host.party || m_host.party() == nullptr || !beginDispatch("pickCorpse"))
+    {
+        return;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(actorIndex));
+    lua_pushinteger(m_pLuaState, loot.goldDiceCount);
+    lua_pushinteger(m_pLuaState, loot.goldDiceSides);
+    lua_pushinteger(m_pLuaState, loot.itemPercent);
+    lua_pushinteger(m_pLuaState, loot.itemLevel);
+
+    if (endDispatch(5, 6))
+    {
+        int *const numbers[] = {&loot.goldDiceCount, &loot.goldDiceSides, &loot.itemPercent, &loot.itemLevel};
+
+        for (int index = 0; index < 4; ++index)
+        {
+            if (lua_isnumber(m_pLuaState, -6 + index))
+            {
+                *numbers[index] = static_cast<int>(
+                    std::clamp<lua_Number>(std::floor(lua_tonumber(m_pLuaState, -6 + index)), 0.0, 1000000.0));
+            }
+        }
+
+        loot.anyItemKind = lua_toboolean(m_pLuaState, -2) != 0;
+        loot.allowed = lua_isnil(m_pLuaState, -1) || lua_toboolean(m_pLuaState, -1) != 0;
+        lua_pop(m_pLuaState, 6);
+    }
+}
+
+void ModRuntime::generateItem(ModItemGeneration &generation)
+{
+    if (!m_active || m_itemGenerationDepth >= 4 || !m_host.party || m_host.party() == nullptr
+        || !beginDispatch("generateItem"))
+    {
+        return;
+    }
+
+    // The item does not exist yet; handlers see an empty one.
+    InventoryItem eventItem = {};
+    eventItem.objectDescriptionId = 0;
+    InventoryItem *pPreviousEventItem = setModEventItem(&eventItem);
+    ++m_itemGenerationDepth;
+    lua_pushinteger(m_pLuaState, generation.treasureLevel);
+    lua_pushinteger(m_pLuaState, generation.mode);
+
+    if (endDispatch(2, 1))
+    {
+        if (lua_isnumber(m_pLuaState, -1))
+        {
+            generation.treasureLevel = static_cast<int>(
+                std::clamp<lua_Number>(std::floor(lua_tonumber(m_pLuaState, -1) + 0.5), 1.0, 7.0));
+        }
+
+        lua_pop(m_pLuaState, 1);
+    }
+
+    --m_itemGenerationDepth;
+    setModEventItem(pPreviousEventItem);
+}
+
+void ModRuntime::itemGenerated(InventoryItem &item, const ModItemGeneration &generation)
+{
+    // A handler may have the engine make the item again (Item:Randomize), which comes back here.
+    if (!m_active || m_itemGenerationDepth >= 4 || !m_host.party || m_host.party() == nullptr
+        || !beginDispatch("itemGenerated"))
+    {
+        return;
+    }
+
+    // The handlers work on the item itself: what they write is the item the game gets.
+    InventoryItem *pPreviousEventItem = setModEventItem(&item);
+    ++m_itemGenerationDepth;
+    lua_pushinteger(m_pLuaState, generation.treasureLevel);
+    lua_pushinteger(m_pLuaState, generation.mode);
+    endDispatch(2, 0);
+    --m_itemGenerationDepth;
+    setModEventItem(pPreviousEventItem);
+}
+
 int ModRuntime::itemValue(const InventoryItem &item, int engineValue)
 {
     // The scripts price an item from its own fields; one that asked the engine for another item's value from

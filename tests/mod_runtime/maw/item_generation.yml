@@ -1,0 +1,63 @@
+id: mod_runtime.maw.item_generation
+title: MAW's item rules run on every random item the game makes
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 1
+        might: 18
+        intellect: 9
+        personality: 9
+        endurance: 15
+        accuracy: 15
+        speed: 15
+        luck: 11
+        skills:
+        - name: Axe
+          level: 1
+          mastery: 1
+        - name: Bow
+          level: 1
+          mastery: 1
+        - name: Sword
+          level: 1
+          mastery: 1
+        - name: Plate
+          level: 1
+          mastery: 1
+        equipment:
+          main_hand: 11
+          armor: 94
+          bow: 849
+# Item:Randomize makes a random item with the game's generator, as a shop, a body or a chest would, and MAW's
+# GenerateItem and ItemGenerated handlers work on it. Sixty items over the six treasure levels: no script error, and
+# every one is an item of the table. Some come out with MAW's own marks: an item level in MaxCharges, or one of
+# its school books (971 to 979), which carry the spell book they stand for in BonusStrength. Run with the MAW
+# mods.yml.
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      local errorsBefore = ModRT.totalErrorCount
+      local made, valid, mawMarked = 0, 0, 0
+      for strength = 1, 6 do
+        for n = 1, 10 do
+          if pl:GetActiveItem(1, true):Randomize(strength) then made = made + 1 end
+          local item = pl:GetActiveItem(1, true)
+          if item.Number > 0 and Game.ItemsTxt[item.Number] and item:T().Name ~= "" then valid = valid + 1 end
+          if item.MaxCharges > 0 or (item.Number >= 971 and item.Number <= 979) or item.Bonus > 0 or item.Bonus2 > 0 then
+            mawMarked = mawMarked + 1
+          end
+        end
+      end
+      return made, valid, mawMarked > 0, ModRT.totalErrorCount - errorsBefore
+    expect: "60\t60\ttrue\t0"

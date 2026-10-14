@@ -166,6 +166,53 @@ function Stats.itemValue(value)
     return wholeNumber(event.Value, value)
 end
 
+-- A dead monster's loot is about to be rolled. The original raises PickCorpse when the body is searched and then
+-- rolls the loot from the monster's own treasure fields, which handlers rewrite; here the loot is rolled when the
+-- monster dies, so the event comes then, and what the handlers leave in the monster's fields is what is rolled.
+-- Returns the gold dice, the chance and level of an item, whether the item may be of any kind (the original's
+-- TreasureItemType 0), and whether the body is to hold anything at all.
+function Stats.pickCorpse(index, diceCount, diceSides, itemPercent, itemLevel)
+    local monster = Map.Monsters[index]
+
+    if not monster then
+        return diceCount, diceSides, itemPercent, itemLevel, false, true
+    end
+
+    local event = {MonsterIndex = index, Monster = monster, Allow = true, CallDefault = function() end}
+    ModRT.fire("PickCorpse", event)
+
+    local function field(name, fallback)
+        local value = monster[name]
+        return type(value) == "number" and value or fallback
+    end
+
+    return field("TreasureDiceCount", diceCount), field("TreasureDiceSides", diceSides),
+        field("TreasureItemPercent", itemPercent), field("TreasureItemLevel", itemLevel),
+        monster.TreasureItemType == 0, event.Allow ~= false
+end
+
+-- A random item is about to be made. `strength` is its treasure level, which a handler may change; `mode` says what
+-- the item is for (0 anything, 1 a shop's shelf, 2 a monster's body, 3 a chest). While a shop's item is being made
+-- Game.HouseScreen reads as the shop's buying screen, which is how the original's scripts tell.
+function Stats.generateItem(strength, mode)
+    local before = Stats.itemGenerationMode
+    Stats.itemGenerationMode = mode
+    local event = {Item = ModRT.Bindings.eventItem, Strength = strength, Type = 0, Handled = false}
+    ModRT.fire("GenerateItem", event)
+    Stats.itemGenerationMode = before
+    return wholeNumber(event.Strength, strength)
+end
+
+-- A random item has been made; the event's item is the item itself, and what handlers write to it is what the game
+-- gets.
+function Stats.itemGenerated(strength, mode)
+    local before = Stats.itemGenerationMode
+    Stats.itemGenerationMode = mode
+    local event = {Item = ModRT.Bindings.eventItem, Strength = strength, Type = 0, Handled = false}
+    ModRT.fire("ItemGenerated", event)
+    Stats.itemGenerationMode = before
+end
+
 -- The texts of an item's information box. The original raises BuildItemInformationBox three times for one box:
 -- with Type, Enchantment and BasicStat; with Description; with Name. A handler tells them apart by which is there.
 function Stats.itemTooltip(name, typeText, basicStat, enchantment, description)

@@ -137,6 +137,8 @@ enum class GameplayModActorField : uint8_t
     // of 0 gives the actor its kind's speed back.
     MoveSpeed,
     AiType,
+    // The item the actor carries and leaves on its body, 0 for none. Read only.
+    CarriedItem,
 };
 
 struct GameplayRuntimeActorState

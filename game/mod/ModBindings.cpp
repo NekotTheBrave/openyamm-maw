@@ -4,6 +4,7 @@
 #include "game/gameplay/GameMechanics.h"
 #include "game/gameplay/GameplayRuntimeInterfaces.h"
 #include "game/items/ItemEnchantRuntime.h"
+#include "game/items/ItemGenerator.h"
 #include "game/mod/ModHooks.h"
 #include "game/mod/ModHost.h"
 #include "game/party/Party.h"
@@ -1071,7 +1072,7 @@ struct ItemView
     uint16_t *pCurrentCharges = nullptr;
     uint16_t *pMaxCharges = nullptr;
     ItemModData *pModData = nullptr;
-    const InventoryItem *pInventoryItem = nullptr;
+    InventoryItem *pInventoryItem = nullptr;
     // 0 in the backpack, otherwise the equipment slot plus one (Item.BodyLocation).
     int bodyLocation = 0;
 };
@@ -1365,12 +1366,90 @@ int nativeItemSet(lua_State *pLuaState)
     {
         *view.pStolen = lua_toboolean(pLuaState, 5) != 0;
     }
+    else if (field == "Number")
+    {
+        // The item becomes one of another kind (MAW turns a drop into an artifact or a crafting material this
+        // way). Only a kind the item table has; what follows from the kind goes with it.
+        const GameDataLoader *pData = dataFromHost(pLuaState);
+        const int64_t itemId = integerArgument(pLuaState, 5);
+
+        if (pData == nullptr || itemId <= 0 || pData->getItemTable().get(static_cast<uint32_t>(itemId)) == nullptr)
+        {
+            handled = false;
+        }
+        else if (view.pInventoryItem != nullptr)
+        {
+            ItemGenerator::applyItemKind(*view.pInventoryItem, static_cast<uint32_t>(itemId), pData->getItemTable());
+        }
+        else
+        {
+            *view.pItemId = static_cast<uint32_t>(itemId);
+        }
+    }
     else
     {
         handled = false;
     }
 
     lua_pushboolean(pLuaState, handled);
+    return 1;
+}
+
+// modrt.itemRandomize(player, group, index, strength): the item becomes a new random one of that treasure level
+// (1 to 6), made by the game's own generator, the mod's item events included. It keeps its place in the backpack.
+// Returns whether an item was made.
+int nativeItemRandomize(lua_State *pLuaState)
+{
+    ItemView view = {};
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+
+    if (pData == nullptr || !itemViewArgument(pLuaState, view))
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    static std::mt19937 rng{std::random_device{}()};
+    ItemGenerationRequest request = {};
+    request.treasureLevel = static_cast<int>(std::clamp<int64_t>(integerArgument(pLuaState, 4), 1, 6));
+    request.allowRareItems = false;
+    const std::optional<InventoryItem> generated = ItemGenerator::generateRandomInventoryItem(
+        pData->getItemTable(),
+        pData->getStandardItemEnchantTable(),
+        pData->getSpecialItemEnchantTable(),
+        request,
+        partyFromHost(pLuaState),
+        rng);
+
+    if (!generated)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    if (view.pInventoryItem != nullptr)
+    {
+        const uint8_t gridX = view.pInventoryItem->gridX;
+        const uint8_t gridY = view.pInventoryItem->gridY;
+        *view.pInventoryItem = *generated;
+        view.pInventoryItem->gridX = gridX;
+        view.pInventoryItem->gridY = gridY;
+    }
+    else
+    {
+        *view.pItemId = generated->objectDescriptionId;
+        *view.pIdentified = generated->identified;
+        *view.pBroken = generated->broken;
+        *view.pStolen = generated->stolen;
+        *view.pStandardEnchantId = generated->standardEnchantId;
+        *view.pStandardEnchantPower = generated->standardEnchantPower;
+        *view.pSpecialEnchantId = generated->specialEnchantId;
+        *view.pCurrentCharges = generated->currentCharges;
+        *view.pMaxCharges = generated->maxCharges;
+        *view.pModData = generated->modData;
+    }
+
+    lua_pushboolean(pLuaState, true);
     return 1;
 }
 
@@ -2470,6 +2549,7 @@ std::optional<GameplayModActorField> actorFieldFromName(const std::string &field
         // by, and Velocity, which it moves by. Only the second is the engine's.
         {"Velocity", GameplayModActorField::MoveSpeed},
         {"AIType", GameplayModActorField::AiType},
+        {"Item", GameplayModActorField::CarriedItem},
     };
     const std::unordered_map<std::string, GameplayModActorField>::const_iterator it = fields.find(field);
     return it != fields.end() ? std::optional<GameplayModActorField>(it->second) : std::nullopt;
@@ -2517,6 +2597,22 @@ int nativeMapMonsterGet(lua_State *pLuaState)
                 : field == "IsDead" ? state.isDead
                 : field == "Invisible" ? state.isInvisible
                 : !state.isInvisible);
+        return 1;
+    }
+
+    // Not the original's: what a dead monster's body holds, gold and the worth of its items together. Nothing for a
+    // monster that left no body to search.
+    if (field == "CorpseValue")
+    {
+        const std::optional<uint32_t> corpseValue =
+            actorIndex >= 0 ? pWorld->corpseLootValue(static_cast<size_t>(actorIndex)) : std::nullopt;
+
+        if (!corpseValue)
+        {
+            return 0;
+        }
+
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(*corpseValue));
         return 1;
     }
 
@@ -2960,6 +3056,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"mapMonstersResetSpeed", nativeMapMonstersResetSpeed},
         {"summonMonster", nativeSummonMonster},
         {"itemTooltip", nativeItemTooltip},
+        {"itemRandomize", nativeItemRandomize},
         {"enchantTxtGet", nativeEnchantTxtGet},
         {"mapPointInfo", nativeMapPointInfo},
         {"gameGet", nativeGameGet},

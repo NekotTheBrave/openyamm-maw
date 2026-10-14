@@ -11044,6 +11044,7 @@ bool IndoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField 
                 : static_cast<int64_t>(pAiState->aiType);
             return true;
         }
+        case GameplayModActorField::CarriedItem: value = actor.carriedItemId; return true;
     }
 
     return false;
@@ -11223,6 +11224,7 @@ bool IndoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFie
             return true;
         case GameplayModActorField::MonsterId:
         case GameplayModActorField::MaxHp:
+        case GameplayModActorField::CarriedItem:
             return false;
     }
 
@@ -15427,7 +15429,9 @@ bool IndoorWorldRuntime::ensureMapActorCorpseView(size_t actorIndex)
         buildMonsterCorpseView(
             title,
             actor.proceduralDeathLoot
-                ? gameplayBolsterLootPrototype(pStats->loot, pStats->hitPoints, rewardMultiplier)
+                ? modCorpseLoot(
+                    actorIndex,
+                    gameplayBolsterLootPrototype(pStats->loot, pStats->hitPoints, rewardMultiplier))
                 : MonsterTable::LootPrototype {},
             m_pItemTable,
             m_pParty,

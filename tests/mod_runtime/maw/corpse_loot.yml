@@ -1,0 +1,66 @@
+id: mod_runtime.maw.corpse_loot
+title: MAW decides what a dead monster's body holds
+world: mm6
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Valerie
+        class: Knight
+        level: 1
+        might: 18
+        intellect: 9
+        personality: 9
+        endurance: 15
+        accuracy: 15
+        speed: 15
+        luck: 11
+        skills:
+        - name: Axe
+          level: 1
+          mastery: 1
+        - name: Bow
+          level: 1
+          mastery: 1
+        - name: Sword
+          level: 1
+          mastery: 1
+        - name: Plate
+          level: 1
+          mastery: 1
+        equipment:
+          main_hand: 11
+          armor: 94
+          bow: 849
+# MAW decides what a body holds in its PickCorpse handler: it rewrites the dead monster's treasure fields (gold by
+# the monster's level, the chance and level of an item) and notes the monster for the item rules that follow. Forty
+# goblins killed outright: no script error, every body rolled, and an ordinary Goblin's gold is MAW's 4 dice of 4
+# (the 4.74 it writes, cut to a whole number as the original's one-byte fields cut it), so 4 to 16, with an item
+# now and then on top. Run with the MAW mods.yml.
+- mod_lua:
+    code: |
+      local errorsBefore = ModRT.totalErrorCount
+      local killed, rolled, plain, plainInRange = 0, 0, 0, 0
+      for index, monster in Map.Monsters do
+        if killed < 40 and (monster.Id == 550 or monster.Id == 551 or monster.Id == 552) and not monster.IsDead then
+          monster.AIState = const.AIState.Dead
+          killed = killed + 1
+          local value = monster.CorpseValue
+          if type(value) == "number" then
+            rolled = rolled + 1
+            if monster.Id == 550 and monster.NameId == 0 then
+              plain = plain + 1
+              if value >= 4 and value <= 16 then plainInRange = plainInRange + 1 end
+            end
+          end
+        end
+      end
+      return killed, rolled, plain > 10, plainInRange >= plain - 3, ModRT.totalErrorCount - errorsBefore
+    expect: "40\t40\ttrue\ttrue\t0"

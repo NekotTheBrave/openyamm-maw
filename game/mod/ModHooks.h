@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/gameplay/GameMechanics.h"
+#include "game/tables/MonsterTable.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -11,6 +12,27 @@ namespace OpenYAMM::Game
 {
 // Points in gameplay where a mod may change the outcome. Gameplay code asks activeModHooks() and, when a mod runtime
 // is present, lets it adjust the value; with no runtime the pointer is null and gameplay is untouched.
+
+// What a monster's body is about to be given, as the original's fields of the monster name it: gold as dice, the
+// chance in 100 of an item and its treasure level. `anyItemKind` lifts the kind's restriction on what the item can
+// be; `allowed` false leaves the body empty.
+struct ModCorpseLoot
+{
+    int goldDiceCount = 0;
+    int goldDiceSides = 0;
+    int itemPercent = 0;
+    int itemLevel = 0;
+    bool anyItemKind = false;
+    bool allowed = true;
+};
+
+// A random item being made. `treasureLevel` is the original's "strength", 1 to 6 (7 for artifacts); `mode` says
+// what it is made for: 0 anything, 1 a shop's shelf, 2 a monster's body, 3 a chest.
+struct ModItemGeneration
+{
+    int treasureLevel = 1;
+    int mode = 0;
+};
 
 // The texts of an item's information box, as the original's BuildItemInformationBox event names them: the item's
 // name, its type line, its basic statistic ("Damage: 2d3", "Armor: +18"), its enchantment line, its description.
@@ -148,6 +170,13 @@ public:
     // What an item is worth; `engineValue` is the engine's answer. Asked for wherever the engine prices an item: a
     // tooltip, a shop's offer, the cost of identifying or repairing it, what a corpse or chest holds.
     virtual int itemValue(const InventoryItem &item, int engineValue) = 0;
+    // A dead monster's loot is about to be rolled (the original's PickCorpse, which there comes when the body is
+    // searched; here the loot is rolled when the monster dies). `loot` comes in as the engine's.
+    virtual void pickCorpse(size_t actorIndex, ModCorpseLoot &loot) = 0;
+    // A random item is about to be made: the mod may change its treasure level (the original's GenerateItem).
+    virtual void generateItem(ModItemGeneration &generation) = 0;
+    // A random item has been made: the mod may rewrite it, its kind included (the original's ItemGenerated).
+    virtual void itemGenerated(InventoryItem &item, const ModItemGeneration &generation) = 0;
     // The texts of the item's information box; `texts` come in as the engine's and go out as the mod leaves them.
     // The box is built on every frame it shows, so the answer for the same item and texts is reused for a moment
     // unless `fresh` asks the scripts again.
@@ -164,6 +193,10 @@ void setActiveModHooks(IModHooks *pModHooks);
 
 // Runs the mod's event over the texts of an item's information box; without a mod runtime they stay as they are.
 void modItemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh = false);
+
+// Runs the mod's event for a dead monster's loot and returns what to roll, which is `engineLoot` without a mod
+// runtime.
+MonsterTable::LootPrototype modCorpseLoot(size_t actorIndex, const MonsterTable::LootPrototype &engineLoot);
 
 // The original marks coloured text with a form feed and five digits ("\f00000" ends a colour). The engine's text
 // drawing does not know the marks, so they are taken out before a mod's text is shown.

@@ -1,0 +1,100 @@
+id: mod_runtime.item_generation
+title: GenerateItem and ItemGenerated decide what a random item is
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 0
+      food: 1
+      members:
+      - name: Finder
+        class: Knight
+        level: 3
+        skills:
+        - name: Sword
+          level: 2
+          mastery: 1
+        equipment:
+          main_hand: 1
+# Item:Randomize has the game's own generator make a new random item in the item's place, which is where every
+# random item in the game comes from (shops, bodies, chests). With no handler the item is whatever the game rolled.
+- mod_lua:
+    code: |
+      local sword = Party[0]:GetActiveItem(1)
+      local made = sword:Randomize(3)
+      return made, Party[0]:GetActiveItem(1, true).Number > 0, Game.HouseScreen
+    expect: "true\ttrue\t0"
+# GenerateItem comes first and may change the treasure level; ItemGenerated comes after with the item itself, and
+# what a handler writes to it is the item the game gets, its kind included.
+- mod_lua:
+    code: |
+      Seen = {}
+      function events.GenerateItem(t)
+        Seen[#Seen + 1] = "before " .. t.Strength .. " item " .. t.Item.Number
+        t.Strength = 1
+      end
+      function events.ItemGenerated(t)
+        Seen[#Seen + 1] = "after " .. t.Strength .. " item " .. (t.Item.Number > 0 and "made" or "missing")
+        t.Item.Number = 2
+        t.Item.Bonus, t.Item.BonusStrength, t.Item.Bonus2 = 1, 9, 0
+        t.Item.MaxCharges = 17
+        t.Item.Identified = true
+      end
+      local sword = Party[0]:GetActiveItem(1, true)
+      sword:Randomize(5)
+      local item = Party[0]:GetActiveItem(1, true)
+      return table.concat(Seen, "; "), item.Number, item.Bonus, item.BonusStrength, item.MaxCharges, item:T().Name == Game.ItemsTxt[2].Name
+    expect: "before 5 item 0; after 1 item made\t2\t1\t9\t17\ttrue"
+# A kind the item table does not have is not taken: the item stays what it was.
+- mod_lua:
+    code: |
+      local item = Party[0]:GetActiveItem(1, true)
+      item.Number = 250000
+      return item.Number
+    expect: "2"
+# PickCorpse comes when a dead monster's loot is rolled, which in this engine is when it dies, and names the
+# monster. What the handler leaves in the monster's treasure fields is what is rolled: ten dice of one side are
+# exactly ten gold, and no chance of an item leaves the gold alone. (CorpseValue is this runtime's own field: the
+# gold and the worth of the items a body holds.)
+- mod_lua:
+    code: |
+      Corpses = {}
+      function events.PickCorpse(t)
+        Corpses[#Corpses + 1] = t.MonsterIndex
+        local mon = t.Monster
+        Same = mon == Map.Monsters[t.MonsterIndex]
+        mon.TreasureDiceCount, mon.TreasureDiceSides = 10, 1
+        mon.TreasureItemPercent = 0
+      end
+      local victim
+      for index, monster in Map.Monsters do
+        if monster.Hostile and not monster.IsDead and monster.Item == 0 then
+          victim = index
+          break
+        end
+      end
+      Map.Monsters[victim].AIState = const.AIState.Dead
+      return #Corpses, Corpses[1] == victim, Same, Map.Monsters[victim].CorpseValue
+    expect: "1\ttrue\ttrue\t10"
+# With an item certain, the body holds one, and it went through ItemGenerated (which turns it into item 2 here).
+- mod_lua:
+    code: |
+      events.Remove("PickCorpse", events.PickCorpse)
+      Generated = 0
+      function events.PickCorpse(t)
+        local mon = t.Monster
+        mon.TreasureDiceCount, mon.TreasureDiceSides = 0, 0
+        mon.TreasureItemPercent, mon.TreasureItemLevel, mon.TreasureItemType = 100, 3, 0
+      end
+      function events.ItemGenerated(t) Generated = Generated + 1 end
+      local victim
+      for index, monster in Map.Monsters do
+        if monster.Hostile and not monster.IsDead and monster.Item == 0 then victim = index break end
+      end
+      Map.Monsters[victim].AIState = const.AIState.Dead
+      return Generated >= 1, Map.Monsters[victim].CorpseValue == Game.ItemsTxt[2].Value + 900
+    expect: "true\ttrue"
