@@ -208,6 +208,7 @@ void GameplayHudInputController::activatePartyPortrait(
         characterScreen.page = GameplayUiController::CharacterPage::Inventory;
         characterScreen.source = GameplayUiController::CharacterScreenSource::Party;
         characterScreen.sourceIndex = memberIndex;
+        modPlayerAction(Mm8Action::OpenCharacterScreen);
     }
     else if (isChestInventoryDoubleClick)
     {

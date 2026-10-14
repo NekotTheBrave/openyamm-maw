@@ -44,6 +44,10 @@ constexpr int QuickSpell = 25;
 constexpr int OpenSpellbook = 105;
 // Param: the member's number from 1 (a click on the portrait).
 constexpr int SelectCharacter = 110;
+// A screen is left (raised while it is still the current one): the character screen, the spellbook.
+constexpr int Exit = 113;
+// The character screen is opened.
+constexpr int OpenCharacterScreen = 114;
 // Param: the skill's Merge number (the skill page's raise of a skill with skill points).
 constexpr int RaiseSkill = 121;
 // The held item put on the character's doll (Mouse.Item is the item).

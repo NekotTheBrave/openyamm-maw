@@ -1639,11 +1639,19 @@ void GameplayScreenRuntime::toggleCharacterInventoryScreen()
     characterScreen.dollJewelryOverlayOpen = false;
     characterScreen.adventurersInnRosterOverlayOpen = false;
     closeSpellbookOverlay();
+    // The mod hears of it once it is open (MAW sets a Dragon's skill names, checks its classes' skills).
+    modPlayerAction(Mm8Action::OpenCharacterScreen);
 }
 
 void GameplayScreenRuntime::closeCharacterScreen()
 {
     GameplayUiController::CharacterScreenState &characterScreen = uiController().characterScreen();
+
+    // The mod hears of the exit while the screen is still the current one, as in the original.
+    if (characterScreen.open)
+    {
+        modPlayerAction(Mm8Action::Exit);
+    }
 #if defined(__ANDROID__)
     GameplayUiController::HeldInventoryItemState &heldItem = heldInventoryItem();
     Party *pParty = party();
@@ -2450,6 +2458,12 @@ bool GameplayScreenRuntime::tryAutoPlaceHeldInventoryItemOnPartyMember(size_t me
 void GameplayScreenRuntime::closeSpellbookOverlay(const std::string &statusText)
 {
     const bool wasActive = uiController().spellbook().active;
+
+    // The mod hears of the exit while the book is still open (MAW's Elementalist binds its spells here).
+    if (wasActive)
+    {
+        modPlayerAction(Mm8Action::Exit);
+    }
     uiController().closeSpellbook();
     interactionState().spellbookClickLatch = false;
     interactionState().spellbookPressedTarget = {};
