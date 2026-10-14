@@ -30,6 +30,8 @@ public:
     bool applyRaceSkillOverrides(const MergedRaceSkillTable &raceSkillTable);
 
     SkillMastery getClassCap(const std::string &className, const std::string &skillName) const;
+    // The highest mastery a class can reach in a skill, as a mod sets it (the original's Game.Classes.Skills).
+    void setClassCap(const std::string &className, const std::string &skillName, SkillMastery mastery);
     SkillMastery getEffectiveCap(const std::string &className, uint32_t raceId, const std::string &skillName) const;
     SkillMastery getHighestPromotionCap(const std::string &className, const std::string &skillName) const;
     SkillMastery getHighestPromotionEffectiveCap(

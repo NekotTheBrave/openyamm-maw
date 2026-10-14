@@ -1146,6 +1146,41 @@ end
 
 local spcItemsTxt = enchantTable("Game.SpcItemsTxt", true, 12)
 
+-- The texts of the 39 skills, as the original's arrays: Game.SkillNames, Game.SkillDescriptions and Game.SkillDes<Mastery>
+-- (what Normal, Expert, Master and GM give). Writes reach what the game shows on the skill page and in the skill's
+-- information box.
+local function skillTextArray(path, part)
+    return boundObject(path, {
+        index = function(skill)
+            return modrt.skillTextGet(floor(skill), part)
+        end,
+        newindex = function(skill, value)
+            return modrt.skillTextSet(floor(skill), part, tostring(value))
+        end,
+        get = sizeFields(function() return 39 end),
+        range = function() return 0, 38 end,
+    })
+end
+
+local skillTexts = {
+    SkillNames = skillTextArray("Game.SkillNames", 0),
+    SkillDescriptions = skillTextArray("Game.SkillDescriptions", 1),
+    SkillDesNormal = skillTextArray("Game.SkillDesNormal", 2),
+    SkillDesExpert = skillTextArray("Game.SkillDesExpert", 3),
+    SkillDesMaster = skillTextArray("Game.SkillDesMaster", 4),
+    SkillDesGM = skillTextArray("Game.SkillDesGM", 5),
+}
+
+-- Game.ClassDescriptions[class]: what the game says of a class.
+local classDescriptions = boundObject("Game.ClassDescriptions", {
+    index = function(class)
+        return modrt.classDescription(floor(class))
+    end,
+    newindex = function(class, value)
+        return modrt.classDescription(floor(class), tostring(value))
+    end,
+})
+
 -- Game.Spells: the spell table by spell number. SpellPoints<Mastery> and Delay<Mastery> read and write the game's
 -- figures (casting goes by a written one); SpellPoints[mastery] and Delay[mastery] are the same by number, 1 Normal
 -- to 4 GM.
@@ -1288,6 +1323,11 @@ local classSkills = cached(function(class)
             local name = skillName(floor(skill))
             return name and modrt.classSkillGet(class, name) or nil
         end,
+        -- The highest mastery the class can reach, 0 none to 4 Grandmaster; the game's teachers go by it.
+        newindex = function(skill, value)
+            local name = skillName(floor(skill))
+            return name ~= nil and type(value) == "number" and modrt.classSkillSet(class, name, floor(value))
+        end,
         get = sizeFields(function() return 39 end),
         range = function() return 0, 38 end,
     })
@@ -1358,6 +1398,8 @@ Game = boundObject("Game", {
     bound = {
         ItemsTxt = true, MonstersTxt = true, CharacterPortraits = true, MapStats = true, PlaceMonTxt = true,
         SpcItemsTxt = true, StdItemsTxt = true, Spells = true, CurrentScreen = true,
+        SkillNames = true, SkillDescriptions = true, SkillDesNormal = true, SkillDesExpert = true,
+        SkillDesMaster = true, SkillDesGM = true, ClassDescriptions = true,
         CurrentPlayer = true, Time = true, Classes = true, ClassNames = true, ClassesExtra = true,
         HouseScreen = true,
     },
@@ -1366,6 +1408,10 @@ Game = boundObject("Game", {
             return itemsTxt
         elseif key == "SpcItemsTxt" then
             return spcItemsTxt
+        elseif skillTexts[key] then
+            return skillTexts[key]
+        elseif key == "ClassDescriptions" then
+            return classDescriptions
         elseif key == "CurrentScreen" then
             -- Which screen is up, by const.Screens: 0 the game itself, 7 the character screen, 13 a house...
             return modrt.gameGet("CurrentScreen") or 0

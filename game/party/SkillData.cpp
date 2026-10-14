@@ -318,9 +318,39 @@ std::string displayClassName(const std::string &className)
     return canonicalName;
 }
 
+namespace
+{
+std::unordered_map<std::string, std::string> &displaySkillNameOverrides()
+{
+    static std::unordered_map<std::string, std::string> overrides;
+    return overrides;
+}
+}
+
+void setDisplaySkillNameOverride(const std::string &skillName, const std::string &displayName)
+{
+    const std::string canonicalName = canonicalSkillName(skillName);
+
+    if (displayName.empty())
+    {
+        displaySkillNameOverrides().erase(canonicalName);
+    }
+    else
+    {
+        displaySkillNameOverrides()[canonicalName] = displayName;
+    }
+}
+
 std::string displaySkillName(const std::string &skillName)
 {
     const std::string canonicalName = canonicalSkillName(skillName);
+    const std::unordered_map<std::string, std::string>::const_iterator overrideIt =
+        displaySkillNameOverrides().find(canonicalName);
+
+    if (overrideIt != displaySkillNameOverrides().end())
+    {
+        return overrideIt->second;
+    }
     const std::unordered_map<std::string, std::string>::const_iterator displayIt =
         DisplaySkillNames.find(canonicalName);
 

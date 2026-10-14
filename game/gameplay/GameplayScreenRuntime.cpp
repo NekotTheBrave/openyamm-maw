@@ -3870,9 +3870,15 @@ void GameplayScreenRuntime::renderHudTextColored(
     const GameplayResolvedHudLayoutElement *pClip) const
 {
     renderHudFontLayer(font, font.shadowTextureHandle, text, textX, textY, fontScale, pClip);
+    const float lineStartX = textX;
 
     for (const GameplayHudCommon::HudColorRun &run : GameplayHudCommon::splitHudColorRuns(text))
     {
+        if (run.tabStop)
+        {
+            textX = std::max(textX, lineStartX + static_cast<float>(*run.tabStop) * fontScale);
+        }
+
         const bgfx::TextureHandle textureHandle =
             ensureHudFontMainTextureColor(font, run.colorAbgr.value_or(defaultColorAbgr));
         renderHudFontLayer(font, textureHandle, run.text, textX, textY, fontScale, pClip);

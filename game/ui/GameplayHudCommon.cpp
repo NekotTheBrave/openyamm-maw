@@ -1318,9 +1318,27 @@ size_t GameplayHudCommon::hudColorCodeLength(const std::string &text, size_t ind
     return length;
 }
 
+size_t GameplayHudCommon::hudTabStopLength(const std::string &text, size_t index)
+{
+    if (index + 3 >= text.size() || text[index] != '\t')
+    {
+        return 0;
+    }
+
+    for (size_t digit = 1; digit <= 3; ++digit)
+    {
+        if (text[index + digit] < '0' || text[index + digit] > '9')
+        {
+            return 0;
+        }
+    }
+
+    return 4;
+}
+
 bool GameplayHudCommon::hasHudColorCodes(const std::string &text)
 {
-    return text.find('\f') != std::string::npos;
+    return text.find('\f') != std::string::npos || text.find('\t') != std::string::npos;
 }
 
 std::vector<GameplayHudCommon::HudColorRun> GameplayHudCommon::splitHudColorRuns(const std::string &text)
@@ -1329,6 +1347,21 @@ std::vector<GameplayHudCommon::HudColorRun> GameplayHudCommon::splitHudColorRuns
 
     for (size_t index = 0; index < text.size(); ++index)
     {
+        if (const size_t tabLength = hudTabStopLength(text, index); tabLength > 0)
+        {
+            const std::optional<uint32_t> colorAbgr = runs.back().colorAbgr;
+
+            if (!runs.back().text.empty())
+            {
+                runs.push_back({});
+                runs.back().colorAbgr = colorAbgr;
+            }
+
+            runs.back().tabStop = std::stoi(text.substr(index + 1, 3));
+            index += tabLength - 1;
+            continue;
+        }
+
         const size_t codeLength = hudColorCodeLength(text, index);
 
         if (codeLength == 0)
@@ -1380,6 +1413,14 @@ float GameplayHudCommon::measureHudTextWidth(const GameplayHudFontData &font, co
             continue;
         }
 
+        if (const size_t tabLength = hudTabStopLength(text, index); tabLength > 0)
+        {
+            widthPixels = std::max(widthPixels, static_cast<float>(std::stoi(text.substr(index + 1, 3))));
+            index += tabLength - 1;
+            previous = 0;
+            continue;
+        }
+
         if (character < font.firstChar || character > font.lastChar)
         {
             widthPixels += static_cast<float>(font.atlasCellWidth);
@@ -1427,6 +1468,9 @@ std::vector<std::string> GameplayHudCommon::wrapHudTextToWidth(
     std::vector<std::string> lines;
     std::string currentLine;
     std::string currentWord;
+    // The spaces before the word being read, kept as they are (as the original does: texts line up columns with them
+    // and put two after a sentence) unless the line breaks there.
+    std::string currentSpacing;
 
     const auto flushLine =
         [&lines, &currentLine]()
@@ -1436,7 +1480,7 @@ std::vector<std::string> GameplayHudCommon::wrapHudTextToWidth(
         };
 
     const auto appendWord =
-        [&font, &currentLine, &flushLine, maxWidth](const std::string &word)
+        [&font, &currentLine, &currentSpacing, &flushLine, maxWidth](const std::string &word)
         {
             if (word.empty())
             {
@@ -1445,11 +1489,14 @@ std::vector<std::string> GameplayHudCommon::wrapHudTextToWidth(
 
             if (currentLine.empty())
             {
-                currentLine = word;
+                // The start of a paragraph keeps its indent.
+                currentLine = currentSpacing + word;
+                currentSpacing.clear();
                 return;
             }
 
-            const std::string candidate = currentLine + " " + word;
+            const std::string candidate = currentLine + (currentSpacing.empty() ? " " : currentSpacing) + word;
+            currentSpacing.clear();
 
             if (measureHudTextWidth(font, candidate) <= maxWidth)
             {
@@ -1473,6 +1520,7 @@ std::vector<std::string> GameplayHudCommon::wrapHudTextToWidth(
         {
             appendWord(currentWord);
             currentWord.clear();
+            currentSpacing.clear();
             flushLine();
             continue;
         }
@@ -1481,6 +1529,7 @@ std::vector<std::string> GameplayHudCommon::wrapHudTextToWidth(
         {
             appendWord(currentWord);
             currentWord.clear();
+            currentSpacing.push_back(' ');
             continue;
         }
 
@@ -1549,6 +1598,14 @@ void GameplayHudCommon::renderHudFontLayer(
         if (const size_t codeLength = hudColorCodeLength(text, index); codeLength > 0)
         {
             index += codeLength - 1;
+            continue;
+        }
+
+        if (const size_t tabLength = hudTabStopLength(text, index); tabLength > 0)
+        {
+            penX = std::max(penX, textX + static_cast<float>(std::stoi(text.substr(index + 1, 3))) * fontScale);
+            index += tabLength - 1;
+            previous = 0;
             continue;
         }
 
@@ -1686,10 +1743,17 @@ void GameplayHudCommon::renderLayoutLabel(
     textY = std::round(textY);
 
     renderHudFontLayerFn(*pFont, pFont->shadowTextureHandle, clampedLabel, textX, textY, fontScale);
+    const float lineStartX = textX;
 
-    // Each run of the text in its own colour, the label's own where the text names none.
+    // Each run of the text in its own colour, the label's own where the text names none, from its tab stop if it
+    // has one.
     for (const HudColorRun &run : splitHudColorRuns(clampedLabel))
     {
+        if (run.tabStop)
+        {
+            textX = std::max(textX, lineStartX + static_cast<float>(*run.tabStop) * fontScale);
+        }
+
         bgfx::TextureHandle coloredMainTextureHandle =
             ensureHudFontColorFn(*pFont, run.colorAbgr.value_or(layout.textColorAbgr));
 

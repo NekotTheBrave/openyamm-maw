@@ -785,28 +785,51 @@ void GameplayHudOverlaySupport::updateCharacterInspectOverlay(
                         "Skill added to Attack Bonus (quintuple effect); +1 damage per skill point";
                 }
 
-                overlay.normal.text = "Normal: " + normalDescription;
+                // A skill described as the original's tables (MAW's: columns set with tab stops and spaces, the
+                // headings in the description) gets the original's rows too: the short names, the texts from one
+                // column, 66 pixels in, where the columns of the description's heading line up with them (read off
+                // the real game's Plate tooltip).
+                bool tableLayout = false;
+
+                for (const std::string *pText : {&overlay.body, &normalDescription, &expertDescription,
+                         &masterDescription, &grandmasterDescription})
+                {
+                    for (size_t index = 0; index < pText->size() && !tableLayout; ++index)
+                    {
+                        tableLayout = GameplayHudCommon::hudTabStopLength(*pText, index) > 0;
+                    }
+                }
+
+                const auto masteryRow =
+                    [tableLayout](const char *pLabel, const char *pShortLabel, const std::string &description)
+                    {
+                        return tableLayout
+                            ? std::string(pShortLabel) + "\t066" + description
+                            : std::string(pLabel) + " " + description;
+                    };
+
+                overlay.normal.text = masteryRow("Normal:", "Novice:", normalDescription);
                 overlay.normal.availability = skillMasteryAvailability(
                     context.classSkillTable(),
                     pCharacter,
                     row.canonicalName,
                     SkillMastery::Normal);
                 overlay.normal.visible = !normalDescription.empty();
-                overlay.expert.text = "Expert: " + expertDescription;
+                overlay.expert.text = masteryRow("Expert:", "Expert:", expertDescription);
                 overlay.expert.availability = skillMasteryAvailability(
                     context.classSkillTable(),
                     pCharacter,
                     row.canonicalName,
                     SkillMastery::Expert);
                 overlay.expert.visible = !expertDescription.empty();
-                overlay.master.text = "Master: " + masterDescription;
+                overlay.master.text = masteryRow("Master:", "Master:", masterDescription);
                 overlay.master.availability = skillMasteryAvailability(
                     context.classSkillTable(),
                     pCharacter,
                     row.canonicalName,
                     SkillMastery::Master);
                 overlay.master.visible = !masterDescription.empty();
-                overlay.grandmaster.text = "Grandmaster: " + grandmasterDescription;
+                overlay.grandmaster.text = masteryRow("Grandmaster:", "Grand:", grandmasterDescription);
                 overlay.grandmaster.availability = skillMasteryAvailability(
                     context.classSkillTable(),
                     pCharacter,

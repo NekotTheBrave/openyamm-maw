@@ -2535,6 +2535,158 @@ int nativeClassSkillGet(lua_State *pLuaState)
     return 1;
 }
 
+// The texts of a skill by part, as the original keeps them: 0 its name, 1 its description, 2 to 5 what Normal, Expert,
+// Master and Grandmaster give. They are the texts of the skill's information box and of its name on the skill page.
+std::string *skillTextField(SkillInspectEntry &entry, int64_t part)
+{
+    switch (part)
+    {
+        case 1: return &entry.description;
+        case 2: return &entry.normalDescription;
+        case 3: return &entry.expertDescription;
+        case 4: return &entry.masterDescription;
+        case 5: return &entry.grandmasterDescription;
+        default: return nullptr;
+    }
+}
+
+// modrt.skillTextGet(skill, part): see skillTextField; part 0 is the name the game shows.
+int nativeSkillTextGet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t skillId = integerArgument(pLuaState, 1);
+    const int64_t part = integerArgument(pLuaState, 2);
+
+    if (pData == nullptr || skillId < 0 || static_cast<size_t>(skillId) >= MergeSkillCount)
+    {
+        return 0;
+    }
+
+    const std::string skillName = mergeSkillName(static_cast<size_t>(skillId));
+
+    if (part == 0)
+    {
+        pushString(pLuaState, displaySkillName(skillName));
+        return 1;
+    }
+
+    const SkillInspectEntry *pEntry = pData->getCharacterInspectTable().getSkill(skillName);
+    SkillInspectEntry empty = {};
+    const std::string *pText = skillTextField(pEntry != nullptr ? const_cast<SkillInspectEntry &>(*pEntry) : empty, part);
+
+    if (pText == nullptr)
+    {
+        return 0;
+    }
+
+    pushString(pLuaState, *pText);
+    return 1;
+}
+
+// modrt.skillTextSet(skill, part, text): the game shows the text from then on. A name renames the skill everywhere
+// the game names it.
+int nativeSkillTextSet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t skillId = integerArgument(pLuaState, 1);
+    const int64_t part = integerArgument(pLuaState, 2);
+    size_t length = 0;
+    const char *pText = luaL_checklstring(pLuaState, 3, &length);
+
+    if (pData == nullptr || skillId < 0 || static_cast<size_t>(skillId) >= MergeSkillCount)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    const std::string skillName = mergeSkillName(static_cast<size_t>(skillId));
+    // The table belongs to the game's data loader, which hands it out read-only; it is not a constant object.
+    SkillInspectEntry &entry =
+        const_cast<CharacterInspectTable &>(pData->getCharacterInspectTable()).skillForWrite(skillName);
+
+    if (part == 0)
+    {
+        setDisplaySkillNameOverride(skillName, std::string(pText, length));
+        entry.name = std::string(pText, length);
+        lua_pushboolean(pLuaState, true);
+        return 1;
+    }
+
+    std::string *pField = skillTextField(entry, part);
+
+    if (pField == nullptr)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    pField->assign(pText, length);
+    lua_pushboolean(pLuaState, true);
+    return 1;
+}
+
+// modrt.classDescription(class[, text]): the description of a class (Game.ClassDescriptions), set when text is given.
+int nativeClassDescription(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t classId = integerArgument(pLuaState, 1);
+    const std::optional<std::string> className = pData != nullptr && classId >= 0
+        ? pData->getClassSkillTable().classNameForId(static_cast<uint32_t>(classId))
+        : std::nullopt;
+
+    if (!className)
+    {
+        return 0;
+    }
+
+    if (lua_isstring(pLuaState, 2))
+    {
+        size_t length = 0;
+        const char *pText = lua_tolstring(pLuaState, 2, &length);
+        ClassInspectEntry &entry =
+            const_cast<CharacterInspectTable &>(pData->getCharacterInspectTable()).classForWrite(*className);
+        entry.description.assign(pText, length);
+
+        if (entry.name.empty())
+        {
+            entry.name = displayClassName(*className);
+        }
+
+        lua_pushboolean(pLuaState, true);
+        return 1;
+    }
+
+    const ClassInspectEntry *pEntry = pData->getCharacterInspectTable().getClass(*className);
+    pushString(pLuaState, pEntry != nullptr ? pEntry->description : std::string());
+    return 1;
+}
+
+// modrt.classSkillSet(class, skill, mastery): the highest mastery the class can reach in the skill, 0 for none to 4
+// for Grandmaster. The game's teachers and the skill screen go by it from then on (MAW sets every class's limits
+// from its own table this way).
+int nativeClassSkillSet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t classId = integerArgument(pLuaState, 1);
+    const std::string skillName = canonicalSkillName(luaL_checkstring(pLuaState, 2));
+    const int64_t mastery = integerArgument(pLuaState, 3);
+    const std::optional<std::string> className = pData != nullptr && classId >= 0
+        ? pData->getClassSkillTable().classNameForId(static_cast<uint32_t>(classId))
+        : std::nullopt;
+
+    if (!className || mastery < 0 || mastery > 4)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    // The table belongs to the game's data loader, which hands it out read-only; it is not a constant object.
+    const_cast<ClassSkillTable &>(pData->getClassSkillTable())
+        .setClassCap(*className, skillName, static_cast<SkillMastery>(mastery));
+    lua_pushboolean(pLuaState, true);
+    return 1;
+}
+
 int nativePortraitGet(lua_State *pLuaState)
 {
     const GameDataLoader *pData = dataFromHost(pLuaState);
@@ -3229,6 +3381,10 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"classGet", nativeClassGet},
         {"classSet", nativeClassSet},
         {"classSkillGet", nativeClassSkillGet},
+        {"classSkillSet", nativeClassSkillSet},
+        {"skillTextGet", nativeSkillTextGet},
+        {"skillTextSet", nativeSkillTextSet},
+        {"classDescription", nativeClassDescription},
         {"mapStatsGet", nativeMapStatsGet},
         {"mapStatsSet", nativeMapStatsSet},
         {"mapMonsterGet", nativeMapMonsterGet},

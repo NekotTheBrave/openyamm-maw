@@ -263,11 +263,16 @@ public:
     {
         std::string text;
         std::optional<uint32_t> colorAbgr;
+        // The run starts at this distance from the start of the line, in the font's pixels (a tab stop).
+        std::optional<int> tabStop;
     };
+    // The original's tab stop: a tab and three digits, "go on from this many pixels into the line". The length of
+    // the one at `index`, 0 when there is none.
+    static size_t hudTabStopLength(const std::string &text, size_t index);
     // The length of the colour mark at `index`, 0 when there is none.
     static size_t hudColorCodeLength(const std::string &text, size_t index);
     static bool hasHudColorCodes(const std::string &text);
-    // The text cut where its colour changes; a run without a colour is in the text's own.
+    // The text cut where its colour changes or a tab stop moves it on; a run without a colour is in the text's own.
     static std::vector<HudColorRun> splitHudColorRuns(const std::string &text);
     static std::string clampHudTextToWidth(const GameplayHudFontData &font, const std::string &text, float maxWidth);
     static std::vector<std::string> wrapHudTextToWidth(

@@ -65,3 +65,15 @@ steps:
 - mod_lua:
     code: return Game.CurrentScreen, const.Screens and const.Screens.Game
     expect: "0\t0"
+# Game.Classes.Skills[class][skill] is the highest mastery a class can reach (0 none to 4 Grandmaster), and a write
+# reaches the game's class table (MAW sets every class's limits from its own table): a Knight given Fire Magic up to
+# Master can then reach it.
+- mod_lua:
+    code: |
+      local knight, fire = const.Class.Knight, const.Skills.Fire
+      local before = Game.Classes.Skills[knight][fire]
+      Game.Classes.Skills[knight][fire] = 3
+      local after = Game.Classes.Skills[knight][fire]
+      Game.Classes.Skills[knight][fire] = before
+      return before, after, Game.Classes.Skills[knight][fire]
+    expect: "0\t3\t0"

@@ -269,6 +269,21 @@ const StatInspectEntry *CharacterInspectTable::getStat(const std::string &statNa
     return it != m_stats.end() ? &it->second : nullptr;
 }
 
+SkillInspectEntry &CharacterInspectTable::skillForWrite(const std::string &skillName)
+{
+    return m_skills[canonicalSkillName(skillName)];
+}
+
+ClassInspectEntry &CharacterInspectTable::classForWrite(const std::string &className)
+{
+    return m_classes[canonicalClassName(className)];
+}
+
+StatInspectEntry &CharacterInspectTable::statForWrite(const std::string &statName)
+{
+    return m_stats[canonicalStatName(statName)];
+}
+
 const SkillInspectEntry *CharacterInspectTable::getSkill(const std::string &skillName) const
 {
     const std::string canonicalName = canonicalSkillName(skillName);

@@ -39,6 +39,11 @@ public:
 
     const StatInspectEntry *getStat(const std::string &statName) const;
     const SkillInspectEntry *getSkill(const std::string &skillName) const;
+    // The skill's entry to change, made when the table has none (a mod describing a skill).
+    SkillInspectEntry &skillForWrite(const std::string &skillName);
+    // The class's and the statistic's entries to change, made when the table has none.
+    ClassInspectEntry &classForWrite(const std::string &className);
+    StatInspectEntry &statForWrite(const std::string &statName);
     const ClassInspectEntry *getClass(const std::string &className) const;
 
 private:

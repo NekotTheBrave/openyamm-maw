@@ -340,6 +340,11 @@ bool ClassSkillTable::applyRaceSkillOverrides(const MergedRaceSkillTable &raceSk
     return true;
 }
 
+void ClassSkillTable::setClassCap(const std::string &className, const std::string &skillName, SkillMastery mastery)
+{
+    m_caps[canonicalClassName(className)][canonicalSkillName(skillName)] = mastery;
+}
+
 SkillMastery ClassSkillTable::getClassCap(const std::string &className, const std::string &skillName) const
 {
     const std::string canonicalClass = canonicalClassName(className);

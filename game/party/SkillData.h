@@ -34,6 +34,9 @@ std::string canonicalClassName(const std::string &name);
 std::string canonicalSkillName(const std::string &name);
 std::string displayClassName(const std::string &className);
 std::string displaySkillName(const std::string &skillName);
+// A name a mod gives a skill in place of its own (MAW calls Water, Body and Dark Magic Frost, Blood and Unholy for its
+// Death Knights); an empty name gives the skill its own back.
+void setDisplaySkillNameOverride(const std::string &skillName, const std::string &displayName);
 std::string masteryDisplayName(SkillMastery mastery);
 std::vector<std::string> allCanonicalSkillNames();
 std::optional<std::string> nextPromotionClassName(const std::string &className);
