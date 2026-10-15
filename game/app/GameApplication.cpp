@@ -2954,6 +2954,26 @@ GameApplication::GameApplication(const Engine::ApplicationConfig &config)
             screen.ensurePendingEventDialogPresented(true);
         }
     };
+    modHost.houseShopPage = [this]()
+    {
+        const GameplayUiController::HouseShopOverlayState &shop =
+            m_gameSession.gameplayScreenRuntime().houseShopOverlay();
+
+        if (!shop.active)
+        {
+            return 0;
+        }
+
+        switch (shop.mode)
+        {
+            case GameplayUiController::HouseShopMode::BuyStandard:
+                return 2;
+            case GameplayUiController::HouseShopMode::BuySpecial:
+                return 95;
+            default:
+                return 0;
+        }
+    };
     modHost.turnBasedPhase = [this]()
     {
         const TurnBasedCombatRuntime &turnBased = m_gameSession.turnBasedCombatRuntime();

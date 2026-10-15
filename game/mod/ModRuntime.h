@@ -99,6 +99,7 @@ public:
     bool canWearItem(const Character &character, uint32_t itemId) override;
     bool canOpenChest(uint32_t chestId, bool trapped) override;
     void partyDefeated() override;
+    void shopItemsGenerated(uint32_t houseId) override;
     bool pickObject(size_t worldItemIndex, const InventoryItem &item) override;
     bool canHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal) override;
     float shopItemTreatment(bool repair, uint32_t houseId, const InventoryItem &item, float engineMultiplier) override;

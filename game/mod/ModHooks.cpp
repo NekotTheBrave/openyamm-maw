@@ -457,6 +457,14 @@ bool modPickObject(size_t worldItemIndex, const InventoryItem &item)
     return pModHooks != nullptr && pModHooks->pickObject(worldItemIndex, item);
 }
 
+void modShopItemsGenerated(uint32_t houseId)
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->shopItemsGenerated(houseId);
+    }
+}
+
 void modPartyDefeated()
 {
     if (IModHooks *pModHooks = activeModHooks())

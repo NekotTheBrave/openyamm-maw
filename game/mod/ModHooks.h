@@ -313,6 +313,9 @@ public:
     // The whole party fell and is about to wake up in a temple (the original's DeathMap). MAW's Beyond Madness counts
     // a death.
     virtual void partyDefeated() = 0;
+    // A shop's goods or special goods page opened, its goods made (the original's ShopItemsGenerated; MAW notes the
+    // kinds the shop sells, for its R to make them again).
+    virtual void shopItemsGenerated(uint32_t houseId) = 0;
     // The party picks up item `item` lying on the map (world item `worldItemIndex`; the original's PickObject).
     // True when the mod took it (MAW's crafting bag puts crafting materials into a bag of their own): the item
     // leaves the map and goes nowhere else.
@@ -494,6 +497,8 @@ bool modCanWearItem(const Character &character, uint32_t itemId);
 bool modCanOpenChest(uint32_t chestId, bool trapped);
 // Tells the mod the whole party fell; see IModHooks::partyDefeated.
 void modPartyDefeated();
+// Tells the mod a shop's goods page opened; see IModHooks::shopItemsGenerated.
+void modShopItemsGenerated(uint32_t houseId);
 // Whether the mod took the item the party picks up (false without a mod); see IModHooks::pickObject.
 bool modPickObject(size_t worldItemIndex, const InventoryItem &item);
 // Whether the NPC will follow the party for hire (true without a mod); see IModHooks::canHireNpcFollower.

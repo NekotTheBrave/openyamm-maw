@@ -2811,6 +2811,7 @@ GameplayDialogController::Result GameplayDialogController::executeActiveDialogAc
             context.uiController.openHouseShopOverlay(
                 pHouseEntry->id,
                 GameplayUiController::HouseShopMode::BuyStandard);
+            modShopItemsGenerated(pHouseEntry->id);
             return result;
         }
         else if (houseActionId == HouseActionId::ShopBuySpecial)
@@ -2818,6 +2819,7 @@ GameplayDialogController::Result GameplayDialogController::executeActiveDialogAc
             context.uiController.openHouseShopOverlay(
                 pHouseEntry->id,
                 GameplayUiController::HouseShopMode::BuySpecial);
+            modShopItemsGenerated(pHouseEntry->id);
             return result;
         }
         else if (houseActionId == HouseActionId::GuildBuySpellbooks)

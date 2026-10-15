@@ -372,6 +372,10 @@ local function dispatchKind(kind, ...)
         return ModRT.Stats.canOpenChest(...)
     elseif kind == "pickObject" then
         return ModRT.Stats.pickObject(...)
+    elseif kind == "shopItemsGenerated" then
+        ModRT.ensureSession()
+        -- The original's ShopItemsGenerated, as a shop's goods page opens: Game.HouseScreen reads as that page.
+        return ModRT.fire("ShopItemsGenerated", {HouseId = ...})
     elseif kind == "partyDefeated" then
         ModRT.ensureSession()
         -- The original's DeathMap: the party fell on this map and is about to wake up in a temple.

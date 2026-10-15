@@ -1,0 +1,84 @@
+id: mod_runtime.maw.shop_reroll
+title: MAW's R in a shop pays to make the shop's goods again, of the kinds it sells
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's R on a shop's goods page (zzMaw-Items.lua, refreshItems): pays (tier + strength)^2 * 250 gold and makes each
+# item again at a strength from the continent's progress, of the kinds the shop sells (armour as leather, chain,
+# plate or a shield), identified. It reads Game:GetCurrentHouse(), Game.HouseScreen (2 the goods, 95 the special
+# goods), Game.ShopItems[house][slot] and Item:Randomize(strength, type). The shop and its page are stood in for
+# through modrt.gameGet, as no scenario step opens a shop. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+# Randomize's type: a leather armour (31) is leather.
+- mod_lua:
+    code: |
+      modrt.inventoryTake(0)
+      modrt.inventoryPut(0, {Number = 1})
+      local item = Party[0].Items[1]
+      local leather = true
+      for i = 1, 5 do
+        item:Randomize(3, const.ItemType.Leather)
+        if Game.ItemsTxt[item.Number].Skill ~= const.Skills.Leather then leather = false end
+      end
+      return leather
+    expect: "true"
+- mod_lua:
+    code: |
+      -- Outside a house Game:GetCurrentHouse() is nil, as MMExtension has it (MAW's spells test `not` it).
+      OutsideHouse = Game:GetCurrentHouse()
+      Shop = nil
+      for id = 1, 109 do
+        if Game.ShopItems[id][0].Number > 0 then Shop = id break end
+      end
+      Before = {}
+      for i = 0, 11 do Before[i] = Game.ShopItems[Shop][i].Number end
+      local realGet = modrt.gameGet
+      modrt.gameGet = function(key)
+        if key == "ShopPage" then return 2 end
+        if key == "CurrentHouse" then return Shop end
+        return realGet(key)
+      end
+      Party.Gold = 1000000
+      return tostring(OutsideHouse), Shop ~= nil, Game:GetCurrentHouse() == Shop, Game.HouseScreen
+    expect: "nil\ttrue\ttrue\t2"
+# Opening the page raises ShopItemsGenerated, where MAW notes the kinds the shop sells.
+- mod_lua:
+    code: |
+      ModRT.fire("ShopItemsGenerated", {HouseId = Shop})
+      return vars.shopType ~= nil and vars.shopType[Shop] ~= nil
+    expect: "true"
+- mod_lua:
+    code: |
+      ModRT.fire("KeyDown", {Key = 82})
+      local changed, identified = 0, true
+      for i = 0, 11 do
+        local item = Game.ShopItems[Shop][i]
+        if item.Number ~= Before[i] then changed = changed + 1 end
+        if item.Number > 0 and not item.Identified then identified = false end
+      end
+      return Party.Gold < 1000000, changed > 0, identified, ModRT.totalErrorCount
+    expect: "true\ttrue\ttrue\t0"
+# The new goods are of the kinds the shop sells: armour of the armour skills or a shield, the rest of the kinds MAW
+# noted (EquipStat + 1).
+- mod_lua:
+    code: |
+      local kinds = {}
+      for _, kind in ipairs(vars.shopType[Shop]) do kinds[kind] = true end
+      local ok = true
+      for i = 0, 11 do
+        local item = Game.ShopItems[Shop][i]
+        if item.Number > 0 then
+          local row = item:T()
+          local armour = row.EquipStat == 3 or row.EquipStat == 4
+          local fits = armour and (row.EquipStat == 4 or row.Skill == const.Skills.Leather
+            or row.Skill == const.Skills.Chain or row.Skill == const.Skills.Plate)
+          if not armour then fits = kinds[row.EquipStat + 1] == true end
+          if not fits then ok = false end
+        end
+      end
+      return ok
+    expect: "true"

@@ -1942,6 +1942,15 @@ bool ModRuntime::pickObject(size_t worldItemIndex, const InventoryItem &item)
     return handled;
 }
 
+void ModRuntime::shopItemsGenerated(uint32_t houseId)
+{
+    if (m_active && beginDispatch("shopItemsGenerated"))
+    {
+        lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(houseId));
+        endDispatch(1, 0);
+    }
+}
+
 void ModRuntime::partyDefeated()
 {
     if (m_active && beginDispatch("partyDefeated"))

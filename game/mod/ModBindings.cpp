@@ -5,6 +5,7 @@
 #include "game/events/ISceneEventContext.h"
 #include "game/gameplay/GameMechanics.h"
 #include "game/gameplay/GameplayRuntimeInterfaces.h"
+#include "game/gameplay/HouseServiceRuntime.h"
 #include "game/items/ItemEnchantRuntime.h"
 #include "game/items/ItemGenerator.h"
 #include "game/items/PriceCalculator.h"
@@ -1437,6 +1438,51 @@ bool itemViewArgument(lua_State *pLuaState, ItemView &view)
 {
     const std::string group = luaL_checkstring(pLuaState, 2);
 
+    // A shop's goods (Game.ShopItems) or special goods (Game.ShopSpecialItems): argument 1 is the house, 3 the slot.
+    // The house's stock is made as a visit makes it, if it has none yet.
+    if (group == "shop" || group == "shopSpecial")
+    {
+        Party *pParty = partyFromHost(pLuaState);
+        const GameDataLoader *pData = dataFromHost(pLuaState);
+        const ModHost *pHost = hostFromUpvalue(pLuaState);
+        const int64_t houseId = integerArgument(pLuaState, 1);
+        const int64_t slot = integerArgument(pLuaState, 3);
+        const HouseEntry *pHouse =
+            pData != nullptr && houseId > 0 ? pData->getHouseTable().get(static_cast<uint32_t>(houseId)) : nullptr;
+
+        if (pParty == nullptr || pHouse == nullptr || slot < 0 || !HouseServiceRuntime::supportsGeneratedStock(*pHouse))
+        {
+            return false;
+        }
+
+        const HouseStockMode mode = group == "shop" ? HouseStockMode::ShopStandard : HouseStockMode::ShopSpecial;
+        HouseServiceRuntime::ensureStock(
+            *pParty,
+            pData->getItemTable(),
+            pData->getStandardItemEnchantTable(),
+            pData->getSpecialItemEnchantTable(),
+            *pHouse,
+            pHost != nullptr && pHost->gameMinutes ? pHost->gameMinutes() : 0.0f,
+            mode);
+        Party::HouseStockState *pState = pParty->houseStockState(pHouse->id);
+
+        if (pState == nullptr)
+        {
+            return false;
+        }
+
+        std::vector<InventoryItem> &stock = mode == HouseStockMode::ShopStandard ? pState->standardStock
+                                                                                 : pState->specialStock;
+
+        if (static_cast<size_t>(slot) >= stock.size())
+        {
+            return false;
+        }
+
+        itemViewOfInventoryItem(stock[static_cast<size_t>(slot)], view);
+        return true;
+    }
+
     // The item the player holds on the mouse pointer (Mouse.Item).
     if (group == "held")
     {
@@ -1755,6 +1801,8 @@ int nativeItemSet(lua_State *pLuaState)
 // modrt.itemRandomize(player, group, index, strength): the item becomes a new random one of that treasure level
 // (1 to 6), made by the game's own generator, the mod's item events included. It keeps its place in the backpack.
 // Returns whether an item was made.
+bool itemMatchesMm8ItemType(const ItemDefinition &item, int itemType);
+
 int nativeItemRandomize(lua_State *pLuaState)
 {
     ItemView view = {};
@@ -1770,13 +1818,18 @@ int nativeItemRandomize(lua_State *pLuaState)
     ItemGenerationRequest request = {};
     request.treasureLevel = static_cast<int>(std::clamp<int64_t>(integerArgument(pLuaState, 4), 1, 6));
     request.allowRareItems = false;
+    // The kind of item, by the original's const.ItemType (0 any).
+    const int itemType = static_cast<int>(luaL_optinteger(pLuaState, 5, 0));
     const std::optional<InventoryItem> generated = ItemGenerator::generateRandomInventoryItem(
         pData->getItemTable(),
         pData->getStandardItemEnchantTable(),
         pData->getSpecialItemEnchantTable(),
         request,
         partyFromHost(pLuaState),
-        rng);
+        rng,
+        itemType == 0
+            ? std::function<bool(const ItemDefinition &)>()
+            : [itemType](const ItemDefinition &item) { return itemMatchesMm8ItemType(item, itemType); });
 
     if (!generated)
     {
@@ -1833,6 +1886,57 @@ int mm8EquipStat(const std::string &equipStat)
 }
 
 // ItemsTxt.Skill: the "Skill Group" column as a skill id. Club and Misc follow the 39 real skills.
+int mm8ItemSkill(const std::string &skillGroup);
+
+// Whether the item is of the original's item type `itemType` (const.ItemType, as Item:Randomize takes it): 1 to 19
+// an Equip Stat (EquipStat + 1), 20 any weapon, 21 any armour, 22 anything else, 23 to 33 a weapon or armour skill
+// (sword, dagger, axe, spear, bow, mace, club, staff, leather, chain, plate), 34 to 45 an Equip Stat again (shield
+// ... reagent), 46 and 47 gems, 50 gold.
+bool itemMatchesMm8ItemType(const ItemDefinition &item, int itemType)
+{
+    const int equipStat = mm8EquipStat(item.equipStat);
+    const int skill = mm8ItemSkill(item.skillGroup);
+
+    if (itemType >= 1 && itemType <= 19)
+    {
+        return equipStat == itemType - 1;
+    }
+
+    switch (itemType)
+    {
+        case 20: return equipStat <= 2;
+        case 21: return equipStat >= 3 && equipStat <= 9;
+        case 22: return equipStat >= 10;
+        case 23: return skill == 1;
+        case 24: return skill == 2;
+        case 25: return skill == 3;
+        case 26: return skill == 4;
+        case 27: return skill == 5;
+        case 28: return skill == 6;
+        case 29: return skill == 39;
+        case 30: return skill == 0;
+        case 31: return skill == 9;
+        case 32: return skill == 10;
+        case 33: return skill == 11;
+        case 34: return equipStat == 4;
+        case 35: return equipStat == 5;
+        case 36: return equipStat == 6;
+        case 37: return equipStat == 7;
+        case 38: return equipStat == 8;
+        case 39: return equipStat == 9;
+        case 40: return equipStat == 10;
+        case 41: return equipStat == 11;
+        case 42: return equipStat == 12;
+        case 43: return equipStat == 15;
+        case 44: return equipStat == 14;
+        case 45: return equipStat == 13;
+        case 46:
+        case 47: return equipStat == 19;
+        case 50: return equipStat == 18;
+        default: return true;
+    }
+}
+
 int mm8ItemSkill(const std::string &skillGroup)
 {
     static const std::unordered_map<std::string, int> values = {
@@ -4744,6 +4848,12 @@ int nativeGameGet(lua_State *pLuaState)
         IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
         const EventRuntimeState *pState = pWorld != nullptr ? pWorld->eventRuntimeState() : nullptr;
         lua_pushinteger(pLuaState, pState != nullptr ? static_cast<lua_Integer>(pState->dialogueState.hostHouseId) : 0);
+        return 1;
+    }
+
+    if (field == "ShopPage")
+    {
+        lua_pushinteger(pLuaState, pHost->houseShopPage ? pHost->houseShopPage() : 0);
         return 1;
     }
 

@@ -772,7 +772,11 @@ GameplayUiOverlayInputResult GameplayScreenController::handleStandardUiInput(
             .onPortraitActivated = config.onPortraitActivated,
         };
 
-        for (size_t memberIndex = 0; memberIndex < 5; ++memberIndex)
+        // Shift with a number on the character screen is a mod's (MAW's bag keys: Shift+1..5 switches bags), not a
+        // party member.
+        const bool shiftHeld = input.isScancodeHeld(SDL_SCANCODE_LSHIFT) || input.isScancodeHeld(SDL_SCANCODE_RSHIFT);
+
+        for (size_t memberIndex = 0; memberIndex < 5 && !(characterScreenOpen && shiftHeld); ++memberIndex)
         {
             if (isNumberHotkeyNewlyPressed(input, context.previousKeyboardState(), memberIndex))
             {

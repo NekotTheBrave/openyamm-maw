@@ -328,7 +328,7 @@ local function itemObject(playerIndex, group, index, path)
             -- The item becomes a new random one of that treasure level, made by the game's generator. The
             -- original's `type` (which kind of item) and `alwaysEnchant` are not followed.
             Randomize = function(self, strength, itemType, alwaysEnchant)
-                return modrt.itemRandomize(playerIndex, group, index, floor(strength or 1))
+                return modrt.itemRandomize(playerIndex, group, index, floor(strength or 1), floor(itemType or 0))
             end,
             -- Not the original's: the item's information box after the scripts' handlers, as a table of Name,
             -- Type, BasicStat, Enchantment and Description, starting from the texts given.
@@ -1810,6 +1810,35 @@ local houses = boundObject("Game.Houses", {
     end,
 })
 
+-- Game.ShopItems[house][slot] and Game.ShopSpecialItems[house][slot] (slots 0 to 11): a shop's goods and special
+-- goods, made as a visit makes them if the shop has none yet. An empty slot reads as no item.
+local function shopGoods(group)
+    local houses = {}
+
+    return boundObject("Game." .. (group == "shop" and "ShopItems" or "ShopSpecialItems"), {
+        index = function(houseId)
+            houseId = floor(houseId)
+
+            houses[houseId] = houses[houseId] or boundObject("Game.ShopItems[]", {
+                index = function(slot)
+                    slot = floor(slot)
+
+                    if modrt.itemGet(houseId, group, slot, "Number") == nil then
+                        return emptyItem
+                    end
+
+                    return itemObject(houseId, group, slot, "Game.ShopItems[][]")
+                end,
+            })
+
+            return houses[houseId]
+        end,
+    })
+end
+
+local shopItems = shopGoods("shop")
+local shopSpecialItems = shopGoods("shopSpecial")
+
 -- The house whose dialog is open (0 for none): Merge's GetCurrentHouse. While a house names its prices
 -- (GetShopItemTreatment) it is that house.
 function GetCurrentHouse()
@@ -1826,7 +1855,7 @@ Game = boundObject("Game", {
         CurrentPlayer = true, Time = true, Classes = true, ClassNames = true, ClassesExtra = true,
         HouseScreen = true, GlobalTxt = true, CurrentCharScreen = true, NPCText = true, HouseRules = true,
         SpellsTxt = true, StatsDescriptions = true, NPC = true, NPCTopic = true, QuestsTxt = true,
-        TurnBased = true, TurnBasedPhase = true, Houses = true,
+        TurnBased = true, TurnBasedPhase = true, Houses = true, ShopItems = true, ShopSpecialItems = true,
     },
     get = function(key)
         if key == "ItemsTxt" then
@@ -1861,6 +1890,10 @@ Game = boundObject("Game", {
             return modrt.gameGet("CurrentScreen") or 0
         elseif key == "Houses" then
             return houses
+        elseif key == "ShopItems" then
+            return shopItems
+        elseif key == "ShopSpecialItems" then
+            return shopSpecialItems
         elseif key == "TurnBased" then
             return (modrt.gameGet("TurnBasedPhase") or 0) ~= 0
         elseif key == "TurnBasedPhase" then
@@ -1886,6 +1919,9 @@ Game = boundObject("Game", {
             return classesExtra
         elseif key == "CurrentPlayer" then
             return modrt.partyGet("CurrentPlayer")
+        elseif key == "HouseScreen" and (modrt.gameGet("ShopPage") or 0) ~= 0 then
+            -- The shop page open: 2 its goods, 95 its special goods.
+            return modrt.gameGet("ShopPage")
         elseif key == "HouseScreen" then
             -- Which screen of a house's dialogue is up. Houses are not bound yet; the one thing scripts ask is
             -- whether an item is being made for a shop's shelf, which is the buying screen, 2.
@@ -1903,6 +1939,12 @@ Game = boundObject("Game", {
             modrt.showStatusText(text)
         end,
         GetStatisticEffect = getStatisticEffect,
+        -- Called as Game:GetCurrentHouse(): the house whose dialog is open, nil outside a house (MMExtension's; Merge's
+        -- global GetCurrentHouse gives 0 there). MAW tells "not in a house" by `not Game:GetCurrentHouse()`.
+        GetCurrentHouse = function()
+            local id = GetCurrentHouse()
+            return id ~= 0 and id or nil
+        end,
         -- The game builds an NPC dialog's topics again after each topic, which is when scripts ask for it.
         UpdateDialogTopics = function() end,
         -- The map's monsters the party can see, by index: those within 5120 in its line of sight (the original
