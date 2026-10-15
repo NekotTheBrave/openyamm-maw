@@ -103,6 +103,7 @@ public:
     bool pickObject(size_t worldItemIndex, const InventoryItem &item) override;
     bool canHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal) override;
     float shopItemTreatment(bool repair, uint32_t houseId, const InventoryItem &item, float engineMultiplier) override;
+    void canIdentifyMonster(size_t actorIndex, ModMonsterIdentify &identify) override;
     void monsterInformationBox(ModMonsterInfoBox &box) override;
     bool townHallBounty(std::string &text) override;
     void mercenaryItemGenerated(InventoryItem &item) override;

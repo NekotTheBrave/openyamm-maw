@@ -3009,14 +3009,14 @@ int GameMechanics::resolveShieldedPhysicalProjectileDamage(int damage)
     return damage / 2;
 }
 
-SpeechId GameMechanics::resolveIdentifyMonsterSpeech(const Character &character, int monsterLevel)
+SkillMastery GameMechanics::resolveIdentifyMonsterMastery(const Character &character, int monsterLevel)
 {
     const int level = skillLevel(character, "IdentifyMonster");
     const SkillMastery mastery = skillMastery(character, "IdentifyMonster");
 
     if (level <= 0 || mastery == SkillMastery::None)
     {
-        return SpeechId::None;
+        return SkillMastery::None;
     }
 
     bool success = false;
@@ -3042,6 +3042,21 @@ SpeechId GameMechanics::resolveIdentifyMonsterSpeech(const Character &character,
         case SkillMastery::None:
             break;
     }
+
+    return success ? mastery : SkillMastery::None;
+}
+
+SpeechId GameMechanics::resolveIdentifyMonsterSpeech(const Character &character, int monsterLevel)
+{
+    const int level = skillLevel(character, "IdentifyMonster");
+    const SkillMastery mastery = skillMastery(character, "IdentifyMonster");
+
+    if (level <= 0 || mastery == SkillMastery::None)
+    {
+        return SpeechId::None;
+    }
+
+    const bool success = resolveIdentifyMonsterMastery(character, monsterLevel) != SkillMastery::None;
 
     if (!success)
     {

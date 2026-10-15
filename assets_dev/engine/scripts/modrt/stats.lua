@@ -281,16 +281,49 @@ function Stats.monsterSpriteScale(index)
     return tonumber(event.Scale) or 1
 end
 
+-- How much of monster `index` (Map.Monsters) the party identifies, as the original's CanIdentifyMonster has it:
+-- AllowNovice (hit points, armor class), AllowExpert (attacks, damage), AllowMaster (spells), AllowGM (resistances),
+-- AllowSpells (effects), given the engine's answer from the party's Identify Monster. Returns them.
+function Stats.canIdentifyMonster(index, allow)
+    local event = {MonsterIndex = index, Monster = Map.Monsters[index]}
+
+    for name, value in pairs(allow) do
+        event["Allow" .. name] = value
+    end
+
+    ModRT.protectedCall(function() ModRT.fire("CanIdentifyMonster", event) end, "CanIdentifyMonster")
+
+    local result = {}
+
+    for name in pairs(allow) do
+        result[name] = event["Allow" .. name] and true or false
+    end
+
+    return result
+end
+
+-- The box's rows by the level of identification that shows them (Merge's Identified... fields).
+local identifiedBy = {
+    Name = false, HitPoints = "Novice", ArmorClass = "Novice", Attack = "Expert", Damage = "Expert",
+    SpellFirst = "Master", SpellSecond = "Master", Effects = "Spells", Resistances = "GM",
+}
+
 -- The information box of monster `index` (Map.Monsters), as the original's BuildMonsterInformationBox has it: each
 -- row a table with its Text (label, tab stop and value), the effects and resistances lists of such tables under their
--- headers, and the Identified flags (the game shows everything it shows). Mouse:GetTarget() is the monster meanwhile.
--- A handler setting a row to false leaves it out. Returns the texts.
+-- headers, and the Identified flags (what the party identified: rows it did not show "?"). Mouse:GetTarget() is the
+-- monster meanwhile. A handler setting a row to false leaves it out. Returns the texts.
 function Stats.monsterInformationBox(index, texts)
     local event = {MonsterIndex = index, Monster = Map.Monsters[index], Identified = true}
+    local identify = texts.Identify or {}
+
+    local function identified(name)
+        local level = identifiedBy[name]
+        return not level or identify[level] ~= false
+    end
 
     for _, name in ipairs({"Name", "HitPoints", "ArmorClass", "Attack", "Damage", "SpellFirst", "SpellSecond"}) do
         event[name] = {Text = texts[name]}
-        event["Identified" .. name] = true
+        event["Identified" .. name] = identified(name)
     end
 
     for _, pair in ipairs({{"EffectsHeader", "Effects"}, {"ResistancesHeader", "Resistances"}}) do
@@ -302,7 +335,7 @@ function Stats.monsterInformationBox(index, texts)
             event[items][i] = {Text = text, Id = items == "Resistances" and i - 1 or nil}
         end
 
-        event["Identified" .. items] = true
+        event["Identified" .. items] = identified(items)
     end
 
     ModRT.Bindings.mouseTarget = {Kind = 3, Index = index}

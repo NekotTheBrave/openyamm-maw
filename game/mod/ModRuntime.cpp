@@ -11,6 +11,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cctype>
 #include <chrono>
@@ -19,6 +20,7 @@
 #include <optional>
 #include <sstream>
 #include <system_error>
+#include <utility>
 
 extern "C"
 {
@@ -1722,6 +1724,60 @@ bool ModRuntime::potionEffect(uint32_t potionId, int power)
     return handled;
 }
 
+namespace
+{
+// ModMonsterIdentify as the original's event fields (AllowNovice ... AllowGM, AllowSpells for the effects).
+constexpr std::array<std::pair<const char *, bool ModMonsterIdentify::*>, 5> MonsterIdentifyFields = {{
+    {"Novice", &ModMonsterIdentify::novice},
+    {"Expert", &ModMonsterIdentify::expert},
+    {"Master", &ModMonsterIdentify::master},
+    {"GM", &ModMonsterIdentify::grandmaster},
+    {"Spells", &ModMonsterIdentify::effects},
+}};
+
+void pushMonsterIdentify(lua_State *pLuaState, const ModMonsterIdentify &identify)
+{
+    lua_createtable(pLuaState, 0, static_cast<int>(MonsterIdentifyFields.size()));
+
+    for (const auto &[pName, pField] : MonsterIdentifyFields)
+    {
+        lua_pushboolean(pLuaState, identify.*pField);
+        lua_setfield(pLuaState, -2, pName);
+    }
+}
+}
+
+void ModRuntime::canIdentifyMonster(size_t actorIndex, ModMonsterIdentify &identify)
+{
+    if (!m_active || !beginDispatch("canIdentifyMonster"))
+    {
+        return;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(actorIndex));
+    pushMonsterIdentify(m_pLuaState, identify);
+
+    if (endDispatch(2, 1))
+    {
+        if (lua_istable(m_pLuaState, -1))
+        {
+            for (const auto &[pName, pField] : MonsterIdentifyFields)
+            {
+                lua_getfield(m_pLuaState, -1, pName);
+
+                if (lua_isboolean(m_pLuaState, -1))
+                {
+                    identify.*pField = lua_toboolean(m_pLuaState, -1) != 0;
+                }
+
+                lua_pop(m_pLuaState, 1);
+            }
+        }
+
+        lua_pop(m_pLuaState, 1);
+    }
+}
+
 float ModRuntime::monsterSpriteScale(size_t actorIndex)
 {
     if (!m_active || !beginDispatch("monsterSpriteScale"))
@@ -1839,6 +1895,8 @@ void ModRuntime::monsterInformationBox(ModMonsterInfoBox &box)
     setList("Effects", box.effects);
     setText("ResistancesHeader", box.resistancesHeader);
     setList("Resistances", box.resistances);
+    pushMonsterIdentify(m_pLuaState, box.identified);
+    lua_setfield(m_pLuaState, -2, "Identify");
 
     if (!endDispatch(2, 1))
     {

@@ -1,0 +1,62 @@
+id: mod_runtime.maw.monster_identify
+title: MAW's CanIdentifyMonster decides what the monster box shows
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# Before a monster's box is built the game works out what the party identifies (the original's rule: the best
+# member's Identify Monster level, x2 at Expert and x3 at Master, plus 10, reaching the monster's level; Grandmaster
+# always) and asks the mod (CanIdentifyMonster: AllowNovice hit points and armor class, AllowExpert attacks and
+# damage, AllowMaster spells, AllowGM resistances, AllowSpells effects); what is not identified shows "?". MAW's rule
+# (zzMAW-Skills.lua): the best level x mastery against the monster's level less the party's, everything at
+# Grandmaster, effects with Master. The box's Identified flags follow, which MAW's box reads. Run with the MAW
+# mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 5
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      Probe = nil
+      for i = 0, Map.Monsters.High do
+        if not Map.Monsters[i].IsDead and Map.Monsters[i].Level <= 20 then Probe = i break end
+      end
+      local all = {Novice = true, Expert = true, Master = true, GM = true, Spells = true}
+      local function shown(t)
+        return table.concat({tostring(t.Novice), tostring(t.Expert), tostring(t.Master), tostring(t.GM),
+          tostring(t.Spells)}, ",")
+      end
+      Party[0].Skills[const.Skills.IdentifyMonster] = 0
+      local none = ModRT.Stats.canIdentifyMonster(Probe, all)
+      Party[0].Skills[const.Skills.IdentifyMonster] = JoinSkill(10, const.Expert)
+      local expert = ModRT.Stats.canIdentifyMonster(Probe, all)
+      Party[0].Skills[const.Skills.IdentifyMonster] = JoinSkill(1, const.GM)
+      local gm = ModRT.Stats.canIdentifyMonster(Probe, all)
+      return shown(none), shown(expert), shown(gm), ModRT.totalErrorCount
+    expect: "false,false,false,false,false\ttrue,true,false,false,false\ttrue,true,true,true,true\t0"
+# The box: MAW puts the monster's level above its armor class only when the hit points are identified (Novice).
+- mod_lua:
+    code: |
+      local function box(novice)
+        local texts = {
+          Name = "Goblin", HitPoints = "Hit Points\t100?", ArmorClass = "Armor Class\t100?",
+          Attack = "Attack\t050?", Damage = "Damage\t050?", SpellFirst = "", SpellSecond = "",
+          EffectsHeader = "Effects", Effects = {}, ResistancesHeader = "Resistances", Resistances = {},
+          Identify = {Novice = novice, Expert = false, Master = false, GM = false, Spells = false},
+        }
+        return ModRT.Stats.monsterInformationBox(Probe, texts).ArmorClass
+      end
+      return box(false) == "Armor Class\t100?", box(true):match("^Level") ~= nil, ModRT.totalErrorCount
+    expect: "true\ttrue\t0"

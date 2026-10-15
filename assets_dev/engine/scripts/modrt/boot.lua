@@ -388,6 +388,8 @@ local function dispatchKind(kind, ...)
         return ModRT.MapEvents.globalDone(...)
     elseif kind == "monsterSpriteScale" then
         return ModRT.Stats.monsterSpriteScale(...)
+    elseif kind == "canIdentifyMonster" then
+        return ModRT.Stats.canIdentifyMonster(...)
     elseif kind == "monsterInformationBox" then
         return ModRT.Stats.monsterInformationBox(...)
     elseif kind == "canWearItem" then

@@ -252,6 +252,10 @@ public:
         float targetDistance,
         std::mt19937 &rng);
     static SpeechId resolveIdentifyMonsterSpeech(const Character &character, int monsterLevel);
+    // The Identify Monster mastery the character identifies a monster of `monsterLevel` at, by the original's rule
+    // (the skill's level, times 2 at Expert and 3 at Master, plus 10, reaching the monster's level; a Grandmaster
+    // always): None when it fails or the character has no such skill.
+    static SkillMastery resolveIdentifyMonsterMastery(const Character &character, int monsterLevel);
     static CombatDamageType parseCombatDamageType(const std::string &value);
     static CombatDamageType spellCombatDamageType(uint32_t spellId, const SpellTable *pSpellTable);
     static int resolveCharacterIncomingDamage(

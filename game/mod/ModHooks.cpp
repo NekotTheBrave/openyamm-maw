@@ -457,6 +457,14 @@ void modMercenaryItemGenerated(InventoryItem &item)
     }
 }
 
+void modCanIdentifyMonster(size_t actorIndex, ModMonsterIdentify &identify)
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->canIdentifyMonster(actorIndex, identify);
+    }
+}
+
 void modMonsterInformationBox(ModMonsterInfoBox &box)
 {
     if (IModHooks *pModHooks = activeModHooks())

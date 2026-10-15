@@ -10431,15 +10431,59 @@ void GameplayPartyOverlayRenderer::renderActorInspectOverlay(GameplayScreenRunti
         return;
     }
 
-    const std::vector<std::string> attackRows = {
-        pStats->attack1Type,
-        (actorState.attack2Chance > 0 || !pStats->attack2Type.empty()) ? pStats->attack2Type : std::string()};
-    const std::vector<std::string> damageRows = {
-        formatMonsterDamageText(actorState.attack1Damage),
-        (actorState.attack2Chance > 0 || actorState.attack2Damage.diceRolls > 0)
-            ? formatMonsterDamageText(actorState.attack2Damage)
-            : std::string()};
-    const std::vector<std::string> spellRows = {
+    // What the party identifies of the monster. With a mod, the original's rule (the best of the members who can
+    // act) and then the mod's CanIdentifyMonster (MAW has its own rule), asked again at most every quarter second;
+    // what is not identified shows as "?". Without a mod, everything, as upstream shows it.
+    static ModMonsterIdentify s_identify = {};
+    static size_t s_identifyActor = std::numeric_limits<size_t>::max();
+    static uint64_t s_identifyTicks = 0;
+    ModMonsterIdentify identify = {};
+
+    if (activeModHooks() != nullptr)
+    {
+        const uint64_t ticks = SDL_GetTicks();
+
+        if (s_identifyActor != actorInspect.runtimeActorIndex || ticks - s_identifyTicks >= 250)
+        {
+            SkillMastery best = SkillMastery::None;
+
+            if (const Party *pParty = context.partyReadOnly())
+            {
+                for (const Character &member : pParty->members())
+                {
+                    if (GameMechanics::canAct(member))
+                    {
+                        best = std::max(best, GameMechanics::resolveIdentifyMonsterMastery(member, pStats->level));
+                    }
+                }
+            }
+
+            s_identify.novice = best >= SkillMastery::Normal;
+            s_identify.expert = best >= SkillMastery::Expert;
+            s_identify.master = best >= SkillMastery::Master;
+            s_identify.grandmaster = best >= SkillMastery::Grandmaster;
+            s_identify.effects = best >= SkillMastery::Normal;
+            modCanIdentifyMonster(actorInspect.runtimeActorIndex, s_identify);
+            s_identifyActor = actorInspect.runtimeActorIndex;
+            s_identifyTicks = ticks;
+        }
+
+        identify = s_identify;
+    }
+
+    const std::string unknown = "?";
+    const std::vector<std::string> attackRows = !identify.expert ? std::vector<std::string>{unknown}
+        : std::vector<std::string>{
+            pStats->attack1Type,
+            (actorState.attack2Chance > 0 || !pStats->attack2Type.empty()) ? pStats->attack2Type : std::string()};
+    const std::vector<std::string> damageRows = !identify.expert ? std::vector<std::string>{unknown}
+        : std::vector<std::string>{
+            formatMonsterDamageText(actorState.attack1Damage),
+            (actorState.attack2Chance > 0 || actorState.attack2Damage.diceRolls > 0)
+                ? formatMonsterDamageText(actorState.attack2Damage)
+                : std::string()};
+    const std::vector<std::string> spellRows = !identify.master ? std::vector<std::string>{unknown, std::string()}
+        : std::vector<std::string>{
         actorState.hasSpell1
             ? formatMonsterInspectSpellText(
                 actorState.spell1Name,
@@ -10481,15 +10525,22 @@ void GameplayPartyOverlayRenderer::renderActorInspectOverlay(GameplayScreenRunti
         pStats->fireResistance, pStats->airResistance, pStats->waterResistance, pStats->earthResistance,
         pStats->mindResistance, pStats->spiritResistance, pStats->bodyResistance, pStats->lightResistance,
         pStats->darkResistance, pStats->physicalResistance};
+    const std::string hitPointsText = identify.novice
+        ? std::to_string(std::max(0, actorState.currentHp)) + " / " + std::to_string(std::max(0, actorState.maxHp))
+        : unknown;
+    const std::string armorClassText = identify.novice ? std::to_string(actorState.armorClass) : unknown;
+    const auto resistanceText = [&](size_t index)
+    {
+        return identify.grandmaster ? formatMonsterResistanceText(resistanceValues[index]) : unknown;
+    };
     ModMonsterInfoBox originalBox = {};
     originalBox.actorIndex = actorInspect.runtimeActorIndex;
+    originalBox.identified = identify;
     originalBox.name = !actorInspect.displayNameOverride.empty()
         ? actorInspect.displayNameOverride
         : actorState.displayName;
-    originalBox.hitPoints = layoutLabelText("ActorInspectHitPointsLabel") + "\t100"
-        + std::to_string(std::max(0, actorState.currentHp)) + " / " + std::to_string(std::max(0, actorState.maxHp));
-    originalBox.armorClass =
-        layoutLabelText("ActorInspectArmorClassLabel") + "\t100" + std::to_string(actorState.armorClass);
+    originalBox.hitPoints = layoutLabelText("ActorInspectHitPointsLabel") + "\t100" + hitPointsText;
+    originalBox.armorClass = layoutLabelText("ActorInspectArmorClassLabel") + "\t100" + armorClassText;
     originalBox.attack = layoutLabelText("ActorInspectAttackLabel") + "\t050" + joinRows(attackRows);
     originalBox.damage = layoutLabelText("ActorInspectDamageLabel") + "\t050" + joinRows(damageRows);
     originalBox.spellFirst =
@@ -10502,7 +10553,7 @@ void GameplayPartyOverlayRenderer::renderActorInspectOverlay(GameplayScreenRunti
     {
         originalBox.resistances.push_back(
             layoutLabelText((std::string("ActorInspectResistance") + ResistanceNames[index] + "Label").c_str())
-            + "\t070" + formatMonsterResistanceText(resistanceValues[index]));
+            + "\t070" + resistanceText(index));
     }
 
     static ModMonsterInfoBox s_modBoxOriginal = {};
@@ -11036,7 +11087,8 @@ void GameplayPartyOverlayRenderer::renderActorInspectOverlay(GameplayScreenRunti
         }
     }
 
-    const std::string effectsText = activeEffects.empty() ? "None" : joinNonEmptyTexts(activeEffects);
+    const std::string effectsText = !identify.effects ? unknown
+        : activeEffects.empty() ? "None" : joinNonEmptyTexts(activeEffects);
     const float dynamicStatLineAdvance = compactStatLineAdvance * popupScale;
     const auto renderTextForLayout =
         [&context, &resolveLayout](const char *pLayoutId, const std::string &text, float yOffset = 0.0f)
@@ -11184,10 +11236,7 @@ void GameplayPartyOverlayRenderer::renderActorInspectOverlay(GameplayScreenRunti
     else
     {
         renderTextForLayout("ActorInspectHitPointsLabel", layoutLabelText("ActorInspectHitPointsLabel"));
-        renderTextForLayout(
-            "ActorInspectHitPointsValue",
-            std::to_string(std::max(0, actorState.currentHp)) + " / "
-                + std::to_string(std::max(0, actorState.maxHp)));
+        renderTextForLayout("ActorInspectHitPointsValue", hitPointsText);
     }
 
     if (modArmorClass)
@@ -11199,7 +11248,7 @@ void GameplayPartyOverlayRenderer::renderActorInspectOverlay(GameplayScreenRunti
     else
     {
         renderTextForLayout("ActorInspectArmorClassLabel", layoutLabelText("ActorInspectArmorClassLabel"), rowShift);
-        renderTextForLayout("ActorInspectArmorClassValue", std::to_string(actorState.armorClass), rowShift);
+        renderTextForLayout("ActorInspectArmorClassValue", armorClassText, rowShift);
     }
 
     renderTextForLayout("ActorInspectTitle", modBox.name);
@@ -11275,8 +11324,7 @@ void GameplayPartyOverlayRenderer::renderActorInspectOverlay(GameplayScreenRunti
         }
 
         renderTextForLayout(labelId.c_str(), layoutLabelText(labelId.c_str()), resistanceOffset);
-        renderTextForLayout(
-            valueId.c_str(), formatMonsterResistanceText(resistanceValues[index]), resistanceOffset);
+        renderTextForLayout(valueId.c_str(), resistanceText(index), resistanceOffset);
     }
 }
 } // namespace OpenYAMM::Game

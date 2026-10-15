@@ -171,9 +171,25 @@ class Party;
 
 // The texts of a monster's information box (right click), as the original lays them out: a row is its label, a
 // tab stop and its value ("Hit Points\t100" then the value). A mod may change any of them, or empty a row.
+// What the party has identified of a monster (the original's CanIdentifyMonster): Novice its hit points and armor
+// class, Expert its attacks and damage, Master its spells, Grandmaster its resistances, and its effects. What is not
+// shows as "?".
+struct ModMonsterIdentify
+{
+    bool novice = true;
+    bool expert = true;
+    bool master = true;
+    bool grandmaster = true;
+    bool effects = true;
+
+    bool operator==(const ModMonsterIdentify &other) const = default;
+};
+
 struct ModMonsterInfoBox
 {
     size_t actorIndex = 0;
+    // Given to the mod as the original's Identified... flags of the event.
+    ModMonsterIdentify identified;
     std::string name;
     std::string hitPoints;
     std::string armorClass;
@@ -346,6 +362,9 @@ public:
     // Monster `actorIndex` has died and drops item `itemId` of its kind's death drops (the original's reagent drop,
     // with Merge's MonsterItems.lua: MonsterDropItem): whether the mod took the drop over, which then does not fall.
     virtual bool monsterDropItem(size_t actorIndex, uint32_t itemId) = 0;
+    // How much of monster `actorIndex` the party identifies, the engine's answer given (the original's
+    // CanIdentifyMonster), asked before its information box is built.
+    virtual void canIdentifyMonster(size_t actorIndex, ModMonsterIdentify &identify) = 0;
     // The monster's information box is being shown (the original's BuildMonsterInformationBox).
     virtual void monsterInformationBox(ModMonsterInfoBox &box) = 0;
     // The size monster `actorIndex` is drawn at, as a factor of the game's (the original's MonsterSpriteScale).
@@ -500,6 +519,7 @@ void modTeacherText(ModTeachSkillMasteryEvent &event);
 void modMercenaryItemGenerated(InventoryItem &item);
 
 // Runs the mod's BuildMonsterInformationBox event over the box's texts; they stay the engine's without a mod.
+void modCanIdentifyMonster(size_t actorIndex, ModMonsterIdentify &identify);
 void modMonsterInformationBox(ModMonsterInfoBox &box);
 
 // Runs the mod's CanWearItem event for the held item the game would let the character put on: whether the mod lets
