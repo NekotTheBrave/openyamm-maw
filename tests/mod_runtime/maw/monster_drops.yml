@@ -1,0 +1,23 @@
+id: mod_runtime.maw.monster_drops
+title: MAW cancels four in five of the monsters' death drops
+world: mm6
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# The game raises MonsterDropItem for each item a dying monster drops of its kind's death drops (the original's
+# reagent drops, monster_death_drops.txt; Merge's MonsterItems.lua raises it for its own); MAW's handler
+# (zzMaw-Monsters.lua) takes four in five of them over, so they do not fall. Asked a thousand times for New
+# Sorpigal's first monster: between 70% and 90% cancelled. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+- mod_lua:
+    code: |
+      local errorsBefore = ModRT.totalErrorCount
+      local cancelled = 0
+      for i = 1, 1000 do
+        if ModRT.Stats.monsterDropItem(0, 201) then cancelled = cancelled + 1 end
+      end
+      return cancelled >= 700 and cancelled <= 900, ModRT.totalErrorCount - errorsBefore
+    expect: "true\t0"

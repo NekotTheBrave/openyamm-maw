@@ -3827,7 +3827,7 @@ GameplayDialogController::Result GameplayDialogController::executeActiveDialogAc
             return result;
         }
 
-        if (!executed && context.pNpcDialogTable != nullptr)
+        if (!executed && context.pNpcDialogTable != nullptr && !modOwnsNpcTopic(action.id))
         {
             const std::optional<NpcDialogTable::ResolvedTopic> topic =
                 context.pNpcDialogTable->getTopicById(action.id);

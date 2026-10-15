@@ -681,6 +681,17 @@ local function playerObject(playerIndex)
         get = sizeFields(function() return EquipmentSlotCount end),
     })
 
+    -- Inventory[cell]: the backpack's cells, 14 x 9 row by row (the item's number in Items where its top left corner
+    -- is, -(that cell + 1) in the others it covers, 0 when empty). Read only: items move through the game's own
+    -- backpack.
+    local inventory = boundObject(path .. ".Inventory", {
+        index = function(cell)
+            return modrt.inventoryCell(playerIndex, floor(cell))
+        end,
+        get = sizeFields(function() return 126 end),
+        range = function() return 0, 125 end,
+    })
+
     local conditions = boundObject(path .. ".Conditions", {
         index = function(condition)
             return modrt.playerConditionGet(playerIndex, floor(condition))
@@ -708,6 +719,8 @@ local function playerObject(playerIndex)
                 return items
             elseif key == "EquippedItems" then
                 return equipped
+            elseif key == "Inventory" then
+                return inventory
             elseif key == "Conditions" then
                 return conditions
             elseif key == "Resistances" then
@@ -1342,6 +1355,79 @@ local npcText = boundObject("Game.NPCText", {
     end,
 })
 
+-- Game.NPC[id]: an NPC as the game has it now. Name, Pic, House, Profession, Greet and Hired; Events[0..5] (also
+-- EventA ... EventF) its topics, which a write sets as evt.SetNPCTopic does.
+local npcEventLetters = {EventA = 0, EventB = 1, EventC = 2, EventD = 3, EventE = 4, EventF = 5}
+local npcObjects = {}
+
+local function npcObject(id)
+    local object = npcObjects[id]
+
+    if object then
+        return object
+    end
+
+    local events = boundObject("Game.NPC[].Events", {
+        index = function(slot)
+            return slot >= 0 and slot <= 5 and modrt.npcGet(id, "Event" .. floor(slot)) or nil
+        end,
+        newindex = function(slot, value)
+            return slot >= 0 and slot <= 5 and modrt.npcSet(id, "Event" .. floor(slot), floor(tonumber(value) or 0))
+        end,
+        get = sizeFields(function() return 6 end),
+        range = function() return 0, 5 end,
+    })
+
+    object = boundObject("Game.NPC[]", {
+        get = function(key)
+            if key == "Events" then
+                return events
+            elseif npcEventLetters[key] then
+                return modrt.npcGet(id, "Event" .. npcEventLetters[key])
+            end
+
+            return modrt.npcGet(id, key)
+        end,
+        set = function(key, value)
+            if npcEventLetters[key] then
+                return modrt.npcSet(id, "Event" .. npcEventLetters[key], floor(tonumber(value) or 0))
+            end
+
+            return modrt.npcSet(id, key, value)
+        end,
+    })
+    npcObjects[id] = object
+    return object
+end
+
+local npcs = boundObject("Game.NPC", {
+    index = function(id)
+        return modrt.npcGet(floor(id), "Name") ~= nil and npcObject(floor(id)) or nil
+    end,
+})
+
+-- Game.NPCTopic[event]: a topic's name; a write renames it wherever it is shown.
+local npcTopics = boundObject("Game.NPCTopic", {
+    index = function(id)
+        return modrt.npcTopicGet(floor(id))
+    end,
+    newindex = function(id, value)
+        modrt.npcTopicSet(floor(id), tostring(value or ""))
+        return true
+    end,
+})
+
+-- Game.QuestsTxt[bit]: the quest log's text for a quest bit; a write shows it there while the bit is set.
+local questsTxt = boundObject("Game.QuestsTxt", {
+    index = function(id)
+        return modrt.questTextGet(floor(id))
+    end,
+    newindex = function(id, value)
+        modrt.questTextSet(floor(id), tostring(value or ""))
+        return true
+    end,
+})
+
 -- Game.ClassDescriptions[class]: what the game says of a class.
 local classDescriptions = boundObject("Game.ClassDescriptions", {
     index = function(class)
@@ -1613,7 +1699,7 @@ Game = boundObject("Game", {
         SkillDesMaster = true, SkillDesGM = true, ClassDescriptions = true,
         CurrentPlayer = true, Time = true, Classes = true, ClassNames = true, ClassesExtra = true,
         HouseScreen = true, GlobalTxt = true, CurrentCharScreen = true, NPCText = true, HouseRules = true,
-        SpellsTxt = true, StatsDescriptions = true,
+        SpellsTxt = true, StatsDescriptions = true, NPC = true, NPCTopic = true, QuestsTxt = true,
     },
     get = function(key)
         if key == "ItemsTxt" then
@@ -1628,6 +1714,12 @@ Game = boundObject("Game", {
             return globalTxt
         elseif key == "NPCText" then
             return npcText
+        elseif key == "NPC" then
+            return npcs
+        elseif key == "NPCTopic" then
+            return npcTopics
+        elseif key == "QuestsTxt" then
+            return questsTxt
         elseif key == "HouseRules" then
             return houseRules
         elseif key == "SpellsTxt" then
@@ -1677,6 +1769,8 @@ Game = boundObject("Game", {
             modrt.showStatusText(text)
         end,
         GetStatisticEffect = getStatisticEffect,
+        -- The game builds an NPC dialog's topics again after each topic, which is when scripts ask for it.
+        UpdateDialogTopics = function() end,
         -- The engine's random number: 0 to 32767.
         Rand = function()
             return math.random(0, 32767)

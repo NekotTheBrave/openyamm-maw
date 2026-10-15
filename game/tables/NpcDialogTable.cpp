@@ -642,7 +642,8 @@ const NpcGreetingEntry *NpcDialogTable::getGreetingForNpc(uint32_t npcId) const
 
 std::vector<NpcDialogTable::ResolvedTopic> NpcDialogTable::getTopicsForNpc(
     uint32_t npcId,
-    const std::unordered_map<uint32_t, uint32_t> *pTopicOverrides
+    const std::unordered_map<uint32_t, uint32_t> *pTopicOverrides,
+    const std::unordered_map<uint32_t, std::string> *pTopicLabels
 ) const
 {
     std::vector<ResolvedTopic> resolvedTopics;
@@ -685,16 +686,27 @@ std::vector<NpcDialogTable::ResolvedTopic> NpcDialogTable::getTopicsForNpc(
         }
 
         const std::unordered_map<uint32_t, NpcTopicEntry>::const_iterator topicIt = m_topicsById.find(topicId);
+        const std::unordered_map<uint32_t, std::string>::const_iterator labelIt =
+            pTopicLabels != nullptr ? pTopicLabels->find(topicId) : std::unordered_map<uint32_t, std::string>::const_iterator();
+        const bool labelled = pTopicLabels != nullptr && labelIt != pTopicLabels->end();
 
         if (topicIt == m_topicsById.end())
         {
+            if (labelled)
+            {
+                ResolvedTopic resolvedTopic = {};
+                resolvedTopic.id = topicId;
+                resolvedTopic.topic = labelIt->second;
+                resolvedTopics.push_back(std::move(resolvedTopic));
+            }
+
             continue;
         }
 
         ResolvedTopic resolvedTopic = {};
         resolvedTopic.id = topicIt->second.id;
         resolvedTopic.textId = topicIt->second.textId;
-        resolvedTopic.topic = topicIt->second.topic;
+        resolvedTopic.topic = labelled ? labelIt->second : topicIt->second.topic;
         resolvedTopic.specialKind = topicIt->second.specialKind;
         const uint32_t effectiveTextId = topicIt->second.textId != 0 ? topicIt->second.textId : topicIt->second.id;
         const std::unordered_map<uint32_t, std::string>::const_iterator textIt = m_texts.find(effectiveTextId);

@@ -285,6 +285,46 @@ bool matchesRandomGiveItemType(const ItemDefinition &itemDefinition, uint32_t tr
         case 0:
             return true;
 
+        // const.ItemType's single kinds (Merge's quests give an amulet so, MAW's Druid Circlet).
+        case 1: // Weapon
+            return equipStat == "Weapon" || equipStat == "Weapon1or2";
+        case 2: // Weapon2H
+            return equipStat == "Weapon2";
+        case 3: // Missile
+            return equipStat == "Missile";
+        case 4: // Armor
+            return equipStat == "Armor";
+        case 5: // Shield
+            return equipStat == "Shield";
+        case 6: // Helm
+            return equipStat == "Helm";
+        case 7: // Belt
+            return equipStat == "Belt";
+        case 8: // Cloak
+            return equipStat == "Cloak";
+        case 9: // Gauntlets
+            return equipStat == "Gauntlets";
+        case 10: // Boots
+            return equipStat == "Boots";
+        case 11: // Ring
+            return equipStat == "Ring";
+        case 12: // Amulet
+            return equipStat == "Amulet";
+        case 13: // Wand
+            return equipStat == "WeaponW";
+        case 14: // Reagent
+            return equipStat == "Reagent" || equipStat == "Herb";
+        case 15: // Potion
+            return equipStat == "Bottle";
+        case 16: // Scroll
+            return equipStat == "Sscroll";
+        case 17: // Book
+            return equipStat == "Book";
+        case 18: // MScroll
+            return equipStat == "Mscroll";
+        case 19: // Gold
+            return equipStat == "Gold";
+
         case 20: // const.ItemType.Weapon_
             return equipStat == "Weapon"
                 || equipStat == "Weapon1or2"
@@ -8801,17 +8841,14 @@ void copyLuaValue(lua_State *pFrom, int index, lua_State *pTo, int depth)
     lua_pushnil(pTo);
 }
 
-// A mod's handlers for the event (the original's evt.map[id]) run before the map's own, in the event's context, so
-// the event commands they give are the engine's. Returns the mod's ModMapEvent flags.
-int runModMapEvent(const EventRuntime &eventRuntime, uint16_t eventId, LuaExecutionContext &executionContext)
+// Runs `run` (a mod's handlers) in the event's context, so the event commands they give are the engine's.
+template <typename Run>
+int runModEventHandlers(
+    const EventRuntime &eventRuntime,
+    uint16_t eventId,
+    LuaExecutionContext &executionContext,
+    Run run)
 {
-    IModHooks *pModHooks = activeModHooks();
-
-    if (pModHooks == nullptr || eventRuntime.m_luaSessionCache == nullptr || !pModHooks->hasMapEvent(eventId))
-    {
-        return 0;
-    }
-
     LuaSessionCache &session = *eventRuntime.m_luaSessionCache;
     LuaSessionCache *pPreviousSession = g_pModEventSession;
     LuaExecutionContext *pPreviousContext = session.pExecutionContext;
@@ -8836,10 +8873,65 @@ int runModMapEvent(const EventRuntime &eventRuntime, uint16_t eventId, LuaExecut
         executionContext.initialMessageCount = executionContext.pRuntimeState->messages.size();
     }
 
-    const int flags = pModHooks->mapEvent(eventId);
+    const int flags = run();
     session.pExecutionContext = pPreviousContext;
     g_pModEventSession = pPreviousSession;
     return flags;
+}
+
+// A mod's handlers for the event (the original's evt.map[id]) run before the map's own. Returns the mod's
+// ModMapEvent flags.
+int runModMapEvent(const EventRuntime &eventRuntime, uint16_t eventId, LuaExecutionContext &executionContext)
+{
+    IModHooks *pModHooks = activeModHooks();
+
+    if (pModHooks == nullptr || eventRuntime.m_luaSessionCache == nullptr || !pModHooks->hasMapEvent(eventId))
+    {
+        return 0;
+    }
+
+    return runModEventHandlers(eventRuntime, eventId, executionContext, [&] { return pModHooks->mapEvent(eventId); });
+}
+
+// The same for a global event (evt.global[id], after ClickNPCTopic for an NPC's topic). Returns ModMapEvent flags.
+int runModGlobalEvent(
+    const EventRuntime &eventRuntime,
+    uint16_t eventId,
+    LuaExecutionContext &executionContext,
+    bool topicClick)
+{
+    IModHooks *pModHooks = activeModHooks();
+
+    if (pModHooks == nullptr || eventRuntime.m_luaSessionCache == nullptr || !pModHooks->hasGlobalEvent(eventId))
+    {
+        return 0;
+    }
+
+    return runModEventHandlers(
+        eventRuntime,
+        eventId,
+        executionContext,
+        [&] { return pModHooks->globalEvent(eventId, topicClick); });
+}
+
+// The global event has run, its own lines included (EvtGlobal); what it set going stays. Returns whether the mod
+// took the event as its own (a topic of Merge's quests).
+bool runModGlobalEventDone(const EventRuntime &eventRuntime, uint16_t eventId, LuaExecutionContext &executionContext)
+{
+    IModHooks *pModHooks = activeModHooks();
+
+    if (pModHooks == nullptr || eventRuntime.m_luaSessionCache == nullptr || !pModHooks->hasGlobalEvent(eventId))
+    {
+        return false;
+    }
+
+    executionContext.preserveRuntimeOutputsOnBegin = true;
+    return runModEventHandlers(
+               eventRuntime,
+               eventId,
+               executionContext,
+               [&] { return pModHooks->globalEventDone(eventId) ? 1 : 0; })
+        != 0;
 }
 }
 
@@ -9437,6 +9529,21 @@ bool EventRuntime::executeEventById(
         return modRan;
     }
 
+    // The mod's handlers for the global event (evt.global) run before the game's own lines, as a map event's do.
+    const int globalModFlags = !continueStep ? runModGlobalEvent(*this, eventId, executionContext, false) : 0;
+    const bool globalModRan = (globalModFlags & ModMapEventRan) != 0;
+
+    if ((globalModFlags & ModMapEventReplaces) != 0)
+    {
+        runModGlobalEventDone(*this, eventId, executionContext);
+        return modRan || globalModRan;
+    }
+
+    if (globalModRan)
+    {
+        executionContext.preserveRuntimeOutputsOnBegin = true;
+    }
+
     const auto globalIterator = m_luaSessionCache->globalScope.handlers.find(eventId);
 
     if (globalIterator != m_luaSessionCache->globalScope.handlers.end())
@@ -9463,7 +9570,18 @@ bool EventRuntime::executeEventById(
                 pSceneEventContext);
         }
 
-        return invoked || modRan;
+        if (!continueStep)
+        {
+            runModGlobalEventDone(*this, eventId, executionContext);
+        }
+
+        return invoked || modRan || globalModRan;
+    }
+
+    if (globalModRan)
+    {
+        runModGlobalEventDone(*this, eventId, executionContext);
+        return true;
     }
 
     if (globalProgram && globalProgram->isHintOnlyEvent(eventId))
@@ -9521,12 +9639,39 @@ bool EventRuntime::executeNpcTopicEventById(
         }
     }
 
+    // The mod's handlers for the topic's global event (ClickNPCTopic, evt.global) run before the game's own lines.
+    const int modFlags = !continueStep ? runModGlobalEvent(*this, eventId, executionContext, true) : 0;
+    const bool modRan = (modFlags & ModMapEventRan) != 0;
+
+    if ((modFlags & ModMapEventReplaces) != 0)
+    {
+        runModGlobalEventDone(*this, eventId, executionContext);
+        return modRan;
+    }
+
+    if (modRan)
+    {
+        executionContext.preserveRuntimeOutputsOnBegin = true;
+    }
+
     const auto globalIterator = m_luaSessionCache->globalScope.handlers.find(eventId);
 
     if (globalIterator != m_luaSessionCache->globalScope.handlers.end())
     {
         executionContext.executingGlobalHandler = true;
-        return invokeLuaHandler(*this, globalIterator->second, executionContext, continueStep);
+        const bool invoked = invokeLuaHandler(*this, globalIterator->second, executionContext, continueStep);
+
+        if (!continueStep)
+        {
+            runModGlobalEventDone(*this, eventId, executionContext);
+        }
+
+        return invoked || modRan;
+    }
+
+    if (runModGlobalEventDone(*this, eventId, executionContext) || modRan)
+    {
+        return true;
     }
 
     const auto localIterator = m_luaSessionCache->localScope.handlers.find(eventId);

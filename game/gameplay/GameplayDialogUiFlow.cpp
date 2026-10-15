@@ -1,3 +1,4 @@
+#include "game/mod/ModHooks.h"
 #include "game/gameplay/GameplayDialogUiFlow.h"
 
 #include "game/debug/GameplayDebugTrace.h"
@@ -118,6 +119,7 @@ void closeActiveEventDialog(
         pEventRuntimeState->dialogueState = {};
     }
 
+    modNpcDialogClosed();
     state.uiController.clearEventDialog();
     resetDialogInteractionState(state, false);
     state.interactionState.dialogueClickLatch = false;

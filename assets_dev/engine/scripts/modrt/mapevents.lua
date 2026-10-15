@@ -6,6 +6,11 @@
 -- inside the event, and their commands are the engine's own event commands (modrt.eventCall), given the arguments
 -- the engine takes. A command given outside an event (a LoadMap handler, a timer) is run as an event of its own
 -- (modrt.runCommandEvent), so what it does is applied as any event's is.
+--
+-- The game's global events (NPC topics, mostly) the same way: evt.global[id] handlers run inside the event before its
+-- own lines, Game.GlobalEvtLines:RemoveEvent(id) drops those lines, and events.ClickNPCTopic(id) (an NPC's topic
+-- clicked, before) and events.EvtGlobal(id) (after the event, its own lines included) are raised around it
+-- (dispatch "hasGlobalEvent", "globalEvent", "globalEventDone").
 
 local ModRT = ModRT
 local modrt = modrt
@@ -14,10 +19,15 @@ ModRT.MapEvents = MapEvents
 
 local CommandEventId = 0xFFFF
 local mapEvents = rawget(evt, "map")
+local globalEvents = rawget(evt, "global")
 local removed = {}
 local removedAll = false
+local removedGlobal = {}
 local queue = {}
 local inEvent = false
+-- Inside a global event a message's number is an NPC text's (the original's global events have no strings of their
+-- own), not one of the map's strings.
+local inGlobalEvent = false
 -- The player the commands are for (evt.ForPlayer), given again before each command run outside an event.
 local forPlayer = nil
 local varTag = nil
@@ -206,7 +216,9 @@ local strTable = setmetatable({}, {
 })
 
 local function text(value)
-    if type(value) == "number" then
+    if type(value) == "number" and inGlobalEvent then
+        return Game.NPCText[value] or ""
+    elseif type(value) == "number" then
         return strTable[value] or ""
     end
 
@@ -261,6 +273,9 @@ simpleCommand("SetFacetBit", {"Id", "Bit", "On"}, {number, number, boolean})
 simpleCommand("CheckMonstersKilled", {"CheckType", "Id", "Count", "InvisibleAsDead"}, {number, number, number, boolean})
 simpleCommand("SetNPCGreeting", {"NPC", "Greeting"})
 simpleCommand("SetNPCTopic", {"NPC", "Index", "Event"})
+simpleCommand("RemoveItems", {"MinItemIndex", "MaxItemIndex", "Count"})
+simpleCommand("CheckItemsCount", {"MinItemIndex", "MaxItemIndex", "Count"})
+simpleCommand("GiveItem", {"Strength", "Type", "Id"})
 simpleCommand("MoveNPC", {"NPC", "HouseId"})
 simpleCommand("SetTexture", {"Facet", "Name"}, {number, passString})
 simpleCommand("SetSnow", {"EffectId", "On"}, {number, boolean})
@@ -287,6 +302,12 @@ end
 function commands.StatusText(...)
     local v = parameters({"Str"}, ...)
     return call("StatusText", text(v[1]))
+end
+
+-- The answer the NPC gives in the dialog (a topic's text).
+function commands.SetMessage(...)
+    local v = parameters({"Str"}, ...)
+    return call("SetMessage", text(v[1]))
 end
 
 function commands.ShowMovie(...)
@@ -318,8 +339,45 @@ function commands.DamagePlayer(...)
     return call("DamagePlayer", player(v[1]), number(v[2]), number(v[3]))
 end
 
+commands.Sub = commands.Subtract
+
 for name, command in pairs(commands) do
     rawset(evt, name, command)
+end
+
+-- evt.All.Add(...), evt[0].Cmp(...), evt.Current.Add(...): a command for the players chosen, as evt.ForPlayer(...)
+-- followed by it; the players chosen before are chosen again afterwards.
+local function forPlayers(who)
+    return setmetatable({}, {
+        __index = function(_, name)
+            local command = commands[name]
+
+            if not command then
+                return nil
+            end
+
+            return function(...)
+                local before = forPlayer
+                commands.ForPlayer(who)
+                local results = table.pack(command(...))
+                forPlayer = before
+
+                if inEvent and before ~= nil then
+                    modrt.eventCall("evt.ForPlayer", before)
+                end
+
+                return table.unpack(results, 1, results.n)
+            end
+        end,
+    })
+end
+
+for name in pairs(playerSelectors) do
+    rawset(evt, name, forPlayers(name))
+end
+
+for index = 0, 4 do
+    rawset(evt, index, forPlayers(index))
 end
 
 -- The original's message box (Message, Game.EscMessage): the game's event message box, as a sign's. With no map to
@@ -330,7 +388,8 @@ function Message(text, keepSound, global)
 
     if inEvent or (Map and Map.Name) then
         local shown = withinEvent(function()
-            modrt.eventCall("evt.SimpleMessage", text)
+            -- In an NPC's topic (a global event) the text is the NPC's answer, as the original shows it there.
+            modrt.eventCall(inGlobalEvent and "evt.SetMessage" or "evt.SimpleMessage", text)
             return true
         end)
 
@@ -382,6 +441,13 @@ local mapEvtLines = setmetatable({
 
 rawset(Game, "MapEvtLines", mapEvtLines)
 
+-- Game.GlobalEvtLines: the game's own global event lines; RemoveEvent(id) drops an event's.
+rawset(Game, "GlobalEvtLines", {
+    RemoveEvent = function(_, eventId)
+        removedGlobal[eventId] = true
+    end,
+})
+
 -- The current map's events start empty: what the last map's scripts set goes when the party leaves it.
 function MapEvents.reset()
     mapEvents.clear()
@@ -427,6 +493,49 @@ function MapEvents.run(eventId)
 
     inEvent, forPlayer = wasInEvent, wasForPlayer
     return (ran and 1 or 0) + ((removed[eventId] or removedAll) and 2 or 0)
+end
+
+-- What the scripts of a playthrough set for the global events goes with them (Loader.loadSessionScripts).
+function MapEvents.resetGlobal()
+    removedGlobal = {}
+end
+
+function MapEvents.hasGlobal(eventId)
+    -- The playthrough's scripts (Global/) set the global events' handlers.
+    ModRT.ensureSession()
+    return globalEvents.exists(eventId) or removedGlobal[eventId] == true or events.exists("ClickNPCTopic")
+        or events.exists("EvtGlobal") or ModRT.Quests.owns(eventId)
+end
+
+function MapEvents.runGlobal(eventId, topicClick)
+    local wasInEvent, wasForPlayer, wasInGlobal = inEvent, forPlayer, inGlobalEvent
+    inEvent, inGlobalEvent = true, true
+    forPlayer = nil
+
+    if topicClick then
+        events.cocalls("ClickNPCTopic", eventId)
+    end
+
+    local ran = globalEvents.exists(eventId)
+
+    if ran then
+        globalEvents.cocalls(eventId)
+    end
+
+    inEvent, forPlayer, inGlobalEvent = wasInEvent, wasForPlayer, wasInGlobal
+    return (ran and 1 or 0) + (removedGlobal[eventId] and 2 or 0)
+end
+
+-- Returns whether the event was a quest's topic, which the quest took.
+function MapEvents.globalDone(eventId)
+    local wasInEvent, wasForPlayer, wasInGlobal = inEvent, forPlayer, inGlobalEvent
+    inEvent, inGlobalEvent = true, true
+    forPlayer = nil
+    -- Merge's quests answer EvtGlobal before the mod's own handlers (MAW's pays a quest's gold by party level).
+    local taken = ModRT.Quests.execute(eventId)
+    events.cocalls("EvtGlobal", eventId)
+    inEvent, forPlayer, inGlobalEvent = wasInEvent, wasForPlayer, wasInGlobal
+    return taken
 end
 
 function MapEvents.removedEvent(eventId)

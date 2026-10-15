@@ -194,12 +194,15 @@ function Events.new(label)
         __newindex = function(_, name, handler)
             add(name, handler)
         end,
-        -- evt.map[id] (map events by number; a name reads as nil): the event's handlers, `last` the newest.
+        -- evt.map[id] (map events by number; a name reads as nil): the event's handlers, `last` the newest, and
+        -- remove(handler) to take one off (MMExtension's evt.Global[id].Last and .remove).
         __index = not isMain and function(_, name)
             local list = type(name) == "number" and handlers[name] or nil
 
             if list then
-                return {first = list[1], last = list[#list], count = #list}
+                local function removeHandler(handler) return remove(name, handler) end
+                return {first = list[1], last = list[#list], count = #list, First = list[1], Last = list[#list],
+                    Count = #list, remove = removeHandler, Remove = removeHandler}
             end
         end or nil,
     })

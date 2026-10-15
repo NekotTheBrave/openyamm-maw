@@ -99,6 +99,14 @@ public:
     void monsterInformationBox(ModMonsterInfoBox &box) override;
     bool townHallBounty(std::string &text) override;
     void mercenaryItemGenerated(InventoryItem &item) override;
+    bool monsterDropItem(size_t actorIndex, uint32_t itemId) override;
+    void npcTopics(uint32_t npcId, std::vector<ModNpcTopic> &topics) override;
+    bool npcGreeting(uint32_t npcId, bool seen, std::string &text) override;
+    void npcDialogClosed() override;
+    void questLog(std::vector<std::string> &texts) override;
+    bool hasGlobalEvent(uint16_t eventId) override;
+    int globalEvent(uint16_t eventId, bool topicClick) override;
+    bool globalEventDone(uint16_t eventId) override;
     float monsterSpriteScale(size_t actorIndex) override;
     bool hasMapEvent(uint16_t eventId) override;
     int mapEvent(uint16_t eventId) override;

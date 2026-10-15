@@ -13073,7 +13073,8 @@ void IndoorWorldRuntime::spawnMonsterDeathDropsForActor(size_t actorIndex, const
             ^ timeSeed;
         std::mt19937 rng(seed);
 
-        if (std::uniform_int_distribution<int>(0, 99)(rng) >= drop.chancePercent)
+        if (std::uniform_int_distribution<int>(0, 99)(rng) >= drop.chancePercent
+            || !modMonsterDropsItem(actorIndex, drop.itemId))
         {
             continue;
         }

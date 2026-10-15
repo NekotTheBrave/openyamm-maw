@@ -189,6 +189,15 @@ struct ModMonsterInfoBox
     bool operator==(const ModMonsterInfoBox &other) const = default;
 };
 
+// A topic of the NPC dialog being shown as a mod sets it (Merge's quests: Quest{...}, NPCTopic{...}): slot 0 to 5
+// of the NPC's topics shows event `eventId` (0: nothing), named `label` when that is not empty.
+struct ModNpcTopic
+{
+    uint32_t slot = 0;
+    uint32_t eventId = 0;
+    std::string label;
+};
+
 class IModHooks
 {
 public:
@@ -290,6 +299,9 @@ public:
     // An item the game made for a mercenary it generates has been made (Merge's NPCMercenaries.lua, which MAW
     // edits; not an MMExtension event): the mod may change it, the event item meanwhile.
     virtual void mercenaryItemGenerated(InventoryItem &item) = 0;
+    // Monster `actorIndex` has died and drops item `itemId` of its kind's death drops (the original's reagent drop,
+    // with Merge's MonsterItems.lua: MonsterDropItem): whether the mod took the drop over, which then does not fall.
+    virtual bool monsterDropItem(size_t actorIndex, uint32_t itemId) = 0;
     // The monster's information box is being shown (the original's BuildMonsterInformationBox).
     virtual void monsterInformationBox(ModMonsterInfoBox &box) = 0;
     // The size monster `actorIndex` is drawn at, as a factor of the game's (the original's MonsterSpriteScale).
@@ -310,6 +322,24 @@ public:
     virtual bool mapEventHint(uint16_t eventId, std::string &hint) = 0;
     // Whether the mod removed the map's own lines for the event (their timer goes with them).
     virtual bool mapEventRemoved(uint16_t eventId) = 0;
+    // The topics of NPC `npcId`'s dialog, about to be shown: the slots the mod sets (Merge's quests).
+    virtual void npcTopics(uint32_t npcId, std::vector<ModNpcTopic> &topics) = 0;
+    // NPC `npcId`'s greeting (`seen` once the party has spoken with the NPC): the mod's, when it has one.
+    virtual bool npcGreeting(uint32_t npcId, bool seen, std::string &text) = 0;
+    // The NPC dialog was left (the original's ExitAnyNPC).
+    virtual void npcDialogClosed() = 0;
+    // The quest log's entries the mod adds that have no quest bit of their own (Merge's AutoQuest).
+    virtual void questLog(std::vector<std::string> &texts) = 0;
+    // The game's global events the same way (the original's evt.global[id] handlers and
+    // Game.GlobalEvtLines:RemoveEvent(id)), with the events the original raises around them: whether the mod has
+    // anything for global event `eventId`.
+    virtual bool hasGlobalEvent(uint16_t eventId) = 0;
+    // Runs the mod's handlers for the global event, within it, after ClickNPCTopic when the party clicked an NPC's
+    // topic for it: ModMapEvent flags.
+    virtual int globalEvent(uint16_t eventId, bool topicClick) = 0;
+    // The global event has run, the game's own lines included (the original's EvtGlobal): whether the mod took the
+    // event as its own (a topic of Merge's quests, which has no lines of the game's).
+    virtual bool globalEventDone(uint16_t eventId) = 0;
 };
 
 // mapEvent's answer: the mod ran handlers, and the map's own lines for the event are removed (the mod's replace
@@ -390,6 +420,10 @@ float modMonsterSpriteScale(size_t actorIndex);
 // The mod's answer to a town hall's bounty hunt topic, when the mod runs the hunts itself; none without a mod.
 std::optional<std::string> modTownHallBounty();
 
+// Runs the mod's MonsterDropItem event for a death drop of monster `actorIndex`: whether the item still falls
+// (true without a mod).
+bool modMonsterDropsItem(size_t actorIndex, uint32_t itemId);
+
 // Runs the mod's MercenaryItemGenerated event over an item made for a mercenary; the item is the engine's without a
 // mod.
 void modMercenaryItemGenerated(InventoryItem &item);
@@ -415,6 +449,28 @@ ModPlayerActionResult modPlayerActionWithHeldItem(int action, InventoryItem &hel
 // Runs the mod's event for a dead monster's loot and returns what to roll, which is `engineLoot` without a mod
 // runtime.
 MonsterTable::LootPrototype modCorpseLoot(size_t actorIndex, const MonsterTable::LootPrototype &engineLoot);
+
+// The topics a mod sets for NPC `npcId`'s dialog (none without a mod); see IModHooks::npcTopics.
+std::vector<ModNpcTopic> modNpcTopics(uint32_t npcId);
+// Whether event `eventId` is a topic the mod set in the dialog being shown: a click on it runs the event, not the
+// topic table's text.
+bool modOwnsNpcTopic(uint32_t eventId);
+// The mod's greeting for NPC `npcId`, none without a mod.
+std::optional<std::string> modNpcGreeting(uint32_t npcId, bool seen);
+// Tells the mod the NPC dialog was left.
+void modNpcDialogClosed();
+// The quest log entries the mod adds (none without a mod).
+std::vector<std::string> modQuestLogTexts();
+
+// A topic's name as a mod has rewritten it (Game.NPCTopic[id]); nullptr where no mod has. An empty name gives the
+// topic its own back.
+const std::string *modNpcTopicLabel(uint32_t eventId);
+void setModNpcTopicLabel(uint32_t eventId, const std::string &label);
+// A quest bit's quest log text as a mod has written it (Game.QuestsTxt[bit]); nullptr where no mod has.
+const std::string *modQuestText(uint32_t qbitId);
+void setModQuestText(uint32_t qbitId, const std::string &text);
+// The quest bits a mod wrote a text for.
+std::vector<uint32_t> modQuestTextBits();
 
 // The original's interface texts (global.txt) by number, as a mod has rewritten them (Game.GlobalTxt); nullptr where
 // no mod has. MAW shows its own numbers on the stats page by rewriting the page's labels. An empty text gives the

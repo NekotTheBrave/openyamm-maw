@@ -245,6 +245,14 @@ function Stats.townHallBounty()
     return type(event.Text) == "string" and event.Text or nil
 end
 
+-- Monster `index` (Map.Monsters) has died and drops item `itemId` of its kind's death drops (the original's reagent
+-- drop; Merge's MonsterItems.lua raises it for its own). Returns whether a handler took the drop over (Handled).
+function Stats.monsterDropItem(index, itemId)
+    local event = {MonsterIndex = index, Monster = Map.Monsters[index], ItemId = itemId, Handled = false}
+    ModRT.fire("MonsterDropItem", event)
+    return event.Handled == true
+end
+
 -- An item the game made for a mercenary it generates (Merge's NPCMercenaries.lua, which mods edit; not an
 -- MMExtension event): t.Item is the item, which the handlers change in place.
 function Stats.mercenaryItemGenerated()

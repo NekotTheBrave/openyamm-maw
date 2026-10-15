@@ -289,6 +289,15 @@ std::optional<InventoryItem> generateRandomEngineInventoryItem(
         initializeWandCharges(item, *pItemDefinition, std::uniform_int_distribution<int>(0, 5)(rng));
     }
 
+    // A potion's power, as the original makes it: two rolls of 1 to 4, times the treasure level. Not an empty
+    // bottle's (Merge has one for each game).
+    if (pItemDefinition != nullptr && pItemDefinition->equipStat == "Bottle" && pItemDefinition->name != "Potion Bottle")
+    {
+        std::uniform_int_distribution<int> roll(1, 4);
+        const int power = roll(rng) + roll(rng);
+        item.standardEnchantPower = static_cast<uint16_t>(power * std::clamp(request.treasureLevel, 1, 6));
+    }
+
     if (pItemDefinition == nullptr
         || ItemRuntime::isRareItem(*pItemDefinition)
         || !ItemEnchantRuntime::isEnchantable(*pItemDefinition))

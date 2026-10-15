@@ -112,6 +112,7 @@ loadRuntimeScript("stats.lua")
 loadRuntimeScript("merge.lua")
 loadRuntimeScript("mapevents.lua")
 loadRuntimeScript("hudtexts.lua")
+loadRuntimeScript("quests.lua")
 loadRuntimeScript("loader.lua")
 loadRuntimeScript("report.lua")
 loadRuntimeScript("selftest.lua")
@@ -316,6 +317,22 @@ local function dispatchKind(kind, ...)
         return ModRT.Stats.townHallBounty(...)
     elseif kind == "mercenaryItemGenerated" then
         return ModRT.Stats.mercenaryItemGenerated(...)
+    elseif kind == "monsterDropItem" then
+        return ModRT.Stats.monsterDropItem(...)
+    elseif kind == "npcTopics" then
+        return ModRT.Quests.topics(...)
+    elseif kind == "npcGreeting" then
+        return ModRT.Quests.greeting(...)
+    elseif kind == "npcDialogClosed" then
+        return ModRT.Quests.dialogClosed(...)
+    elseif kind == "questLog" then
+        return ModRT.Quests.questLog(...)
+    elseif kind == "hasGlobalEvent" then
+        return ModRT.MapEvents.hasGlobal(...)
+    elseif kind == "globalEvent" then
+        return ModRT.MapEvents.runGlobal(...)
+    elseif kind == "globalEventDone" then
+        return ModRT.MapEvents.globalDone(...)
     elseif kind == "monsterSpriteScale" then
         return ModRT.Stats.monsterSpriteScale(...)
     elseif kind == "monsterInformationBox" then

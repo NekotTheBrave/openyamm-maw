@@ -235,13 +235,9 @@ Stubs.installRoot("Keys")
 Stubs.installRoot("Screens")
 Stubs.installRoot("structs")
 Stubs.installRoot("internal")
--- Helpers for patching the original executable and for the Merge quest and dialogue framework: callable, recorded,
--- without effect.
+-- Helpers for patching the original executable: callable, recorded, without effect (Merge's quests are
+-- modrt/quests.lua).
 Stubs.installRoot("HookManager")
-Stubs.installRoot("Quest")
-Stubs.installRoot("Greeting")
-Stubs.installRoot("NPCTopic")
-Stubs.installRoot("KillMonstersQuest")
 
 -- Milliseconds of real time, as the Windows call of the same name.
 function timeGetTime()

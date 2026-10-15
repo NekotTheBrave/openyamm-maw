@@ -353,6 +353,7 @@ struct PlayerSignedField
 constexpr PlayerUnsignedField PlayerUnsignedFields[] = {
     {"LevelBase", &Character::level},
     {"Experience", &Character::experience},
+    {"Exp", &Character::experience},
     {"SkillPoints", &Character::skillPoints},
     {"MightBase", &Character::might},
     {"IntellectBase", &Character::intellect},
@@ -3156,6 +3157,39 @@ int nativeInventoryTake(lua_State *pLuaState)
     return 1;
 }
 
+// modrt.inventoryCell(player, cell): the original's Inventory[cell] of the backpack (14 x 9, row by row): the item's
+// number in Items (1 up) at the cell where an item's top left corner is, -(that cell + 1) in the other cells it
+// covers, 0 in an empty one.
+int nativeInventoryCell(lua_State *pLuaState)
+{
+    Character *pCharacter = playerArgument(pLuaState, 1);
+    const lua_Integer cell = luaL_checkinteger(pLuaState, 2);
+    lua_Integer value = 0;
+
+    if (pCharacter != nullptr && cell >= 0 && cell < Character::InventoryWidth * Character::InventoryHeight)
+    {
+        const int x = static_cast<int>(cell % Character::InventoryWidth);
+        const int y = static_cast<int>(cell / Character::InventoryWidth);
+
+        for (size_t index = 0; index < pCharacter->inventory.size(); ++index)
+        {
+            const InventoryItem &item = pCharacter->inventory[index];
+
+            if (x >= item.gridX && x < item.gridX + std::max<int>(1, item.width) && y >= item.gridY
+                && y < item.gridY + std::max<int>(1, item.height))
+            {
+                value = x == item.gridX && y == item.gridY
+                    ? static_cast<lua_Integer>(index + 1)
+                    : -static_cast<lua_Integer>(item.gridY * Character::InventoryWidth + item.gridX + 1);
+                break;
+            }
+        }
+    }
+
+    lua_pushinteger(pLuaState, value);
+    return 1;
+}
+
 // modrt.inventoryPut(player, item[, x, y]): puts an item (a table as inventoryTake gives) in the backpack: at the
 // cell when one is given and the item fits there, otherwise where it first fits. False when it fits nowhere.
 int nativeInventoryPut(lua_State *pLuaState)
@@ -3330,6 +3364,243 @@ int nativeNpcText(lua_State *pLuaState)
 
     pushString(pLuaState, *text);
     return 1;
+}
+
+EventRuntimeState *eventStateFromHost(lua_State *pLuaState)
+{
+    IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+    return pWorld != nullptr ? pWorld->eventRuntimeState() : nullptr;
+}
+
+// The topic in slot `slot` (0 to 5) of NPC `npcId` as the game shows it: the event commands' (evt.SetNPCTopic) over
+// the NPC table's.
+uint32_t npcTopicInSlot(const NpcEntry &npc, const EventRuntimeState *pState, uint32_t slot)
+{
+    if (pState != nullptr)
+    {
+        const auto npcIt = pState->npcTopicOverrides.find(npc.id);
+
+        if (npcIt != pState->npcTopicOverrides.end())
+        {
+            const auto slotIt = npcIt->second.find(slot);
+
+            if (slotIt != npcIt->second.end())
+            {
+                return slotIt->second;
+            }
+        }
+    }
+
+    return slot < npc.topicIds.size() ? npc.topicIds[slot] : 0;
+}
+
+// modrt.npcGet(npc, field): Game.NPC[npc]'s Name, Pic, House, Profession, Greet, Hired, Event0 ... Event5 (its
+// topics), as the game has them now; nil for an NPC the table lacks.
+int nativeNpcGet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t id = integerArgument(pLuaState, 1);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+    const NpcEntry *pNpc = pData != nullptr && id >= 0 ? pData->getNpcDialogTable().getNpc(static_cast<uint32_t>(id)) : nullptr;
+
+    if (pNpc == nullptr)
+    {
+        return 0;
+    }
+
+    const EventRuntimeState *pState = eventStateFromHost(pLuaState);
+    const auto overridden = [&](const std::unordered_map<uint32_t, uint32_t> EventRuntimeState::*pMap, uint32_t value)
+    {
+        if (pState != nullptr)
+        {
+            const auto it = (pState->*pMap).find(pNpc->id);
+
+            if (it != (pState->*pMap).end())
+            {
+                return it->second;
+            }
+        }
+
+        return value;
+    };
+
+    if (field == "Name")
+    {
+        const auto it = pState != nullptr ? pState->npcNameOverrides.find(pNpc->id) : decltype(pState->npcNameOverrides)::const_iterator();
+        pushString(pLuaState, pState != nullptr && it != pState->npcNameOverrides.end() ? it->second : pNpc->name);
+    }
+    else if (field == "Pic")
+    {
+        lua_pushinteger(pLuaState, overridden(&EventRuntimeState::npcPictureOverrides, pNpc->pictureId));
+    }
+    else if (field == "House")
+    {
+        lua_pushinteger(pLuaState, overridden(&EventRuntimeState::npcHouseOverrides, pNpc->houseId));
+    }
+    else if (field == "Profession")
+    {
+        lua_pushinteger(pLuaState, overridden(&EventRuntimeState::npcProfessionOverrides, pNpc->professionId));
+    }
+    else if (field == "Greet")
+    {
+        lua_pushinteger(pLuaState, overridden(&EventRuntimeState::npcGreetingOverrides, pNpc->greetId));
+    }
+    else if (field == "Hired")
+    {
+        bool hired = false;
+
+        if (pState != nullptr)
+        {
+            for (const auto &follower : pState->hiredNpcFollowers)
+            {
+                hired = hired || follower.npcId == pNpc->id;
+            }
+        }
+
+        lua_pushboolean(pLuaState, hired);
+    }
+    else if (field.size() == 6 && field.rfind("Event", 0) == 0 && field[5] >= '0' && field[5] <= '5')
+    {
+        lua_pushinteger(pLuaState, npcTopicInSlot(*pNpc, pState, static_cast<uint32_t>(field[5] - '0')));
+    }
+    else
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+// modrt.npcSet(npc, field, value): sets Game.NPC[npc]'s Name, Pic, House, Greet or Event0 ... Event5 as the event
+// commands do (they stay with the game). Returns whether the field could be set.
+int nativeNpcSet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    EventRuntimeState *pState = eventStateFromHost(pLuaState);
+    const int64_t id = integerArgument(pLuaState, 1);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+    const NpcEntry *pNpc = pData != nullptr && id >= 0 ? pData->getNpcDialogTable().getNpc(static_cast<uint32_t>(id)) : nullptr;
+
+    if (pNpc == nullptr || pState == nullptr)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    bool set = true;
+
+    if (field == "Name")
+    {
+        pState->npcNameOverrides[pNpc->id] = luaL_checkstring(pLuaState, 3);
+    }
+    else if (field == "Pic")
+    {
+        pState->npcPictureOverrides[pNpc->id] = static_cast<uint32_t>(std::max<int64_t>(0, integerArgument(pLuaState, 3)));
+    }
+    else if (field == "House")
+    {
+        pState->npcHouseOverrides[pNpc->id] = static_cast<uint32_t>(std::max<int64_t>(0, integerArgument(pLuaState, 3)));
+    }
+    else if (field == "Greet")
+    {
+        pState->npcGreetingOverrides[pNpc->id] = static_cast<uint32_t>(std::max<int64_t>(0, integerArgument(pLuaState, 3)));
+    }
+    else if (field.size() == 6 && field.rfind("Event", 0) == 0 && field[5] >= '0' && field[5] <= '5')
+    {
+        pState->npcTopicOverrides[pNpc->id][static_cast<uint32_t>(field[5] - '0')] =
+            static_cast<uint32_t>(std::max<int64_t>(0, integerArgument(pLuaState, 3)));
+    }
+    else
+    {
+        set = false;
+    }
+
+    lua_pushboolean(pLuaState, set);
+    return 1;
+}
+
+// modrt.npcTopicGet(event): Game.NPCTopic[event], the topic's name as the game shows it.
+int nativeNpcTopicGet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t id = integerArgument(pLuaState, 1);
+
+    if (id < 0)
+    {
+        return 0;
+    }
+
+    if (const std::string *pLabel = modNpcTopicLabel(static_cast<uint32_t>(id)))
+    {
+        pushString(pLuaState, *pLabel);
+        return 1;
+    }
+
+    const std::optional<NpcDialogTable::ResolvedTopic> topic =
+        pData != nullptr ? pData->getNpcDialogTable().getTopicById(static_cast<uint32_t>(id)) : std::nullopt;
+    pushString(pLuaState, topic ? topic->topic : std::string());
+    return 1;
+}
+
+// modrt.npcTopicSet(event, name): Game.NPCTopic[event] = name; an empty name gives the topic its own back.
+int nativeNpcTopicSet(lua_State *pLuaState)
+{
+    const int64_t id = integerArgument(pLuaState, 1);
+
+    if (id >= 0)
+    {
+        setModNpcTopicLabel(static_cast<uint32_t>(id), luaL_optstring(pLuaState, 2, ""));
+    }
+
+    return 0;
+}
+
+// modrt.questTextGet(bit): Game.QuestsTxt[bit], the quest log's text for the quest bit ("" for none).
+int nativeQuestTextGet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t id = integerArgument(pLuaState, 1);
+
+    if (id < 0)
+    {
+        return 0;
+    }
+
+    if (const std::string *pText = modQuestText(static_cast<uint32_t>(id)))
+    {
+        pushString(pLuaState, *pText);
+        return 1;
+    }
+
+    std::string text;
+
+    if (pData != nullptr)
+    {
+        for (const JournalQuestEntry &entry : pData->getJournalQuestTable().entries())
+        {
+            if (entry.qbitId == static_cast<uint32_t>(id))
+            {
+                text = entry.text;
+                break;
+            }
+        }
+    }
+
+    pushString(pLuaState, text);
+    return 1;
+}
+
+// modrt.questTextSet(bit, text): Game.QuestsTxt[bit] = text, shown in the quest log while the bit is set.
+int nativeQuestTextSet(lua_State *pLuaState)
+{
+    const int64_t id = integerArgument(pLuaState, 1);
+
+    if (id >= 0)
+    {
+        setModQuestText(static_cast<uint32_t>(id), luaL_optstring(pLuaState, 2, ""));
+    }
+
+    return 0;
 }
 
 // modrt.globalTextSet(index, text): the game shows the text where it shows that interface text (the stats page's
@@ -4174,6 +4445,12 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"setRule", nativeSetRule},
         {"hudTextSet", nativeHudTextSet},
         {"mercenaryRecruits", nativeMercenaryRecruits},
+        {"npcGet", nativeNpcGet},
+        {"npcSet", nativeNpcSet},
+        {"npcTopicGet", nativeNpcTopicGet},
+        {"npcTopicSet", nativeNpcTopicSet},
+        {"questTextGet", nativeQuestTextGet},
+        {"questTextSet", nativeQuestTextSet},
         {"questBitGet", nativeQuestBitGet},
         {"questBitSet", nativeQuestBitSet},
         {"itemGet", nativeItemGet},
@@ -4192,6 +4469,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"globalTextSet", nativeGlobalTextSet},
         {"npcText", nativeNpcText},
         {"inventoryTake", nativeInventoryTake},
+        {"inventoryCell", nativeInventoryCell},
         {"inventoryPut", nativeInventoryPut},
         {"heldItemPresent", nativeHeldItemPresent},
         {"heldItemSet", nativeHeldItemSet},

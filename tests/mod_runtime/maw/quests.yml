@@ -1,0 +1,51 @@
+id: mod_runtime.maw.quests
+title: Merge's quests run on the game's NPC dialogs (MAW's Druid Circlet quest)
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# Merge's quest framework (modrt/quests.lua) puts a Quest{...}'s topic on its NPC (slot B of Dantillion, NPC 41, in
+# Murmurwoods: event 996, named by the quest). The first click gives the quest (its bit 299 and its quest log text),
+# the second, with the Druid Circlet of Power (638) in the pack, takes the circlet and pays 3000 gold, 10000
+# experience and an amulet (evt.GiveItem). MAW pays a quest's gold by the party's level as well (Global/GLOBAL.lua,
+# from ClickNPCTopic and EvtGlobal): at level 10, 2800 more. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out07.odm
+    party:
+      gold: 0
+      food: 10
+      members:
+      - name: Tester
+        class: Knight
+        level: 10
+        skills: []
+        equipment: {}
+- speak_npc:
+    source_id: 41
+- assert:
+    dialog:
+      active: true
+      action_count: 2
+      actions:
+      - label: Cauri Blackthorne
+      - label: Druid Circlet
+- select_topic:
+    action_id: 996
+- mod_lua:
+    code: |
+      QuestGold = Party.Gold
+      getPartyLevel = function() return 10 end
+      local put = modrt.inventoryPut(0, {Number = 638, Identified = true}, 0, 0)
+      return tostring(vars.Quests.DruidCircletQuest), tostring(Party.QBits[299]), Game.QuestsTxt[299]:sub(1, 20), tostring(put)
+    expect: "Given\ttrue\tFind the Druid Circl\ttrue"
+- select_topic:
+    action_id: 996
+- mod_lua:
+    code: |
+      local items = {}
+      for _, it in ipairs(modrt.inventoryTake(0)) do items[#items + 1] = it.Number end
+      return tostring(vars.Quests.DruidCircletQuest), tostring(Party.QBits[299]), Party.Gold - QuestGold,
+        Party[0].Experience, Game.ItemsTxt[Mouse.Item.Number].EquipStat, table.concat(items, " "), ModRT.totalErrorCount
+    expect: "Done	false	5800	55000	11		0"

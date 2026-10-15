@@ -1,3 +1,4 @@
+#include "game/mod/ModHooks.h"
 #include "game/events/EventDialogContent.h"
 
 #include "game/events/ISceneEventContext.h"
@@ -1413,7 +1414,18 @@ EventDialogContent buildEventDialogContent(
             && !hasEventMessageLines)
         {
             const uint32_t greetingDisplayCount = npcRuntimeState.npcGreetingDisplayCounts[dialog.sourceId];
-            if (pGreeting != nullptr)
+            const std::optional<std::string> modGreeting = modNpcGreeting(dialog.sourceId, greetingDisplayCount != 0);
+
+            if (modGreeting)
+            {
+                if (!modGreeting->empty())
+                {
+                    dialog.lines = wrapDialogText(*modGreeting, MaxLineWidth);
+                }
+
+                eventRuntimeState.npcGreetingDisplayCounts[dialog.sourceId] = greetingDisplayCount + 1;
+            }
+            else if (pGreeting != nullptr)
             {
                 const std::string &greetingText =
                     (greetingDisplayCount == 0 || pGreeting->greetingSecondary.empty())
@@ -1462,8 +1474,48 @@ EventDialogContent buildEventDialogContent(
                 npcRuntimeState.npcTopicOverrides.find(dialog.sourceId);
             const std::unordered_map<uint32_t, uint32_t> *pTopicOverrides =
                 overrideIt != npcRuntimeState.npcTopicOverrides.end() ? &overrideIt->second : nullptr;
+            // The topics a mod sets (Merge's quests) go over the NPC's own, and topics a mod renamed
+            // (Game.NPCTopic) show its names.
+            std::unordered_map<uint32_t, uint32_t> topicOverrides =
+                pTopicOverrides != nullptr ? *pTopicOverrides : std::unordered_map<uint32_t, uint32_t>();
+            std::unordered_map<uint32_t, std::string> topicLabels;
+
+            for (const ModNpcTopic &modTopic : modNpcTopics(dialog.sourceId))
+            {
+                topicOverrides[modTopic.slot] = modTopic.eventId;
+
+                if (!modTopic.label.empty())
+                {
+                    topicLabels[modTopic.eventId] = modTopic.label;
+                }
+            }
+
+            const auto addRenamedTopic = [&](uint32_t topicId)
+            {
+                const std::string *pLabel = topicId != 0 ? modNpcTopicLabel(topicId) : nullptr;
+
+                if (pLabel != nullptr && !topicLabels.contains(topicId))
+                {
+                    topicLabels[topicId] = *pLabel;
+                }
+            };
+
+            if (pNpc != nullptr)
+            {
+                for (uint32_t topicId : pNpc->topicIds)
+                {
+                    addRenamedTopic(topicId);
+                }
+            }
+
+            for (const auto &[slot, topicId] : topicOverrides)
+            {
+                (void)slot;
+                addRenamedTopic(topicId);
+            }
+
             const std::vector<NpcDialogTable::ResolvedTopic> topics =
-                pNpcDialogTable->getTopicsForNpc(dialog.sourceId, pTopicOverrides);
+                pNpcDialogTable->getTopicsForNpc(dialog.sourceId, &topicOverrides, &topicLabels);
             const EventRuntime eventRuntime = {};
 
             if (hasPendingArenaOffer)

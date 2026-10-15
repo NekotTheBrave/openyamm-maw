@@ -1739,6 +1739,26 @@ float ModRuntime::monsterSpriteScale(size_t actorIndex)
     return scale;
 }
 
+bool ModRuntime::monsterDropItem(size_t actorIndex, uint32_t itemId)
+{
+    if (!m_active || !beginDispatch("monsterDropItem"))
+    {
+        return false;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(actorIndex));
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(itemId));
+    bool handled = false;
+
+    if (endDispatch(2, 1))
+    {
+        handled = lua_toboolean(m_pLuaState, -1) != 0;
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return handled;
+}
+
 void ModRuntime::mercenaryItemGenerated(InventoryItem &item)
 {
     if (!m_active || !m_host.party || m_host.party() == nullptr || !beginDispatch("mercenaryItemGenerated"))
@@ -1929,6 +1949,174 @@ int ModRuntime::mapEvent(uint16_t eventId)
     }
 
     return flags;
+}
+
+void ModRuntime::npcTopics(uint32_t npcId, std::vector<ModNpcTopic> &topics)
+{
+    if (!m_active || !beginDispatch("npcTopics"))
+    {
+        return;
+    }
+
+    lua_pushinteger(m_pLuaState, npcId);
+
+    if (!endDispatch(1, 1))
+    {
+        return;
+    }
+
+    // A list of {Slot = n, Event = n, Label = s}.
+    if (lua_istable(m_pLuaState, -1))
+    {
+        const lua_Integer count = luaL_len(m_pLuaState, -1);
+
+        for (lua_Integer index = 1; index <= count; ++index)
+        {
+            lua_rawgeti(m_pLuaState, -1, index);
+
+            if (lua_istable(m_pLuaState, -1))
+            {
+                ModNpcTopic topic = {};
+                lua_getfield(m_pLuaState, -1, "Slot");
+                topic.slot = static_cast<uint32_t>(std::max<lua_Integer>(0, lua_tointeger(m_pLuaState, -1)));
+                lua_pop(m_pLuaState, 1);
+                lua_getfield(m_pLuaState, -1, "Event");
+                topic.eventId = static_cast<uint32_t>(std::max<lua_Integer>(0, lua_tointeger(m_pLuaState, -1)));
+                lua_pop(m_pLuaState, 1);
+                lua_getfield(m_pLuaState, -1, "Label");
+                topic.label = lua_type(m_pLuaState, -1) == LUA_TSTRING ? lua_tostring(m_pLuaState, -1) : "";
+                lua_pop(m_pLuaState, 1);
+                topics.push_back(std::move(topic));
+            }
+
+            lua_pop(m_pLuaState, 1);
+        }
+    }
+
+    lua_pop(m_pLuaState, 1);
+}
+
+bool ModRuntime::npcGreeting(uint32_t npcId, bool seen, std::string &text)
+{
+    if (!m_active || !beginDispatch("npcGreeting"))
+    {
+        return false;
+    }
+
+    lua_pushinteger(m_pLuaState, npcId);
+    lua_pushboolean(m_pLuaState, seen);
+    bool found = false;
+
+    if (endDispatch(2, 1))
+    {
+        if (lua_type(m_pLuaState, -1) == LUA_TSTRING)
+        {
+            text = lua_tostring(m_pLuaState, -1);
+            found = true;
+        }
+
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return found;
+}
+
+void ModRuntime::npcDialogClosed()
+{
+    if (m_active && beginDispatch("npcDialogClosed"))
+    {
+        endDispatch(0, 0);
+    }
+}
+
+void ModRuntime::questLog(std::vector<std::string> &texts)
+{
+    if (!m_active || !beginDispatch("questLog"))
+    {
+        return;
+    }
+
+    if (!endDispatch(0, 1))
+    {
+        return;
+    }
+
+    if (lua_istable(m_pLuaState, -1))
+    {
+        const lua_Integer count = luaL_len(m_pLuaState, -1);
+
+        for (lua_Integer index = 1; index <= count; ++index)
+        {
+            lua_rawgeti(m_pLuaState, -1, index);
+
+            if (lua_type(m_pLuaState, -1) == LUA_TSTRING)
+            {
+                texts.emplace_back(lua_tostring(m_pLuaState, -1));
+            }
+
+            lua_pop(m_pLuaState, 1);
+        }
+    }
+
+    lua_pop(m_pLuaState, 1);
+}
+
+bool ModRuntime::hasGlobalEvent(uint16_t eventId)
+{
+    if (!m_active || !beginDispatch("hasGlobalEvent"))
+    {
+        return false;
+    }
+
+    lua_pushinteger(m_pLuaState, eventId);
+    bool has = false;
+
+    if (endDispatch(1, 1))
+    {
+        has = lua_toboolean(m_pLuaState, -1) != 0;
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return has;
+}
+
+int ModRuntime::globalEvent(uint16_t eventId, bool topicClick)
+{
+    if (!m_active || !beginDispatch("globalEvent"))
+    {
+        return 0;
+    }
+
+    lua_pushinteger(m_pLuaState, eventId);
+    lua_pushboolean(m_pLuaState, topicClick);
+    int flags = 0;
+
+    if (endDispatch(2, 1))
+    {
+        flags = lua_isinteger(m_pLuaState, -1) ? static_cast<int>(lua_tointeger(m_pLuaState, -1)) : 0;
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return flags;
+}
+
+bool ModRuntime::globalEventDone(uint16_t eventId)
+{
+    if (!m_active || !beginDispatch("globalEventDone"))
+    {
+        return false;
+    }
+
+    lua_pushinteger(m_pLuaState, eventId);
+    bool taken = false;
+
+    if (endDispatch(1, 1))
+    {
+        taken = lua_toboolean(m_pLuaState, -1) != 0;
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return taken;
 }
 
 bool ModRuntime::mapEventHint(uint16_t eventId, std::string &hint)

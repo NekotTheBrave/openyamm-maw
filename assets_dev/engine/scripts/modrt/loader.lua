@@ -400,6 +400,8 @@ end
 -- dropped first, as MMExtension does.
 function Loader.loadSessionScripts()
     ModRT.Events.removeScope("session")
+    ModRT.MapEvents.resetGlobal()
+    ModRT.Quests.reset()
     ModRT.Events.scope = "session"
     runFolder("Global")
     ModRT.Events.scope = "startup"

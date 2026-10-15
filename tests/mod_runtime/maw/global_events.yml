@@ -1,0 +1,51 @@
+id: mod_runtime.maw.global_events
+title: MAW's handlers for the game's global events run in place of the game's own lines
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's Global/GLOBAL.lua takes over the black potion turn-ins (evt.global[181] and others, after
+# Game.GlobalEvtLines:RemoveEvent), counting reagents by colour in the backpack's cells (Player.Inventory) and giving
+# its own potion (254, where the game's lines give 265); ClickNPCTopic comes before an NPC's topic and EvtGlobal after
+# it (MAW pays a quest's gold by the party's level from them). Thistle on the Dagger Wound Islands, with four red,
+# two blue and one yellow reagent. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 0
+      food: 10
+      members:
+      - name: Tester
+        class: Knight
+        level: 1
+        skills: []
+        equipment: {}
+- mod_lua:
+    code: |
+      GeLog = {}
+      function events.ClickNPCTopic(i) GeLog[#GeLog + 1] = "click" .. i end
+      function events.EvtGlobal(i) GeLog[#GeLog + 1] = "done" .. i end
+      Party.QBits[113] = true
+      local x = 0
+      for _, id in ipairs({200, 201, 202, 203, 205, 206, 210}) do modrt.inventoryPut(0, {Number = id, Identified = true}, x, 0) x = x + 1 end
+      local n = 0
+      for _, it in ipairs(modrt.inventoryTake(0)) do n = n + 1 modrt.inventoryPut(0, it, it.X, it.Y) end
+      return n
+    expect: "7"
+- speak_npc:
+    source_id: 68
+- select_topic:
+    action_id: 181
+- mod_lua:
+    code: |
+      local items = {}
+      for _, it in ipairs(modrt.inventoryTake(0)) do items[#items + 1] = it.Number end
+      return table.concat(GeLog, ","), tostring(Party.QBits[113]), tostring(Party.QBits[114]), table.concat(items, " "),
+        Mouse.Item.Number
+    expect: "click181,done181	false	true		254"
+- assert:
+    dialog:
+      active: true
+      action_count: 2

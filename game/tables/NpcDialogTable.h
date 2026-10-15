@@ -91,9 +91,11 @@ public:
     const NpcEntry *findNpcByName(const std::string &name) const;
     const NpcGreetingEntry *getGreeting(uint32_t greetingId) const;
     const NpcGreetingEntry *getGreetingForNpc(uint32_t npcId) const;
+    // `pTopicLabels` names topics by event: a named event is shown though the topic table has no entry for it.
     std::vector<ResolvedTopic> getTopicsForNpc(
         uint32_t npcId,
-        const std::unordered_map<uint32_t, uint32_t> *pTopicOverrides = nullptr
+        const std::unordered_map<uint32_t, uint32_t> *pTopicOverrides = nullptr,
+        const std::unordered_map<uint32_t, std::string> *pTopicLabels = nullptr
     ) const;
     std::vector<uint32_t> getNpcIdsForHouse(
         uint32_t houseId,

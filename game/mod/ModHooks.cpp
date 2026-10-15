@@ -21,6 +21,134 @@ std::unordered_map<int, std::string> &modGlobalTexts()
     static std::unordered_map<int, std::string> texts;
     return texts;
 }
+
+std::unordered_map<uint32_t, std::string> &modNpcTopicLabels()
+{
+    static std::unordered_map<uint32_t, std::string> labels;
+    return labels;
+}
+
+std::unordered_map<uint32_t, std::string> &modQuestTexts()
+{
+    static std::unordered_map<uint32_t, std::string> texts;
+    return texts;
+}
+
+// The events of the topics the mod set in the dialog shown last.
+std::vector<uint32_t> &modShownNpcTopicEvents()
+{
+    static std::vector<uint32_t> events;
+    return events;
+}
+
+void setTextOverride(std::unordered_map<uint32_t, std::string> &texts, uint32_t id, const std::string &text)
+{
+    if (text.empty())
+    {
+        texts.erase(id);
+    }
+    else
+    {
+        texts[id] = text;
+    }
+}
+}
+
+const std::string *modNpcTopicLabel(uint32_t eventId)
+{
+    const auto it = modNpcTopicLabels().find(eventId);
+    return it != modNpcTopicLabels().end() ? &it->second : nullptr;
+}
+
+void setModNpcTopicLabel(uint32_t eventId, const std::string &label)
+{
+    setTextOverride(modNpcTopicLabels(), eventId, label);
+}
+
+const std::string *modQuestText(uint32_t qbitId)
+{
+    const auto it = modQuestTexts().find(qbitId);
+    return it != modQuestTexts().end() ? &it->second : nullptr;
+}
+
+void setModQuestText(uint32_t qbitId, const std::string &text)
+{
+    setTextOverride(modQuestTexts(), qbitId, text);
+}
+
+std::vector<uint32_t> modQuestTextBits()
+{
+    std::vector<uint32_t> bits;
+
+    for (const auto &[qbitId, text] : modQuestTexts())
+    {
+        (void)text;
+        bits.push_back(qbitId);
+    }
+
+    return bits;
+}
+
+std::vector<ModNpcTopic> modNpcTopics(uint32_t npcId)
+{
+    std::vector<ModNpcTopic> topics;
+    modShownNpcTopicEvents().clear();
+
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->npcTopics(npcId, topics);
+    }
+
+    for (const ModNpcTopic &topic : topics)
+    {
+        if (topic.eventId != 0)
+        {
+            modShownNpcTopicEvents().push_back(topic.eventId);
+        }
+    }
+
+    return topics;
+}
+
+bool modOwnsNpcTopic(uint32_t eventId)
+{
+    const std::vector<uint32_t> &events = modShownNpcTopicEvents();
+    return std::find(events.begin(), events.end(), eventId) != events.end();
+}
+
+std::optional<std::string> modNpcGreeting(uint32_t npcId, bool seen)
+{
+    IModHooks *pModHooks = activeModHooks();
+    std::string text;
+
+    if (pModHooks == nullptr || !pModHooks->npcGreeting(npcId, seen, text))
+    {
+        return std::nullopt;
+    }
+
+    return text;
+}
+
+void modNpcDialogClosed()
+{
+    modShownNpcTopicEvents().clear();
+
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->npcDialogClosed();
+    }
+}
+
+std::vector<std::string> modQuestLogTexts()
+{
+    std::vector<std::string> texts;
+
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->questLog(texts);
+    }
+
+    return texts;
 }
 
 const std::string *modGlobalText(int index)
@@ -211,6 +339,12 @@ std::optional<std::string> modTownHallBounty()
     }
 
     return text;
+}
+
+bool modMonsterDropsItem(size_t actorIndex, uint32_t itemId)
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks == nullptr || !pModHooks->monsterDropItem(actorIndex, itemId);
 }
 
 void modMercenaryItemGenerated(InventoryItem &item)
