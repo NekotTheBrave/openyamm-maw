@@ -163,6 +163,19 @@ function os.remove(path)
     return realRemove(target)
 end
 
+-- Mods do not run shell commands. MAW's only ones make the folder of a file it then writes (its Beyond Madness death
+-- count), which writes here do themselves (modrt.dataPath); the command ran in whatever folder the game was started
+-- from.
+function os.execute(command)
+    if command ~= nil then
+        noteFileAccess(tostring(command), "os.execute", "refused: mods do not run commands")
+    end
+
+    return nil, "exit", 1
+end
+
+io.popen = nil
+
 function os.rename(from, to)
     local source, target = Env.writablePath(from), Env.writablePath(to)
 

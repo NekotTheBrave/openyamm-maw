@@ -88,6 +88,12 @@ end
 function Sleep()
 end
 
+-- DismissCharacter(slot): the Merge base's way to send party member `slot` to the Adventurer's Inn (MAW's Road to
+-- Insanity "disintegrates" a character so). Whether it went.
+function DismissCharacter(slot)
+    return modrt.innDismiss(math.floor(tonumber(slot) or -1))
+end
+
 -- MMExtension console housekeeping; there is no such console here.
 function ClearConsoleEvents()
 end

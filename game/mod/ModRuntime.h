@@ -98,6 +98,7 @@ public:
     bool potionEffect(uint32_t potionId, int power) override;
     bool canWearItem(const Character &character, uint32_t itemId) override;
     bool canOpenChest(uint32_t chestId, bool trapped) override;
+    void partyDefeated() override;
     bool canHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal) override;
     float shopItemTreatment(bool repair, uint32_t houseId, const InventoryItem &item, float engineMultiplier) override;
     void monsterInformationBox(ModMonsterInfoBox &box) override;

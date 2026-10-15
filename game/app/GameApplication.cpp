@@ -11313,6 +11313,8 @@ bool GameApplication::processPendingPartyDefeat()
         return false;
     }
 
+    // The mods hear of it before the party is moved (the original's DeathMap).
+    modPartyDefeated();
     const MapStartDestination respawnDestination = resolvePartyDefeatRespawnDestination();
     m_pendingPartyDefeatRespawnMapFileName = respawnDestination.mapFileName;
     m_pendingPartyDefeatRespawnStart = respawnDestination.start;

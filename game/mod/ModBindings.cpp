@@ -272,6 +272,40 @@ int nativePartyGet(lua_State *pLuaState)
         return 0;
     }
 
+    // The enemy detector, the portraits' gems: red with a hostile monster within reach of a blow (307.2), yellow
+    // within 5120, green beyond or beyond the map's engagement range (MAW's Beyond Madness ends its death timer when
+    // neither is lit).
+    if (field == "EnemyDetectorRed" || field == "EnemyDetectorYellow")
+    {
+        const IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+        float nearest = std::numeric_limits<float>::max();
+
+        if (pWorld != nullptr)
+        {
+            for (size_t actorIndex = 0; actorIndex < pWorld->mapActorCount(); ++actorIndex)
+            {
+                GameplayRuntimeActorState actor = {};
+
+                if (!pWorld->actorRuntimeState(actorIndex, actor) || actor.isDead || actor.isInvisible
+                    || !actor.hostileToParty)
+                {
+                    continue;
+                }
+
+                const float deltaX = actor.preciseX - pWorld->partyX();
+                const float deltaY = actor.preciseY - pWorld->partyY();
+                const float deltaZ = actor.preciseZ - pWorld->partyFootZ();
+                const float distance = std::sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
+                nearest = std::min(nearest, std::max(0.0f, distance - static_cast<float>(actor.radius)));
+            }
+        }
+
+        const bool inRange = pWorld != nullptr && nearest < pWorld->partyEngagementRange();
+        const bool red = inRange && nearest < 307.2f;
+        lua_pushboolean(pLuaState, field == "EnemyDetectorRed" ? red : inRange && !red && nearest < 5120.0f);
+        return 1;
+    }
+
     if (field == "Gold")
     {
         lua_pushinteger(pLuaState, pParty->gold());

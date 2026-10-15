@@ -1,0 +1,60 @@
+id: mod_runtime.maw.madness_mode
+title: MAW's Beyond Madness keeps its run-wide death counter
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# Beyond Madness counts deaths across every save of a run (zzMaw-Monsters.lua, SeedDeaths): a new game gets a seed,
+# kept in the save, and a count kept in a file outside it. A hit on the party marks a death pending until no monster
+# is near for a while (Party.EnemyDetectorRed/Yellow); loading a save meanwhile counts it, as the party falling
+# (DeathMap) does. The counter shows on the character screen and the red timer on the game view (CustomUI texts).
+# Run with the MAW mods.yml.
+- mod_lua:
+    code: ModRT.GameMode.set("Beyond Madness")
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 1
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- advance_runtime: {seconds: 2}
+- mod_lua:
+    code: |
+      Seed = vars.MadnessDeathSeed
+      local current, count = SeedDeaths.get_current()
+      return tostring(vars.madnessMode), type(Seed), current == Seed, count, vars.MadnessDeathCounter,
+        type(Party.EnemyDetectorRed), type(Party.EnemyDetectorYellow), ModRT.totalErrorCount
+    expect: "true\tnumber\ttrue\t0\t0\tboolean\tboolean\t0"
+- save_game: maw_madness_mode
+# A hit: the timer runs (red) and the death is pending.
+- mod_lua:
+    code: |
+      vars.lastHitTime = Game.Time
+      SeedDeaths.mark_pending_for_current()
+      mawTick_DeathCounterUI()
+      return deathTimer.Text ~= "", deathCounter.Text
+    expect: "true\tDeath Count: 0"
+# Loading a save while it is pending counts the death, for the run, not the save.
+- load_game: maw_madness_mode
+- advance_runtime: {seconds: 1}
+- mod_lua:
+    code: |
+      local _, count = SeedDeaths.get_current()
+      return vars.MadnessDeathSeed == Seed, vars.MadnessDeathCounter, count
+    expect: "true\t1\t1"
+# The party falling counts one more.
+- mod_lua:
+    code: |
+      ModRT.fire("DeathMap", {Name = Map.Name})
+      return vars.MadnessDeathCounter, ModRT.totalErrorCount
+    expect: "2\t0"

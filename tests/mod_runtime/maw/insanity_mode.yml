@@ -1,0 +1,82 @@
+id: mod_runtime.maw.insanity_mode
+title: MAW's Road to Insanity changes what its scripts say it does
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# Road to Insanity is Doom (vars.Mode 2, bolster 600) with vars.insanityMode, which MAW's Lua reads throughout. What
+# reaches the engine: no map refills (every map's RefillDays set to 1000000000 on arriving), a character beaten far
+# below zero hit points in a party of more than one is "disintegrated" (DismissCharacter, to the Adventurer's Inn).
+# Then blows both ways run through MAW's damage code without an error. Run with the MAW mods.yml.
+- mod_lua:
+    code: ModRT.GameMode.set("Road to Insanity")
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 1
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+      - name: Wilma
+        class: Sorcerer
+        level: 1
+        skills:
+        - name: Staff
+          level: 1
+          mastery: 1
+        equipment: {}
+- advance_runtime: {seconds: 2}
+- mod_lua:
+    code: |
+      return vars.Mode, tostring(vars.insanityMode), tostring(vars.madnessMode), Game.BolsterAmount,
+        ModRT.Difficulty.get(), Game.MapStats[Map.MapStatsIndex].RefillDays, Game.MapStats[1].RefillDays,
+        ModRT.totalErrorCount
+    expect: "2\ttrue\tnil\t600\tInsane\t1000000000\t1000000000\t0"
+# DismissCharacter sends a party member to the Adventurer's Inn (not the first, whom the game never dismisses).
+- mod_lua:
+    code: |
+      local before = Party.Count
+      local went = DismissCharacter(Party.High)
+      return before - Party.Count, tostring(went)
+    expect: "1\ttrue"
+- mod_lua:
+    code: |
+      Hits = 0
+      function events.CalcDamageToMonster(t) Hits = Hits + 1 end
+      function events.CalcDamageToPlayer(t) Hits = Hits + 1 end
+      function Surround()
+        for slot = 0, Party.High do
+          for condition = 0, Party[slot].Conditions.High do Party[slot].Conditions[condition] = 0 end
+          Party[slot].HP = Party[slot].FullHPBase
+        end
+        local placed = 0
+        for i = 0, Map.Monsters.High do
+          local m = Map.Monsters[i]
+          if placed < 8 and m.Hostile and not m.IsDead then
+            local angle = placed * math.pi / 4
+            m.X = math.floor(Party.X + math.cos(angle) * 130)
+            m.Y = math.floor(Party.Y + math.sin(angle) * 130)
+            m.Z = Party.Z
+            m.HP = 30000
+            placed = placed + 1
+          end
+        end
+        return placed > 0
+      end
+      return Surround()
+    expect: "true"
+- press_action: {action: attack, seconds: 3}
+- mod_lua: {code: "return Surround()", expect: "true"}
+- press_action: {action: attack, seconds: 3}
+- mod_lua:
+    code: return Hits > 0, ModRT.totalErrorCount
+    expect: "true\t0"

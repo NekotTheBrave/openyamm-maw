@@ -1,0 +1,93 @@
+id: mod_runtime.maw.austerity_mode
+title: MAW's Austerity changes what its scripts say it does
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# Austerity (vars.AusterityMode) is MAW's own Lua throughout: potions 232-237, 252-256 and 261-263 are deleted (named
+# so), every party member has Identify Monster at Grandmaster 10, monsters are tougher (its difficulty multiplier,
+# zzMaw-Monsters.lua), and the party's bolster level is (level - 4)^1.015, which below level 4 needs LuaJIT's
+# math.max. The same monster is compared with a Normal game at the same difficulty. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 1
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- advance_runtime: {seconds: 1}
+- mod_lua:
+    code: |
+      Probe = nil
+      for i = 0, Map.Monsters.High do
+        if Map.Monsters[i].NameId == 0 then Probe = i break end
+      end
+      NormalHP = Map.Monsters[Probe].FullHitPoints
+      return vars.Mode, Game.ItemsTxt[232].Name ~= "Potion Deleted in Austerity",
+        SplitSkill(Party[0].Skills[const.Skills.IdentifyMonster])
+    expect: "0\ttrue\t0\t0"
+- mod_lua:
+    code: ModRT.GameMode.set("Austerity")
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 1
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- advance_runtime: {seconds: 2}
+- mod_lua:
+    code: |
+      local s, m = SplitSkill(Party[0].Skills[const.Skills.IdentifyMonster])
+      local hp = Map.Monsters[Probe].FullHitPoints
+      return vars.Mode, Game.BolsterAmount, Game.ItemsTxt[232].Name, Game.ItemsTxt[238].Name ~= Game.ItemsTxt[232].Name,
+        s, m, hp > NormalHP, ModRT.totalErrorCount
+    expect: "8\t100\tPotion Deleted in Austerity\ttrue\t10\t4\ttrue\t0"
+# Blows both ways go through MAW's damage code in Austerity (its Fly removal and mass hit points stages) without an
+# error: monsters around the party, a few seconds of attacking.
+- mod_lua:
+    code: |
+      Hits = 0
+      function events.CalcDamageToMonster(t) Hits = Hits + 1 end
+      function events.CalcDamageToPlayer(t) Hits = Hits + 1 end
+      function Surround()
+        for condition = 0, Party[0].Conditions.High do Party[0].Conditions[condition] = 0 end
+        Party[0].HP = Party[0].FullHPBase
+        local placed = 0
+        for i = 0, Map.Monsters.High do
+          local m = Map.Monsters[i]
+          if placed < 8 and m.Hostile and not m.IsDead then
+            local angle = placed * math.pi / 4
+            m.X = math.floor(Party.X + math.cos(angle) * 130)
+            m.Y = math.floor(Party.Y + math.sin(angle) * 130)
+            m.Z = Party.Z
+            m.HP = 30000
+            placed = placed + 1
+          end
+        end
+        return placed > 0
+      end
+      return Surround()
+    expect: "true"
+- press_action: {action: attack, seconds: 3}
+- mod_lua: {code: "return Surround()", expect: "true"}
+- press_action: {action: attack, seconds: 3}
+- mod_lua:
+    code: return Hits > 0, ModRT.totalErrorCount
+    expect: "true\t0"

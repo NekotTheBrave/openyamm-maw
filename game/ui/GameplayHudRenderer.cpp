@@ -501,9 +501,11 @@ void GameplayHudRenderer::renderGameplayHud(GameplayScreenRuntime &context, int 
     }
     renderPassTurnButton(context, width, height);
 
-    // The mods' texts on the game view (CustomUI.CreateText on Screen 0: MAW's map completion), at the original's
-    // 640x480 positions.
-    if (state == GameplayHudScreenState::Gameplay && !modHudTexts().empty())
+    // The mods' texts on the game view (CustomUI.CreateText on Screen 0: MAW's map completion) and on the character
+    // screen (Screen 7: MAW's Beyond Madness death count), at the original's 640x480 positions.
+    const bool characterScreen = state == GameplayHudScreenState::Character;
+
+    if ((state == GameplayHudScreenState::Gameplay || characterScreen) && !modHudTexts().empty())
     {
         if (const std::optional<GameplayScreenRuntime::HudFontHandle> font = context.findHudFont("Arrus"))
         {
@@ -527,7 +529,7 @@ void GameplayHudRenderer::renderGameplayHud(GameplayScreenRuntime &context, int 
 
             for (const auto &[id, text] : modHudTexts())
             {
-                if (text.screen != 0 || !text.visible || text.text.empty())
+                if (text.screen != (characterScreen ? 7 : 0) || !text.visible || text.text.empty())
                 {
                     continue;
                 }
@@ -546,7 +548,14 @@ void GameplayHudRenderer::renderGameplayHud(GameplayScreenRuntime &context, int 
                     portrait = context.resolvePartyPortraitRect(width, height, static_cast<size_t>(member));
                 }
 
-                if (text.x >= 468.0f && minimap)
+                if (characterScreen)
+                {
+                    if (!text.alignLeft && text.width > 0.0f)
+                    {
+                        x += (text.width * scale - textWidth) * 0.5f;
+                    }
+                }
+                else if (text.x >= 468.0f && minimap)
                 {
                     x = minimap->x + (minimap->width - textWidth) * 0.5f;
                     y = minimap->y + minimap->height + 4.0f * scale + (text.y - 377.0f) * scale;

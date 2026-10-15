@@ -1913,6 +1913,14 @@ bool ModRuntime::canWearItem(const Character &character, uint32_t itemId)
     return available;
 }
 
+void ModRuntime::partyDefeated()
+{
+    if (m_active && beginDispatch("partyDefeated"))
+    {
+        endDispatch(0, 0);
+    }
+}
+
 bool ModRuntime::canOpenChest(uint32_t chestId, bool trapped)
 {
     if (!m_active || !beginDispatch("canOpenChest"))

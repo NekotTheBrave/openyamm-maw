@@ -310,6 +310,9 @@ public:
     // Whether the party may open chest `chestId` of the map (the original's CanOpenChest), before its trap is
     // looked at; `trapped`, whether it has one. MAW's Doom locks chests to those without enough Disarm Traps.
     virtual bool canOpenChest(uint32_t chestId, bool trapped) = 0;
+    // The whole party fell and is about to wake up in a temple (the original's DeathMap). MAW's Beyond Madness counts
+    // a death.
+    virtual void partyDefeated() = 0;
     // Whether NPC `npcId` will follow the party for hire, asked in house `houseId` (0 outside a house); false with
     // what the NPC says instead in `refusal`. MAW's Doom: no one but in two houses (its NPCFollowers.lua, a Merge
     // override the port does not run).
@@ -485,6 +488,8 @@ void modMonsterInformationBox(ModMonsterInfoBox &box);
 bool modCanWearItem(const Character &character, uint32_t itemId);
 // Whether the party may open the chest (true without a mod); see IModHooks::canOpenChest.
 bool modCanOpenChest(uint32_t chestId, bool trapped);
+// Tells the mod the whole party fell; see IModHooks::partyDefeated.
+void modPartyDefeated();
 // Whether the NPC will follow the party for hire (true without a mod); see IModHooks::canHireNpcFollower.
 bool modCanHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal);
 // The house's price multiplier for identifying or repairing the item (the engine's without a mod); see

@@ -451,6 +451,14 @@ bool modCanWearItem(const Character &character, uint32_t itemId)
     return pModHooks == nullptr || pModHooks->canWearItem(character, itemId);
 }
 
+void modPartyDefeated()
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->partyDefeated();
+    }
+}
+
 bool modCanOpenChest(uint32_t chestId, bool trapped)
 {
     IModHooks *pModHooks = activeModHooks();
