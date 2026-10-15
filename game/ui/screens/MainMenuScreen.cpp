@@ -187,10 +187,18 @@ void MainMenuScreen::drawHome()
             m_actions.newGame();
         }
     };
-    const auto quit = [this]()
+    // Leaving a game under way: a mod may warn of more (MAW's Beyond Madness: quitting while its death timer runs
+    // counts as a death).
+    const auto leaveWarning = [](const std::string &message)
+    {
+        const ModPlayerActionResult modAction = modPlayerAction(Mm8Action::LeaveGame);
+        return modAction.handled && !modAction.message.empty() ? modAction.message : message;
+    };
+    const auto quit = [this, &leaveWarning]()
     {
         confirm("Leave OpenYAMM?",
-                m_paused ? "Unsaved progress will be lost. Return to your desktop?" : "Return to your desktop?",
+                m_paused ? leaveWarning("Unsaved progress will be lost. Return to your desktop?")
+                         : "Return to your desktop?",
                 {"Cancel", "Quit"},
                 [this](int choice)
                 {
@@ -227,7 +235,8 @@ void MainMenuScreen::drawHome()
         }
         if (action("MenuButtonMainMenu"))
         {
-            confirm("Return to Main Menu?", "Unsaved progress in this adventure will be lost.", {"Cancel", "Main Menu"},
+            confirm("Return to Main Menu?", leaveWarning("Unsaved progress in this adventure will be lost."),
+                    {"Cancel", "Main Menu"},
                     [this](int choice)
                     {
                         if (choice == 1)

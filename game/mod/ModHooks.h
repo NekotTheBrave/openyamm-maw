@@ -34,6 +34,8 @@ struct ModPlayerActionResult
 {
     bool handled = false;
     int requestedAction = 0;
+    // The status text a handler showed meanwhile (MAW's warning before a load that counts as a death).
+    std::string message;
 };
 
 // The original's numbers for the actions the event is raised for.
@@ -57,6 +59,10 @@ constexpr int EquipOnDoll = 133;
 constexpr int CastFromSpellbook = 142;
 // The key that moves to the next member.
 constexpr int NextCharacter = 176;
+// The game menu's Load Game, from a game under way (raised before the game asks to confirm).
+constexpr int LoadGame = 125;
+// The game menu's Quit or Main Menu, from a game under way (raised before the game asks to confirm).
+constexpr int LeaveGame = 132;
 }
 
 // A character's total in a skill the game asks of one character (the original's GetMerchantTotalSkill and

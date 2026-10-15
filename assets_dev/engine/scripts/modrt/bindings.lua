@@ -2019,6 +2019,10 @@ Game = boundObject("Game", {
     end,
     methods = {
         ShowStatusText = function(text)
+            if ModRT.Stats.inAction then
+                ModRT.Stats.actionStatusText = tostring(text or "")
+            end
+
             modrt.showStatusText(text)
         end,
         GetStatisticEffect = getStatisticEffect,
@@ -2211,9 +2215,10 @@ function Bindings.setOpeningChest(chestId, trapped)
     openingChest = chestId and {[chestId] = trapped} or {}
 end
 
--- Map.Objects[i]: the items lying on the map. X, Y and Z are where one lies (a write moves it); Item.Number its
--- kind, 0 for a place holding another object. While PickObject runs, the object being picked up has the item itself
--- as Item (writes to the object, as MAW makes the item vanish, are the engine's to do once a handler took it).
+-- Map.Objects[i]: the items lying on the map. X, Y and Z are where one lies (a write moves it); Item the item, as a
+-- backpack's are (Bonus, BonusStrength, Charges...; MAW sets a dropped reagent's power), its Number 0 for a place
+-- holding another object. While PickObject runs, the object being picked up has the item itself as Item (writes to
+-- the object, as MAW makes the item vanish, are the engine's to do once a handler took it).
 local pickedObject = nil
 
 function Bindings.setPickedObject(objectId)
@@ -2221,24 +2226,28 @@ function Bindings.setPickedObject(objectId)
 end
 
 local function mapObject(index)
-    -- Its item: Number (a write makes it one of that kind, looking it: MAW's randomizer) and T(), the item's row.
-    local item = setmetatable({}, {
-        __index = function(self, key)
+    -- Its item: Number (a write makes it one of that kind, looking it: MAW's randomizer), the other fields as a
+    -- backpack item's, and T(), the item's row.
+    local item = boundObject("Map.Objects[].Item", {
+        get = function(key)
             if key == "Number" then
                 return modrt.worldItemGet(index, "Number") or 0
-            elseif key == "T" then
-                return function()
-                    return Game.ItemsTxt[modrt.worldItemGet(index, "Number") or 0]
-                end
             end
 
-            return nil
+            return modrt.itemGet(index, "world", 0, key)
         end,
-        __newindex = function(_, key, value)
-            if key == "Number" and tonumber(value) then
-                modrt.worldItemSetNumber(index, floor(tonumber(value)))
+        set = function(key, value)
+            if key == "Number" then
+                return tonumber(value) ~= nil and modrt.worldItemSetNumber(index, floor(tonumber(value)))
             end
+
+            return modrt.itemSet(index, "world", 0, key, value)
         end,
+        methods = {
+            T = function()
+                return Game.ItemsTxt[modrt.worldItemGet(index, "Number") or 0]
+            end,
+        },
     })
 
     return setmetatable({}, {
@@ -2485,13 +2494,17 @@ function SummonMonster(id, x, y, z, treasure, place)
 end
 
 -- SummonItem(number, x, y, z, speed): an item of that kind on the map at the point, nil when the game could not
--- place it. The original returns the map object, whose Item scripts then adjust (MAW sets a reagent's power that
--- way). Map objects are not bound yet: the object returned takes those writes and they do not reach the item.
+-- place it. As the original, it returns the map object (Map.Objects), whose Item scripts then adjust: MAW sets a
+-- dropped reagent's power and a Dimensional Map's affixes that way. When the game did not tell where it put the
+-- item, a stand-in object takes the writes, which then do not reach the item.
 function SummonItem(number, x, y, z, speed)
     number = floor(number)
+    local placed = modrt.summonItem(number, x or Party.X, y or Party.Y, z or Party.Z, floor(speed or 0))
 
-    if not modrt.summonItem(number, x or Party.X, y or Party.Y, z or Party.Z, floor(speed or 0)) then
+    if not placed then
         return nil
+    elseif math.type(placed) == "integer" then
+        return Map.Objects[placed]
     end
 
     return {Item = {Number = number, Bonus = 0, BonusStrength = 0, Bonus2 = 0, Charges = 0, MaxCharges = 0}}

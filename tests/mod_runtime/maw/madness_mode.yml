@@ -58,3 +58,15 @@ steps:
       ModRT.fire("DeathMap", {Name = Map.Name})
       return vars.MadnessDeathCounter, ModRT.totalErrorCount
     expect: "2\t0"
+# The game menu's Load (125) and Quit or Main Menu (132) raise their actions before the game asks to confirm: while
+# the timer runs MAW takes the first and says loading now counts as a death, which the confirmation shows (the
+# status text a handler shows during an action comes back with it); the next goes through.
+- mod_lua:
+    code: |
+      vars.lastHitTime = Game.Time
+      ModRT.Stats.action(23, 0, 0, false)
+      local handled, _, text = ModRT.Stats.action(125, 0, 0, false)
+      local again = ModRT.Stats.action(132, 0, 0, false)
+      vars.lastHitTime = 0
+      return tostring(handled), text, tostring(again), ModRT.totalErrorCount
+    expect: "true\tLoading now will count as death, are you sure to proceed?\tfalse\t0"

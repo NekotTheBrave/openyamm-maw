@@ -2747,11 +2747,17 @@ ModPlayerActionResult ModRuntime::playerAction(int action, int param, int param2
     lua_pushinteger(m_pLuaState, param2);
     lua_pushboolean(m_pLuaState, modEventItem() != nullptr);
 
-    if (endDispatch(4, 2))
+    if (endDispatch(4, 3))
     {
-        result.handled = lua_toboolean(m_pLuaState, -2) != 0;
-        result.requestedAction = lua_isnumber(m_pLuaState, -1) ? static_cast<int>(lua_tointeger(m_pLuaState, -1)) : 0;
-        lua_pop(m_pLuaState, 2);
+        result.handled = lua_toboolean(m_pLuaState, -3) != 0;
+        result.requestedAction = lua_isnumber(m_pLuaState, -2) ? static_cast<int>(lua_tointeger(m_pLuaState, -2)) : 0;
+
+        if (lua_type(m_pLuaState, -1) == LUA_TSTRING)
+        {
+            result.message = lua_tostring(m_pLuaState, -1);
+        }
+
+        lua_pop(m_pLuaState, 3);
     }
 
     return result;

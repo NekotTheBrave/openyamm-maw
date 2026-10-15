@@ -1394,6 +1394,8 @@ struct ItemView
     Character *pCharacter = nullptr;
     // 0 in the backpack, otherwise the equipment slot plus one (Item.BodyLocation).
     int bodyLocation = 0;
+    // An item lying on the map: the view is a copy, which a write puts back (worldItemCommit).
+    std::optional<size_t> worldItemIndex;
 };
 
 struct EquipmentSlotMembers
@@ -1507,6 +1509,26 @@ bool itemViewArgument(lua_State *pLuaState, ItemView &view)
         }
 
         itemViewOfInventoryItem(*pHeld, view);
+        return true;
+    }
+
+    // An item lying on the map (Map.Objects[i].Item; argument 1 the place): a copy of it, put back after a write.
+    if (group == "world")
+    {
+        static InventoryItem s_worldItem = {};
+        IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+        const int64_t worldItemIndex = integerArgument(pLuaState, 1);
+        GameplayWorldItemInspectState state = {};
+
+        if (pWorld == nullptr || worldItemIndex < 0
+            || !pWorld->worldItemInspectState(static_cast<size_t>(worldItemIndex), state) || state.isGold)
+        {
+            return false;
+        }
+
+        s_worldItem = state.item;
+        itemViewOfInventoryItem(s_worldItem, view);
+        view.worldItemIndex = static_cast<size_t>(worldItemIndex);
         return true;
     }
 
@@ -1804,6 +1826,14 @@ int nativeItemSet(lua_State *pLuaState)
     else
     {
         handled = false;
+    }
+
+    // An item on the map takes the changed copy (its kind goes through modrt.worldItemSetNumber, which also changes
+    // how it looks).
+    if (handled && view.worldItemIndex && view.pInventoryItem != nullptr)
+    {
+        IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+        handled = pWorld != nullptr && pWorld->updateWorldItemInspectState(*view.worldItemIndex, *view.pInventoryItem);
     }
 
     lua_pushboolean(pLuaState, handled);
@@ -4828,7 +4858,8 @@ int nativeItemTooltip(lua_State *pLuaState)
 }
 
 // modrt.summonItem(number, x, y, z, speed): puts an item of that kind on the map at the point, as the map events'
-// SummonItem does (thrown at `speed`, 0 to lie where it is). Returns whether the game placed it.
+// SummonItem does (thrown at `speed`, 0 to lie where it is). Returns its place in Map.Objects, or whether the game
+// placed it.
 int nativeSummonItem(lua_State *pLuaState)
 {
     ISceneEventContext *pScene = dynamic_cast<ISceneEventContext *>(worldFromHost(pLuaState));
@@ -4842,16 +4873,30 @@ int nativeSummonItem(lua_State *pLuaState)
         return 1;
     }
 
-    lua_pushboolean(
-        pLuaState,
-        pScene->summonEventItem(
-            static_cast<uint32_t>(itemId),
-            static_cast<int32_t>(luaL_checknumber(pLuaState, 2)),
-            static_cast<int32_t>(luaL_checknumber(pLuaState, 3)),
-            static_cast<int32_t>(luaL_checknumber(pLuaState, 4)),
-            static_cast<int32_t>(luaL_optinteger(pLuaState, 5, 0)),
-            1,
-            false));
+    IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+    const size_t countBefore = pWorld->worldItemCount();
+    const bool summoned = pScene->summonEventItem(
+        static_cast<uint32_t>(itemId),
+        static_cast<int32_t>(luaL_checknumber(pLuaState, 2)),
+        static_cast<int32_t>(luaL_checknumber(pLuaState, 3)),
+        static_cast<int32_t>(luaL_checknumber(pLuaState, 4)),
+        static_cast<int32_t>(luaL_optinteger(pLuaState, 5, 0)),
+        1,
+        false);
+    GameplayWorldItemInspectState placed = {};
+
+    // The item's place in Map.Objects when it is the one added last (as the game adds items), else just true.
+    if (summoned && pWorld->worldItemCount() == countBefore + 1
+        && pWorld->worldItemInspectState(countBefore, placed) && !placed.isGold
+        && placed.item.objectDescriptionId == static_cast<uint32_t>(itemId))
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(countBefore));
+    }
+    else
+    {
+        lua_pushboolean(pLuaState, summoned);
+    }
+
     return 1;
 }
 

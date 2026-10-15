@@ -1,0 +1,35 @@
+id: mod_runtime.maw.summon_item
+title: SummonItem returns the map object, whose item scripts adjust
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# SummonItem returns the map object (Map.Objects) of the item it put down, as the original does, and its Item takes
+# a backpack item's fields: MAW (zzAlchemy.lua) drops a reagent where a monster died and sets its power from the
+# party's level (Bonus), making it a catalyst (221 to 224) when that is high; a Dimensional Map's affixes the same
+# way. The writes reach the item lying there. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out01.odm
+- mod_lua:
+    code: |
+      local obj = SummonItem(200, Party.X + 300, Party.Y, Party.Z, 0)
+      obj.Item.Bonus = 37
+      local first = obj.Item.Bonus
+      obj.Item.Number = 222
+      obj.Item.Bonus = 250
+      local again = nil
+      for i = 0, Map.Objects.High do
+        if Map.Objects[i].Item.Number == 222 then again = Map.Objects[i].Item end
+      end
+      return first, again ~= nil and again.Bonus, again ~= nil and again:T().Name == Game.ItemsTxt[222].Name,
+        ModRT.totalErrorCount
+    expect: "37\t250\ttrue\t0"
+# The Endless Potion's strength (BonusStrength).
+- mod_lua:
+    code: |
+      local obj = SummonItem(1069, Party.X - 300, Party.Y, Party.Z, 0)
+      obj.Item.BonusStrength = 42
+      return obj.Item.Number, obj.Item.BonusStrength, ModRT.totalErrorCount
+    expect: "1069\t42\t0"

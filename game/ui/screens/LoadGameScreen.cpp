@@ -1,6 +1,7 @@
 #include "game/ui/screens/LoadGameScreen.h"
 
 #include "game/maps/SaveGame.h"
+#include "game/mod/ModHooks.h"
 
 #include <SDL3/SDL.h>
 
@@ -313,7 +314,12 @@ void LoadGameScreen::requestLoad()
     };
     if (m_fromGameplay)
     {
-        confirm("Load Adventure?", "Unsaved progress in the current adventure will be lost.", {"Cancel", "Load"},
+        // A mod may warn of more (MAW's Beyond Madness: loading while its death timer runs counts as a death).
+        const ModPlayerActionResult modAction = modPlayerAction(Mm8Action::LoadGame);
+        const std::string message = modAction.handled && !modAction.message.empty()
+            ? modAction.message
+            : "Unsaved progress in the current adventure will be lost.";
+        confirm("Load Adventure?", message, {"Cancel", "Load"},
                 [load](int choice)
                 {
                     if (choice == 1)

@@ -444,11 +444,14 @@ end
 -- The player is about to take an action: the original's Action event, raised for the actions the engine reports
 -- (23 attack, 25 the quick spell key or an attack spell). A handler that does the action itself sets t.Handled. A
 -- handler may ask for another game action in its place with DoGameAction, which the game then takes (MAW has a
--- healer short of spell points attack this way). Returns whether it was handled and the action asked for.
+-- healer short of spell points attack this way). Returns whether it was handled, the action asked for, and the last
+-- status text a handler showed (Game.ShowStatusText; the game menu shows it with its confirmation: MAW's Beyond
+-- Madness warning that loading or quitting now counts as a death, actions 125 and 132).
 function Stats.action(action, param, param2, withHeldItem)
     local event = {Action = action, Param = param, Param2 = param2, Handled = false}
     local before = Stats.requestedAction
     Stats.requestedAction = nil
+    Stats.actionStatusText = nil
     Stats.inAction = true
     -- An action about the held item (133, putting it on the doll) has Mouse.Item the item.
     local previousItem = rawget(Mouse, "Item")
@@ -466,7 +469,7 @@ function Stats.action(action, param, param2, withHeldItem)
     Stats.inAction = false
     local requested = Stats.requestedAction
     Stats.requestedAction = before
-    return event.Handled == true, requested or 0
+    return event.Handled == true, requested or 0, Stats.actionStatusText
 end
 
 -- DoGameAction(action, param, param2): asks the game to take an action. Only answered while the Action event is
