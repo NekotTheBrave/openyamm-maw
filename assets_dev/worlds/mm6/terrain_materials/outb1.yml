@@ -72,6 +72,9 @@ layers:
   macro_brightness: 0.15
   macro_tint: [1.0, 1.0, 1.0]
   fringe: 1.0
+meadow:
+  dry: [1.2, 1.06, 0.64]
+  lush: [0.78, 0.94, 0.82]
 slope: {layer: 5, start: 0.36, end: 0.56}
 shore: {file: outb1_shore.png, range: 1024.0, beach_slope: 0.3, seabed_slope: 0.4, seabed_depth: 96.0, opaque_depth: 72.0,
   detail_depth: 24.0, layer: 4}

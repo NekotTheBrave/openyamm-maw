@@ -11,28 +11,29 @@ uniform vec4 u_bakedTerrainBounds;
 #endif
 
 uniform vec4 u_cameraPosition;
+// x = time, y = full density distance, z = far distance, w = 1 for grass cards, 0 for stones.
 uniform vec4 u_terrainDecorationParams;
+// x = largest footprint scale (TerrainDecorationLod::maxScale).
+uniform vec4 u_terrainDecorationLod;
 // Card outline per tuft layer: 8 texture coordinates per layer, two per vec4 (TerrainDecorationRenderer).
 uniform vec4 u_terrainDecorationCutout[64];
 
 void main()
 {
+    // Level of detail (level_generation/terrain/GRASS_LOD.md, terrainDecorationKeep/Scale): beyond the full density
+    // distance an area keeps (near / distance)^2 of its tufts, chosen by their fixed rank, and the survivors grow so
+    // the coverage holds; the last 15 % of the range fades the rest. A tuft whose rank nears the share thins out from
+    // its soft edges inward (the fragment shader raises its alpha cutoff), so nothing pops or sparkles.
     float distance = length(i_data0.xyz - u_cameraPosition.xyz);
-    // Keep silhouettes at their authored size. Stagger the coverage fade in a broad far band;
-    // changing the camera must never make grass grow out of the ground.
+    float nearDistance = u_terrainDecorationParams.y;
+    float farDistance = u_terrainDecorationParams.z;
+    // ratio > 1 inside the full density distance, where every tuft stays whole; the fade band only begins there.
+    float ratio = nearDistance * nearDistance / max(distance * distance, 1.0)
+        * (1.0 - smoothstep(farDistance * 0.85, farDistance, distance));
+    float rank = i_data1.w;
+    float fade = clamp((ratio - rank) / max(min(ratio, 1.0) * 0.2, 0.0001), 0.0, 1.0);
+    float scale = clamp(distance / nearDistance, 1.0, u_terrainDecorationLod.x);
     float seed = fract(sin(dot(i_data0.xy, vec2(0.0129898, 0.078233))) * 43758.5453);
-    float rangeScale = mix(0.8, 1.0, seed);
-    float fade = 1.0 - smoothstep(u_terrainDecorationParams.y * rangeScale,
-                                u_terrainDecorationParams.z * rangeScale, distance);
-    if (u_terrainDecorationParams.w > 0.5)
-    {
-        // Grass thins out tuft by tuft: each vanishes at its own distance in the far band, over a short stretch in
-        // which the fragment shader raises its alpha cutoff. Per-pixel noise there sparkled while the camera moved:
-        // a distant tuft is a few pixels across, so every pixel hit a different noise cell from frame to frame.
-        float vanish = mix(u_terrainDecorationParams.y, u_terrainDecorationParams.z, fract(seed * 61.7 + 0.31));
-        float stretch = (u_terrainDecorationParams.z - u_terrainDecorationParams.y) * 0.12;
-        fade = 1.0 - smoothstep(vanish - stretch, vanish, distance);
-    }
     float c = cos(i_data0.w);
     float s = sin(i_data0.w);
     vec3 position = a_position;
@@ -46,27 +47,39 @@ void main()
         position = a_position.y < 0.5 ? vec3(texcoord.x - 0.5, 0.0, 1.0 - texcoord.y)
             : vec3(0.0, texcoord.x - 0.5, 1.0 - texcoord.y);
     }
-    vec3 local = position * vec3(i_data1.x, i_data1.x, i_data1.y);
+    // The card's screen area grows by scale^2: mostly wider, a little taller.
+    vec3 local = position * vec3(i_data1.x * scale * sqrt(scale), i_data1.x * scale * sqrt(scale),
+        i_data1.y * sqrt(scale));
     vec3 world = i_data0.xyz + vec3(c * local.x - s * local.y, s * local.x + c * local.y, local.z);
     world.z -= dot(world.xy - i_data0.xy, i_data3.xy) / max(i_data3.z, 0.5);
     float phase = u_terrainDecorationParams.x * 1.6 + dot(i_data0.xy, vec2(0.003, 0.004));
     world.xy += vec2(sin(phase), cos(phase * 0.7)) * i_data1.z * position.z * position.z;
     gl_Position = mul(u_viewProj, vec4(world, 1.0));
+    if (fade <= 0.0)
+    {
+        // Thinned out: every vertex at one point, so the cards rasterize nothing.
+        gl_Position = vec4(0.0, 0.0, 0.0, 1.0);
+    }
     v_worldPosition = world;
     v_texcoord0 = texcoord;
-    v_texcoord1 = vec4(0.0, i_data1.w, fade, seed);
+    v_texcoord1 = vec4(0.0, 1.0 - u_terrainDecorationParams.w, fade, seed);
     v_depth = gl_Position.w;
     v_color0 = a_color0 * i_data2;
     v_sunlight = outdoorSunlight(i_data3.xyz);
     // A tuft is small, so its light is evaluated per vertex: v_flowInfo.yzw multiplies the display-space texel.
     // Baked: (texel^2.2 * light)^(1/2.2) = texel * light^(1/2.2). The sun-shadow fragment variants relight per pixel.
+    // Thinned-out tufts skip it (the whole instance takes the same branch).
+    vec3 light = vec3_splat(0.0);
+    if (fade > 0.0)
+    {
 #if BAKED_SOURCES
-    vec2 bakedUv = (world.xy - u_bakedTerrainBounds.xy) / u_bakedTerrainBounds.zw;
-    vec3 light = bakedSourceLighting(texture2DLod(s_texLightmap, bakedUv, 0.0),
-        texture2DLod(s_texBakedSky, bakedUv, 0.0)) + getFxLighting(world, 0.0);
-    light = pow(max(light, vec3_splat(0.0)), vec3_splat(1.0 / 2.2));
+        vec2 bakedUv = (world.xy - u_bakedTerrainBounds.xy) / u_bakedTerrainBounds.zw;
+        light = bakedSourceLighting(texture2DLod(s_texLightmap, bakedUv, 0.0),
+            texture2DLod(s_texBakedSky, bakedUv, 0.0)) + getFxLighting(world, 0.0);
+        light = pow(max(light, vec3_splat(0.0)), vec3_splat(1.0 / 2.2));
 #else
-    vec3 light = getFxLighting(world, v_sunlight);
+        light = getFxLighting(world, v_sunlight);
 #endif
+    }
     v_flowInfo = vec4(i_data3.w, light);
 }

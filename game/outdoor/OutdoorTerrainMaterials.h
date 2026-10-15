@@ -42,6 +42,8 @@ struct OutdoorTerrainMaterialLayer
     float fringe = 1.0f;
     // The library material holds standing water in its smoothest texels (swamp pools).
     bool pools = false;
+    // How strongly the meadow field (OutdoorMeadow.h) tints this layer towards the config's dry and lush colours.
+    float meadow = 0.0f;
 };
 
 // Shallow water at the coasts: the map's waterline distance image and how the rendered terrain meets the water.
@@ -83,6 +85,9 @@ struct OutdoorTerrainMaterialConfig
     // one repeat of the noise texture used for it (smaller gives finer clumps).
     float fringeStrength = 0.0f;
     float fringeScale = 2048.0f;
+    // Colour multipliers of the driest and lushest ground (OutdoorMeadowField), for layers with a meadow strength.
+    std::array<float, 3> meadowDry = {1.0f, 1.0f, 1.0f};
+    std::array<float, 3> meadowLush = {1.0f, 1.0f, 1.0f};
     std::optional<OutdoorTerrainMaterialShore> shore;
 };
 
@@ -175,8 +180,10 @@ public:
         return sunShadows ? m_shadowProgram : m_program;
     }
     // Binds stages 8-15 and the material uniforms, and with a seabed the caustics at stage 0. directSun: the bake's
-    // direct-only sun page is bound at stage 5.
-    void bind(const OutdoorLightingData *pBakedLighting, bool directSun, bool antiTiling) const;
+    // direct-only sun page is bound at stage 5. foliage (stage 1): the grass decorations' far colour with its
+    // u_terrainFoliage values (TerrainDecorationRenderer::foliageMap/foliageParams); invalid when no grass is drawn.
+    void bind(const OutdoorLightingData *pBakedLighting, bool directSun, bool antiTiling,
+        bgfx::TextureHandle foliage, const std::array<float, 4> &foliageParams) const;
 
 private:
     // The material layers and images, read and decoded on the load workers before any GPU resource is created.
@@ -229,7 +236,12 @@ private:
     bgfx::UniformHandle m_control = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_light = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_misc = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_meadow = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_shoreUniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_foliageSampler = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_foliageUniform = BGFX_INVALID_HANDLE;
+    // Bound at the foliage stage when no grass is drawn (1x1, no coverage).
+    bgfx::TextureHandle m_noFoliage = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_program = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_shadowProgram = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_singleProgram = BGFX_INVALID_HANDLE;
@@ -241,6 +253,7 @@ private:
     std::array<std::array<float, 4>, OutdoorTerrainMaterialConfig::MaxLayers> m_layerVariantValues = {};
     std::array<float, 4> m_controlValues = {};
     std::array<float, 4> m_miscValues = {};
+    std::array<std::array<float, 4>, 2> m_meadowValues = {};
     std::array<float, 4> m_shoreValues = {};
 };
 } // namespace OpenYAMM::Game

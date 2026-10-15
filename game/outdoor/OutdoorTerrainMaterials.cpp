@@ -5,6 +5,7 @@
 #include "engine/render/CookedTexture.h"
 #include "game/outdoor/OutdoorGeometryUtils.h"
 #include "game/outdoor/OutdoorLightingData.h"
+#include "game/outdoor/OutdoorMeadow.h"
 #include "game/render/TextureFiltering.h"
 
 #include <yaml-cpp/yaml.h>
@@ -34,6 +35,8 @@ constexpr const char *MacroVariationPath = "engine/terrain_materials/macro_varia
 constexpr const char *CausticsPath = "engine/terrain_materials/caustics.png";
 // The caustics take stage 0 (the terrain draws no tile art).
 constexpr uint8_t CausticsStage = 0;
+// The grass decorations' far colour (TerrainDecorationRenderer::foliageMap).
+constexpr uint8_t FoliageStage = 1;
 
 struct TerrainMaterialVertex
 {
@@ -45,7 +48,8 @@ struct TerrainMaterialVertex
     float normalZ;
     // 1 - normal.z of the terrain smoothed over about a cell: selects cliffs without tracing native triangles.
     float steepness;
-    float unused;
+    // The meadow field (OutdoorMeadowField): -1 lush .. +1 dry.
+    float meadow;
 };
 
 // Separable box blur of a square grid, clamped at its edges.
@@ -205,6 +209,7 @@ std::optional<OutdoorTerrainMaterialConfig> loadOutdoorTerrainMaterialConfig(
             layer.variantAmount = boundedFloat(node, "variant_amount", 0.5f, 0.0f, 1.0f);
             layer.fringe = boundedFloat(node, "fringe", 1.0f, 0.0f, 4.0f);
             layer.pools = node["pools"].as<bool>(false);
+            layer.meadow = boundedFloat(node, "meadow", 0.0f, 0.0f, 2.0f);
             if (node["macro_tint"])
             {
                 layer.macroTint = node["macro_tint"].as<std::array<float, 3>>();
@@ -241,6 +246,19 @@ std::optional<OutdoorTerrainMaterialConfig> loadOutdoorTerrainMaterialConfig(
         {
             config.fringeStrength = boundedFloat(fringe, "strength", 0.0f, 0.0f, 4.0f);
             config.fringeScale = boundedFloat(fringe, "scale", 2048.0f, 256.0f, 65536.0f);
+        }
+        if (const YAML::Node meadow = root["meadow"])
+        {
+            config.meadowDry = meadow["dry"].as<std::array<float, 3>>();
+            config.meadowLush = meadow["lush"].as<std::array<float, 3>>();
+            for (float value : {config.meadowDry[0], config.meadowDry[1], config.meadowDry[2], config.meadowLush[0],
+                     config.meadowLush[1], config.meadowLush[2]})
+            {
+                if (!std::isfinite(value) || value < 0.0f || value > 2.0f)
+                {
+                    throw std::runtime_error("invalid terrain meadow tint");
+                }
+            }
         }
         if (const YAML::Node shoreNode = root["shore"])
         {
@@ -525,12 +543,18 @@ bool OutdoorTerrainMaterials::initialize(const Engine::AssetFileSystem &assets, 
     m_control = bgfx::createUniform("u_terrainMaterialControl", bgfx::UniformType::Vec4);
     m_light = bgfx::createUniform("u_terrainMaterialLight", bgfx::UniformType::Vec4);
     m_misc = bgfx::createUniform("u_terrainMaterialMisc", bgfx::UniformType::Vec4);
+    m_meadow = bgfx::createUniform("u_terrainMeadow", bgfx::UniformType::Vec4, 2);
     m_shoreUniform = bgfx::createUniform("u_terrainShore", bgfx::UniformType::Vec4);
+    m_foliageSampler = bgfx::createUniform("s_terrainFoliage", bgfx::UniformType::Sampler);
+    m_foliageUniform = bgfx::createUniform("u_terrainFoliage", bgfx::UniformType::Vec4);
+    const std::array<uint16_t, 4> noFoliage = {};
+    m_noFoliage = bgfx::createTexture2D(1, 1, false, 1, bgfx::TextureFormat::RGBA16F,
+        BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP, bgfx::copy(noFoliage.data(), sizeof(noFoliage)));
     for (size_t index = 0; index < config.layers.size(); ++index)
     {
         const OutdoorTerrainMaterialLayer &layer = config.layers[index];
         m_layerParamValues[index] = {1.0f / layer.repeat, layer.heightContrast, layer.normalStrength, layer.cavity};
-        m_layerTintValues[index] = {layer.tint[0], layer.tint[1], layer.tint[2], 1.0f};
+        m_layerTintValues[index] = {layer.tint[0], layer.tint[1], layer.tint[2], layer.meadow};
         m_layerCliffValues[index] = {layer.cliffTint[0], layer.cliffTint[1], layer.cliffTint[2], 1.0f};
         m_layerMacroValues[index] = {layer.macroTint[0], layer.macroTint[1], layer.macroTint[2], layer.macroBrightness};
         m_layerVariantValues[index] = {float(layer.variant < 0 ? int(index) : layer.variant), layer.variantAmount,
@@ -539,6 +563,8 @@ bool OutdoorTerrainMaterials::initialize(const Engine::AssetFileSystem &assets, 
     m_smoothing = config.smoothing;
     m_controlValues = {float(config.weightedLayers), float(config.slopeLayer), config.slopeStart, config.slopeEnd};
     m_miscValues = {config.fringeStrength, 1.0f / config.fringeScale, 1.0f, 0.0f};
+    m_meadowValues = {{{config.meadowDry[0], config.meadowDry[1], config.meadowDry[2], 0.0f},
+        {config.meadowLush[0], config.meadowLush[1], config.meadowLush[2], 0.0f}}};
     // z: waterline distance past which the seabed is plain (detail depth on the seabed slope), w: its layer.
     m_shoreValues = {config.shore ? config.shore->range : 1.0f, seabed() ? 1.0f : 0.0f,
         config.shore ? config.shore->detailDepth / config.shore->seabedSlope : 0.0f,
@@ -600,6 +626,10 @@ void OutdoorTerrainMaterials::shutdown(bool destroyResources)
     release(m_light);
     release(m_misc);
     release(m_shoreUniform);
+    release(m_meadow);
+    release(m_foliageSampler);
+    release(m_foliageUniform);
+    release(m_noFoliage);
     release(m_program);
     release(m_shadowProgram);
     release(m_singleProgram);
@@ -608,7 +638,8 @@ void OutdoorTerrainMaterials::shutdown(bool destroyResources)
     m_smoothing = 0.0f;
 }
 
-void OutdoorTerrainMaterials::bind(const OutdoorLightingData *pBakedLighting, bool directSun, bool antiTiling) const
+void OutdoorTerrainMaterials::bind(const OutdoorLightingData *pBakedLighting, bool directSun, bool antiTiling,
+    bgfx::TextureHandle foliage, const std::array<float, 4> &foliageParams) const
 {
     const uint32_t clamp = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
     const uint32_t point = clamp | BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT | BGFX_SAMPLER_MIP_POINT;
@@ -625,6 +656,10 @@ void OutdoorTerrainMaterials::bind(const OutdoorLightingData *pBakedLighting, bo
         bindTexture(CausticsStage, m_causticsSampler, m_caustics, TextureFilterProfile::Terrain);
     }
     bgfx::setUniform(m_shoreUniform, m_shoreValues.data());
+    const bool grass = bgfx::isValid(foliage);
+    bgfx::setTexture(FoliageStage, m_foliageSampler, grass ? foliage : m_noFoliage, clamp);
+    const std::array<float, 4> noFoliageParams = {0.0f, 1.0f, 1.0f, 1.0f};
+    bgfx::setUniform(m_foliageUniform, grass ? foliageParams.data() : noFoliageParams.data());
     bgfx::setUniform(m_layerParams, m_layerParamValues.data(), uint16_t(m_layerParamValues.size()));
     bgfx::setUniform(m_layerTints, m_layerTintValues.data(), uint16_t(m_layerTintValues.size()));
     bgfx::setUniform(m_layerCliffTints, m_layerCliffValues.data(), uint16_t(m_layerCliffValues.size()));
@@ -641,6 +676,7 @@ void OutdoorTerrainMaterials::bind(const OutdoorLightingData *pBakedLighting, bo
     bgfx::setUniform(m_light, light.data());
     const std::array<float, 4> misc = {m_miscValues[0], m_miscValues[1], antiTiling ? 1.0f : 0.0f, m_miscValues[3]};
     bgfx::setUniform(m_misc, misc.data());
+    bgfx::setUniform(m_meadow, m_meadowValues.data(), uint16_t(m_meadowValues.size()));
 }
 
 bool OutdoorTerrainMaterials::createShore(const SourceImages &images, const OutdoorTerrainMaterialConfig &config,
@@ -713,6 +749,7 @@ bool OutdoorTerrainMaterials::createMesh(const OutdoorMapData &map,
     const int steps = int(std::clamp(subdivision, 1u, 8u));
     const int side = GridCells * steps + 1;
     const float spacing = float(OutdoorMapData::TerrainTileSize) / float(steps);
+    const OutdoorMeadowField meadow = buildOutdoorMeadowField(map);
     std::vector<float> heights(size_t(side) * side);
     for (int j = 0; j < side; ++j)
     {
@@ -964,6 +1001,7 @@ bool OutdoorTerrainMaterials::createMesh(const OutdoorMapData &map,
                     vertex.normalY = -slopeY / length;
                     vertex.normalZ = 1.0f / length;
                     vertex.steepness = steepness(i, j);
+                    vertex.meadow = meadow.sample(vertex.x, vertex.y);
                     chunk.boundsMin = {std::min(chunk.boundsMin.x, vertex.x), std::min(chunk.boundsMin.y, vertex.y),
                         std::min(chunk.boundsMin.z, vertex.z)};
                     chunk.boundsMax = {std::max(chunk.boundsMax.x, vertex.x), std::max(chunk.boundsMax.y, vertex.y),
@@ -1094,14 +1132,19 @@ bool OutdoorTerrainMaterials::createMesh(const OutdoorMapData &map,
                 mapWaterTile = map.tileMap[index];
             }
         }
+        // Only ground inside the waterline counts: land past a drop (outside a high lake's rim) also lies under the
+        // spread level, but the water cannot reach it.
         const auto submerged = [&](int cellX, int cellY)
         {
             for (int subY = 0; subY <= steps; ++subY)
             {
                 for (int subX = 0; subX <= steps; ++subX)
                 {
+                    const int i = cellX * steps + subX;
+                    const int j = cellY * steps + subY;
                     const float level = cellLevel(cellX, cellY, float(subX) / float(steps), float(subY) / float(steps));
-                    if (!std::isnan(level) && height(cellX * steps + subX, cellY * steps + subY) < level)
+                    if (!std::isnan(level) && height(i, j) < level
+                        && shoreDistance(float(i) * spacing - 32768.0f, 32768.0f - float(j) * spacing) < 0.0f)
                     {
                         return true;
                     }

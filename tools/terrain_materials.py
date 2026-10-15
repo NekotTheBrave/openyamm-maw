@@ -641,6 +641,7 @@ def weights(world, map_name, texels, preview):
             "macro_brightness": entry.get("macro_brightness", 0.15),
             "macro_tint": entry.get("macro_tint", [1.0, 1.0, 1.0]),
             "fringe": entry.get("fringe", 1.0),
+            **({"meadow": entry["meadow"]} if entry.get("meadow") else {}),
             **({"pools": True} if library[entry["library"]].get("pools") else {}),
             **({"variant": layers.index(entry["variant"]), "variant_amount": entry.get("variant_amount", 0.4)}
                if entry.get("variant") else {}),
@@ -649,6 +650,8 @@ def weights(world, map_name, texels, preview):
     slot_file = {"version": 1, "texels_per_cell": texels, "weights": files, "weighted_layers": len(weighted),
                  "fringe": config.get("fringe", {"strength": 0.0, "scale": 2048.0}),
                  "layers": entries}
+    if config.get("meadow"):
+        slot_file["meadow"] = config["meadow"]
     if slope:
         slot_file["slope"] = {"layer": layers.index(slope["material"]), "start": slope["start"],
                               "end": slope["end"]}

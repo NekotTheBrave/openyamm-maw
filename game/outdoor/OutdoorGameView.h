@@ -771,6 +771,8 @@ private:
         OutdoorSelectedFxLights lights;
     };
     std::vector<TerrainDecorationBatch> m_terrainDecorationBatches;
+    // The decorations' visible instance ranges, reused between refreshes.
+    std::vector<TerrainDecorationPatch> m_terrainDecorationDraws;
     uint64_t m_terrainDecorationRefreshTick = 0;
     uint32_t m_terrainDecorationLightCount = 0;
     std::optional<std::array<std::string, 256>> m_terrainDecorationTileNames;

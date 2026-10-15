@@ -1,12 +1,11 @@
-minimum_normal_z: 0.88
+minimum_normal_z: 0.62
 density_variation: 0.8
 patch_size: 768
-tall_grass_chance: 0.04
+tall_grass_chance: 0.1
 tall_grass_scale: 1.5
 version: 2
 families_file: families_v2.yml
 seed: 1701531899
-distance: 4096
 rules:
 - texture: grastyl
   family: tropical_low

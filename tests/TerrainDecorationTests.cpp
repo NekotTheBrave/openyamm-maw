@@ -39,6 +39,30 @@ TerrainDecorationConfig config()
     result.rules.push_back(rule);
     return result;
 }
+
+// Every quadtree node's own instance range.
+std::vector<TerrainDecorationPatch> ranges(const TerrainDecorationPlacement &placement)
+{
+    std::vector<TerrainDecorationPatch> result;
+    for (const TerrainDecorationNode &node : placement.nodes)
+    {
+        result.push_back(node.range);
+    }
+    return result;
+}
+
+OutdoorMapData grassField(int first, int last)
+{
+    OutdoorMapData map = flatMap();
+    for (int y = first; y <= last; ++y)
+    {
+        for (int x = first; x <= last; ++x)
+        {
+            map.tileMap[y * 128 + x] = 1;
+        }
+    }
+    return map;
+}
 }
 
 TEST_CASE("Terrain decoration placement is deterministic and follows rendered triangle heights")
@@ -95,14 +119,14 @@ TEST_CASE("Larger terrain grass keeps its instance budget and contains sloped ca
         settings.rules[0].height *= scale;
         const TerrainDecorationPlacement placement = scatterTerrainDecorations(map, textures(), settings);
         REQUIRE(placement.instances.size() == originalCount);
-        for (const TerrainDecorationPatch &patch : placement.patches)
+        for (const TerrainDecorationPatch &patch : ranges(placement))
         {
             for (uint32_t index = patch.first; index < patch.first + patch.count; ++index)
             {
                 const TerrainDecorationInstance &instance = placement.instances[index];
                 const float c = std::cos(instance.positionYaw[3]);
                 const float s = std::sin(instance.positionYaw[3]);
-                const float halfWidth = instance.sizeWindKind[0] * 0.5f;
+                const float halfWidth = instance.sizeWindRank[0] * 0.5f;
                 for (const std::array<float, 2> &corner :
                     {std::array<float, 2>{-halfWidth, 0}, {halfWidth, 0}, {0, -halfWidth}, {0, halfWidth}})
                 {
@@ -110,13 +134,13 @@ TEST_CASE("Larger terrain grass keeps its instance budget and contains sloped ca
                     const float y = s * corner[0] + c * corner[1];
                     const float z = instance.positionYaw[2]
                         - (x * instance.groundNormal[0] + y * instance.groundNormal[1]) / instance.groundNormal[2];
-                    const float wind = instance.sizeWindKind[2];
+                    const float wind = instance.sizeWindRank[2];
                     CHECK(instance.positionYaw[0] + x - wind >= patch.min[0]);
                     CHECK(instance.positionYaw[0] + x + wind <= patch.max[0]);
                     CHECK(instance.positionYaw[1] + y - wind >= patch.min[1]);
                     CHECK(instance.positionYaw[1] + y + wind <= patch.max[1]);
                     CHECK(z >= patch.min[2]);
-                    CHECK(z + instance.sizeWindKind[1] <= patch.max[2]);
+                    CHECK(z + instance.sizeWindRank[1] <= patch.max[2]);
                 }
             }
         }
@@ -166,7 +190,7 @@ TEST_CASE("Terrain decoration short grass tapers into blends while stones and ta
     CHECK(blended.instances.size() < fullCount * 3 / 4);
     for (const TerrainDecorationInstance &instance : blended.instances)
     {
-        CHECK(instance.sizeWindKind[1] <= rule.height * 1.3f);
+        CHECK(instance.sizeWindRank[1] <= rule.height * 1.3f);
     }
     rule.stone = true;
     CHECK(scatterTerrainDecorations(flatMap(), textures(), settings).instances.empty());
@@ -200,25 +224,38 @@ TEST_CASE("Terrain decoration patch variation keeps a bounded budget and determi
     {
         const TerrainDecorationInstance &instance = first.instances[i];
         identical &= instance.positionYaw == second.instances[i].positionYaw &&
-            instance.sizeWindKind == second.instances[i].sizeWindKind;
-        taller += instance.sizeWindKind[1] > settings.rules[0].height * 1.3f;
+            instance.sizeWindRank == second.instances[i].sizeWindRank;
+        taller += instance.sizeWindRank[1] > settings.rules[0].height * 1.3f;
     }
     CHECK(identical);
     CHECK(double(taller) / first.instances.size() > 0.04);
     CHECK(double(taller) / first.instances.size() < 0.12);
+    std::vector<uint32_t> cellCounts(128 * 128, 0);
+    for (const TerrainDecorationInstance &instance : first.instances)
+    {
+        const int x = int(std::floor(instance.positionYaw[0] / 512.0f)) + 64;
+        const int y = 64 - int(std::ceil(instance.positionYaw[1] / 512.0f));
+        ++cellCounts[size_t(y) * 128 + x];
+    }
     uint32_t smallest = 128;
     uint32_t largest = 0;
-    for (const TerrainDecorationPatch &patch : first.patches)
+    for (int y = 40; y < 80; ++y)
     {
-        smallest = std::min(smallest, patch.count);
-        largest = std::max(largest, patch.count);
-        for (uint32_t i = patch.first; i < patch.first + patch.count; ++i)
+        for (int x = 40; x < 80; ++x)
         {
-            REQUIRE(first.instances[i].positionYaw[2] + first.instances[i].sizeWindKind[1] < patch.max[2]);
+            smallest = std::min(smallest, cellCounts[size_t(y) * 128 + x]);
+            largest = std::max(largest, cellCounts[size_t(y) * 128 + x]);
         }
     }
     CHECK(smallest < 35);
     CHECK(largest > 80);
+    for (const TerrainDecorationPatch &patch : ranges(first))
+    {
+        for (uint32_t i = patch.first; i < patch.first + patch.count; ++i)
+        {
+            REQUIRE(first.instances[i].positionYaw[2] + first.instances[i].sizeWindRank[1] < patch.max[2]);
+        }
+    }
     settings.densityMask.resize(128 * 128, 255);
     CHECK(scatterTerrainDecorations(map, textures(), settings).instances.size() == first.instances.size());
     std::fill(settings.densityMask.begin(), settings.densityMask.end(), 0);
@@ -287,21 +324,22 @@ TEST_CASE("Terrain decoration setting defaults off and survives saving settings"
     std::filesystem::remove(path);
 }
 
-TEST_CASE("Terrain decoration culling retains visible patches and rejects behind distant and offscreen patches")
+TEST_CASE("Terrain decoration culling retains visible bounds and rejects behind distant and offscreen bounds")
 {
     TerrainDecorationRenderer renderer;
-    TerrainDecorationPatch patch = {};
-    patch.min = {480.0f, -20.0f, -20.0f};
-    patch.max = {520.0f, 20.0f, 20.0f};
-    const auto visible = [&](const bx::Vec3 &camera)
+    const std::array<float, 3> min = {480.0f, -20.0f, -20.0f};
+    const std::array<float, 3> max = {520.0f, 20.0f, 20.0f};
+    const auto visible = [&](const bx::Vec3 &camera, float maximumDistance = 4096.0f)
     {
         renderer.setView(camera, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f},
                          {0.0f, 0.0f, 1.0f}, 1.3333f, 1.0472f);
-        return renderer.visible(patch);
+        return renderer.visible(min, max, maximumDistance);
     };
     CHECK(visible({0.0f, 0.0f, 0.0f}));
     CHECK_FALSE(visible({1000.0f, 0.0f, 0.0f}));
-    CHECK_FALSE(visible({-2500.0f, 0.0f, 0.0f}));
+    CHECK_FALSE(visible({-5000.0f, 0.0f, 0.0f}));
+    CHECK(visible({-3500.0f, 0.0f, 0.0f}));
+    CHECK_FALSE(visible({-3500.0f, 0.0f, 0.0f}, 2048.0f));
     CHECK_FALSE(visible({0.0f, 1000.0f, 0.0f}));
     CHECK_FALSE(visible({0.0f, 0.0f, 1000.0f}));
     CHECK(visible({500.0f, 0.0f, 0.0f}));
@@ -360,9 +398,23 @@ TEST_CASE("Terrain decoration loader opts in per map and rejects malformed confi
     CHECK_FALSE(loadTerrainDecorationConfig(assets, map, error));
     write("version: 1\ntuft_texture: tuft.png\ntall_grass_scale: .nan\nrules: []\n");
     CHECK_FALSE(loadTerrainDecorationConfig(assets, map, error));
-    write("version: 1\ntuft_texture: tuft.png\ndistance: .nan\nrules: []\n");
+    write("version: 1\ntuft_texture: tuft.png\nnear_distance: .nan\nrules: []\n");
     CHECK_FALSE(loadTerrainDecorationConfig(assets, map, error));
     CHECK_FALSE(error.empty());
+    // The fixed radius was replaced by the level of detail; stale files fail instead of being reinterpreted.
+    write("version: 1\ntuft_texture: tuft.png\ndistance: 4096\nrules: []\n");
+    CHECK_FALSE(loadTerrainDecorationConfig(assets, map, error));
+    write("version: 1\ntuft_texture: tuft.png\nnear_distance: 3072\nfar_distance: 2048\nrules: []\n");
+    CHECK_FALSE(loadTerrainDecorationConfig(assets, map, error));
+    write("version: 1\ntuft_texture: tuft.png\nnear_distance: 3072\nfar_distance: 20000\nlod_max_scale: 1.5\n"
+          "stone_distance: 1500\nfoliage_tint: 0.5\nrules: []\n");
+    const std::optional<TerrainDecorationConfig> lod = loadTerrainDecorationConfig(assets, map, error);
+    REQUIRE(lod);
+    CHECK(lod->lod.nearDistance == doctest::Approx(3072.0f));
+    CHECK(lod->lod.farDistance == doctest::Approx(20000.0f));
+    CHECK(lod->lod.maxScale == doctest::Approx(1.5f));
+    CHECK(lod->stoneDistance == doctest::Approx(1500.0f));
+    CHECK(lod->foliageTint == doctest::Approx(0.5f));
     write("version: 1\ntuft_texture: tuft.png\nrules:\n"
           "  - {texture: grass, kind: grass, candidates: 1000000}\n");
     CHECK_FALSE(loadTerrainDecorationConfig(assets, map, error));
@@ -442,7 +494,7 @@ TEST_CASE("Terrain decoration family variants preserve legacy placement and sele
     for (size_t i = 0; i < before.instances.size(); ++i)
     {
         CHECK(before.instances[i].positionYaw == after.instances[i].positionYaw);
-        CHECK(before.instances[i].sizeWindKind == after.instances[i].sizeWindKind);
+        CHECK(before.instances[i].sizeWindRank == after.instances[i].sizeWindRank);
         CHECK(before.instances[i].color == after.instances[i].color);
         CHECK(before.instances[i].groundNormal == after.instances[i].groundNormal);
     }
@@ -453,7 +505,7 @@ TEST_CASE("Terrain decoration family variants preserve legacy placement and sele
     for (const TerrainDecorationInstance &instance : selected.instances)
     {
         CHECK(instance.groundNormal[3] == 7.0f);
-        CHECK(instance.sizeWindKind[2] == doctest::Approx(0.4f));
+        CHECK(instance.sizeWindRank[2] == doctest::Approx(0.4f));
     }
 }
 
@@ -502,7 +554,7 @@ TEST_CASE("Terrain decoration variants preserve placements and batches while wei
     const TerrainDecorationPlacement second = scatterTerrainDecorations(map, textures(), varied);
     REQUIRE(first.instances.size() == original.instances.size());
     REQUIRE(first.instances.size() == second.instances.size());
-    CHECK(first.patches.size() == original.patches.size());
+    CHECK(first.nodes.size() == original.nodes.size());
     std::array<int, 4> counts = {};
     for (size_t i = 0; i < first.instances.size(); ++i)
     {
@@ -512,18 +564,18 @@ TEST_CASE("Terrain decoration variants preserve placements and batches while wei
         const size_t layer = size_t(instance.groundNormal[3]);
         REQUIRE(layer < counts.size());
         ++counts[layer];
-        CHECK(instance.sizeWindKind[0] <= original.instances[i].sizeWindKind[0]);
+        CHECK(instance.sizeWindRank[0] <= original.instances[i].sizeWindRank[0]);
     }
     for (size_t i = 0; i < counts.size(); ++i)
     {
         CHECK(float(counts[i]) / first.instances.size() ==
               doctest::Approx(varied.tuftVariants[i].weight / 100.0f).epsilon(0.12));
     }
-    for (const TerrainDecorationPatch &patch : first.patches)
+    for (const TerrainDecorationPatch &patch : ranges(first))
     {
         for (uint32_t i = patch.first; i < patch.first + patch.count; ++i)
         {
-            CHECK(first.instances[i].positionYaw[2] + first.instances[i].sizeWindKind[1] < patch.max[2]);
+            CHECK(first.instances[i].positionYaw[2] + first.instances[i].sizeWindRank[1] < patch.max[2]);
         }
     }
 }
@@ -560,7 +612,7 @@ TEST_CASE("Terrain decoration batching preserves visible ranges mesh kinds and e
     CHECK(TerrainDecorationRenderer::canMerge(batch, lights, next, nextLights));
 }
 
-TEST_CASE("Terrain decoration mixed cells keep each mesh contiguous for draw merging")
+TEST_CASE("Terrain decoration mixed cells keep each mesh kind in its own tree")
 {
     OutdoorMapData map = flatMap();
     map.tileMap[64 * 128 + 65] = 1;
@@ -570,22 +622,232 @@ TEST_CASE("Terrain decoration mixed cells keep each mesh contiguous for draw mer
     stones.candidates = 10;
     settings.rules.push_back(stones);
     const TerrainDecorationPlacement placement = scatterTerrainDecorations(map, textures(), settings);
-    REQUIRE(placement.patches.size() == 4);
-    CHECK_FALSE(placement.patches[0].stone);
-    CHECK_FALSE(placement.patches[1].stone);
-    CHECK(placement.patches[2].stone);
-    CHECK(placement.patches[3].stone);
+    REQUIRE(placement.roots.size() == 2);
+    CHECK_FALSE(placement.nodes[placement.roots[0]].range.stone);
+    CHECK(placement.nodes[placement.roots[1]].range.stone);
     uint32_t next = 0;
-    for (const TerrainDecorationPatch &patch : placement.patches)
+    size_t stoneInstances = 0;
+    for (const TerrainDecorationNode &node : placement.nodes)
     {
-        CHECK(patch.first == next);
-        for (uint32_t i = patch.first; i < patch.first + patch.count; ++i)
+        CHECK(node.range.first == next);
+        CHECK(node.range.stone == placement.nodes[placement.roots[node.range.stone ? 1 : 0]].range.stone);
+        for (uint32_t i = node.range.first; i < node.range.first + node.range.count; ++i)
         {
-            CHECK((placement.instances[i].sizeWindKind[3] != 0.0f) == patch.stone);
+            // Stones have no wind.
+            CHECK((placement.instances[i].sizeWindRank[2] == 0.0f) == node.range.stone);
+            stoneInstances += node.range.stone;
         }
-        next += patch.count;
+        next += node.range.count;
     }
     CHECK(next == placement.instances.size());
+    CHECK(stoneInstances > 0);
+}
+
+TEST_CASE("Terrain decoration level of detail keeps a constant count per screen area and the coverage")
+{
+    const TerrainDecorationLod lod = {2048.0f, 16384.0f, 2.0f};
+    CHECK(terrainDecorationKeep(lod, 0.0f) == doctest::Approx(1.0f));
+    CHECK(terrainDecorationKeep(lod, 2048.0f) == doctest::Approx(1.0f));
+    CHECK(terrainDecorationKeep(lod, 4096.0f) == doctest::Approx(0.25f));
+    CHECK(terrainDecorationKeep(lod, 8192.0f) == doctest::Approx(0.0625f));
+    CHECK(terrainDecorationKeep(lod, 16384.0f) == doctest::Approx(0.0f));
+    CHECK(terrainDecorationKeep(lod, 20000.0f) == doctest::Approx(0.0f));
+    // The end fade starts at 85 % of the range.
+    CHECK(terrainDecorationKeep(lod, 13926.0f) == doctest::Approx(2048.0f * 2048.0f / (13926.0f * 13926.0f)));
+    CHECK(terrainDecorationKeep(lod, 15000.0f) < 2048.0f * 2048.0f / (15000.0f * 15000.0f));
+    float previous = 2.0f;
+    for (float distance = 0.0f; distance <= 17000.0f; distance += 250.0f)
+    {
+        const float keep = terrainDecorationKeep(lod, distance);
+        CHECK(keep <= previous);
+        previous = keep;
+        const float scale = terrainDecorationScale(lod, distance);
+        CHECK(scale >= 1.0f);
+        CHECK(scale <= lod.maxScale);
+        if (distance <= lod.nearDistance * lod.maxScale)
+        {
+            // Thinned but grown: the coverage holds until the largest scale.
+            CHECK(keep * scale * scale == doctest::Approx(1.0f).epsilon(0.001));
+        }
+        else if (distance < lod.farDistance * 0.85f)
+        {
+            CHECK(keep * scale * scale < 1.0f);
+        }
+    }
+}
+
+TEST_CASE("Terrain decoration rank quadtree nests the thinning bands depth first")
+{
+    const OutdoorMapData map = grassField(20, 100);
+    TerrainDecorationConfig settings = config();
+    const TerrainDecorationPlacement placement = scatterTerrainDecorations(map, textures(), settings);
+    REQUIRE(placement.roots.size() == 1);
+    REQUIRE(placement.instances.size() > 50000);
+    const TerrainDecorationNode &root = placement.nodes[placement.roots[0]];
+    CHECK(root.rankBegin == 0.0f);
+    uint32_t next = 0;
+    size_t leaves = 0;
+    const auto inside = [](const std::array<float, 3> &min, const std::array<float, 3> &max,
+                           const std::array<float, 3> &outerMin, const std::array<float, 3> &outerMax)
+    {
+        for (size_t axis = 0; axis < 3; ++axis)
+        {
+            if (min[axis] < outerMin[axis] || max[axis] > outerMax[axis])
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+    const auto visit = [&](const auto &self, uint32_t index) -> void
+    {
+        const TerrainDecorationNode &node = placement.nodes[index];
+        // Depth first: a node's instances directly precede its first child's.
+        CHECK(node.range.first == next);
+        next += node.range.count;
+        float previous = -1.0f;
+        for (uint32_t i = node.range.first; i < node.range.first + node.range.count; ++i)
+        {
+            const TerrainDecorationInstance &instance = placement.instances[i];
+            const float rank = instance.sizeWindRank[3];
+            CHECK(rank >= previous);
+            CHECK(rank >= node.rankBegin);
+            CHECK(rank < node.rankEnd);
+            previous = rank;
+            CHECK(instance.positionYaw[0] - instance.sizeWindRank[0] * 0.5f * 2.82f >= node.range.min[0]);
+            CHECK(instance.positionYaw[0] + instance.sizeWindRank[0] * 0.5f * 2.82f <= node.range.max[0]);
+            CHECK(instance.positionYaw[2] + instance.sizeWindRank[1] * 1.41f <= node.range.max[2]);
+        }
+        if (node.range.count > 0)
+        {
+            CHECK(inside(node.range.min, node.range.max, node.regionMin, node.regionMax));
+        }
+        leaves += node.rankEnd == 1.0f;
+        for (uint32_t child = 0; child < node.childCount; ++child)
+        {
+            const TerrainDecorationNode &childNode = placement.nodes[node.children[child]];
+            CHECK(childNode.rankBegin == doctest::Approx(node.rankEnd));
+            CHECK(inside(childNode.regionMin, childNode.regionMax, node.regionMin, node.regionMax));
+            self(self, node.children[child]);
+        }
+    };
+    visit(visit, placement.roots[0]);
+    CHECK(next == placement.instances.size());
+    // 81 cells of 512 cover 41472 units: 21 x 21 leaves of 2048 at most, some partly.
+    CHECK(leaves >= 20 * 20);
+    CHECK(leaves <= 22 * 22);
+    // About three quarters of the instances are in the leaves' band.
+    size_t leafInstances = 0;
+    for (const TerrainDecorationNode &node : placement.nodes)
+    {
+        leafInstances += node.rankEnd == 1.0f ? node.range.count : 0;
+    }
+    CHECK(double(leafInstances) / placement.instances.size() == doctest::Approx(0.75).epsilon(0.02));
+}
+
+TEST_CASE("Terrain decoration draws thin with distance and grow only logarithmically with the range")
+{
+    const OutdoorMapData map = grassField(0, 126);
+    TerrainDecorationConfig settings = config();
+    settings.rules[0].candidates = 16;
+    const TerrainDecorationPlacement placement = scatterTerrainDecorations(map, textures(), settings);
+    const std::vector<TerrainDecorationInstance> instances = placement.instances;
+    TerrainDecorationRenderer renderer;
+    const auto drawn = [&](const TerrainDecorationLod &lod, const bx::Vec3 &camera, const bx::Vec3 &forward,
+                           size_t *pDraws = nullptr)
+    {
+        TerrainDecorationConfig lodSettings = settings;
+        lodSettings.lod = lod;
+        renderer.setPlacement(lodSettings, placement);
+        const bx::Vec3 right = bx::normalize(bx::cross(forward, {0.0f, 0.0f, 1.0f}));
+        renderer.setView(camera, forward, right, bx::cross(right, forward), 1.7778f, 1.0472f);
+        std::vector<TerrainDecorationPatch> draws;
+        renderer.collectDraws(draws);
+        size_t total = 0;
+        uint32_t end = 0;
+        size_t merged = 0;
+        for (const TerrainDecorationPatch &draw : draws)
+        {
+            // Ascending, never overlapping; every drawn instance is within the per-instance share somewhere.
+            CHECK(draw.first >= end);
+            merged += draw.first != end;
+            end = draw.first + draw.count;
+            total += draw.count;
+        }
+        if (pDraws != nullptr)
+        {
+            *pDraws = merged;
+        }
+        return total;
+    };
+    const bx::Vec3 camera = {0.0f, 0.0f, 180.0f};
+    const bx::Vec3 forward = {1.0f, 0.0f, 0.0f};
+    // Every instance in view within the full density distance is drawn.
+    size_t nearInView = 0;
+    for (const TerrainDecorationInstance &instance : instances)
+    {
+        const float dx = instance.positionYaw[0] - camera.x;
+        const float dy = instance.positionYaw[1] - camera.y;
+        nearInView += dx > 64.0f && std::abs(dy) < dx * 0.5f && std::hypot(dx, dy) < 2048.0f;
+    }
+    const size_t base = drawn({2048.0f, 4096.0f, 2.0f}, camera, forward);
+    CHECK(base >= nearInView);
+    // Doubling the range twice costs a bounded share more, not four times the instances each time.
+    size_t draws = 0;
+    const size_t medium = drawn({2048.0f, 8192.0f, 2.0f}, camera, forward);
+    const size_t far = drawn({2048.0f, 16384.0f, 2.0f}, camera, forward, &draws);
+    CHECK(medium > base);
+    CHECK(far > medium);
+    CHECK(double(far) < double(base) * 3.0);
+    // Contiguous full nodes merge into few separate ranges.
+    CHECK(draws < 40);
+    // Flying high, the grass below thins instead of vanishing.
+    const size_t high = drawn({2048.0f, 16384.0f, 2.0f}, {0.0f, 0.0f, 4000.0f}, bx::normalize({1.0f, 0.0f, -0.6f}));
+    CHECK(high > 0);
+    CHECK(high < far);
+}
+
+TEST_CASE("Terrain decoration foliage map holds the tufts' colour and edge-on depth")
+{
+    const OutdoorMapData map = grassField(40, 80);
+    TerrainDecorationConfig settings = config();
+    settings.rules[0].tint = {0.5f, 1.0f, 0.25f};
+    TerrainDecorationRule stones = settings.rules[0];
+    stones.stone = true;
+    settings.rules.push_back(stones);
+    const TerrainDecorationPlacement placement = scatterTerrainDecorations(map, textures(), settings);
+    const std::vector<TerrainFoliageLayer> layers = {{{0.4f, 0.6f, 0.8f}, 0.5f}};
+    const std::vector<float> foliage = buildTerrainFoliageMap(placement, layers);
+    REQUIRE(foliage.size() == size_t(TerrainFoliageMapSize) * TerrainFoliageMapSize * 4);
+    // Expected depth inside the field: grass instances' card area seen edge on per ground area.
+    double area = 0.0;
+    size_t grass = 0;
+    for (const TerrainDecorationNode &node : placement.nodes)
+    {
+        for (uint32_t i = node.range.first; !node.range.stone && i < node.range.first + node.range.count; ++i)
+        {
+            area += 2.0 * placement.instances[i].sizeWindRank[0] * placement.instances[i].sizeWindRank[1] * 0.5
+                * 0.63662;
+            ++grass;
+        }
+    }
+    REQUIRE(grass > 0);
+    const double fieldArea = 41.0 * 41.0 * 512.0 * 512.0;
+    const auto texel = [&](float x, float y)
+    {
+        const int u = int((x + 32768.0f) / 256.0f);
+        const int v = int((32768.0f - y) / 256.0f);
+        return &foliage[(size_t(v) * TerrainFoliageMapSize + u) * 4];
+    };
+    // The field spans cells 40..80: world x -12288..8704, y 12288..-8704.
+    const float *pInside = texel(-2000.0f, 2000.0f);
+    CHECK(pInside[3] == doctest::Approx(area / fieldArea).epsilon(0.25));
+    const float *pOutside = texel(-20000.0f, 20000.0f);
+    CHECK(pOutside[3] == 0.0f);
+    // Premultiplied: the colour is the layer average times the tint (the shade varies by +-7 %).
+    CHECK(pInside[0] / pInside[3] == doctest::Approx(0.4f * 0.5f * 0.975f).epsilon(0.08));
+    CHECK(pInside[1] / pInside[3] == doctest::Approx(0.6f * 1.0f * 0.975f).epsilon(0.08));
+    CHECK(pInside[2] / pInside[3] == doctest::Approx(0.8f * 0.25f * 0.975f).epsilon(0.08));
 }
 
 TEST_CASE("Terrain decoration view cache invalidates on motion projection and shutdown")

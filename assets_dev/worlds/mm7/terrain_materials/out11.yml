@@ -17,6 +17,7 @@ layers:
   macro_brightness: 0.15
   macro_tint: [1.1, 1.05, 0.85]
   fringe: 1.0
+  meadow: 1.0
   variant: 5
   variant_amount: 0.3
   cliff_tint: [1.1764, 1.0432, 1.0869]
@@ -75,6 +76,7 @@ layers:
   macro_brightness: 0.15
   macro_tint: [1.0, 1.0, 1.0]
   fringe: 1.0
+  meadow: 0.8
 - name: dirt_stones
   library: soil_stony
   tint: [0.7723, 0.5691, 0.5037]
@@ -85,6 +87,9 @@ layers:
   macro_brightness: 0.15
   macro_tint: [1.0, 1.0, 1.0]
   fringe: 1.0
+meadow:
+  dry: [1.2, 1.06, 0.64]
+  lush: [0.78, 0.94, 0.82]
 slope: {layer: 4, start: 0.36, end: 0.56}
 shore: {file: out11_shore.png, range: 1024.0, beach_slope: 0.3, seabed_slope: 0.4, seabed_depth: 96.0, opaque_depth: 72.0,
   detail_depth: 24.0, layer: 3}

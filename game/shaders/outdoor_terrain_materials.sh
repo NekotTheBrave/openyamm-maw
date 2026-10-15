@@ -21,10 +21,14 @@ SAMPLER2D(s_terrainBakedNormals, 13);
 SAMPLER2D(s_terrainMacro, 14);
 // Signed distance to the waterline: 128 + distance / range * 127, positive on land.
 SAMPLER2D(s_terrainShore, 15);
+// The grass decorations' far colour (buildTerrainFoliageMap): rgb = average tuft colour premultiplied by a,
+// a = optical depth of the grass cards seen edge on.
+SAMPLER2D(s_terrainFoliage, 1);
 
 // Per layer: x = 1 / repeat in world units, y = height blend contrast, z = normal strength, w = cavity: how much
 // the material height darkens its albedo (photoscans are delit; the native tiles carry their shading).
 uniform vec4 u_terrainLayerParams[8];
+// rgb = tint, w = strength of the meadow tint (u_terrainMeadow) on this layer.
 uniform vec4 u_terrainLayerTint[8];
 // Per ground layer: the slope layer's tint where that layer dominates (cliffs take the colour of their ground).
 uniform vec4 u_terrainLayerCliff[8];
@@ -43,6 +47,11 @@ uniform vec4 u_terrainMaterialMisc;
 // x = waterline distance range, y = 1 when shores have a seabed under depth-faded water, z = waterline distance
 // under the water past which the seabed is plain (one sample of layer w, no detail normals or relighting).
 uniform vec4 u_terrainShore;
+// x = foliage tint strength (0: no grass decorations), y = grass full density distance, z = grass far distance,
+// w = grass largest LOD scale (TerrainDecorationRenderer::foliageParams).
+uniform vec4 u_terrainFoliage;
+// Colour multipliers of the driest ([0].rgb) and lushest ([1].rgb) ground (OutdoorMeadowField, v_texcoord0.y).
+uniform vec4 u_terrainMeadow[2];
 
 #if BAKED_SOURCES
 SAMPLER2D(s_texLightmap, 2);
@@ -64,13 +73,16 @@ uniform vec4 u_secretPulseParams;
 #include "sky_common.sh"
 #include "weather_wetness.sh"
 
-// Macro variation (UE-style): per layer, rgb = tint of the cloudy patches, a = broad brightness variation.
-vec3 macroVaried(vec3 albedo, float layer, vec4 macroSample)
+// Macro variation (UE-style): per layer, rgb = tint of the cloudy patches, a = broad brightness variation. Then the
+// meadow: dry crests and slopes, lush hollows and shores (meadow -1 lush .. +1 dry), scaled by the layer's strength.
+vec3 macroVaried(vec3 albedo, float layer, vec4 macroSample, float meadow)
 {
     vec4 macro = u_terrainLayerMacro[int(layer + 0.5)];
     float broad = macroSample.r * 0.6 + macroSample.g * 0.4;
     albedo *= 1.0 + (broad - 0.5) * 2.0 * macro.a;
-    return albedo * mix(vec3_splat(1.0), macro.rgb, smoothstep(0.35, 0.75, macroSample.b));
+    albedo *= mix(vec3_splat(1.0), macro.rgb, smoothstep(0.35, 0.75, macroSample.b));
+    vec3 meadowTint = meadow > 0.0 ? u_terrainMeadow[0].rgb : u_terrainMeadow[1].rgb;
+    return albedo * mix(vec3_splat(1.0), meadowTint, min(abs(meadow) * u_terrainLayerTint[int(layer + 0.5)].w, 1.0));
 }
 
 // Whiteout blends of a tangent-space detail normal on the vertical planes facing X (right = +Y, up = +Z) and
@@ -223,7 +235,7 @@ void main()
         vec4 color = texture2DArray(s_terrainAlbedoHeight, vec3(vec2(position.x, -position.y) * params.x, layer));
         vec3 plainAlbedo = color.rgb * u_terrainLayerTint[int(layer + 0.5)].rgb
             * mix(1.0, 0.45 + 1.1 * color.a, params.w);
-        albedo = shoreAlbedo(macroVaried(plainAlbedo, layer, texture2D(s_terrainMacro, position.xy / 16384.0)),
+        albedo = shoreAlbedo(macroVaried(plainAlbedo, layer, texture2D(s_terrainMacro, position.xy / 16384.0), 0.0),
             position, shore);
     }
     else
@@ -257,6 +269,8 @@ void main()
         }
         vec4 macroSample = texture2D(s_terrainMacro, position.xy / 16384.0);
         float variation = macroSample.g * 0.65 + macroSample.a * 0.35;
+        // The meadow field is smooth; mid-scale noise frays the borders of its dry and lush patches.
+        float meadow = clamp(v_texcoord0.y + (macroSample.g - 0.5) * 0.5 + (macroSample.a - 0.5) * 0.3, -1.0, 1.0);
         if (u_terrainMaterialControl.y >= 0.0)
         {
             // v_texcoord0.x: steepness of the broadly smoothed terrain; the macro noise roughens the edge. The
@@ -360,8 +374,8 @@ void main()
             abs(secondLayer - u_terrainShore.w) < 0.5 ? 1.0 : 0.0, plain);
         vec3 firstAlbedo = firstColor.rgb * mix(1.0, 0.45 + 1.1 * firstColor.a, firstParams.w);
         vec3 secondAlbedo = secondColor.rgb * mix(1.0, 0.45 + 1.1 * secondColor.a, secondParams.w);
-        albedo = mix(macroVaried(firstAlbedo, firstLayer, macroSample),
-            macroVaried(secondAlbedo, secondLayer, macroSample), secondMix);
+        albedo = mix(macroVaried(firstAlbedo, firstLayer, macroSample, meadow),
+            macroVaried(secondAlbedo, secondLayer, macroSample, meadow), secondMix);
         shadingNormal = normalize(mix(firstNormal, secondNormal, secondMix));
         if (u_terrainShore.y > 0.5)
         {
@@ -373,6 +387,26 @@ void main()
             * (1.0 - plain) * safeSmoothstep(0.94, 0.985, geometricNormal.z);
     }
 
+    if (u_terrainFoliage.x > 0.0)
+    {
+        // Where the grass decorations have thinned out (GRASS_LOD.md), the ground takes their colour: by the share of
+        // their coverage the remaining tufts no longer supply, and by how much of the grass a ray at this elevation
+        // crosses (grazing views see mostly blades, views from above the ground between them).
+        vec4 foliage = texture2D(s_terrainFoliage, mapUv);
+        if (foliage.a > 0.0001)
+        {
+            vec3 toCamera = u_cameraPosition.xyz - position;
+            float distance = length(toCamera);
+            float thinned = min(1.0, u_terrainFoliage.y * u_terrainFoliage.y / max(distance * distance, 1.0));
+            float scale = clamp(distance / u_terrainFoliage.y, 1.0, u_terrainFoliage.w);
+            float drawn = min(thinned * scale * scale, 1.0)
+                * (1.0 - smoothstep(u_terrainFoliage.z * 0.85, u_terrainFoliage.z, distance));
+            float elevation = clamp(dot(toCamera / max(distance, 1.0), geometricNormal), 0.02, 1.0);
+            float grazing = sqrt(1.0 - elevation * elevation) / elevation;
+            float coverage = 1.0 - exp(-foliage.a * grazing);
+            albedo = mix(albedo, foliage.rgb / foliage.a, coverage * (1.0 - drawn) * u_terrainFoliage.x);
+        }
+    }
     albedo = mix(albedo, u_fogColor.rgb, u_fogDensities.z);
 #if BAKED_SOURCES
     vec2 bakedUv = (position.xy - u_bakedTerrainBounds.xy) / u_bakedTerrainBounds.zw;

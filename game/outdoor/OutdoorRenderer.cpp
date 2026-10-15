@@ -3015,8 +3015,10 @@ void OutdoorRenderer::ensureTerrainDecorations(OutdoorGameView &view, const Outd
         return;
     }
 
-    TerrainDecorationPlacement placement = scatterTerrainDecorations(
-        outdoorMapData, *view.m_terrainDecorationTileNames, *config);
+    // Plants stand on the drawn ground: the materials terrain's smoothed surface.
+    TerrainDecorationPlacement placement = scatterTerrainDecorations(outdoorMapData,
+        *view.m_terrainDecorationTileNames, *config,
+        view.m_terrainMaterials.ready() ? view.m_terrainMaterials.smoothing() : 0.0f);
     if (!placement.instances.empty())
     {
         // Grass lights per vertex (the baked vertex shader samples the lightmap); the sun-shadow fragment shaders
@@ -3234,11 +3236,11 @@ bool OutdoorRenderer::initializeWorldRenderResources(
         view.m_terrainDecorationTileNames = tileNames;
         view.m_terrainMaterialTiles = outdoorTerrainTiles->tiles;
     }
-    ensureTerrainDecorations(view, outdoorMapData);
     if (!outdoorMapData.noTerrain && !ensureTerrainMaterials(view))
     {
         return false;
     }
+    ensureTerrainDecorations(view, outdoorMapData);
 
 
     if (renderTerrain && (vertices.empty() || indices.empty()))
@@ -4130,8 +4132,14 @@ void OutdoorRenderer::submitTerrainMaterials(OutdoorGameView &view, uint16_t vie
             bindTexture(5, view.m_bakedSunDirectSamplerHandle,
                 directSun ? direct : view.m_bmodelLightmapTextureHandles[page], TextureFilterProfile::Lightmap);
         }
+        // The far grass colour only while the grass itself is drawn.
+        bgfx::TextureHandle foliage = BGFX_INVALID_HANDLE;
+        if (view.m_gameSettings.terrainDecorations && view.m_renderLayers.grass)
+        {
+            foliage = view.m_terrainDecorations.foliageMap();
+        }
         view.m_terrainMaterials.bind(baked ? &*lighting : nullptr, directSun,
-            view.m_gameSettings.terrainAntiTiling && !reflection);
+            view.m_gameSettings.terrainAntiTiling && !reflection, foliage, view.m_terrainDecorations.foliageParams());
         bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LEQUAL);
         if (sunShadows)
         {
@@ -4527,12 +4535,10 @@ void OutdoorRenderer::renderWorldPasses(OutdoorGameView &view, uint16_t viewWidt
                 lightCount != view.m_terrainDecorationLightCount)
             {
                 view.m_terrainDecorationBatches.clear();
-                for (const TerrainDecorationPatch &patch : view.m_terrainDecorations.patches())
+                view.m_terrainDecorationDraws.clear();
+                view.m_terrainDecorations.collectDraws(view.m_terrainDecorationDraws);
+                for (const TerrainDecorationPatch &patch : view.m_terrainDecorationDraws)
                 {
-                    if (!view.m_terrainDecorations.visible(patch))
-                    {
-                        continue;
-                    }
                     OutdoorLightSelectionBounds bounds = {};
                     bounds.min = {patch.min[0], patch.min[1], patch.min[2]};
                     bounds.max = {patch.max[0], patch.max[1], patch.max[2]};

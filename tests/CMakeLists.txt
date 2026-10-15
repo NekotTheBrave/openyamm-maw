@@ -101,6 +101,7 @@ add_executable(openyamm_unit_tests
     TableRegressionTests.cpp
     TextTableTests.cpp
     TerrainDecorationTests.cpp
+    OutdoorMeadowTests.cpp
     ../game/outdoor/TerrainDecorationData.cpp
     ../game/outdoor/TerrainDecorationRenderer.cpp
     TextureFilteringTests.cpp
@@ -281,6 +282,7 @@ add_executable(openyamm_unit_tests
     ../game/ui/SpellbookUiLayout.cpp
     ../game/ui/UiLayoutManager.cpp
     ../game/outdoor/OutdoorGeometryUtils.cpp
+    ../game/outdoor/OutdoorMeadow.cpp
     ../game/outdoor/OutdoorLightingRuntime.cpp
     ../game/outdoor/OutdoorLightingData.cpp
     ../game/outdoor/OutdoorMapData.cpp

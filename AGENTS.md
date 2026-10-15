@@ -54,6 +54,10 @@ These rules apply to all AI-generated contributions in this repository.
 - For the outdoor terrain (blended ground materials on a smoothed terrain, the only terrain style: per-map weights
   and liquid edge masks from `tools/terrain_materials.py`), start with
   [Terrain materials](level_generation/terrain/materials/README.md).
+- For outdoor grass and ground decorations (rank-quadtree level of detail, size compensation and the terrain's far
+  grass colour), start with [Grass level of detail](level_generation/terrain/GRASS_LOD.md).
+- For the grass art, plant families (tall patches, verges, wildflowers, undergrowth) and the ground's dry and lush
+  tint from the terrain shape, start with [Meadow](level_generation/terrain/MEADOW.md).
 - For scripted monsters, bosses or encounters (per-actor Lua behaviours over the shared AI), start with
   [Actor scripting](ACTOR_SCRIPTING_INVESTIGATION.md).
 - For enhanced projectile visuals (`video.projectile_style`, flight effects in `engine/effects/projectiles.yml`,
