@@ -19,3 +19,14 @@ modrt.setRule("unarmed_dodge", "off")
 modrt.setRule("catalyst_combination", "alchemy_capped")
 modrt.setRule("slow_resistance", "off")
 modrt.setRule("follower_skill_bonuses", "largest")
+
+-- Not MAW's: a potion an event gives (a quest's reward, such as the black potion turn-ins) has power 0 in the real
+-- game too, which makes MAW's potions that scale with power useless; the player asked for such potions to have 50.
+modrt.setRule("event_potion_power", "50")
+
+-- Merge's Structs/After/RemoveSkillValueLimits.lua packs skills with the masteries at 0x400, 0x800 and 0x1000, and
+-- MAW's zzMAW-Skills.lua converts a game's skills to that packing once (UncapSkills, over the whole roster). OpenYAMM
+-- keeps them packed so already: converting them again would make an Expert's level 3 (0x403) a Grandmaster's 771.
+function events.LoadMap()
+	vars.UncappedSkills = vars.UncappedSkills or 1
+end

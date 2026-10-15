@@ -24,3 +24,10 @@ steps:
       end
       return bad
     expect: "0"
+# A potion an event gives by number has power 0 in the real game too; MAW's port gives it 50 (rule
+# event_potion_power, zMaw-MergeRules.lua), so a quest's potion is of use.
+- mod_lua:
+    code: |
+      evt.Add("Inventory", 254)
+      return Mouse.Item.Number, Mouse.Item.Bonus
+    expect: "254\t50"

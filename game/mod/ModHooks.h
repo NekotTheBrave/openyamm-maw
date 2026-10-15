@@ -405,6 +405,8 @@ void setModHudText(int id, const ModHudText &text);
 //                            (1 Jadame, 2 Antagarich, 3 Enroth) are drawn from, in place of the continent's classes
 //   mercenary_skill_points   "tenth_level_bonus": a mercenary gets 5 skill points a level above the first and one
 //                            more a level for each ten levels (level 10 on: 6, level 20 on: 7)
+//   event_potion_power       a number: the power of a potion an event gives with none (a quest's reward; the
+//                            original gives those power 0)
 const std::string &modRule(const std::string &name);
 void setModRule(const std::string &name, const std::string &value);
 

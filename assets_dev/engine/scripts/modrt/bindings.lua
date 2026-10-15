@@ -847,38 +847,85 @@ end
 
 local playerAt = cached(playerObject)
 
--- The roster of all characters, addressed by a character's own index (GetIndex). Only party members are reachable
--- so far; characters waiting in the Adventurer's Inn are not.
+-- The characters waiting in the Adventurer's Inn are reached as players 1000 up (the natives take them so).
+local InnPlayerBase = 1000
+local RosterSize = 50
+
+-- A roster place with no character: its fields read as 0, its skills as none, its items as no item; writes go
+-- nowhere. The original's roster has 50 records, empty ones zeroed, and scripts walk all of them.
+local blankPlayer = cached(function(index)
+    local skills = boundObject("Party.PlayersArray[].Skills", {
+        index = function() return 0 end,
+        newindex = function() return true end,
+    })
+    local items = boundObject("Party.PlayersArray[].Items", {
+        index = function() return emptyItem end,
+        get = sizeFields(function() return MaxItemRecords end),
+        range = function() return 1, MaxItemRecords end,
+    })
+    local zeros = boundObject("Party.PlayersArray[].*", {
+        index = function() return 0 end,
+        newindex = function() return true end,
+    })
+
+    return boundObject("Party.PlayersArray[]", {
+        get = function(key)
+            if key == "Skills" then
+                return skills
+            elseif key == "Items" then
+                return items
+            elseif key == "EquippedItems" or key == "Inventory" or key == "Conditions" or key == "Resistances"
+                or key == "SpellBuffs" or key == "Stats" or key == "Spells" then
+                return zeros
+            elseif key == "Name" then
+                return ""
+            end
+
+            return 0
+        end,
+        set = function() return true end,
+        methods = {
+            GetIndex = function() return index end,
+            GetSkill = function() return 0 end,
+            GetActiveItem = function() return nil end,
+            EnumActiveItems = function() return function() return nil end end,
+            GetMainCondition = function() return 18 end,
+        },
+    })
+end)
+
+-- The player handle (party slot, or InnPlayerBase + place in the Inn) of the character with roster index `index`.
+local function rosterHandle(index)
+    for slot = 0, partyCount() - 1 do
+        if modrt.playerGet(slot, "ModIndex") == index then
+            return slot
+        end
+    end
+
+    for place = 0, (modrt.partyGet("InnCount") or 0) - 1 do
+        if modrt.playerGet(InnPlayerBase + place, "ModIndex") == index then
+            return InnPlayerBase + place
+        end
+    end
+
+    return nil
+end
+
+-- The roster of all characters, addressed by a character's own index (GetIndex): the party's members and those
+-- waiting in the Adventurer's Inn, 50 places as the original's (a place no character has reads as a blank one).
 local playersArray = boundObject("Party.PlayersArray", {
     index = function(index)
-        for slot = 0, partyCount() - 1 do
-            if modrt.playerGet(slot, "ModIndex") == index then
-                return playerAt(slot)
-            end
-        end
+        index = floor(index)
 
-        return nil
-    end,
-    -- Iteration visits the characters that exist, in the order of their indexes.
-    next = function(control)
-        local best = nil
-        local bestSlot = nil
-
-        for slot = 0, partyCount() - 1 do
-            local index = modrt.playerGet(slot, "ModIndex")
-
-            if index and (control == nil or index > control) and (best == nil or index < best) then
-                best = index
-                bestSlot = slot
-            end
-        end
-
-        if best == nil then
+        if index < 0 or index >= RosterSize then
             return nil
         end
 
-        return best, playerAt(bestSlot)
+        local handle = rosterHandle(index)
+        return handle and playerAt(handle) or blankPlayer(index)
     end,
+    get = sizeFields(function() return RosterSize end),
+    range = function() return 0, RosterSize - 1 end,
 })
 
 -- Party.QBits[bit]: the party's quest bits, read and written.

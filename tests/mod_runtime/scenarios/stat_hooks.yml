@@ -84,7 +84,7 @@ steps:
       local p = Party[0]
       return p:GetMeleeAttack() - Base.attack, p:GetFullHP() - Base.hp, Skills[25], Skills[7]
     expect: "13\t7\ttrue\ttrue"
-# Arrays are iterated directly, without pairs.
+# Arrays are iterated directly, without pairs. The roster has the original's 50 places, empty ones included.
 - mod_lua:
     code: |
       local members, names = 0, {}
@@ -107,7 +107,7 @@ steps:
         unbound = unbound + 1
       end
       return members, table.concat(names, ","), rosterCount, roster, monsters == Map.Monsters.Count, unbound
-    expect: "2\t0Subject,1Other\t2\ttrue\ttrue\t0"
+    expect: "2\t0Subject,1Other\t50\ttrue\ttrue\t0"
 # The map table's encounter fields. A write is kept for the scripts (the game does not use it yet).
 - mod_lua:
     code: |

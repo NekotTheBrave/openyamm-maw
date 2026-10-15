@@ -237,6 +237,10 @@ int64_t ensureModCharacterIndex(Party &party, Character &character)
 
 namespace
 {
+// The players the natives take: a party slot, or InnPlayerBase + a place in the Adventurer's Inn (Party.PlayersArray
+// reaches the characters waiting there so).
+constexpr int64_t InnPlayerBase = 1000;
+
 Character *playerArgument(lua_State *pLuaState, int index)
 {
     Party *pParty = partyFromHost(pLuaState);
@@ -247,6 +251,12 @@ Character *playerArgument(lua_State *pLuaState, int index)
     }
 
     const int64_t memberIndex = integerArgument(pLuaState, index);
+
+    if (memberIndex >= InnPlayerBase)
+    {
+        return pParty->adventurersInnCharacter(static_cast<size_t>(memberIndex - InnPlayerBase));
+    }
+
     return memberIndex >= 0 ? pParty->member(static_cast<size_t>(memberIndex)) : nullptr;
 }
 
@@ -277,6 +287,10 @@ int nativePartyGet(lua_State *pLuaState)
     else if (field == "Count")
     {
         lua_pushinteger(pLuaState, static_cast<lua_Integer>(pParty->memberCount()));
+    }
+    else if (field == "InnCount")
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(pParty->adventurersInnMembers().size()));
     }
     else if (field == "CurrentPlayer")
     {
@@ -3157,6 +3171,15 @@ int nativeInventoryTake(lua_State *pLuaState)
     return 1;
 }
 
+// modrt.innDismiss(slot): sends party member `slot` to the Adventurer's Inn, as dismissing does. Whether it went.
+int nativeInnDismiss(lua_State *pLuaState)
+{
+    Party *pParty = partyFromHost(pLuaState);
+    const int64_t slot = integerArgument(pLuaState, 1);
+    lua_pushboolean(pLuaState, pParty != nullptr && slot >= 0 && pParty->dismissMemberToAdventurersInn(static_cast<size_t>(slot)));
+    return 1;
+}
+
 // modrt.inventoryCell(player, cell): the original's Inventory[cell] of the backpack (14 x 9, row by row): the item's
 // number in Items (1 up) at the cell where an item's top left corner is, -(that cell + 1) in the other cells it
 // covers, 0 in an empty one.
@@ -4470,6 +4493,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"npcText", nativeNpcText},
         {"inventoryTake", nativeInventoryTake},
         {"inventoryCell", nativeInventoryCell},
+        {"innDismiss", nativeInnDismiss},
         {"inventoryPut", nativeInventoryPut},
         {"heldItemPresent", nativeHeldItemPresent},
         {"heldItemSet", nativeHeldItemSet},

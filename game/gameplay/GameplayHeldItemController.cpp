@@ -6,9 +6,12 @@
 #include "game/gameplay/GameplayScreenRuntime.h"
 #include "game/items/ItemGenerator.h"
 #include "game/items/ItemRuntime.h"
+#include "game/mod/ModHooks.h"
 #include "game/party/Party.h"
 #include "game/tables/ItemTable.h"
 
+#include <algorithm>
+#include <cstdlib>
 #include <optional>
 #include <string>
 #include <utility>
@@ -177,6 +180,16 @@ void GameplayHeldItemController::applyGrantedEventItemsToHeldInventory(
         [&runtime, &itemTable, &heldInventoryItem](InventoryItem grantedItem)
         {
             forceEventGrantedItemIdentificationState(grantedItem, itemTable);
+
+            // A potion an event gives has no power in the original; a mod may give it one (event_potion_power).
+            const ItemDefinition *pGrantedDefinition = itemTable.get(grantedItem.objectDescriptionId);
+
+            if (grantedItem.standardEnchantPower == 0 && pGrantedDefinition != nullptr
+                && pGrantedDefinition->equipStat == "Bottle" && pGrantedDefinition->name != "Potion Bottle")
+            {
+                grantedItem.standardEnchantPower =
+                    static_cast<uint16_t>(std::clamp(std::atoi(modRule("event_potion_power").c_str()), 0, 65535));
+            }
 
 #if defined(__ANDROID__)
             Party *pParty = runtime.party();

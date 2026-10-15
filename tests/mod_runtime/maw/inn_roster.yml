@@ -1,0 +1,50 @@
+id: mod_runtime.maw.inn_roster
+title: Party.PlayersArray reaches the characters waiting in the Adventurer's Inn
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW walks the whole roster (Party.PlayersArray, 0 to High = 49) for its one-time fixes; the characters waiting in
+# the Adventurer's Inn are in it with their own index, and a place no character has reads as a blank one. Brann is
+# sent to the Inn and reached there: his skills read and written, one of MAW's own skills (Skillz, 50) too.
+# Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 0
+      food: 10
+      members:
+      - name: Leora
+        class: Knight
+        level: 5
+        skills:
+        - name: Sword
+          level: 3
+          mastery: 2
+        equipment: {}
+      - name: Brann
+        class: Cleric
+        level: 4
+        skills:
+        - name: Mace
+          level: 2
+          mastery: 1
+        equipment:
+          main_hand: 11
+- mod_lua:
+    code: |
+      local index = Party[1]:GetIndex()
+      local dismissed = modrt.innDismiss(1)
+      local pl = Party.PlayersArray[index]
+      local names = {}
+      for i, p in Party.PlayersArray do if p.Name ~= "" then names[#names + 1] = i .. "=" .. p.Name end end
+      local mace = pl.Skills[const.Skills.Mace]
+      pl.Skills[const.Skills.Mace] = JoinSkill(5, 2)
+      Skillz.set(pl, 50, JoinSkill(3, 1))
+      local blank = Party.PlayersArray[40]
+      return tostring(dismissed), Party.Count, modrt.partyGet("InnCount"), table.concat(names, ","), pl.Name, pl.LevelBase,
+        mace, pl.Skills[const.Skills.Mace], pl:GetIndex() == index, Skillz.get(pl, 50), Party.PlayersArray.High,
+        blank.Name, blank.Skills[0], blank:GetIndex(), ModRT.totalErrorCount
+    expect: "true	1	1	0=Leora,1=Brann	Brann	4	2	1029	true	3	49		0	40	0"

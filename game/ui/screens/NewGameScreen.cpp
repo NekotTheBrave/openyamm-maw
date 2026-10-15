@@ -6,6 +6,7 @@
 #include "game/mod/ModHooks.h"
 #include "game/party/SkillData.h"
 #include "game/party/SpeechIds.h"
+#include "game/ui/GameplayHudCommon.h"
 #include "game/ui/GameplayUiSkin.h"
 
 #include <algorithm>
@@ -2199,7 +2200,20 @@ void NewGameScreen::drawScreen(float deltaSeconds)
         helpBody = pHelp->description;
         helpAnchor = rect;
         const Character character = buildCharacter();
-        const auto mastery = [this, &helpMasteries, &character, &skill](
+        // A skill described as the original's tables (MAW's: columns set with tab stops) gets the original's rows,
+        // as the skill page shows them: the short names, the texts from one column, 66 pixels in.
+        bool tableLayout = false;
+
+        for (const std::string *pText : {&pHelp->description, &pHelp->expertDescription, &pHelp->masterDescription,
+                 &pHelp->grandmasterDescription})
+        {
+            for (size_t index = 0; index < pText->size() && !tableLayout; ++index)
+            {
+                tableLayout = GameplayHudCommon::hudTabStopLength(*pText, index) > 0;
+            }
+        }
+
+        const auto mastery = [this, &helpMasteries, &character, &skill, tableLayout](
                                  SkillMastery level, const std::string &name, const std::string &description)
         {
             if (description.empty())
@@ -2211,7 +2225,9 @@ void NewGameScreen::drawScreen(float deltaSeconds)
             const uint32_t color = availability == 1   ? GameplayUiSkin::Low
                                    : availability == 2 ? GameplayUiSkin::Penalty
                                                        : 0xffffffffu;
-            helpMasteries.emplace_back(name + ": " + description, color);
+            const std::string shortName = level == SkillMastery::Grandmaster ? "Grand" : name;
+            helpMasteries.emplace_back(
+                tableLayout ? shortName + ":\t066" + description : name + ": " + description, color);
         };
         mastery(SkillMastery::Expert, "Expert", pHelp->expertDescription);
         mastery(SkillMastery::Master, "Master", pHelp->masterDescription);
@@ -2468,12 +2484,117 @@ void NewGameScreen::drawScreen(float deltaSeconds)
         const float bodyTop = 56 * scale;
         const float lineHeight = (fontHeight("SMALLNUM") + 2) * scale;
         const float bodyWidth = width - 2 * horizontalPadding;
-        const std::vector<std::string> lines = wrapTextToWidth("SMALLNUM", helpBody, bodyWidth, scale);
+        // A table's row too wide for the box: its last column wraps, its further lines starting where that column
+        // does.
+        const auto wrapTableRow = [this, bodyWidth, scale](const std::string &row, std::vector<std::string> &result)
+        {
+            const std::vector<GameplayHudCommon::HudColorRun> runs = GameplayHudCommon::splitHudColorRuns(row);
+            float cursor = 0.0f;
+            float lastStart = 0.0f;
+            const GameplayHudCommon::HudColorRun *pLast = nullptr;
+
+            for (const GameplayHudCommon::HudColorRun &run : runs)
+            {
+                if (run.tabStop)
+                {
+                    cursor = static_cast<float>(*run.tabStop) * scale;
+                }
+
+                if (!run.text.empty())
+                {
+                    lastStart = cursor;
+                    pLast = &run;
+                }
+
+                cursor += measureTextWidth("SMALLNUM", run.text, scale);
+            }
+
+            const size_t lastAt = pLast != nullptr ? row.rfind(pLast->text) : std::string::npos;
+
+            if (cursor <= bodyWidth || pLast == nullptr || lastAt == std::string::npos
+                || bodyWidth - lastStart < bodyWidth / 4)
+            {
+                result.push_back(row);
+                return;
+            }
+
+            const std::vector<std::string> pieces =
+                wrapTextToWidth("SMALLNUM", pLast->text, bodyWidth - lastStart, scale);
+            char column[8];
+            std::snprintf(column, sizeof(column), "\t%03d", static_cast<int>(lastStart / scale));
+
+            for (size_t index = 0; index < pieces.size(); ++index)
+            {
+                result.push_back(index == 0 ? row.substr(0, lastAt) + pieces[index] : column + pieces[index]);
+            }
+        };
+        // The original's marks: a line with tab stops (a table's row) is kept whole but for its last column; colour
+        // marks take no room.
+        const auto wrapMarked = [this, bodyWidth, scale, &wrapTableRow](const std::string &text)
+        {
+            std::vector<std::string> result;
+            size_t start = 0;
+
+            while (start <= text.size())
+            {
+                const size_t end = std::min(text.find('\n', start), text.size());
+                const std::string paragraph = text.substr(start, end - start);
+                bool tabbed = false;
+
+                for (size_t index = 0; index < paragraph.size() && !tabbed; ++index)
+                {
+                    tabbed = GameplayHudCommon::hudTabStopLength(paragraph, index) > 0;
+                }
+
+                if (tabbed)
+                {
+                    wrapTableRow(paragraph, result);
+                }
+                else if (paragraph.empty())
+                {
+                    result.push_back(paragraph);
+                }
+                else
+                {
+                    std::string plain;
+
+                    for (const GameplayHudCommon::HudColorRun &run : GameplayHudCommon::splitHudColorRuns(paragraph))
+                    {
+                        plain += run.text;
+                    }
+
+                    for (std::string &line : wrapTextToWidth("SMALLNUM", plain, bodyWidth, scale))
+                    {
+                        result.push_back(std::move(line));
+                    }
+                }
+
+                start = end + 1;
+            }
+
+            return result;
+        };
+        const auto drawMarked = [this, scale](const std::string &line, float x, float y, uint32_t color)
+        {
+            float cursor = x;
+
+            for (const GameplayHudCommon::HudColorRun &run : GameplayHudCommon::splitHudColorRuns(line))
+            {
+                if (run.tabStop)
+                {
+                    cursor = x + static_cast<float>(*run.tabStop) * scale;
+                }
+
+                drawText("SMALLNUM", run.text, cursor, y, run.colorAbgr.value_or(color), scale);
+                cursor += measureTextWidth("SMALLNUM", run.text, scale);
+            }
+        };
+        const std::vector<std::string> lines = wrapMarked(helpBody);
         float height = bodyTop + 28 * scale + lines.size() * lineHeight;
         std::vector<std::pair<std::vector<std::string>, uint32_t>> masteryLines;
         for (const auto &[text, color] : helpMasteries)
         {
-            masteryLines.emplace_back(wrapTextToWidth("SMALLNUM", text, bodyWidth, scale), color);
+            masteryLines.emplace_back(wrapMarked(text), color);
             height += masteryLines.back().first.size() * lineHeight + 6 * scale;
         }
         if (!masteryLines.empty())
@@ -2494,7 +2615,7 @@ void NewGameScreen::drawScreen(float deltaSeconds)
         float textY = panel.y + bodyTop;
         for (const std::string &line : lines)
         {
-            drawText("SMALLNUM", line, panel.x + horizontalPadding, textY, GameplayUiSkin::Ivory, scale);
+            drawMarked(line, panel.x + horizontalPadding, textY, GameplayUiSkin::Ivory);
             textY += lineHeight;
         }
         textY += 8 * scale;
@@ -2503,7 +2624,7 @@ void NewGameScreen::drawScreen(float deltaSeconds)
             textY += 6 * scale;
             for (const std::string &line : wrappedLines)
             {
-                drawText("SMALLNUM", line, panel.x + horizontalPadding, textY, color, scale);
+                drawMarked(line, panel.x + horizontalPadding, textY, color);
                 textY += lineHeight;
             }
         }
