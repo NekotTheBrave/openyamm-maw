@@ -6,7 +6,10 @@ gems, Data/zzAlchemy.lua: vCraft1..., vEye1...). Each one OpenYAMM does not have
 <out>/engine/icons_x2/<name>.png at twice the size, as OpenYAMM keeps its icons, colour 0 of the palette
 transparent as the original draws icons. Icons OpenYAMM has its own copy of are left alone.
 
-    python tools/maw/convert_icons.py --maw <Maw-Mod-MMMerge-main> --out mods/maw/assets
+MAW's scripts also use a few of Merge's own icons that OpenYAMM has no copy of (its bag buttons, SlChar1U...): with
+--merge, a Merge install's Data/mmmerge.icons.lod, those are written too.
+
+    python tools/maw/convert_icons.py --maw <Maw-Mod-MMMerge-main> --merge <MAW or Merge install> --out mods/maw/assets
 """
 
 from __future__ import annotations
@@ -25,6 +28,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 ICON_ARCHIVES = ('zMaw.icons.lod', 'zVex.icons.lod')
 HEADER_SIZE = 48
 PALETTE_SIZE = 768
+MERGE_ARCHIVE = 'mmmerge.icons.lod'
+# Merge's icons MAW's scripts use: the bag buttons (General/zzMaw-MultiBag.lua), up and down.
+MERGE_ICONS = {f'slchar{number}{state}' for number in range(1, 6) for state in 'ud'}
 
 
 def engine_icon_names() -> set[str]:
@@ -84,6 +90,7 @@ def icon_png(width: int, height: int, pixels: bytes, palette: bytes, scale: int 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--maw', required=True, help='MAW checkout (has Data/zVex.icons.lod)')
+    parser.add_argument('--merge', help='a Merge install (has Data/mmmerge.icons.lod), for MERGE_ICONS')
     parser.add_argument('--out', required=True, help="the mod's asset overlay, e.g. mods/maw/assets")
     args = parser.parse_args()
 
@@ -92,9 +99,12 @@ def main() -> int:
     out_folder.mkdir(parents=True, exist_ok=True)
     written, kept = [], []
 
-    for archive in ICON_ARCHIVES:
-        path = Path(args.maw) / 'Data' / archive
+    sources = [(Path(args.maw) / 'Data' / archive, None) for archive in ICON_ARCHIVES]
 
+    if args.merge:
+        sources.append((Path(args.merge) / 'Data' / MERGE_ARCHIVE, MERGE_ICONS))
+
+    for path, wanted in sources:
         if not path.is_file():
             continue
 
@@ -105,6 +115,9 @@ def main() -> int:
                 continue
 
             name, width, height, pixels, palette = bitmap
+
+            if wanted is not None and name.lower() not in wanted:
+                continue
 
             if name.lower() in have:
                 kept.append(name)

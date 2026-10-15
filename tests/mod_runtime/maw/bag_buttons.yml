@@ -1,0 +1,60 @@
+id: mod_runtime.maw.bag_buttons
+title: MAW's bag buttons are on the character screen and switch bags when clicked
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's multi-bag (General/zzMaw-MultiBag.lua) makes ten buttons with CustomUI.CreateButton for the character screen
+# (const.Screens 7, 13, 15): bags 1..5 at the original's y 372 and, for a party of one, tabs 1..5 at y 445. The game
+# draws the ones ModRT.HudButtons.list gives on the bottom frame and calls ModRT.HudButtons.click for a click. Run
+# with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 1
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+# Away from the character screen MAW hides the tabs, so the screen's list is the five bag buttons. The port places
+# them low in the bottom frame's right panel, under the Dismiss button (zMaw-Bags.lua), after MAW's tick; the tabs
+# go below them.
+- mod_lua:
+    code: |
+      mawTick_MultibagButtons()
+      local shown = {}
+      for _, button in ipairs(ModRT.HudButtons.list(7)) do
+        shown[#shown + 1] = button.Icon .. "@" .. button.X .. "," .. button.Y
+      end
+      return #multibagButton, table.concat(shown, " "), #ModRT.HudButtons.list(0),
+        multibagButton[6].X .. "," .. multibagButton[6].Y
+    expect: "10\tSlChar1U@515,425 SlChar2U@535,425 SlChar3U@555,425 SlChar4U@575,425 SlChar5U@595,425\t0\t515,445"
+# A click on bag 2 puts the backpack away as bag 1 and opens bag 2.
+- mod_lua:
+    code: |
+      modrt.inventoryTake(0)
+      modrt.inventoryPut(0, {Number = 11})
+      ModRT.HudButtons.click(multibagButton[2].Id)
+      local open = #modrt.inventoryTake(0)
+      local bags = vars.mawbags[Party[0]:GetIndex()]
+      return bags.CurrentBag, #(bags[1] or {}), open
+    expect: "2\t1\t0"
+# On the character screen of a party of one, the tabs show too; a click on tab 3 opens bag 2 of tab 3.
+- mod_lua:
+    code: |
+      for i = 6, 10 do multibagButton[i].Active = true end
+      local count = #ModRT.HudButtons.list(7)
+      ModRT.HudButtons.click(multibagButton[8].Id)
+      local current = vars.mawbags[Party[0]:GetIndex()].CurrentBag
+      ModRT.HudButtons.click(multibagButton[6].Id)
+      ModRT.HudButtons.click(multibagButton[1].Id)
+      return count, current, vars.mawbags[Party[0]:GetIndex()].CurrentBag, #modrt.inventoryTake(0)
+    expect: "10\t202\t1\t1"

@@ -1893,6 +1893,19 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
                 return {};
             }
 
+            // The mod's buttons, where the game drew them on the bottom frame.
+            for (const ModDrawnHudButton &button : modDrawnHudButtons())
+            {
+                if (pointerX >= button.x && pointerX < button.x + button.width
+                    && pointerY >= button.y && pointerY < button.y + button.height)
+                {
+                    GameplayCharacterPointerTarget pointerTarget = {};
+                    pointerTarget.type = GameplayCharacterPointerTargetType::ModButton;
+                    pointerTarget.modButtonId = button.id;
+                    return pointerTarget;
+                }
+            }
+
             if (context.isAdventurersInnScreenActive())
             {
                 const auto resolveButtonTarget =
@@ -2642,6 +2655,12 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
             if (target.type != GameplayCharacterPointerTargetType::DismissButton)
             {
                 clearPendingCharacterDismiss();
+            }
+
+            if (target.type == GameplayCharacterPointerTargetType::ModButton)
+            {
+                modHudButtonClicked(target.modButtonId);
+                return;
             }
 
             if (isInventorySpellTargetMode)

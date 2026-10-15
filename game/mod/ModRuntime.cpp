@@ -1951,6 +1951,60 @@ int ModRuntime::mapEvent(uint16_t eventId)
     return flags;
 }
 
+void ModRuntime::hudButtons(std::vector<ModHudButton> &buttons)
+{
+    if (!m_active || !beginDispatch("hudButtons"))
+    {
+        return;
+    }
+
+    if (!endDispatch(0, 1))
+    {
+        return;
+    }
+
+    if (lua_istable(m_pLuaState, -1))
+    {
+        const lua_Integer count = luaL_len(m_pLuaState, -1);
+
+        for (lua_Integer index = 1; index <= count; ++index)
+        {
+            lua_rawgeti(m_pLuaState, -1, index);
+
+            if (lua_istable(m_pLuaState, -1))
+            {
+                ModHudButton button = {};
+                lua_getfield(m_pLuaState, -1, "Id");
+                button.id = static_cast<int>(lua_tointeger(m_pLuaState, -1));
+                lua_pop(m_pLuaState, 1);
+                lua_getfield(m_pLuaState, -1, "Icon");
+                button.icon = lua_type(m_pLuaState, -1) == LUA_TSTRING ? lua_tostring(m_pLuaState, -1) : "";
+                lua_pop(m_pLuaState, 1);
+                lua_getfield(m_pLuaState, -1, "X");
+                button.x = static_cast<float>(lua_tonumber(m_pLuaState, -1));
+                lua_pop(m_pLuaState, 1);
+                lua_getfield(m_pLuaState, -1, "Y");
+                button.y = static_cast<float>(lua_tonumber(m_pLuaState, -1));
+                lua_pop(m_pLuaState, 1);
+                buttons.push_back(std::move(button));
+            }
+
+            lua_pop(m_pLuaState, 1);
+        }
+    }
+
+    lua_pop(m_pLuaState, 1);
+}
+
+void ModRuntime::hudButtonClicked(int id)
+{
+    if (m_active && beginDispatch("hudButtonClicked"))
+    {
+        lua_pushinteger(m_pLuaState, id);
+        endDispatch(1, 0);
+    }
+}
+
 void ModRuntime::questionAnswered(const std::string &answer)
 {
     if (!m_active || !beginDispatch("questionAnswered"))

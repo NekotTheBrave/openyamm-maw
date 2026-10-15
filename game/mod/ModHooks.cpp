@@ -89,6 +89,32 @@ std::vector<uint32_t> modQuestTextBits()
     return bits;
 }
 
+std::vector<ModHudButton> modHudButtons()
+{
+    std::vector<ModHudButton> buttons;
+
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->hudButtons(buttons);
+    }
+
+    return buttons;
+}
+
+void modHudButtonClicked(int id)
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->hudButtonClicked(id);
+    }
+}
+
+std::vector<ModDrawnHudButton> &modDrawnHudButtons()
+{
+    static std::vector<ModDrawnHudButton> buttons;
+    return buttons;
+}
+
 void modQuestionAnswered(const std::string &answer)
 {
     if (IModHooks *pModHooks = activeModHooks())

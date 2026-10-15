@@ -48,3 +48,69 @@ end
 
 rawset(CustomUI, "CreateText", createText)
 ModRT.HudTexts = {create = createText}
+
+-- CustomUI.CreateButton: a button a mod puts on a screen of the original's (MAW's bag buttons). The game draws a
+-- screen's buttons where the original has them (the character screen's at the original's 640x480 positions, those
+-- of the bottom strip on the game's bottom frame) with the icon IUpSrc (IconUp; MAW swaps it to show the bag
+-- chosen), and calls Action when one is clicked. Screen is a screen number or a list of them (const.Screens);
+-- Condition, when given, must agree; Active false hides the button.
+local buttons = {}
+
+local function createButton(spec)
+    spec = spec or {}
+    local button = {
+        IUpSrc = spec.IconUp, IDwSrc = spec.IconDown, X = spec.X or 0, Y = spec.Y or 0, Screen = spec.Screen or 0,
+        Layer = spec.Layer or 1, Condition = spec.Condition, Action = spec.Action, Active = spec.Active ~= false,
+    }
+    buttons[#buttons + 1] = button
+    button.Id = #buttons
+    return button
+end
+
+local function onScreen(button, screen)
+    if type(button.Screen) == "table" then
+        for _, s in ipairs(button.Screen) do
+            if s == screen then
+                return true
+            end
+        end
+
+        return false
+    end
+
+    return button.Screen == screen
+end
+
+rawset(CustomUI, "CreateButton", createButton)
+
+ModRT.HudButtons = {
+    -- The buttons to draw on the screen open now (Game.CurrentScreen; or `screen`): {Id, Icon, X, Y}.
+    list = function(screen)
+        local list = {}
+        screen = screen or Game.CurrentScreen
+
+        for _, button in ipairs(buttons) do
+            if button.Active ~= false and button.IUpSrc and onScreen(button, screen) then
+                local ok, shown = true, true
+
+                if type(button.Condition) == "function" then
+                    ok, shown = ModRT.protectedCall(button.Condition, "CustomUI button")
+                end
+
+                if ok and shown then
+                    list[#list + 1] = {Id = button.Id, Icon = tostring(button.IUpSrc), X = tonumber(button.X) or 0,
+                        Y = tonumber(button.Y) or 0}
+                end
+            end
+        end
+
+        return list
+    end,
+    click = function(id)
+        local button = buttons[id]
+
+        if button and type(button.Action) == "function" then
+            ModRT.protectedCall(button.Action, "CustomUI button", button)
+        end
+    end,
+}

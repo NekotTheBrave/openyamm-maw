@@ -321,6 +321,10 @@ local function dispatchKind(kind, ...)
         return ModRT.Stats.mercenaryItemGenerated(...)
     elseif kind == "monsterDropItem" then
         return ModRT.Stats.monsterDropItem(...)
+    elseif kind == "hudButtons" then
+        return ModRT.HudButtons.list(...)
+    elseif kind == "hudButtonClicked" then
+        return ModRT.HudButtons.click(...)
     elseif kind == "questionAnswered" then
         return ModRT.MapEvents.questionAnswered(...)
     elseif kind == "difficultyChoices" or kind == "difficultyGet" or kind == "difficultySet" then

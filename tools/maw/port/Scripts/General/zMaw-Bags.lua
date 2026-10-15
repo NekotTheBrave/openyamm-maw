@@ -288,6 +288,23 @@ local function sortEveryonesBags()
     end
 end
 
+-- MAW's bag buttons (multibagButton, bags 1..5 then tabs 1..5) go in the panel right of the portraits on OpenYAMM's
+-- bottom frame, whose top the character screen's Dismiss button takes: both rows low in the panel, closer together
+-- than MAW's 30. A button MAW has moved away (Y 1372 and 1445 while Arcomage is played) is left where it is.
+local BagButtonsX, BagButtonsStep = 515, 20
+local BagButtonsY = {[372] = 425, [445] = 445}
+
+local function placeBagButtons()
+    for i, button in ipairs(multibagButton or {}) do
+        local y = BagButtonsY[button.Y]
+
+        if y then
+            button.X = BagButtonsX + ((i - 1) % 5) * BagButtonsStep
+            button.Y = y
+        end
+    end
+end
+
 -- MAW's sorter and multi-bag load after this file and define their own; these take their place once everything has
 -- loaded. MAW's key handlers call them by these names.
 local function install()
@@ -299,10 +316,24 @@ local function install()
     gigaChadSort = sortEveryonesBags
 end
 
+-- MAW's button tick (it hands it to its scheduler in its own GameInitialized2, after this file's) places the buttons
+-- after MAW's code has.
+local function installButtonTick()
+    local mawTick = mawTick_MultibagButtons
+
+    if type(mawTick) == "function" then
+        mawTick_MultibagButtons = function(...)
+            mawTick(...)
+            placeBagButtons()
+        end
+    end
+end
+
 function events.GameInitialized1()
     install()
 end
 
 function events.GameInitialized2()
     install()
+    installButtonTick()
 end

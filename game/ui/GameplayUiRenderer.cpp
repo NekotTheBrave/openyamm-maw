@@ -9,6 +9,7 @@
 #include "game/gameplay/GameplayInputFrame.h"
 #include "game/gameplay/GameplayScreenRuntime.h"
 #include "game/gameplay/TurnBasedCombatRuntime.h"
+#include "game/mod/ModHooks.h"
 #include "game/gameplay/NpcFollowerRuntime.h"
 #include "game/StringUtils.h"
 #include "game/tables/MergedBaseTables.h"
@@ -396,9 +397,40 @@ void GameplayUiRenderer::renderGameplayHudArt(GameplayScreenRuntime &context, in
     if (isLimitedOverlayHud)
     {
         draw("OutdoorBasebar");
+
+        // The mods' buttons of the character screen (CustomUI.CreateButton, MAW's bag buttons): those of the
+        // original's bottom strip (from y 366 of its 640x480) on this bottom frame, which is that strip.
+        modDrawnHudButtons().clear();
+        const std::optional<GameplayResolvedHudLayoutElement> frame =
+            context.resolveHudLayoutElement("OutdoorBasebar", width, height, 0.0f, 0.0f);
+
+        if (frame && context.characterScreenReadOnly().open)
+        {
+            constexpr float OriginalStripTop = 366.0f;
+            const float scale = frame->width / 640.0f;
+
+            for (const ModHudButton &button : modHudButtons())
+            {
+                const std::optional<GameplayHudTextureHandle> texture =
+                    context.gameplayUiRuntime().ensureItemIconTextureLoaded(button.icon);
+
+                if (!texture || button.y < OriginalStripTop)
+                {
+                    continue;
+                }
+
+                const float buttonWidth = static_cast<float>(texture->width) * 0.5f * scale;
+                const float buttonHeight = static_cast<float>(texture->height) * 0.5f * scale;
+                const float x = frame->x + button.x * scale;
+                const float y = frame->y + (button.y - OriginalStripTop) * scale;
+                context.submitHudTexturedQuad(*texture, x, y, buttonWidth, buttonHeight);
+                modDrawnHudButtons().push_back({button.id, x, y, buttonWidth, buttonHeight});
+            }
+        }
     }
     else
     {
+        modDrawnHudButtons().clear();
         const std::optional<GameplayResolvedHudLayoutElement> basebar =
             context.resolveHudLayoutElement("OutdoorGameplayBasebar", width, height, 0, 0);
         if (basebar)

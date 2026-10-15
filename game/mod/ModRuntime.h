@@ -103,6 +103,8 @@ public:
     bool monsterDropItem(size_t actorIndex, uint32_t itemId) override;
     void npcTopics(uint32_t npcId, std::vector<ModNpcTopic> &topics) override;
     void questionAnswered(const std::string &answer) override;
+    void hudButtons(std::vector<ModHudButton> &buttons) override;
+    void hudButtonClicked(int id) override;
     std::vector<std::string> difficultyChoices() override;
     std::string difficulty() override;
     void setDifficulty(const std::string &name) override;

@@ -191,6 +191,16 @@ struct ModMonsterInfoBox
 
 // A topic of the NPC dialog being shown as a mod sets it (Merge's quests: Quest{...}, NPCTopic{...}): slot 0 to 5
 // of the NPC's topics shows event `eventId` (0: nothing), named `label` when that is not empty.
+// A button a mod puts on a screen of the original's (CustomUI.CreateButton): its icon and its place at the original's
+// 640x480 positions.
+struct ModHudButton
+{
+    int id = 0;
+    std::string icon;
+    float x = 0.0f;
+    float y = 0.0f;
+};
+
 struct ModNpcTopic
 {
     uint32_t slot = 0;
@@ -340,6 +350,10 @@ public:
     // The player answered the question a mod asked (Question; the game's answer prompt, under ModCommandEventId):
     // the text typed, empty when the prompt was left.
     virtual void questionAnswered(const std::string &answer) = 0;
+    // The buttons the mod shows on the screen open now (by the original's number, Game.CurrentScreen), and one of
+    // them clicked.
+    virtual void hudButtons(std::vector<ModHudButton> &buttons) = 0;
+    virtual void hudButtonClicked(int id) = 0;
     virtual std::vector<std::string> difficultyChoices() = 0;
     virtual std::string difficulty() = 0;
     virtual void setDifficulty(const std::string &name) = 0;
@@ -470,6 +484,20 @@ MonsterTable::LootPrototype modCorpseLoot(size_t actorIndex, const MonsterTable:
 
 // The difficulties the mod offers (none without a mod or when it has none), the current one, and choosing one; see
 // IModHooks::difficultyChoices.
+// The buttons a mod shows on the screen open now (none without a mod); a click on one.
+std::vector<ModHudButton> modHudButtons();
+void modHudButtonClicked(int id);
+// Where the game drew the mod's buttons last (screen pixels), for the clicks: id, x, y, width, height.
+struct ModDrawnHudButton
+{
+    int id = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 0.0f;
+    float height = 0.0f;
+};
+std::vector<ModDrawnHudButton> &modDrawnHudButtons();
+
 // Hands the mod the answer to its question (see IModHooks::questionAnswered).
 void modQuestionAnswered(const std::string &answer);
 std::vector<std::string> modDifficultyChoices();

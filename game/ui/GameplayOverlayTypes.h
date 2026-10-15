@@ -368,7 +368,9 @@ enum class GameplayCharacterPointerTargetType
     InventoryItem,
     InventoryCell,
     EquipmentSlot,
-    DollPanel
+    DollPanel,
+    // A button a mod put on the character screen (CustomUI.CreateButton; MAW's bag buttons).
+    ModButton
 };
 
 struct GameplayCharacterPointerTarget
@@ -381,6 +383,7 @@ struct GameplayCharacterPointerTarget
     uint8_t gridY = 0;
     EquipmentSlot equipmentSlot = EquipmentSlot::MainHand;
     size_t innIndex = 0;
+    int modButtonId = 0;
 
     bool operator==(const GameplayCharacterPointerTarget &other) const = default;
 };
