@@ -1,3 +1,4 @@
+#include "game/ui/GameplayHudCommon.h"
 #include "game/ui/GameplayHudGeometry.h"
 #include "game/ui/GameplayUiSkin.h"
 #include "game/ui/GameplayBuffHud.h"
@@ -399,7 +400,9 @@ void GameplayUiRenderer::renderGameplayHudArt(GameplayScreenRuntime &context, in
         draw("OutdoorBasebar");
 
         // The mods' buttons of the character screen (CustomUI.CreateButton, MAW's bag buttons): those of the
-        // original's bottom strip (from y 366 of its 640x480) on this bottom frame, which is that strip.
+        // original's bottom strip (from y 366 of its 640x480) on this bottom frame, which is that strip; the others
+        // at their places on the character screen, which is laid out on the same 640x480 (its top bar from y 0 to
+        // 29, where the port puts MAW's bag buttons). Drawn with the HUD, above the character screen's own art.
         modDrawnHudButtons().clear();
         const std::optional<GameplayResolvedHudLayoutElement> frame =
             context.resolveHudLayoutElement("OutdoorBasebar", width, height, 0.0f, 0.0f);
@@ -407,22 +410,25 @@ void GameplayUiRenderer::renderGameplayHudArt(GameplayScreenRuntime &context, in
         if (frame && context.characterScreenReadOnly().open)
         {
             constexpr float OriginalStripTop = 366.0f;
-            const float scale = frame->width / 640.0f;
+            const GameplayUiViewportRect viewport = GameplayHudCommon::computeUiViewportRect(width, height);
 
             for (const ModHudButton &button : modHudButtons())
             {
                 const std::optional<GameplayHudTextureHandle> texture =
                     context.gameplayUiRuntime().ensureItemIconTextureLoaded(button.icon);
 
-                if (!texture || button.y < OriginalStripTop)
+                if (!texture)
                 {
                     continue;
                 }
 
+                const bool onStrip = button.y >= OriginalStripTop;
+                const float scale = onStrip ? frame->width / 640.0f : viewport.width / 640.0f;
                 const float buttonWidth = static_cast<float>(texture->width) * 0.5f * scale;
                 const float buttonHeight = static_cast<float>(texture->height) * 0.5f * scale;
-                const float x = frame->x + button.x * scale;
-                const float y = frame->y + (button.y - OriginalStripTop) * scale;
+                const float x = (onStrip ? frame->x : viewport.x) + button.x * scale;
+                const float y = onStrip ? frame->y + (button.y - OriginalStripTop) * scale
+                                        : viewport.y + button.y * scale;
                 context.submitHudTexturedQuad(*texture, x, y, buttonWidth, buttonHeight);
                 modDrawnHudButtons().push_back({button.id, x, y, buttonWidth, buttonHeight});
             }

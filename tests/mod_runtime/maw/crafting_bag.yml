@@ -53,7 +53,7 @@ steps:
       mawTick_MultibagButtons()
       local marker = CustomUI.CreateText{Text = "", X = 455 + 3 * 30 + 12, Y = 372 + 16, Screen = 7}
       return marker.X, marker.Y, multibagButton[3].X
-    expect: "563\t431\t555"
+    expect: "262\t13\t254"
 # Opening the crafting bag puts what it took into the backpack (MAW keeps its own records there, with a grid Location).
 - mod_lua:
     code: |

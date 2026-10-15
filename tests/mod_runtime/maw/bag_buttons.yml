@@ -8,7 +8,7 @@ tags:
 steps:
 # MAW's multi-bag (General/zzMaw-MultiBag.lua) makes ten buttons with CustomUI.CreateButton for the character screen
 # (const.Screens 7, 13, 15): bags 1..5 at the original's y 372 and, for a party of one, tabs 1..5 at y 445. The game
-# draws the ones ModRT.HudButtons.list gives on the bottom frame and calls ModRT.HudButtons.click for a click. Run
+# draws the ones ModRT.HudButtons.list gives on the character screen and calls ModRT.HudButtons.click for a click. Run
 # with the MAW mods.yml.
 - new_game_flow:
     start_map: oute3.odm
@@ -25,8 +25,8 @@ steps:
           mastery: 1
         equipment: {}
 # Away from the character screen MAW hides the tabs, so the screen's list is the five bag buttons. The port places
-# them low in the bottom frame's right panel, under the Dismiss button (zMaw-Bags.lua), after MAW's tick; the tabs
-# go below them.
+# them in the character screen's top bar, right of the gold and food (zMaw-Bags.lua), after MAW's tick; the tabs go
+# right of them.
 - mod_lua:
     code: |
       mawTick_MultibagButtons()
@@ -36,7 +36,7 @@ steps:
       end
       return #multibagButton, table.concat(shown, " "), #ModRT.HudButtons.list(0),
         multibagButton[6].X .. "," .. multibagButton[6].Y
-    expect: "10\tSlChar1U@515,425 SlChar2U@535,425 SlChar3U@555,425 SlChar4U@575,425 SlChar5U@595,425\t0\t515,445"
+    expect: "10\tSlChar1U@214,7 SlChar2U@234,7 SlChar3U@254,7 SlChar4U@274,7 SlChar5U@294,7\t0\t334,7"
 # A click on bag 2 puts the backpack away as bag 1 and opens bag 2.
 - mod_lua:
     code: |

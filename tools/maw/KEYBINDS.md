@@ -33,7 +33,7 @@ Port changes are marked **(port)**.
 | Shift+1 ... Shift+5 | Inventory page | Switch to bag 1-5 (party of more than one) | **(port)** Shift+number no longer also switches the character shown |
 | 1 ... 5 | Inventory page | Switch to bag 1-5 (party of one) | |
 | Shift+1 ... Shift+5 | Inventory page | Switch to bag group (tab) 1-5 (party of one) | |
-| Bag buttons | Character screen | The same, with the mouse (top row bags, bottom row tabs, party of one only) | **(port)** buttons moved into the panel right of the portraits |
+| Bag buttons | Character screen | The same, with the mouse (bags 1–5, then tabs 1–5 for a party of one only) | **(port)** buttons moved into the character screen's top bar, right of the gold and food |
 | Shift+B | Inventory page | Mark the open bag as a crafting bag (again to clear); crafting materials picked up go to it | |
 | U, then U | Inventory page | Combine three crafting gems of a kind into one of the next tier (the first U shows what, the second does it) | |
 | P | Skills page | Cover on/off for the character | |

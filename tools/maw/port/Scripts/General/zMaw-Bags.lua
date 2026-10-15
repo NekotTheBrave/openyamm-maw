@@ -441,19 +441,21 @@ local function sortEveryonesBags()
     end
 end
 
--- MAW's bag buttons (multibagButton, bags 1..5 then tabs 1..5) go in the panel right of the portraits on OpenYAMM's
--- bottom frame, whose top the character screen's Dismiss button takes: both rows low in the panel, closer together
--- than MAW's 30. A button MAW has moved away (Y 1372 and 1445 while Arcomage is played) is left where it is.
-local BagButtonsX, BagButtonsStep = 515, 20
-local BagButtonsY = {[372] = 425, [445] = 445}
+-- MAW's bag buttons (multibagButton, bags 1..5 then tabs 1..5) go in the character screen's top bar, right of the
+-- gold and food (y 0 to 29 of its 640x480; the panel right of the portraits, where MAW has them, is the Dismiss
+-- button's and is to be OpenYAMM's alchemy and sort buttons'): one row, the bags and then, for a party of one, the
+-- tabs, 20 apart (MAW's are 30). A button MAW has moved away (Y 1372 and 1445 while Arcomage is played) is left where
+-- it is.
+local BagButtonsStep = 20
+local BagButtonsPlace = {[372] = {X = 214, Y = 7}, [445] = {X = 334, Y = 7}}
 
 local function placeBagButtons()
     for i, button in ipairs(multibagButton or {}) do
-        local y = BagButtonsY[button.Y]
+        local place = BagButtonsPlace[button.Y]
 
-        if y then
-            button.X = BagButtonsX + ((i - 1) % 5) * BagButtonsStep
-            button.Y = y
+        if place then
+            button.X = place.X + ((i - 1) % 5) * BagButtonsStep
+            button.Y = place.Y
         end
     end
 end
@@ -469,8 +471,8 @@ do
             local i = (spec.X - 12 - 455) / 30
 
             if i >= 1 and i <= 5 and i == math.floor(i) then
-                spec.X = BagButtonsX + (i - 1) * BagButtonsStep + 8
-                spec.Y = BagButtonsY[372] + 6
+                spec.X = BagButtonsPlace[372].X + (i - 1) * BagButtonsStep + 8
+                spec.Y = BagButtonsPlace[372].Y + 6
             end
         end
 
