@@ -179,11 +179,9 @@ end
 
 MM7.CrossContinents = {
     VerdantNpcId = 803,
-    RunawayChaosNpcId = 1092,
     ChargedConnectorStoneItemId = 624,
     DischargedConnectorStoneItemId = 625,
     SharedLifeRingItemId = 543,
-    FinalQuestQBit = 1713,
     CompleteQBits = {
         [1] = 228, -- Jadame
         [2] = 783, -- Antagarich
@@ -334,11 +332,7 @@ function MM7.UpdateVerdantTopics()
 
     evt.SetNPCTopic(npcId, 1, 1781) -- Time Travel Guide
 
-    if MM7.GetCrossVar("AllStoriesFinished", 0) ~= 0 then
-        evt.SetNPCTopic(npcId, 0, 1787) -- What's next?
-        evt.SetNPCTopic(npcId, 1, 1785) -- Something terrible
-        evt.SetNPCTopic(npcId, 2, 1786) -- Controlled Breach
-    elseif MM7.GetCrossVar("GotConnectorStone", 0) ~= 0 then
+    if MM7.GetCrossVar("GotConnectorStone", 0) ~= 0 then
         evt.SetNPCTopic(npcId, 2, 1788) -- Connector gem
     end
 end
@@ -379,7 +373,6 @@ function MM7.UpdateCrossContinentsState()
             AddValue(InventoryItem(MM7.CrossContinents.SharedLifeRingItemId), MM7.CrossContinents.SharedLifeRingItemId)
         else
             MM7.SetCrossVar("ImprovedConnector", 1)
-            MM7.SetCrossVar("AllStoriesFinished", 1)
         end
     end
 
@@ -431,42 +424,6 @@ function MM7.ExplainDimensionDoors()
     end
 
     evt.SimpleMessage("Dimension doors in magically active places let you step onto the other heroes' paths.")
-    MM7.UpdateVerdantTopics()
-end
-
-function MM7.ExplainRunawayChaos()
-    if CrossContinents ~= nil and CrossContinents.ExplainRunawayChaos ~= nil then
-        CrossContinents.ExplainRunawayChaos()
-        return
-    end
-
-    SetQBit(QBit(MM7.CrossContinents.FinalQuestQBit))
-    MM7.SetCrossVar("FinalQuestStarted", 1)
-    evt.SimpleMessage("Verdant says the timeline damage has a source: a Runaway Chaos that must be contained.")
-    MM7.UpdateVerdantTopics()
-end
-
-function MM7.ExplainControlledBreach()
-    if CrossContinents ~= nil and CrossContinents.ExplainControlledBreach ~= nil then
-        CrossContinents.ExplainControlledBreach()
-        return
-    end
-
-    SetQBit(QBit(MM7.CrossContinents.FinalQuestQBit))
-    MM7.SetCrossVar("FinalQuestStarted", 1)
-    evt.SimpleMessage("The Controlled Breach is Verdant's safe arena for reaching and containing the Runaway Chaos.")
-    MM7.UpdateVerdantTopics()
-end
-
-function MM7.ExplainCrossContinentsNextStep()
-    if CrossContinents ~= nil and CrossContinents.ExplainNextStep ~= nil then
-        CrossContinents.ExplainNextStep()
-        return
-    end
-
-    MM7.SetCrossVar("FinalQuestStarted", 1)
-    SetQBit(QBit(MM7.CrossContinents.FinalQuestQBit))
-    evt.SimpleMessage("Verdant has another anomaly to investigate and asks you to keep helping her.")
     MM7.UpdateVerdantTopics()
 end
 

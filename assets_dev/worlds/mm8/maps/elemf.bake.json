@@ -1,15 +1,11 @@
 {
-  "asset_helper_sha256": "a5bf67908d541b5f0827414edbc6a038c77d4a90142e7eac7c7b28d19b2ebc7a",
+  "asset_helper_sha256": "6e47d8ae999b063ad7ae3ea60d9b4ee3d9b6df4ed4b1285da40d5532d5674809",
   "backend": "5.2.2 LTS",
-  "decoration_helper_sha256": "2a12d5c1ed495dfdfd3edea1d48220b2bcdfcdcb711d54bc385bb0ed28db6fd3",
   "geometry_helper_sha256": "791c7cc5333fc0299872f71ce003e8d6114656580e3ed79c2885d78a3b6472e3",
-  "model_probe_backend": "5.2.2 LTS",
-  "model_probe_producer_sha256": "2de97b1338f1de43a5bd2395ca363c5e4e8874b449d7ba2745b59f7512968b39",
-  "producer_sha256": "1528a72e7781ce0526c7c88719c2b5e8571c5ae2af7ad0ac0e2280c53dcda7f4",
+  "producer_sha256": "c2d26ef6c2992aa0449d5460eada190633ac5dcb85bb9a6dde0a6157f6411556",
   "profile": {
-    "azimuth": 225.0,
+    "azimuth": 315,
     "building_page_size": 1024,
-    "decoration_shadows": true,
     "elevation": 45,
     "map": "elemf.odm",
     "preview_position": [
@@ -28,7 +24,5 @@
     "terrain_size": 1024,
     "units_per_texel": 32,
     "world": "mm8"
-  },
-  "sun_direct_backend": "5.2.2 LTS",
-  "sun_direct_producer_sha256": "38806ceb8e963f46b8ec48ae585854441f849f2a2b5969a3e2b7ea4b25ae9280"
+  }
 }
