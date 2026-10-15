@@ -99,6 +99,7 @@ public:
     bool canWearItem(const Character &character, uint32_t itemId) override;
     bool canOpenChest(uint32_t chestId, bool trapped) override;
     void partyDefeated() override;
+    bool pickObject(size_t worldItemIndex, const InventoryItem &item) override;
     bool canHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal) override;
     float shopItemTreatment(bool repair, uint32_t houseId, const InventoryItem &item, float engineMultiplier) override;
     void monsterInformationBox(ModMonsterInfoBox &box) override;
@@ -159,6 +160,8 @@ private:
     void pushConfig();
     bool runAssetChunk(const std::string &virtualPath);
     bool beginDispatch(const char *pKind);
+    // Dispatches under way (they nest); when the last ends, the items scripts used up leave the backpacks.
+    int m_dispatchDepth = 0;
     // A mod's list of choices (its difficulties, its game modes): the names, the current one, choosing one.
     std::vector<std::string> dispatchChoices(const char *pKind);
     std::string dispatchChoice(const char *pKind);

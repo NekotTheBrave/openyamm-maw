@@ -928,6 +928,21 @@ local playersArray = boundObject("Party.PlayersArray", {
     range = function() return 0, RosterSize - 1 end,
 })
 
+-- Party.PlayersIndexes[slot]: the roster index (GetIndex) of the party member in `slot`.
+local playersIndexes = boundObject("Party.PlayersIndexes", {
+    index = function(slot)
+        slot = floor(slot)
+
+        if slot >= 0 and slot < partyCount() then
+            return playerAt(slot):GetIndex()
+        end
+
+        return nil
+    end,
+    get = sizeFields(partyCount),
+    range = function() return 0, partyCount() - 1 end,
+})
+
 -- Party.QBits[bit]: the party's quest bits, read and written.
 local partyQBits = boundObject("Party.QBits", {
     index = function(index)
@@ -943,7 +958,7 @@ Party = boundObject("Party", {
     bound = {
         Gold = true, Food = true, BankGold = true, Count = true, count = true, High = true, high = true,
         CurrentPlayer = true, X = true, Y = true, Z = true, YawRadians = true, PlayersArray = true,
-        SpellBuffs = true, QBits = true,
+        SpellBuffs = true, QBits = true, PlayersIndexes = true,
     },
     index = function(index)
         if index >= 0 and index < partyCount() then
@@ -960,6 +975,8 @@ Party = boundObject("Party", {
             return size
         elseif key == "PlayersArray" then
             return playersArray
+        elseif key == "PlayersIndexes" then
+            return playersIndexes
         elseif key == "SpellBuffs" then
             return partySpellBuffs
         elseif key == "QBits" then
@@ -2069,6 +2086,26 @@ function Bindings.setOpeningChest(chestId, trapped)
     openingChest = chestId and {[chestId] = trapped} or {}
 end
 
+-- Map.Objects[i]: the item being picked up while PickObject runs (its Item; writes to the object itself, as MAW makes
+-- the item vanish, are the engine's to do once a handler took it). The map's other objects are not bound.
+local pickedObject = nil
+
+function Bindings.setPickedObject(objectId)
+    pickedObject = objectId
+end
+
+local mapObjects = boundObject("Map.Objects", {
+    index = function(index)
+        if pickedObject ~= nil and index == pickedObject then
+            return {Item = Bindings.eventItem, Type = 0, TypeIndex = 0}
+        end
+
+        return nil
+    end,
+    get = sizeFields(function() return 0 end),
+    range = function() return 0, -1 end,
+})
+
 local mapChests = boundObject("Map.Chests", {
     index = function(index)
         local trapped = openingChest[index]
@@ -2131,12 +2168,14 @@ local mapNotes = boundObject("Map.Notes", {
 Map = boundObject("Map", {
     owned = "Map",
     bound = {Monsters = true, Name = true, MapStatsIndex = true, IndoorOrOutdoor = true, TilesetsFile = true,
-        Notes = true, Chests = true},
+        Notes = true, Chests = true, Objects = true},
     get = function(key)
         if key == "Notes" then
             return mapNotes
         elseif key == "Chests" then
             return mapChests
+        elseif key == "Objects" then
+            return mapObjects
         elseif key == "Monsters" then
             return mapMonsters
         elseif key == "TilesetsFile" then

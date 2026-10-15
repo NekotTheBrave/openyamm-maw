@@ -451,6 +451,12 @@ bool modCanWearItem(const Character &character, uint32_t itemId)
     return pModHooks == nullptr || pModHooks->canWearItem(character, itemId);
 }
 
+bool modPickObject(size_t worldItemIndex, const InventoryItem &item)
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks != nullptr && pModHooks->pickObject(worldItemIndex, item);
+}
+
 void modPartyDefeated()
 {
     if (IModHooks *pModHooks = activeModHooks())

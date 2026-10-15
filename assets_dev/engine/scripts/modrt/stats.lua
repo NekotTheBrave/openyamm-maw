@@ -368,6 +368,16 @@ function Stats.shopItemTreatment(repair, houseId, multiplier)
     return tonumber(ModRT.Bindings.houseVal(houseId)) or multiplier
 end
 
+-- The party picks up the item lying on the map as object `objectId` (ModRT.Bindings.eventItem): the original's
+-- PickObject. Returns whether a handler took it (Handled).
+function Stats.pickObject(objectId)
+    local event = {ObjectId = objectId, Handled = false}
+    ModRT.Bindings.setPickedObject(objectId)
+    ModRT.fire("PickObject", event)
+    ModRT.Bindings.setPickedObject(nil)
+    return event.Handled == true
+end
+
 function Stats.canWearItem(slot, itemId)
     local event = {PlayerId = slot, ItemId = itemId, Available = true}
     ModRT.fire("CanWearItem", event)

@@ -527,6 +527,10 @@ void GameplayHudRenderer::renderGameplayHud(GameplayScreenRuntime &context, int 
                 minimap = resolveElement("OutdoorMinimap");
             }
 
+            const std::optional<GameplayResolvedHudLayoutElement> bottomFrame =
+                characterScreen ? context.resolveHudLayoutElement("OutdoorBasebar", width, height, 0.0f, 0.0f)
+                                : std::nullopt;
+
             for (const auto &[id, text] : modHudTexts())
             {
                 if (text.screen != (characterScreen ? 7 : 0) || !text.visible || text.text.empty())
@@ -550,6 +554,15 @@ void GameplayHudRenderer::renderGameplayHud(GameplayScreenRuntime &context, int 
 
                 if (characterScreen)
                 {
+                    // One of the original's bottom strip (from y 366: MAW's marks on its bag buttons) goes on this
+                    // screen's bottom frame, where the mods' buttons are (GameplayUiRenderer).
+                    if (text.y >= 366.0f && bottomFrame)
+                    {
+                        const float frameScale = bottomFrame->width / 640.0f;
+                        x = bottomFrame->x + text.x * frameScale;
+                        y = bottomFrame->y + (text.y - 366.0f) * frameScale;
+                    }
+
                     if (!text.alignLeft && text.width > 0.0f)
                     {
                         x += (text.width * scale - textWidth) * 0.5f;

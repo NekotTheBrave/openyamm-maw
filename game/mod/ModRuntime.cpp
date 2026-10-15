@@ -954,7 +954,13 @@ bool ModRuntime::endDispatch(int argumentCount, int resultCount)
 {
     // Stack: traceback, dispatch function, kind, arguments...
     const int tracebackIndex = lua_gettop(m_pLuaState) - argumentCount - 2;
+    ++m_dispatchDepth;
     const int status = lua_pcall(m_pLuaState, argumentCount + 1, resultCount, tracebackIndex);
+
+    if (--m_dispatchDepth == 0)
+    {
+        removeUsedUpModItems();
+    }
 
     if (status != LUA_OK)
     {
@@ -1911,6 +1917,29 @@ bool ModRuntime::canWearItem(const Character &character, uint32_t itemId)
     }
 
     return available;
+}
+
+bool ModRuntime::pickObject(size_t worldItemIndex, const InventoryItem &item)
+{
+    if (!m_active || !beginDispatch("pickObject"))
+    {
+        return false;
+    }
+
+    // The handlers see the item as Map.Objects[ObjectId].Item; a copy, as the item is the engine's until taken.
+    InventoryItem eventItem = item;
+    InventoryItem *pPreviousEventItem = setModEventItem(&eventItem);
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(worldItemIndex));
+    bool handled = false;
+
+    if (endDispatch(1, 1))
+    {
+        handled = lua_toboolean(m_pLuaState, -1) != 0;
+        lua_pop(m_pLuaState, 1);
+    }
+
+    setModEventItem(pPreviousEventItem);
+    return handled;
 }
 
 void ModRuntime::partyDefeated()

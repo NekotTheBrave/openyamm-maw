@@ -1,0 +1,101 @@
+id: mod_runtime.maw.crafting_bag
+title: MAW's crafting bag takes the crafting materials the party picks up
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's crafting bag (zzzMaw_CraftingBag.lua): Shift+B on the inventory marks the bag open as a crafting bag
+# (ToggleCraftingBag), and a crafting material (1041-1070) the party picks up off the ground goes into a marked bag
+# that is not open, through PickObject (Map.Objects[ObjectId].Item; the engine raises it before the item is given
+# out). Its "C" on the bag's button moves with the port's buttons. The item here is a stand-in for the one on the
+# ground, as no scenario step picks one up. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 1
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      local id = Party[0]:GetIndex()
+      changeBag(Party[0], 2)
+      ToggleCraftingBag()
+      changeBag(Party[0], 1)
+      return tostring(vars.CraftingBags[id][2]), vars.mawbags[id].CurrentBag
+    expect: "true\t1"
+- mod_lua:
+    code: |
+      local id = Party[0]:GetIndex()
+      local realItem = ModRT.Bindings.eventItem
+      ModRT.Bindings.eventItem = {Number = 1045, Bonus = 0, Bonus2 = 0, BonusExpireTime = 0, BonusStrength = 0,
+        Broken = false, Charges = 0, Condition = 0, Hardened = false, Identified = true, MaxCharges = 0, Owner = 0,
+        Refundable = false, Stolen = false, TemporaryBonus = 0}
+      local taken = ModRT.Stats.pickObject(7)
+      ModRT.Bindings.eventItem = {Number = 220, Identified = true}
+      local potionTaken = ModRT.Stats.pickObject(8)
+      ModRT.Bindings.eventItem = realItem
+      local bag = vars.mawbags[id][2] or {}
+      return tostring(taken), tostring(potionTaken), #bag, bag[1] and bag[1].Number, ModRT.totalErrorCount
+    expect: "true\tfalse\t1\t1045\t0"
+# The "C" on bag 3's button, made as MAW makes it, lands on the port's bag 3 button.
+- mod_lua:
+    code: |
+      mawTick_MultibagButtons()
+      local marker = CustomUI.CreateText{Text = "", X = 455 + 3 * 30 + 12, Y = 372 + 16, Screen = 7}
+      return marker.X, marker.Y, multibagButton[3].X
+    expect: "563\t431\t555"
+# Opening the crafting bag puts what it took into the backpack (MAW keeps its own records there, with a grid Location).
+- mod_lua:
+    code: |
+      changeBag(Party[0], 2)
+      local items = modrt.inventoryTake(0)
+      for _, item in ipairs(items) do modrt.inventoryPut(0, item, item.X, item.Y) end
+      return vars.mawbags[Party[0]:GetIndex()].CurrentBag, #items, items[1] and items[1].Number, ModRT.totalErrorCount
+    expect: "2\t1\t1045\t0"
+# Switching bags with an item in hand: MAW refuses it for another character's bags only, telling them apart by
+# Party.PlayersIndexes (it was not bound, so every bag looked like another character's).
+- mod_lua:
+    code: return Party.PlayersIndexes[0] == Party[0]:GetIndex(), Party.PlayersIndexes.High
+    expect: "true\t0"
+# R (sortInventory): the crafting materials of the open bag go into the crafting bag (2), the rest stays.
+- mod_lua:
+    code: |
+      function Peek()
+        local items = modrt.inventoryTake(0)
+        for _, item in ipairs(items) do modrt.inventoryPut(0, item, item.X, item.Y) end
+        return items
+      end
+      local id = Party[0]:GetIndex()
+      changeBag(Party[0], 1)
+      modrt.inventoryTake(0)
+      modrt.inventoryPut(0, {Number = 1046})
+      modrt.inventoryPut(0, {Number = 11})
+      sortInventory(false)
+      local open = Peek()
+      local stored = {}
+      for _, item in ipairs(vars.mawbags[id][2] or {}) do stored[#stored + 1] = item.Number end
+      table.sort(stored)
+      return #open, open[1] and open[1].Number, table.concat(stored, ","), ModRT.totalErrorCount
+    expect: "1\t11\t1045,1046\t0"
+# C (sortMultibag): all five bags together; materials into the crafting bag, the rest into the others.
+- mod_lua:
+    code: |
+      local id = Party[0]:GetIndex()
+      modrt.inventoryPut(0, {Number = 1047})
+      sortMultibag()
+      local open, stored = {}, {}
+      for _, item in ipairs(Peek()) do open[#open + 1] = item.Number end
+      for _, item in ipairs(vars.mawbags[id][2] or {}) do stored[#stored + 1] = item.Number end
+      table.sort(stored)
+      return table.concat(open, ","), table.concat(stored, ","), vars.mawbags[id].CurrentBag, ModRT.totalErrorCount
+    expect: "11\t1045,1046,1047\t1\t0"

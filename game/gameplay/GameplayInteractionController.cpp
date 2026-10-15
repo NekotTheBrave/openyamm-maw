@@ -612,6 +612,15 @@ bool tryActivateWorldItem(
         return false;
     }
 
+    // A mod may take the item itself (MAW's crafting bag); it then leaves the map and goes nowhere else.
+    if (!worldItemState.isGold && modPickObject(worldItemIndex, worldItemState.item))
+    {
+        GameplayWorldItemInspectState takenItemState = {};
+        worldRuntime.takeWorldItemInspectState(worldItemIndex, takenItemState);
+        recordWorldItemActivationResult(worldRuntime, "picked up by a mod");
+        return true;
+    }
+
     GameplayUiController::HeldInventoryItemState &heldItem = runtime.heldInventoryItem();
     size_t recipientMemberIndex = 0;
     const bool canStoreInInventory =

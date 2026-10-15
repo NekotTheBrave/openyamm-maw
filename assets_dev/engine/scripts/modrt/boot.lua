@@ -370,6 +370,8 @@ local function dispatchKind(kind, ...)
         return ModRT.Stats.canWearItem(...)
     elseif kind == "canOpenChest" then
         return ModRT.Stats.canOpenChest(...)
+    elseif kind == "pickObject" then
+        return ModRT.Stats.pickObject(...)
     elseif kind == "partyDefeated" then
         ModRT.ensureSession()
         -- The original's DeathMap: the party fell on this map and is about to wake up in a temple.

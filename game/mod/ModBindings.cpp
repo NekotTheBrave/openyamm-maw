@@ -1377,6 +1377,8 @@ struct ItemView
     uint16_t *pMaxCharges = nullptr;
     ItemModData *pModData = nullptr;
     InventoryItem *pInventoryItem = nullptr;
+    // The backpack's owner, for an item in a backpack.
+    Character *pCharacter = nullptr;
     // 0 in the backpack, otherwise the equipment slot plus one (Item.BodyLocation).
     int bodyLocation = 0;
 };
@@ -1422,6 +1424,13 @@ void itemViewOfInventoryItem(InventoryItem &item, ItemView &view)
     view.pMaxCharges = &item.maxCharges;
     view.pModData = &item.modData;
     view.pInventoryItem = &item;
+}
+
+// The characters with a backpack item used up during the script call under way.
+std::vector<Character *> &usedUpItemOwners()
+{
+    static std::vector<Character *> owners;
+    return owners;
 }
 
 bool itemViewArgument(lua_State *pLuaState, ItemView &view)
@@ -1471,6 +1480,7 @@ bool itemViewArgument(lua_State *pLuaState, ItemView &view)
         }
 
         itemViewOfInventoryItem(pCharacter->inventory[static_cast<size_t>(index)], view);
+        view.pCharacter = pCharacter;
         return true;
     }
 
@@ -1711,6 +1721,13 @@ int nativeItemSet(lua_State *pLuaState)
         if (itemId == 0 && view.pInventoryItem != nullptr && view.pInventoryItem == pHeld)
         {
             view.pInventoryItem->objectDescriptionId = 0;
+        }
+        // A backpack item used up (MAW's quick potions: Items[i].Number = 0): an empty record until the script call
+        // is over, when it leaves the backpack (removeUsedUpModItems).
+        else if (itemId == 0 && view.pInventoryItem != nullptr && view.pCharacter != nullptr)
+        {
+            view.pInventoryItem->objectDescriptionId = 0;
+            usedUpItemOwners().push_back(view.pCharacter);
         }
         else if (pData == nullptr || itemId <= 0
             || pData->getItemTable().get(static_cast<uint32_t>(itemId)) == nullptr)
@@ -4747,6 +4764,24 @@ int nativeStatisticEffect(lua_State *pLuaState)
         GameMechanics::statisticEffect(static_cast<int>(luaL_optinteger(pLuaState, 1, 0))));
     return 1;
 }
+}
+
+void removeUsedUpModItems()
+{
+    std::vector<Character *> &owners = usedUpItemOwners();
+
+    for (Character *pCharacter : owners)
+    {
+        std::vector<InventoryItem> &inventory = pCharacter->inventory;
+        inventory.erase(
+            std::remove_if(
+                inventory.begin(),
+                inventory.end(),
+                [](const InventoryItem &item) { return item.objectDescriptionId == 0; }),
+            inventory.end());
+    }
+
+    owners.clear();
 }
 
 InventoryItem *modEventItem()

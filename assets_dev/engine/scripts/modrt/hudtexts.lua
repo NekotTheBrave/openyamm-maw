@@ -13,11 +13,19 @@ local function createText(spec)
     local fields = {
         Text = spec.Text or "", X = spec.X or 0, Y = spec.Y or 0, Screen = spec.Screen or 0, Layer = spec.Layer or 1,
         AlignLeft = spec.AlignLeft ~= false, Width = spec.Width or 0, Height = spec.Height or 0,
-        Active = spec.Active ~= false, Condition = spec.Condition,
+        Active = spec.Active ~= false, Condition = spec.Condition, ColorStd = spec.ColorStd,
     }
 
     local function push()
-        modrt.hudTextSet(id, tostring(fields.Text or ""), tonumber(fields.X) or 0, tonumber(fields.Y) or 0,
+        -- ColorStd, the text's colour (the original's 16-bit RGB), as the game's colour code before it.
+        local text = tostring(fields.Text or "")
+        local color = tonumber(fields.ColorStd)
+
+        if color and text ~= "" then
+            text = ("\f%.5d"):format(color) .. text
+        end
+
+        modrt.hudTextSet(id, text, tonumber(fields.X) or 0, tonumber(fields.Y) or 0,
             tonumber(fields.Screen) or 0, fields.AlignLeft and true or false, tonumber(fields.Width) or 0,
             fields.Active ~= false)
     end

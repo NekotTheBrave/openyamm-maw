@@ -1,0 +1,81 @@
+id: mod_runtime.maw.potion_keys
+title: MAW's quick potion keys drink outside the inventory page only
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's quick potion keys (zzMAW-Skills.lua, a party of one): G drinks the best red potion (222), V the best blue
+# (223), with 15 seconds of cooldown. G is also MAW's sort of every bag on the inventory page, so there the potion
+# keys do nothing (zMaw-Bags.lua). The screen is made to read as the inventory page or the game view by standing in
+# for modrt.gameGet. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 1
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      local realGet = modrt.gameGet
+      Screen = 0
+      modrt.gameGet = function(key)
+        if key == "CurrentScreen" then return Screen end
+        if key == "CurrentCharScreen" then return Screen == 7 and 103 or 100 end
+        return realGet(key)
+      end
+      function RedPotions()
+        local count = 0
+        for _, item in ipairs(modrt.inventoryTake(0)) do
+          if item.Number == 222 then count = count + 1 end
+          modrt.inventoryPut(0, item, item.X, item.Y)
+        end
+        return count
+      end
+      modrt.inventoryTake(0)
+      modrt.inventoryPut(0, {Number = 222, Bonus = 10})
+      Party[0].HP = 1
+      vars.healthPotionCooldown = 0
+      return RedPotions()
+    expect: "1"
+# G on the inventory page: no potion drunk.
+- mod_lua:
+    code: |
+      Screen = 7
+      ModRT.fire("KeyDown", {Key = 71})
+      return RedPotions(), vars.healthPotionCooldown, healthPotionKey
+    expect: "1\t0\tfalse"
+# G on the game view: the potion is drunk (and the keys are back).
+- mod_lua:
+    code: |
+      Screen = 0
+      ModRT.fire("KeyDown", {Key = 71})
+      return RedPotions(), vars.healthPotionCooldown, healthPotionKey, manaPotionKey, Party[0].HP > 1,
+        ModRT.totalErrorCount
+    expect: "0\t15\t71\t86\ttrue\t0"
+# An item a script uses up (Items[i].Number = 0) reads as empty until the script is over, the items after it keeping
+# their numbers, and then leaves the backpack.
+- mod_lua:
+    code: |
+      modrt.inventoryTake(0)
+      modrt.inventoryPut(0, {Number = 222})
+      modrt.inventoryPut(0, {Number = 223})
+      local pl = Party[0]
+      pl.Items[1].Number = 0
+      return pl.Items[1].Number, pl.Items[2].Number
+    expect: "0\t223"
+- mod_lua:
+    code: |
+      local items = modrt.inventoryTake(0)
+      for _, item in ipairs(items) do modrt.inventoryPut(0, item, item.X, item.Y) end
+      return #items, items[1] and items[1].Number
+    expect: "1\t223"

@@ -25,6 +25,9 @@ std::optional<size_t> findModPartySlot(const Party &party, const Character &char
 InventoryItem *setModEventItem(InventoryItem *pItem);
 // The item the event under way is about, nullptr when there is none.
 InventoryItem *modEventItem();
+// Takes out of the backpacks the items scripts used up (an item's Number set to 0: MAW's quick potions), which stay
+// in place, as empty records, until the script call is over so that the items after them keep their numbers.
+void removeUsedUpModItems();
 
 // Skill names in Merge's numbering, 0..MergeSkillCount-1.
 constexpr size_t MergeSkillCount = 39;

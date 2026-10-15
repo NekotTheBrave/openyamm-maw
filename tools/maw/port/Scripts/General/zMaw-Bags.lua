@@ -86,9 +86,10 @@ local function before(a, b)
     return size(a) > size(b)
 end
 
--- The backpacks a sort touches, as they were, so that a sort that cannot place everything undoes itself.
+-- The backpacks a sort touches, as they were, so that a sort that cannot place everything undoes itself; and the
+-- stored bags it put crafting materials into.
 local function newSnapshot()
-    return {lists = {}}
+    return {lists = {}, storedBags = {}}
 end
 
 -- Empties a backpack the snapshot does not hold yet; returns its items.
@@ -124,9 +125,114 @@ local function restore(snapshot)
             modrt.inventoryPut(slot, item, item.X, item.Y)
         end
     end
+
+    for index = #snapshot.storedBags, 1, -1 do
+        local stored = snapshot.storedBags[index]
+        stored.bags[stored.bag] = stored.list
+    end
 end
 
--- R and T: the current bag of the current character, or of everyone. Items go to the current character (alchemy
+local function bagsOf(pl)
+    local id = pl:GetIndex()
+    vars.mawbags = vars.mawbags or {}
+    vars.mawbags[id] = vars.mawbags[id] or {CurrentBag = 1}
+    return vars.mawbags[id]
+end
+
+-- MAW's crafting bag (zzzMaw_CraftingBag.lua): bags a character marked with Shift+B (vars.CraftingBags[character]
+-- [bag]), which the crafting materials picked up go into. The sorts put them there too (the port's addition).
+local function isMaterial(number)
+    return type(isCraftingMaterial) == "function" and isCraftingMaterial(number) == true
+end
+
+-- The character's crafting bags, in order; the open one only when `includeOpen`.
+local function craftingBagsOf(pl, includeOpen)
+    local flags = vars.CraftingBags and vars.CraftingBags[pl:GetIndex()]
+    local list = {}
+
+    if type(flags) == "table" then
+        local open = bagsOf(pl).CurrentBag
+
+        for bag, flagged in pairs(flags) do
+            if flagged == true and (includeOpen or bag ~= open) then
+                list[#list + 1] = bag
+            end
+        end
+
+        table.sort(list)
+    end
+
+    return list
+end
+
+-- Puts `items` into stored (not open) bag `bag` of party member `slot`, beside what it holds, through the backpack,
+-- whose own items are set aside meanwhile. Returns what did not fit; the snapshot keeps the bag as it was.
+local function fillStoredBag(snapshot, slot, bag, items)
+    local bags = bagsOf(Party[slot])
+    snapshot.storedBags[#snapshot.storedBags + 1] = {bags = bags, bag = bag, list = bags[bag]}
+    local open = modrt.inventoryTake(slot) or {}
+    local kept = {}
+
+    for _, item in ipairs(bags[bag] or {}) do
+        if not modrt.inventoryPut(slot, item, item.X, item.Y) then
+            kept[#kept + 1] = item
+        end
+    end
+
+    local left = {}
+
+    for _, item in ipairs(items) do
+        if not modrt.inventoryPut(slot, item) then
+            left[#left + 1] = item
+        end
+    end
+
+    local stored = modrt.inventoryTake(slot) or {}
+
+    for _, item in ipairs(kept) do
+        stored[#stored + 1] = item
+    end
+
+    bags[bag] = #stored > 0 and stored or nil
+
+    for _, item in ipairs(open) do
+        modrt.inventoryPut(slot, item, item.X, item.Y)
+    end
+
+    return left
+end
+
+-- Fills the bags of `bagList` in turn, through the (empty) backpack of party member `slot`: each takes what it holds
+-- in `filled` and then every item of `items` that still fits. Returns what fitted nowhere.
+local function fillBags(slot, bagList, items, filled)
+    local left = items
+
+    for _, bag in ipairs(bagList) do
+        if #left == 0 then
+            break
+        end
+
+        for _, item in ipairs(filled[bag] or {}) do
+            modrt.inventoryPut(slot, item, item.X, item.Y)
+        end
+
+        local carry = {}
+
+        for _, item in ipairs(left) do
+            if not modrt.inventoryPut(slot, item) then
+                carry[#carry + 1] = item
+            end
+        end
+
+        filled[bag] = modrt.inventoryTake(slot) or {}
+        left = carry
+    end
+
+    return left
+end
+
+-- R and T: the current bag of the current character, or of everyone. Crafting materials go into the crafting bags
+-- that are not open (the current character's, then the others'); the other items to the current character (alchemy
 -- items to the chosen character), and to the others in turn when that backpack is full.
 local function portSortInventory(all)
     local snapshot = newSnapshot()
@@ -139,6 +245,40 @@ local function portSortInventory(all)
         for _, item in ipairs(takeInto(snapshot, slot)) do
             items[#items + 1] = item
         end
+    end
+
+    local rest, materials = {}, {}
+
+    for _, item in ipairs(items) do
+        if isMaterial(item.Number) then
+            materials[#materials + 1] = item
+        else
+            rest[#rest + 1] = item
+        end
+    end
+
+    if #materials > 0 then
+        local order = {Game.CurrentPlayer}
+
+        for slot = 0, Party.High do
+            if slot ~= Game.CurrentPlayer then
+                order[#order + 1] = slot
+            end
+        end
+
+        for _, slot in ipairs(order) do
+            for _, bag in ipairs(craftingBagsOf(Party[slot])) do
+                if #materials > 0 then
+                    materials = fillStoredBag(snapshot, slot, bag, materials)
+                end
+            end
+        end
+
+        for _, item in ipairs(materials) do
+            rest[#rest + 1] = item
+        end
+
+        items = rest
     end
 
     table.sort(items, before)
@@ -170,13 +310,6 @@ local function portSortInventory(all)
     end
 
     return true
-end
-
-local function bagsOf(pl)
-    local id = pl:GetIndex()
-    vars.mawbags = vars.mawbags or {}
-    vars.mawbags[id] = vars.mawbags[id] or {CurrentBag = 1}
-    return vars.mawbags[id]
 end
 
 -- Shift+1..5 (and the solo tabs, 100 to 500): puts the backpack away as the bag it is and takes out another.
@@ -216,7 +349,8 @@ local function portChangeBag(pl, bag)
     bags[bag] = #left > 0 and left or nil
 end
 
--- C: all five bags of a character (of its current tab), sorted together and filled in turn from the first.
+-- C: all five bags of a character (of its current tab), sorted together and filled in turn from the first; crafting
+-- materials fill its crafting bags first and the other items the other bags, then any room left in the crafting bags.
 local function sortBagsOf(slot)
     local pl = Party[slot]
     local bags = bagsOf(pl)
@@ -240,31 +374,50 @@ local function sortBagsOf(slot)
     end
 
     table.sort(items, before)
-    local filled = {}
-    local bag = base + 1
-    local index = 1
+    local crafting, normal, isCrafting = {}, {}, {}
 
-    while index <= #items do
-        if modrt.inventoryPut(slot, items[index]) then
-            index = index + 1
-        else
-            filled[bag] = modrt.inventoryTake(slot) or {}
-            bag = bag + 1
-
-            if bag > base + 5 then
-                restore(snapshot)
-
-                for savedBag = base + 1, base + 5 do
-                    bags[savedBag] = savedBags[savedBag]
-                end
-
-                Game.ShowStatusText("Not enough room to sort")
-                return false
-            end
+    for _, bag in ipairs(craftingBagsOf(pl, true)) do
+        if bag > base and bag <= base + 5 then
+            crafting[#crafting + 1] = bag
+            isCrafting[bag] = true
         end
     end
 
-    filled[bag] = modrt.inventoryTake(slot) or {}
+    for bag = base + 1, base + 5 do
+        if not isCrafting[bag] then
+            normal[#normal + 1] = bag
+        end
+    end
+
+    local materials, others = {}, {}
+
+    for _, item in ipairs(items) do
+        if #crafting > 0 and isMaterial(item.Number) then
+            materials[#materials + 1] = item
+        else
+            others[#others + 1] = item
+        end
+    end
+
+    local filled = {}
+
+    for _, item in ipairs(fillBags(slot, crafting, materials, filled)) do
+        others[#others + 1] = item
+    end
+
+    table.sort(others, before)
+    local left = fillBags(slot, crafting, fillBags(slot, normal, others, filled), filled)
+
+    if #left > 0 then
+        restore(snapshot)
+
+        for savedBag = base + 1, base + 5 do
+            bags[savedBag] = savedBags[savedBag]
+        end
+
+        Game.ShowStatusText("Not enough room to sort")
+        return false
+    end
 
     -- The backpack shows the bag the character had open.
     for b = base + 1, base + 5 do
@@ -305,6 +458,26 @@ local function placeBagButtons()
     end
 end
 
+-- MAW's crafting bag (zzzMaw_CraftingBag.lua) marks a crafting bag with a "C" on its button: a text at the button's
+-- place + (12, 16) (Screen 7, y 388). It keeps the texts to itself, so they are moved as they are made: to the same
+-- place on the port's buttons, which are half the size.
+do
+    local createText = rawget(CustomUI, "CreateText")
+
+    rawset(CustomUI, "CreateText", function(spec)
+        if type(spec) == "table" and spec.Screen == 7 and spec.Y == 372 + 16 and type(spec.X) == "number" then
+            local i = (spec.X - 12 - 455) / 30
+
+            if i >= 1 and i <= 5 and i == math.floor(i) then
+                spec.X = BagButtonsX + (i - 1) * BagButtonsStep + 8
+                spec.Y = BagButtonsY[372] + 6
+            end
+        end
+
+        return createText(spec)
+    end)
+end
+
 -- MAW's sorter and multi-bag load after this file and define their own; these take their place once everything has
 -- loaded. MAW's key handlers call them by these names.
 local function install()
@@ -326,6 +499,23 @@ local function installButtonTick()
             mawTick(...)
             placeBagButtons()
         end
+    end
+end
+
+-- MAW's quick potion keys (zzMAW-Skills.lua: G a red potion, V a blue one, a party of one only) share G with its sort
+-- of every bag (partyMultyBagSortKey), so G on the inventory page sorted and drank too. On that page the potion keys
+-- do nothing (the port's choice): this runs before MAW's handlers and hides the keys from them for that key press.
+local hiddenPotionKeys = nil
+
+function events.KeyDown(t)
+    if hiddenPotionKeys then
+        healthPotionKey, manaPotionKey = hiddenPotionKeys[1], hiddenPotionKeys[2]
+        hiddenPotionKeys = nil
+    end
+
+    if Game.CurrentScreen == 7 and Game.CurrentCharScreen == 103 then
+        hiddenPotionKeys = {healthPotionKey, manaPotionKey}
+        healthPotionKey, manaPotionKey = false, false
     end
 end
 
