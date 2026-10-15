@@ -1386,6 +1386,52 @@ int MonsterTable::getRelationBetweenMonsters(int16_t leftMonsterId, int16_t righ
     return m_relations[rightRelationIndex][leftRelationIndex];
 }
 
+size_t MonsterTable::relationClassCount() const
+{
+    return m_relations.size();
+}
+
+int MonsterTable::relationAt(size_t targetClass, size_t actorClass) const
+{
+    if (targetClass >= m_relations.size() || actorClass >= m_relations[targetClass].size())
+    {
+        return 0;
+    }
+
+    return m_relations[targetClass][actorClass];
+}
+
+bool MonsterTable::setRelationAt(size_t targetClass, size_t actorClass, int value)
+{
+    if (targetClass >= m_relations.size() || actorClass >= m_relations[targetClass].size())
+    {
+        return false;
+    }
+
+    m_relations[targetClass][actorClass] = value;
+    return true;
+}
+
+void MonsterTable::keepRelations()
+{
+    if (!m_keptRelations)
+    {
+        m_keptRelations = m_relations;
+    }
+}
+
+bool MonsterTable::restoreRelations()
+{
+    if (!m_keptRelations)
+    {
+        return false;
+    }
+
+    m_relations = std::move(*m_keptRelations);
+    m_keptRelations.reset();
+    return true;
+}
+
 bool MonsterTable::isHostileToParty(int16_t monsterId) const
 {
     return getRelationToParty(monsterId) > 0;

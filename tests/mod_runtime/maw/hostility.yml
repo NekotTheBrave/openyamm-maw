@@ -1,0 +1,45 @@
+id: mod_runtime.maw.hostility
+title: Game.HostileTxt is the game's relation table; MAW's zombies and ghouls attack the party
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# Game.HostileTxt[actor][target], as MMExtension has it: how monsters of class `actor` (ceil(Id / 3)) treat those of
+# class `target`, 0 the party. hostile.txt holds it the other way round (row the one treated): Pirate Warriors
+# (class 4) are 3 to the party. MAW (zzMaw-Monsters.lua, "fix to monsters AI") makes zombies (143) and ghouls (152)
+# aggressive to the party (4) and no longer hostile to each other; the table had them neutral to the party and
+# ghouls hostile to zombies. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out01.odm
+- mod_lua:
+    code: |
+      local h = Game.HostileTxt
+      return h[4][0], h[0][4], h[143][0], h[152][0], h[152][143], h[143][152], h.High, ModRT.totalErrorCount
+    expect: "3\t0\t4\t4\t0\t0\t217\t0"
+# Merge's LocalHostileTxt() (its map scripts: outd3, oute2 and others): what the map writes after it lasts until
+# the party leaves the map.
+- mod_lua:
+    code: |
+      LocalHostileTxt()
+      Game.HostileTxt[4][0] = 0
+      Game.HostileTxt[143][0] = 1
+      return Game.HostileTxt[4][0], Game.HostileTxt[143][0]
+    expect: "0\t1"
+- load_map:
+    map: out02.odm
+- mod_lua:
+    code: |
+      Game.HostileTxt[5][0] = 0
+      return Game.HostileTxt[4][0], Game.HostileTxt[143][0], Game.HostileTxt[5][0], ModRT.totalErrorCount
+    expect: "3\t4\t0\t0"
+# Without LocalHostileTxt a write stays (MAW's own, at the start of the game).
+- load_map:
+    map: out01.odm
+- mod_lua:
+    code: |
+      local kept = Game.HostileTxt[5][0]
+      Game.HostileTxt[5][0] = 3
+      return kept
+    expect: "0"

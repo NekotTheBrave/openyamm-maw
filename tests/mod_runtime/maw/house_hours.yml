@@ -1,0 +1,29 @@
+id: mod_runtime.maw.house_hours
+title: MAW opens at 5 the houses that open at 6
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# Game.Houses.High and a house's OpenHour and CloseHour, the house table's own: MAW (zzMAW-Skills.lua) opens at 5
+# every house that opens at 6 (352 of them in house_data.txt, house 1 a weapon shop among them), keeping the hours
+# it made and writing them back on every map. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out01.odm
+- mod_lua:
+    code: |
+      local six, five = 0, 0
+      for i = 0, Game.Houses.High do
+        local open = Game.Houses[i].OpenHour
+        if open == 6 then six = six + 1 elseif open == 5 then five = five + 1 end
+      end
+      return Game.Houses[1].OpenHour, six, five >= 352 + 80, Game.Houses.High > 1000, ModRT.totalErrorCount
+    expect: "5\t0\ttrue\ttrue\t0"
+- load_map:
+    map: out02.odm
+- mod_lua:
+    code: |
+      Game.Houses[1].CloseHour = Game.Houses[1].CloseHour
+      return Game.Houses[1].OpenHour, ModRT.totalErrorCount
+    expect: "5\t0"

@@ -1680,6 +1680,78 @@ local placeMonTxt = boundObject("Game.PlaceMonTxt", {
     range = function() return 0, (modrt.placeMonGet("#") or 0) - 1 end,
 })
 
+-- Game.HostileTxt[actor][target]: how monsters of class `actor` treat those of class `target` (0 the party; a
+-- monster's class is ceil(Id / 3)), 0 not hostile, 1 to 4 hostile from that distance up. The game's own table:
+-- MAW makes zombies and ghouls attack the party and leave each other alone, Merge's map scripts change it for their
+-- map (LocalHostileTxt).
+local function hostileClassCount()
+    return modrt.hostileGet() or 0
+end
+
+local hostileRow = cached(function(actor)
+    return boundObject("Game.HostileTxt[]", {
+        index = function(target)
+            return modrt.hostileGet(actor, floor(target))
+        end,
+        newindex = function(target, value)
+            return modrt.hostileSet(actor, floor(target), floor(tonumber(value) or 0))
+        end,
+        get = sizeFields(hostileClassCount),
+        range = function() return 0, hostileClassCount() - 1 end,
+    })
+end)
+
+local hostileTxt = boundObject("Game.HostileTxt", {
+    index = function(actor)
+        actor = floor(actor)
+        return actor >= 0 and actor < hostileClassCount() and hostileRow(actor) or nil
+    end,
+    get = sizeFields(hostileClassCount),
+    range = function() return 0, hostileClassCount() - 1 end,
+})
+
+-- Game.MonListBin[id]: a monster kind's list entry, by monster id from 1: Height, Radius, Velocity, Radius2 (the
+-- radius for being hit). Monsters take them as they are made.
+local monListFields = {Height = true, Radius = true, Velocity = true, Radius2 = true}
+
+local monListEntry = cached(function(id)
+    return boundObject("Game.MonListBin[]", {
+        get = function(key)
+            return monListFields[key] and modrt.monListGet(id, key) or nil
+        end,
+        set = function(key, value)
+            return monListFields[key] and modrt.monListSet(id, key, floor(tonumber(value) or 0)) or false
+        end,
+    })
+end)
+
+local function monListHigh()
+    return (modrt.monListGet("#") or 1) - 1
+end
+
+local monListBin = boundObject("Game.MonListBin", {
+    index = function(id)
+        id = floor(id)
+        return id >= 1 and id <= monListHigh() and monListEntry(id) or nil
+    end,
+    get = function(key)
+        if key == "High" or key == "high" then
+            return monListHigh()
+        elseif key == "Count" or key == "count" or key == "Length" or key == "length" then
+            return monListHigh()
+        end
+
+        return nil
+    end,
+    range = function() return 1, monListHigh() end,
+})
+
+-- Merge's LocalHostileTxt(): what the map's scripts write to Game.HostileTxt from now on lasts until the party
+-- leaves the map (state.lua puts the table back on every map change).
+function LocalHostileTxt()
+    modrt.hostileKeep()
+end
+
 ---------------------------------------------------------------------------------------------------------------------
 -- classes: Game.Classes.HPFactor[class] and its sibling arrays, Game.Classes.Skills[class][skill] (the highest
 -- mastery the class can reach), Game.ClassNames[class], Game.ClassesExtra[class].Kind/.Step.
@@ -1783,6 +1855,8 @@ end
 
 -- Game.Houses[id]: a house of the house table. Val is its price multiplier; a script's Val stays with the scripts
 -- and reaches the engine where it asks them for a house's prices (GetShopItemTreatment: identifying, repairing).
+-- OpenHour and CloseHour are the house's own (MAW opens at 5 what opens at 6); a number missing from the table
+-- reads as no house.
 local houseVals = {}
 
 function Bindings.houseVal(id)
@@ -1804,10 +1878,14 @@ local houses = boundObject("Game.Houses", {
             __newindex = function(_, field, value)
                 if field == "Val" then
                     houseVals[id] = tonumber(value)
+                elseif (field == "OpenHour" or field == "CloseHour") and tonumber(value) then
+                    modrt.houseSet(id, field, floor(tonumber(value)))
                 end
             end,
         })
     end,
+    get = sizeFields(function() return modrt.houseGet("#") or 0 end),
+    range = function() return 0, (modrt.houseGet("#") or 0) - 1 end,
 })
 
 -- Game.ShopItems[house][slot] and Game.ShopSpecialItems[house][slot] (slots 0 to 11): a shop's goods and special
@@ -1856,6 +1934,7 @@ Game = boundObject("Game", {
         HouseScreen = true, GlobalTxt = true, CurrentCharScreen = true, NPCText = true, HouseRules = true,
         SpellsTxt = true, StatsDescriptions = true, NPC = true, NPCTopic = true, QuestsTxt = true,
         TurnBased = true, TurnBasedPhase = true, Houses = true, ShopItems = true, ShopSpecialItems = true,
+        HostileTxt = true, MonListBin = true,
     },
     get = function(key)
         if key == "ItemsTxt" then
@@ -1911,6 +1990,10 @@ Game = boundObject("Game", {
             return mapStats
         elseif key == "PlaceMonTxt" then
             return placeMonTxt
+        elseif key == "HostileTxt" then
+            return hostileTxt
+        elseif key == "MonListBin" then
+            return monListBin
         elseif key == "Classes" then
             return classes
         elseif key == "ClassNames" then

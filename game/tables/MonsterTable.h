@@ -254,6 +254,14 @@ public:
     int getRelationBetweenMonsters(int16_t leftMonsterId, int16_t rightMonsterId) const;
     bool isHostileToParty(int16_t monsterId) const;
     bool isLikelySameFaction(int16_t leftMonsterId, int16_t rightMonsterId) const;
+    // For the mod runtime: the relation table by class (a monster id's (id - 1) / 3 + 1; 0 the party), row the one
+    // treated, column the one treating it, as hostile.txt holds it. A script's map may change it until the party
+    // leaves the map: keepRelations() keeps the table as it is (once until restoreRelations()), which puts it back.
+    size_t relationClassCount() const;
+    int relationAt(size_t targetClass, size_t actorClass) const;
+    bool setRelationAt(size_t targetClass, size_t actorClass, int value);
+    void keepRelations();
+    bool restoreRelations();
     const std::vector<MonsterEntry> &getEntries() const;
     const std::unordered_map<int, MonsterStatsEntry> &statsEntries() const;
 
@@ -271,5 +279,6 @@ private:
     std::unordered_map<std::string, int> m_statsIdByPictureName;
     std::vector<std::string> m_relationLabels;
     std::vector<std::vector<int>> m_relations;
+    std::optional<std::vector<std::vector<int>>> m_keptRelations;
 };
 }

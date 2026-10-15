@@ -1,0 +1,49 @@
+id: mod_runtime.maw.item_table_fields
+title: MAW's writes to an item kind's Equip Stat, Skill and Material reach the game's table
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# Game.ItemsTxt[i].EquipStat, Skill and Material, numbered as the original numbers them, change the game's own
+# columns (the game decides with them which hand an item takes, its skill, whether it is an artifact). MAW makes the
+# halberds two-handed (zzMaw-Items.lua: EquipStat 1, from Weapon1or2, a spear a Master may hold with a shield), the
+# Endless Potion a Misc item and the Crafting Cube a gem like 1063 (zzAlchemy.lua), and a Seraph's two-handed swords
+# one-handed while one is put on (zzClasses.lua, Action 133). Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out01.odm
+- mod_lua:
+    code: |
+      local halberd, spear = Game.ItemsTxt[46], Game.ItemsTxt[45]
+      return halberd.EquipStat, halberd.EquipStatName, spear.EquipStat, spear.EquipStatName,
+        Game.ItemsTxt[1069].SkillName, Game.ItemsTxt[1070].EquipStatName, Game.ItemsTxt[1070].SkillName
+    expect: "1\tWeapon2\t0\tWeapon1or2\tMisc\tGem\tMisc"
+# Writing back the number read keeps the column (Weapon1or2 reads as a one-handed weapon's 0); a two-handed sword
+# made one-handed and back, as MAW's Seraph rule does.
+- mod_lua:
+    code: |
+      local spear = Game.ItemsTxt[45]
+      spear.EquipStat = spear.EquipStat
+      local sword = nil
+      for i = 1, Game.ItemsTxt.High do
+        if Game.ItemsTxt[i].Skill == 1 and Game.ItemsTxt[i].EquipStat == 1 then sword = Game.ItemsTxt[i] break end
+      end
+      sword.EquipStat = 0
+      local oneHanded = sword.EquipStatName
+      sword.EquipStat = 1
+      return spear.EquipStatName, oneHanded, sword.EquipStatName, ModRT.totalErrorCount
+    expect: "Weapon1or2\tWeapon\tWeapon2\t0"
+# Material is the original's: 1 an artifact, 2 a relic, 3 a special item, else 0 (the column's numbers are not
+# read: a Recurve Bow, 57, has a 3 there and is a common item).
+- mod_lua:
+    code: |
+      local artifact, relic, special
+      for i = 1, Game.ItemsTxt.High do
+        local m = Game.ItemsTxt[i].Material
+        if m == 1 and not artifact then artifact = i end
+        if m == 2 and not relic then relic = i end
+        if m == 3 and not special then special = i end
+      end
+      return Game.ItemsTxt[57].Material, artifact ~= nil, relic ~= nil, special ~= nil, Game.ItemsTxt[1070].Material
+    expect: "0\ttrue\ttrue\ttrue\t0"

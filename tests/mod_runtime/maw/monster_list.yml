@@ -1,0 +1,22 @@
+id: mod_runtime.maw.monster_list
+title: Game.MonListBin is the game's monster list; MAW makes some large kinds smaller
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# Game.MonListBin[id] (by monster id, from 1): Height, Radius, Velocity, Radius2 of the kind's list entry
+# (monster_descriptors.txt), which monsters take as they are made. MAW (zzMaw-Monsters.lua) makes the kinds of its
+# resize list three quarters of their size, as they got stuck. Its list is one off from its own labels ("behemoth"
+# 207-209): by the original's numbering it takes the Inferno Bat (207, 96 x 125), Young Behemoth and Behemoth (208,
+# 209: 256 x 160, 256 x 175) and leaves the Ancient Behemoth (210, 256 x 190), as in the real game. Run with the MAW
+# mods.yml.
+- new_game_flow:
+    start_map: out01.odm
+- mod_lua:
+    code: |
+      local m = Game.MonListBin
+      return m[207].Height, m[207].Radius, m[208].Height, m[208].Radius, m[209].Radius, m[210].Height,
+        m[210].Radius, m[210].Velocity, m.High >= 210, ModRT.totalErrorCount
+    expect: "72\t93\t192\t120\t131\t256\t190\t140\ttrue\t0"

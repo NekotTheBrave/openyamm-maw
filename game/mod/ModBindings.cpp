@@ -1900,6 +1900,19 @@ int mm8EquipStat(const std::string &equipStat)
 // ItemsTxt.Skill: the "Skill Group" column as a skill id. Club and Misc follow the 39 real skills.
 int mm8ItemSkill(const std::string &skillGroup);
 
+// ItemsTxt.Material as the original reads the "material" column: 1 artifact, 2 relic, 3 special, else 0 (the
+// column's numbers are not read).
+int mm8ItemMaterial(const ItemDefinition &item)
+{
+    switch (item.rarity)
+    {
+        case ItemRarity::Artifact: return 1;
+        case ItemRarity::Relic: return 2;
+        case ItemRarity::Special: return 3;
+        default: return 0;
+    }
+}
+
 // Whether the item is of the original's item type `itemType` (const.ItemType, as Item:Randomize takes it): 1 to 19
 // an Equip Stat (EquipStat + 1), 20 any weapon, 21 any armour, 22 anything else, 23 to 33 a weapon or armour skill
 // (sword, dagger, axe, spear, bow, mace, club, staff, leather, chain, plate), 34 to 45 an Equip Stat again (shield
@@ -2109,7 +2122,7 @@ int nativeItemTxtGet(lua_State *pLuaState)
     }
     else if (field == "Material")
     {
-        lua_pushinteger(pLuaState, pItem->material);
+        lua_pushinteger(pLuaState, mm8ItemMaterial(*pItem));
     }
     else if (field == "IdRepSt")
     {
@@ -2186,6 +2199,63 @@ int nativeItemTxtSet(lua_State *pLuaState)
         // The object the item is when it lies on the ground; without one it cannot be put there (MAW gives its
         // crafting materials theirs, and drops them so).
         item.spriteIndex = clampedInteger<uint16_t>(integerArgument(pLuaState, 3));
+    }
+    else if (field == "EquipStat")
+    {
+        // A number as the original's: the engine's column takes its name. Writing back the number read keeps the
+        // name (Weapon1or2 and Herb read as Weapon's and Reagent's numbers). MAW makes halberds two-handed, and a
+        // Seraph's two-handed sword one-handed while it is put on.
+        static const char *const names[] = {
+            "Weapon", "Weapon2", "Missile", "Armor", "Shield", "Helm", "Belt", "Cloak", "Gauntlets", "Boots", "Ring",
+            "Amulet", "WeaponW", "Reagent", "Bottle", "Sscroll", "Book", "Mscroll", "Gold", "Gem",
+        };
+        const int64_t value = integerArgument(pLuaState, 3);
+
+        if (value != mm8EquipStat(item.equipStat))
+        {
+            applied = value >= 0 && value < static_cast<int64_t>(std::size(names));
+
+            if (applied)
+            {
+                item.equipStat = names[value];
+            }
+        }
+    }
+    else if (field == "Skill")
+    {
+        static const std::unordered_map<int64_t, const char *> names = {
+            {0, "Staff"}, {1, "Sword"}, {2, "Dagger"}, {3, "Axe"}, {4, "Spear"}, {5, "Bow"}, {6, "Mace"},
+            {7, "Blaster"}, {8, "Shield"}, {9, "Leather"}, {10, "Chain"}, {11, "Plate"}, {39, "Club"}, {40, "Misc"},
+        };
+        const int64_t value = integerArgument(pLuaState, 3);
+        const std::unordered_map<int64_t, const char *>::const_iterator it = names.find(value);
+        applied = it != names.end();
+
+        // A kind with no skill group (an empty "0" row) reads as Misc too; it takes the name.
+        if (applied && toLowerCopy(item.skillGroup) != toLowerCopy(it->second))
+        {
+            item.skillGroup = it->second;
+        }
+    }
+    else if (field == "Material")
+    {
+        // 0 a common item, 1 an artifact, 2 a relic, 3 a special (quest) item, as the original reads the column.
+        static const ItemRarity rarities[] = {
+            ItemRarity::Common, ItemRarity::Artifact, ItemRarity::Relic, ItemRarity::Special,
+        };
+        static const char *const names[] = {"0", "Artifact", "Relic", "Special"};
+        const int64_t value = integerArgument(pLuaState, 3);
+
+        if (value != mm8ItemMaterial(item))
+        {
+            applied = value >= 0 && value < static_cast<int64_t>(std::size(names));
+
+            if (applied)
+            {
+                item.rarity = rarities[value];
+                item.materialName = names[value];
+            }
+        }
     }
     else if (field == "Mod2")
     {
@@ -2638,6 +2708,174 @@ int nativePlaceMonSet(lua_State *pLuaState)
         && const_cast<MonsterTable &>(pData->getMonsterTable())
             .setUniqueName(clampedInteger<int32_t>(index), std::string(pName, length));
     lua_pushboolean(pLuaState, written);
+    return 1;
+}
+
+// modrt.hostileGet(actor, target): Game.HostileTxt[actor][target], how monsters of class `actor` treat those of
+// class `target` (0 the party; a class is a monster id's (id - 1) / 3 + 1): 0 not hostile, 1 to 4 hostile from that
+// distance up. modrt.hostileGet() is the number of classes.
+int nativeHostileGet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+
+    if (pData == nullptr)
+    {
+        return 0;
+    }
+
+    const MonsterTable &monsterTable = pData->getMonsterTable();
+
+    if (lua_gettop(pLuaState) == 0)
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(monsterTable.relationClassCount()));
+        return 1;
+    }
+
+    const int64_t actor = integerArgument(pLuaState, 1);
+    const int64_t target = integerArgument(pLuaState, 2);
+
+    if (actor < 0 || target < 0)
+    {
+        return 0;
+    }
+
+    lua_pushinteger(pLuaState, monsterTable.relationAt(static_cast<size_t>(target), static_cast<size_t>(actor)));
+    return 1;
+}
+
+// modrt.hostileSet(actor, target, value): changes Game.HostileTxt[actor][target] for the rest of the game, or
+// until modrt.hostileRestore() when modrt.hostileKeep() was called before (Merge's LocalHostileTxt, for one map).
+int nativeHostileSet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t actor = integerArgument(pLuaState, 1);
+    const int64_t target = integerArgument(pLuaState, 2);
+    const bool written = pData != nullptr && actor >= 0 && target >= 0
+        && const_cast<MonsterTable &>(pData->getMonsterTable())
+            .setRelationAt(static_cast<size_t>(target), static_cast<size_t>(actor),
+                clampedInteger<int>(integerArgument(pLuaState, 3)));
+    lua_pushboolean(pLuaState, written);
+    return 1;
+}
+
+// The size and speed fields of a monster kind's list entry (Game.MonListBin[id], by monster id): the field, or null.
+uint16_t *monsterListField(MonsterEntry &entry, const std::string &field)
+{
+    if (field == "Height")
+    {
+        return &entry.height;
+    }
+    else if (field == "Radius")
+    {
+        return &entry.radius;
+    }
+    else if (field == "Velocity")
+    {
+        return &entry.movementSpeed;
+    }
+
+    return nullptr;
+}
+
+// modrt.monListGet(id, field): Height, Radius, Velocity or Radius2 (the radius for being hit) of the kind's list entry;
+// modrt.monListGet("#") the number of entries. MAW makes a few large kinds smaller (they got stuck), from the start
+// of the game; monsters take them as they are made.
+int nativeMonListGet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+
+    if (pData == nullptr)
+    {
+        return 0;
+    }
+
+    const std::vector<MonsterEntry> &entries = pData->getMonsterTable().getEntries();
+
+    if (lua_type(pLuaState, 1) == LUA_TSTRING)
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(entries.size()));
+        return 1;
+    }
+
+    const int64_t id = integerArgument(pLuaState, 1);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+
+    if (id <= 0 || static_cast<size_t>(id) >= entries.size())
+    {
+        return 0;
+    }
+
+    const MonsterEntry &entry = entries[static_cast<size_t>(id)];
+    const uint16_t *pField = monsterListField(const_cast<MonsterEntry &>(entry), field);
+
+    if (pField != nullptr)
+    {
+        lua_pushinteger(pLuaState, *pField);
+    }
+    else if (field == "Radius2")
+    {
+        lua_pushinteger(pLuaState, entry.toHitRadius);
+    }
+    else
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+int nativeMonListSet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t id = integerArgument(pLuaState, 1);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+    bool written = false;
+
+    if (pData != nullptr && id > 0)
+    {
+        // The table belongs to the game's data loader, which hands it out read-only; it is not a constant object.
+        std::vector<MonsterEntry> &entries =
+            const_cast<std::vector<MonsterEntry> &>(pData->getMonsterTable().getEntries());
+
+        if (static_cast<size_t>(id) < entries.size())
+        {
+            MonsterEntry &entry = entries[static_cast<size_t>(id)];
+            uint16_t *pField = monsterListField(entry, field);
+
+            if (pField != nullptr)
+            {
+                *pField = clampedInteger<uint16_t>(integerArgument(pLuaState, 3));
+                written = true;
+            }
+            else if (field == "Radius2")
+            {
+                entry.toHitRadius = clampedInteger<int16_t>(integerArgument(pLuaState, 3));
+                written = true;
+            }
+        }
+    }
+
+    lua_pushboolean(pLuaState, written);
+    return 1;
+}
+
+int nativeHostileKeep(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+
+    if (pData != nullptr)
+    {
+        const_cast<MonsterTable &>(pData->getMonsterTable()).keepRelations();
+    }
+
+    return 0;
+}
+
+int nativeHostileRestore(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    lua_pushboolean(
+        pLuaState, pData != nullptr && const_cast<MonsterTable &>(pData->getMonsterTable()).restoreRelations());
     return 1;
 }
 
@@ -4701,6 +4939,24 @@ int nativeMapMonstersResetSpeed(lua_State *pLuaState)
 int nativeHouseGet(lua_State *pLuaState)
 {
     const GameDataLoader *pData = dataFromHost(pLuaState);
+
+    // modrt.houseGet("#"): one more than the highest house number (Game.Houses.High is one less).
+    if (lua_type(pLuaState, 1) == LUA_TSTRING)
+    {
+        uint32_t highest = 0;
+
+        if (pData != nullptr)
+        {
+            for (const std::pair<const uint32_t, HouseEntry> &entry : pData->getHouseTable().entries())
+            {
+                highest = std::max(highest, entry.first);
+            }
+        }
+
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(highest) + 1);
+        return 1;
+    }
+
     const HouseEntry *pHouse =
         pData != nullptr ? pData->getHouseTable().get(clampedInteger<uint32_t>(integerArgument(pLuaState, 1))) : nullptr;
     const std::string field = luaL_checkstring(pLuaState, 2);
@@ -4722,7 +4978,41 @@ int nativeHouseGet(lua_State *pLuaState)
         return 1;
     }
 
+    if (field == "OpenHour" || field == "CloseHour")
+    {
+        lua_pushinteger(pLuaState, field == "OpenHour" ? pHouse->openHour : pHouse->closeHour);
+        return 1;
+    }
+
     return 0;
+}
+
+// modrt.houseSet(id, field, value): a house's OpenHour or CloseHour (the same hour: open all day), for the rest of
+// the game. MAW opens at 5 the houses that open at 6.
+int nativeHouseSet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const int64_t houseId = integerArgument(pLuaState, 1);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+    bool written = false;
+
+    if (pData != nullptr && houseId >= 0 && (field == "OpenHour" || field == "CloseHour"))
+    {
+        // The table belongs to the game's data loader, which hands it out read-only; it is not a constant object.
+        std::unordered_map<uint32_t, HouseEntry> &entries =
+            const_cast<HouseTable &>(pData->getHouseTable()).entriesForWrite();
+        const std::unordered_map<uint32_t, HouseEntry>::iterator it = entries.find(static_cast<uint32_t>(houseId));
+
+        if (it != entries.end())
+        {
+            const int hour = std::clamp(clampedInteger<int>(integerArgument(pLuaState, 3)), 0, 24);
+            (field == "OpenHour" ? it->second.openHour : it->second.closeHour) = hour;
+            written = true;
+        }
+    }
+
+    lua_pushboolean(pLuaState, written);
+    return 1;
 }
 
 // modrt.worldItemGet(index, field): an item lying on the map. "#" how many places there are; "Number" the item's kind
@@ -5136,6 +5426,12 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"monsterTxtSet", nativeMonsterTxtSet},
         {"placeMonGet", nativePlaceMonGet},
         {"placeMonSet", nativePlaceMonSet},
+        {"hostileGet", nativeHostileGet},
+        {"hostileSet", nativeHostileSet},
+        {"hostileKeep", nativeHostileKeep},
+        {"monListGet", nativeMonListGet},
+        {"monListSet", nativeMonListSet},
+        {"hostileRestore", nativeHostileRestore},
         {"portraitGet", nativePortraitGet},
         {"classGet", nativeClassGet},
         {"classSet", nativeClassSet},
@@ -5183,6 +5479,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"gameGet", nativeGameGet},
         {"turnBasedEndWalk", nativeTurnBasedEndWalk},
         {"houseGet", nativeHouseGet},
+        {"houseSet", nativeHouseSet},
         {"worldItemGet", nativeWorldItemGet},
         {"worldItemMove", nativeWorldItemMove},
         {"worldItemSetNumber", nativeWorldItemSetNumber},

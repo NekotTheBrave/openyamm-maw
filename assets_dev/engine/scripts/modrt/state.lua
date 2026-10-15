@@ -142,6 +142,8 @@ function State.syncMap()
 
     ModRT.Events.removeScope("map")
     ModRT.MapEvents.reset()
+    -- What the last map's scripts made of Game.HostileTxt after LocalHostileTxt() was for that map.
+    modrt.hostileRestore()
     State.currentMap = mapName
     State.freshSession = false
     mapvars = State.mapVarsByMap[mapName] or {}
