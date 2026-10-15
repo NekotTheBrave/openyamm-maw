@@ -1739,6 +1739,19 @@ float ModRuntime::monsterSpriteScale(size_t actorIndex)
     return scale;
 }
 
+void ModRuntime::mercenaryItemGenerated(InventoryItem &item)
+{
+    if (!m_active || !m_host.party || m_host.party() == nullptr || !beginDispatch("mercenaryItemGenerated"))
+    {
+        return;
+    }
+
+    // The handlers work on the item itself, as for ItemGenerated.
+    InventoryItem *pPreviousEventItem = setModEventItem(&item);
+    endDispatch(0, 0);
+    setModEventItem(pPreviousEventItem);
+}
+
 bool ModRuntime::townHallBounty(std::string &text)
 {
     if (!m_active || !beginDispatch("townHallBounty"))

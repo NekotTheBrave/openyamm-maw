@@ -1122,6 +1122,44 @@ int nativePlayerSkillGet(lua_State *pLuaState)
     return 3;
 }
 
+// modrt.mercenaryRecruits(): the mercenaries the game generated for the current map's houses, as a list of
+// {Class = name, Level = n, SkillPoints = n} (for checks; MAW reads its own roster otherwise).
+int nativeMercenaryRecruits(lua_State *pLuaState)
+{
+    IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+    const EventRuntimeState *pState = pWorld != nullptr ? pWorld->eventRuntimeState() : nullptr;
+    lua_newtable(pLuaState);
+
+    if (pState == nullptr)
+    {
+        return 1;
+    }
+
+    std::map<uint32_t, const EventRuntimeState::GeneratedMercenaryRecruit *> recruits;
+
+    for (const auto &[npcId, recruit] : pState->generatedMercenaryRecruitsByNpcId)
+    {
+        recruits[npcId] = &recruit;
+    }
+
+    lua_Integer index = 1;
+
+    for (const auto &[npcId, pRecruit] : recruits)
+    {
+        (void)npcId;
+        lua_newtable(pLuaState);
+        lua_pushstring(pLuaState, pRecruit->character.className.c_str());
+        lua_setfield(pLuaState, -2, "Class");
+        lua_pushinteger(pLuaState, pRecruit->character.level);
+        lua_setfield(pLuaState, -2, "Level");
+        lua_pushinteger(pLuaState, pRecruit->character.skillPoints);
+        lua_setfield(pLuaState, -2, "SkillPoints");
+        lua_rawseti(pLuaState, -2, index++);
+    }
+
+    return 1;
+}
+
 // modrt.hudTextSet(id, text, x, y, screen, alignLeft, width, visible): a mod's screen text (CustomUI.CreateText).
 int nativeHudTextSet(lua_State *pLuaState)
 {
@@ -4135,6 +4173,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"playerSkillCap", nativePlayerSkillCap},
         {"setRule", nativeSetRule},
         {"hudTextSet", nativeHudTextSet},
+        {"mercenaryRecruits", nativeMercenaryRecruits},
         {"questBitGet", nativeQuestBitGet},
         {"questBitSet", nativeQuestBitSet},
         {"itemGet", nativeItemGet},

@@ -98,6 +98,7 @@ public:
     bool canWearItem(const Character &character, uint32_t itemId) override;
     void monsterInformationBox(ModMonsterInfoBox &box) override;
     bool townHallBounty(std::string &text) override;
+    void mercenaryItemGenerated(InventoryItem &item) override;
     float monsterSpriteScale(size_t actorIndex) override;
     bool hasMapEvent(uint16_t eventId) override;
     int mapEvent(uint16_t eventId) override;

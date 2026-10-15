@@ -213,6 +213,14 @@ std::optional<std::string> modTownHallBounty()
     return text;
 }
 
+void modMercenaryItemGenerated(InventoryItem &item)
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->mercenaryItemGenerated(item);
+    }
+}
+
 void modMonsterInformationBox(ModMonsterInfoBox &box)
 {
     if (IModHooks *pModHooks = activeModHooks())

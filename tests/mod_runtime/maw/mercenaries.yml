@@ -1,0 +1,84 @@
+id: mod_runtime.maw.mercenaries
+title: MAW's mercenaries are drawn from its class kinds and come with its item rules
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's NPCMercenaries.lua (tools/maw/port/Scripts/General/NPCMercenaries.lua): Enroth's mercenaries are of the
+# original classes, peasants and MAW's own classes (kinds 1 2 5 6 9 14 16 17 18 19 20); their items have no rarity
+# tier and never both a special and MAW's second enchantment. A month passing and the map entered again draws them
+# anew; several months are drawn. Run with the MAW mods.yml.
+- new_game_flow:
+    continent: enroth
+    start_map: oute3.odm
+- mod_lua:
+    code: |
+      MercItems, MercBad, MercClasses = 0, 0, {}
+      function events.MercenaryItemGenerated(t)
+        MercItems = MercItems + 1
+        if t.Item.BonusExpireTime ~= 0 or (t.Item.Bonus2 > 0 and HasEnc2(t.Item)) then MercBad = MercBad + 1 end
+      end
+      function MercRecord()
+        for _, r in ipairs(modrt.mercenaryRecruits()) do MercClasses[#MercClasses + 1] = r.Class end
+      end
+      MercRecord()
+      return #MercClasses > 0
+    expect: "true"
+- advance_game_time: {minutes: 40321}
+- load_map: {map: 6d07.blv}
+- load_map: {map: oute3.odm}
+- mod_lua:
+    code: MercRecord()
+- advance_game_time: {minutes: 40321}
+- load_map: {map: 6d07.blv}
+- load_map: {map: oute3.odm}
+- mod_lua:
+    code: MercRecord()
+- advance_game_time: {minutes: 40321}
+- load_map: {map: 6d07.blv}
+- load_map: {map: oute3.odm}
+- mod_lua:
+    code: MercRecord()
+- advance_game_time: {minutes: 40321}
+- load_map: {map: 6d07.blv}
+- load_map: {map: oute3.odm}
+- mod_lua:
+    code: MercRecord()
+- advance_game_time: {minutes: 40321}
+- load_map: {map: 6d07.blv}
+- load_map: {map: oute3.odm}
+- mod_lua:
+    code: MercRecord()
+- advance_game_time: {minutes: 40321}
+- load_map: {map: 6d07.blv}
+- load_map: {map: oute3.odm}
+- mod_lua:
+    code: MercRecord()
+- advance_game_time: {minutes: 40321}
+- load_map: {map: 6d07.blv}
+- load_map: {map: oute3.odm}
+- mod_lua:
+    code: MercRecord()
+- advance_game_time: {minutes: 40321}
+- load_map: {map: 6d07.blv}
+- load_map: {map: oute3.odm}
+- mod_lua:
+    code: MercRecord()
+- mod_lua:
+    code: |
+      local allowed = {}
+      for _, kind in ipairs({1, 2, 5, 6, 9, 14, 16, 17, 18, 19, 20}) do allowed[kind] = true end
+      local kindByName = {}
+      for i, v in Game.ClassesExtra do kindByName[Game.ClassNames[i]] = v.Kind end
+      local wrong, seen = {}, {}
+      for _, name in ipairs(MercClasses) do
+        if not allowed[kindByName[name] or -1] then wrong[#wrong + 1] = name end
+        seen[name] = true
+      end
+      local names = {}
+      for name in pairs(seen) do names[#names + 1] = name end
+      table.sort(names)
+      return #MercClasses >= 5, table.concat(wrong, ","), MercItems > 0, MercBad
+    expect: "true		true	0"

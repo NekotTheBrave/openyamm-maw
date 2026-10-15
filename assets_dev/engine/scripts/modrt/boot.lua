@@ -314,6 +314,8 @@ local function dispatchKind(kind, ...)
         return ModRT.Stats.potionEffect(...)
     elseif kind == "townHallBounty" then
         return ModRT.Stats.townHallBounty(...)
+    elseif kind == "mercenaryItemGenerated" then
+        return ModRT.Stats.mercenaryItemGenerated(...)
     elseif kind == "monsterSpriteScale" then
         return ModRT.Stats.monsterSpriteScale(...)
     elseif kind == "monsterInformationBox" then

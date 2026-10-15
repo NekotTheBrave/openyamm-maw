@@ -245,6 +245,12 @@ function Stats.townHallBounty()
     return type(event.Text) == "string" and event.Text or nil
 end
 
+-- An item the game made for a mercenary it generates (Merge's NPCMercenaries.lua, which mods edit; not an
+-- MMExtension event): t.Item is the item, which the handlers change in place.
+function Stats.mercenaryItemGenerated()
+    ModRT.fire("MercenaryItemGenerated", {Item = ModRT.Bindings.eventItem})
+end
+
 -- The size monster `index` (Map.Monsters) is drawn at: the original's MonsterSpriteScale, its Scale here a factor of
 -- the game's own size (the original's is the sprite's own scale, which handlers only multiply). Returns the factor.
 function Stats.monsterSpriteScale(index)

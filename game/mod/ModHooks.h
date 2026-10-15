@@ -287,6 +287,9 @@ public:
     // The party asks a town hall about its bounty hunt: the mod's text, if it runs the hunts itself (MAW's
     // BountyHunt.lua: the hunt, the monster's summoning and the reward are its own).
     virtual bool townHallBounty(std::string &text) = 0;
+    // An item the game made for a mercenary it generates has been made (Merge's NPCMercenaries.lua, which MAW
+    // edits; not an MMExtension event): the mod may change it, the event item meanwhile.
+    virtual void mercenaryItemGenerated(InventoryItem &item) = 0;
     // The monster's information box is being shown (the original's BuildMonsterInformationBox).
     virtual void monsterInformationBox(ModMonsterInfoBox &box) = 0;
     // The size monster `actorIndex` is drawn at, as a factor of the game's (the original's MonsterSpriteScale).
@@ -368,6 +371,10 @@ void setModHudText(int id, const ModHudText &text);
 //   follower_skill_bonuses   "largest": followers' bonuses to a skill do not add up; the largest counts
 //   catalyst_combination     "alchemy_capped": two catalysts make the larger of target + held / 2 and
 //                            target / 2 + held, at most Alchemy level x mastery / 2, never less than either
+//   mercenary_class_kinds_N  class kinds (class_extra's Kind, space-separated) the mercenaries of continent N
+//                            (1 Jadame, 2 Antagarich, 3 Enroth) are drawn from, in place of the continent's classes
+//   mercenary_skill_points   "tenth_level_bonus": a mercenary gets 5 skill points a level above the first and one
+//                            more a level for each ten levels (level 10 on: 6, level 20 on: 7)
 const std::string &modRule(const std::string &name);
 void setModRule(const std::string &name, const std::string &value);
 
@@ -382,6 +389,10 @@ float modMonsterSpriteScale(size_t actorIndex);
 
 // The mod's answer to a town hall's bounty hunt topic, when the mod runs the hunts itself; none without a mod.
 std::optional<std::string> modTownHallBounty();
+
+// Runs the mod's MercenaryItemGenerated event over an item made for a mercenary; the item is the engine's without a
+// mod.
+void modMercenaryItemGenerated(InventoryItem &item);
 
 // Runs the mod's BuildMonsterInformationBox event over the box's texts; they stay the engine's without a mod.
 void modMonsterInformationBox(ModMonsterInfoBox &box);

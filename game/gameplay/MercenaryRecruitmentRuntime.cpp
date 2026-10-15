@@ -4,6 +4,7 @@
 #include "game/items/ItemGenerator.h"
 #include "game/items/ItemEnchantTables.h"
 #include "game/items/ItemRuntime.h"
+#include "game/mod/ModHooks.h"
 #include "game/StringUtils.h"
 #include "game/party/SpellSchool.h"
 #include "game/tables/CharacterDollTable.h"
@@ -22,6 +23,7 @@
 #include <functional>
 #include <limits>
 #include <random>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -146,7 +148,20 @@ std::string chooseClassName(
 
     std::vector<uint32_t> classKinds;
 
-    for (uint32_t classId : continentBaseClassIds(pCharacterSelectionTable, continentId))
+    // A mod's own list of kinds for the continent (MAW's NPCMercenaries.lua: its classes in Enroth, peasants
+    // everywhere).
+    std::istringstream modKinds(modRule("mercenary_class_kinds_" + std::to_string(continentId)));
+
+    for (uint32_t classKind = 0; modKinds >> classKind;)
+    {
+        if (std::find(classKinds.begin(), classKinds.end(), classKind) == classKinds.end())
+        {
+            classKinds.push_back(classKind);
+        }
+    }
+
+    for (uint32_t classId :
+         classKinds.empty() ? continentBaseClassIds(pCharacterSelectionTable, continentId) : std::vector<uint32_t>())
     {
         const uint32_t classKind = classKindForClassId(pClassMultiplierTable, classId);
 
@@ -550,6 +565,16 @@ void applySkills(Character &character, const ClassSkillTable *pClassSkillTable, 
 
     std::shuffle(availableSkills.begin(), availableSkills.end(), rng);
     uint32_t skillBudget = character.level > 0 ? character.level * 5 - 5 : 0;
+
+    if (modRule("mercenary_skill_points") == "tenth_level_bonus")
+    {
+        skillBudget = 0;
+
+        for (uint32_t level = 2; level <= character.level; ++level)
+        {
+            skillBudget += 5 + level / 10;
+        }
+    }
     const uint32_t desiredBucket = std::max<uint32_t>(1, (4 * std::max<uint32_t>(1, character.level) + 49) / 50);
     uint32_t baseOnlySkillCount = 0;
     uint32_t minimumBucket = 1;
@@ -787,6 +812,7 @@ std::optional<InventoryItem> generateEquipmentItem(
 
     if (item)
     {
+        modMercenaryItemGenerated(*item);
         item->identified = true;
     }
 
