@@ -17816,6 +17816,37 @@ void OutdoorWorldRuntime::removeDepletedSemanticLootContainer(uint32_t container
         });
 }
 
+bool OutdoorWorldRuntime::worldItemPosition(size_t worldItemIndex, float &x, float &y, float &z) const
+{
+    if (worldItemIndex >= m_worldItems.size())
+    {
+        return false;
+    }
+
+    const WorldItemState &worldItem = m_worldItems[worldItemIndex];
+    x = worldItem.x;
+    y = worldItem.y;
+    z = worldItem.z;
+    return true;
+}
+
+bool OutdoorWorldRuntime::moveWorldItem(size_t worldItemIndex, float x, float y, float z)
+{
+    if (worldItemIndex >= m_worldItems.size())
+    {
+        return false;
+    }
+
+    WorldItemState &worldItem = m_worldItems[worldItemIndex];
+    worldItem.x = x;
+    worldItem.y = y;
+    worldItem.z = z;
+    worldItem.velocityX = 0.0f;
+    worldItem.velocityY = 0.0f;
+    worldItem.velocityZ = 0.0f;
+    return true;
+}
+
 bool OutdoorWorldRuntime::worldItemInspectState(size_t worldItemIndex, GameplayWorldItemInspectState &state) const
 {
     const WorldItemState *pWorldItem = worldItemState(worldItemIndex);

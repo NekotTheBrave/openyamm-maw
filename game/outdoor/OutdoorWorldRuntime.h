@@ -835,7 +835,7 @@ public:
     void clearPendingAudioEvents();
     const std::vector<CombatEvent> &pendingCombatEvents() const;
     void clearPendingCombatEvents();
-    size_t worldItemCount() const;
+    size_t worldItemCount() const override;
     const WorldItemState *worldItemState(size_t worldItemIndex) const;
     WorldItemState *worldItemStateMutable(size_t worldItemIndex);
     bool takeWorldItem(size_t worldItemIndex, WorldItemState &item);
@@ -887,6 +887,8 @@ public:
     bool worldItemInspectState(size_t worldItemIndex, GameplayWorldItemInspectState &state) const override;
     bool updateWorldItemInspectState(size_t worldItemIndex, const InventoryItem &item) override;
     bool takeWorldItemInspectState(size_t worldItemIndex, GameplayWorldItemInspectState &state) override;
+    bool worldItemPosition(size_t worldItemIndex, float &x, float &y, float &z) const override;
+    bool moveWorldItem(size_t worldItemIndex, float x, float y, float z) override;
     GameplayWorldHoverCacheState worldHoverCacheState() const override;
     GameplayHoverStatusPayload refreshWorldHover(const GameplayWorldHoverRequest &request) override;
     GameplayHoverStatusPayload readCachedWorldHover() override;

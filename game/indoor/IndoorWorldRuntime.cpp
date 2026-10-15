@@ -14903,6 +14903,60 @@ void IndoorWorldRuntime::removeDepletedSemanticLootContainer(uint32_t containerI
         });
 }
 
+size_t IndoorWorldRuntime::worldItemCount() const
+{
+    const MapDeltaData *pMapDeltaData = mapDeltaData();
+    return pMapDeltaData != nullptr ? pMapDeltaData->spriteObjects.size() : 0;
+}
+
+bool IndoorWorldRuntime::worldItemPosition(size_t worldItemIndex, float &x, float &y, float &z) const
+{
+    const MapDeltaData *pMapDeltaData = mapDeltaData();
+
+    if (pMapDeltaData == nullptr || worldItemIndex >= pMapDeltaData->spriteObjects.size())
+    {
+        return false;
+    }
+
+    const MapDeltaSpriteObject &spriteObject = pMapDeltaData->spriteObjects[worldItemIndex];
+    x = static_cast<float>(spriteObject.x);
+    y = static_cast<float>(spriteObject.y);
+    z = static_cast<float>(spriteObject.z);
+    return true;
+}
+
+bool IndoorWorldRuntime::moveWorldItem(size_t worldItemIndex, float x, float y, float z)
+{
+    MapDeltaData *pMapDeltaData = mapDeltaData();
+
+    if (pMapDeltaData == nullptr || worldItemIndex >= pMapDeltaData->spriteObjects.size())
+    {
+        return false;
+    }
+
+    MapDeltaSpriteObject &spriteObject = pMapDeltaData->spriteObjects[worldItemIndex];
+    spriteObject.x = static_cast<int>(std::lround(x));
+    spriteObject.y = static_cast<int>(std::lround(y));
+    spriteObject.z = static_cast<int>(std::lround(z));
+    spriteObject.velocityX = 0;
+    spriteObject.velocityY = 0;
+    spriteObject.velocityZ = 0;
+
+    // It now lies in the room it was moved to, as a moved monster does.
+    if (m_pIndoorMapData != nullptr && !m_pIndoorMapData->vertices.empty())
+    {
+        RuntimeGeometryCache &runtimeGeometry = runtimeGeometryCache();
+        spriteObject.sectorId = resolveIndoorPointSector(
+            m_pIndoorMapData,
+            runtimeGeometry.vertices,
+            &runtimeGeometry.geometryCache,
+            {x, y, z + 16.0f},
+            spriteObject.sectorId);
+    }
+
+    return true;
+}
+
 bool IndoorWorldRuntime::worldItemInspectState(size_t worldItemIndex, GameplayWorldItemInspectState &state) const
 {
     const MapDeltaData *pMapDeltaData = mapDeltaData();

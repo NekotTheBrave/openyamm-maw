@@ -1,0 +1,49 @@
+id: mod_runtime.maw.key_clashes
+title: MAW's gathering key is N, not OpenYAMM's Fly Down, and gathers monsters and crafting materials
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's key to gather the map's dead monsters and crafting materials to the party (zzMaw-Monsters.lua) is K by
+# default, OpenYAMM's Fly Down; the port makes it N (zz_Maw-KeyClashes.lua). The materials lying on the map are
+# Map.Objects. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+- mod_lua:
+    code: |
+      Dead = nil
+      for i = 0, Map.Monsters.High do
+        if not Map.Monsters[i].IsDead then Dead = i break end
+      end
+      local mon = Map.Monsters[Dead]
+      mon.AIState = const.AIState.Dead
+      mon.X, mon.Y = Party.X + 3000, Party.Y + 3000
+      SummonItem(1045, Party.X + 2500, Party.Y - 2500, Party.Z, 0)
+      Gem = nil
+      for i = 0, Map.Objects.High do
+        if Map.Objects[i].Item.Number == 1045 then Gem = i end
+      end
+      function Near(x, y) return math.abs(x - Party.X) < 200 and math.abs(y - Party.Y) < 200 end
+      return teleportDeadMonstersAndCraftingKey, Gem ~= nil, Near(Map.Objects[Gem].X, Map.Objects[Gem].Y),
+        Near(mon.X, mon.Y)
+    expect: "78\ttrue\tfalse\tfalse"
+# K (Fly Down) gathers nothing.
+- mod_lua:
+    code: |
+      ModRT.fire("KeyDown", {Key = 75})
+      local mon = Map.Monsters[Dead]
+      return Near(Map.Objects[Gem].X, Map.Objects[Gem].Y), Near(mon.X, mon.Y)
+    expect: "false\tfalse"
+# N gathers both.
+- mod_lua:
+    code: |
+      ModRT.fire("KeyDown", {Key = 78})
+      local mon = Map.Monsters[Dead]
+      return Near(Map.Objects[Gem].X, Map.Objects[Gem].Y), Near(mon.X, mon.Y), ModRT.totalErrorCount
+    expect: "true\ttrue\t0"
+# Mouse:GetTarget(): with nothing under the pointer (no hover in a scenario), nothing.
+- mod_lua:
+    code: return Mouse:GetTarget().Kind
+    expect: "0"

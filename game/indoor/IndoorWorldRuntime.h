@@ -501,6 +501,9 @@ public:
     bool worldItemInspectState(size_t worldItemIndex, GameplayWorldItemInspectState &state) const override;
     bool updateWorldItemInspectState(size_t worldItemIndex, const InventoryItem &item) override;
     bool takeWorldItemInspectState(size_t worldItemIndex, GameplayWorldItemInspectState &state) override;
+    size_t worldItemCount() const override;
+    bool worldItemPosition(size_t worldItemIndex, float &x, float &y, float &z) const override;
+    bool moveWorldItem(size_t worldItemIndex, float x, float y, float z) override;
     GameplayWorldHoverCacheState worldHoverCacheState() const override;
     GameplayHoverStatusPayload refreshWorldHover(const GameplayWorldHoverRequest &request) override;
     GameplayHoverStatusPayload readCachedWorldHover() override;

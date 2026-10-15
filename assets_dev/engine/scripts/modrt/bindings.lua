@@ -2086,24 +2086,70 @@ function Bindings.setOpeningChest(chestId, trapped)
     openingChest = chestId and {[chestId] = trapped} or {}
 end
 
--- Map.Objects[i]: the item being picked up while PickObject runs (its Item; writes to the object itself, as MAW makes
--- the item vanish, are the engine's to do once a handler took it). The map's other objects are not bound.
+-- Map.Objects[i]: the items lying on the map. X, Y and Z are where one lies (a write moves it); Item.Number its
+-- kind, 0 for a place holding another object. While PickObject runs, the object being picked up has the item itself
+-- as Item (writes to the object, as MAW makes the item vanish, are the engine's to do once a handler took it).
 local pickedObject = nil
 
 function Bindings.setPickedObject(objectId)
     pickedObject = objectId
 end
 
+local function mapObject(index)
+    local item = setmetatable({}, {
+        __index = function(_, key)
+            if key == "Number" then
+                return modrt.worldItemGet(index, "Number") or 0
+            end
+
+            return nil
+        end,
+    })
+
+    return setmetatable({}, {
+        __index = function(_, key)
+            if key == "Item" then
+                return item
+            elseif key == "X" or key == "Y" or key == "Z" then
+                return modrt.worldItemGet(index, key)
+            end
+
+            return 0
+        end,
+        __newindex = function(_, key, value)
+            if key == "X" or key == "Y" or key == "Z" then
+                local position = {X = modrt.worldItemGet(index, "X"), Y = modrt.worldItemGet(index, "Y"),
+                    Z = modrt.worldItemGet(index, "Z")}
+
+                if position.X and tonumber(value) then
+                    position[key] = tonumber(value)
+                    modrt.worldItemMove(index, position.X, position.Y, position.Z)
+                end
+            end
+        end,
+    })
+end
+
+local function objectCount()
+    return modrt.worldItemGet(0, "#") or 0
+end
+
 local mapObjects = boundObject("Map.Objects", {
     index = function(index)
+        index = floor(index)
+
         if pickedObject ~= nil and index == pickedObject then
             return {Item = Bindings.eventItem, Type = 0, TypeIndex = 0}
         end
 
+        if index >= 0 and index < objectCount() then
+            return mapObject(index)
+        end
+
         return nil
     end,
-    get = sizeFields(function() return 0 end),
-    range = function() return 0, -1 end,
+    get = sizeFields(objectCount),
+    range = function() return 0, objectCount() - 1 end,
 })
 
 local mapChests = boundObject("Map.Chests", {
@@ -2312,6 +2358,13 @@ rawset(Mouse, "Item", setmetatable({}, {
 
 -- What is under the mouse pointer: the monster whose information box is being built, or the one a spell being cast
 -- is aimed at (Kind 3), else nothing (Kind 0).
+-- Mouse:GetTarget(): what is under the mouse pointer, Kind 3 a map monster (Index). During a monster's information
+-- box or a spell's cast, the monster the event is about; otherwise the monster the game shows as hovered.
 rawset(Mouse, "GetTarget", function()
-    return Bindings.mouseTarget or {Kind = 0, Index = 0}
+    if Bindings.mouseTarget then
+        return Bindings.mouseTarget
+    end
+
+    local hovered = modrt.hoveredMonster()
+    return hovered and {Kind = 3, Index = hovered} or {Kind = 0, Index = 0}
 end)

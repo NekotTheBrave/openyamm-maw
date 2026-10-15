@@ -1174,6 +1174,28 @@ public:
         (void)state;
         return false;
     }
+    // The items lying on the map, by index (some indexes may hold no item): how many places, where one lies, and
+    // moving one (mods: MAW gathers crafting materials to the party).
+    virtual size_t worldItemCount() const
+    {
+        return 0;
+    }
+    virtual bool worldItemPosition(size_t worldItemIndex, float &x, float &y, float &z) const
+    {
+        (void)worldItemIndex;
+        (void)x;
+        (void)y;
+        (void)z;
+        return false;
+    }
+    virtual bool moveWorldItem(size_t worldItemIndex, float x, float y, float z)
+    {
+        (void)worldItemIndex;
+        (void)x;
+        (void)y;
+        (void)z;
+        return false;
+    }
     virtual GameplayWorldHoverCacheState worldHoverCacheState() const = 0;
     virtual GameplayHoverStatusPayload refreshWorldHover(const GameplayWorldHoverRequest &request) = 0;
     virtual GameplayHoverStatusPayload readCachedWorldHover() = 0;

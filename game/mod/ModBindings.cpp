@@ -2065,6 +2065,12 @@ int nativeItemTxtSet(lua_State *pLuaState)
     {
         item.value = clampedInteger<int>(integerArgument(pLuaState, 3));
     }
+    else if (field == "SpriteIndex")
+    {
+        // The object the item is when it lies on the ground; without one it cannot be put there (MAW gives its
+        // crafting materials theirs, and drops them so).
+        item.spriteIndex = clampedInteger<uint16_t>(integerArgument(pLuaState, 3));
+    }
     else if (field == "Mod2")
     {
         item.mod2 = std::to_string(clampedInteger<int>(integerArgument(pLuaState, 3)));
@@ -4600,6 +4606,88 @@ int nativeHouseGet(lua_State *pLuaState)
     return 0;
 }
 
+// modrt.worldItemGet(index, field): an item lying on the map. "#" how many places there are; "Number" the item's kind
+// (0 for none: a place may hold another object, or gold); "X", "Y", "Z" where it lies.
+int nativeWorldItemGet(lua_State *pLuaState)
+{
+    const IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+    const int64_t index = integerArgument(pLuaState, 1);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+
+    if (pWorld == nullptr)
+    {
+        return 0;
+    }
+
+    if (field == "#")
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(pWorld->worldItemCount()));
+        return 1;
+    }
+
+    if (index < 0)
+    {
+        return 0;
+    }
+
+    if (field == "Number")
+    {
+        GameplayWorldItemInspectState state = {};
+        const bool item = pWorld->worldItemInspectState(static_cast<size_t>(index), state) && !state.isGold;
+        lua_pushinteger(pLuaState, item ? static_cast<lua_Integer>(state.item.objectDescriptionId) : 0);
+        return 1;
+    }
+
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+
+    if ((field != "X" && field != "Y" && field != "Z") || !pWorld->worldItemPosition(static_cast<size_t>(index), x, y, z))
+    {
+        return 0;
+    }
+
+    lua_pushinteger(pLuaState, static_cast<lua_Integer>(std::lround(field == "X" ? x : field == "Y" ? y : z)));
+    return 1;
+}
+
+// modrt.worldItemMove(index, x, y, z): moves an item lying on the map. Whether it moved.
+int nativeWorldItemMove(lua_State *pLuaState)
+{
+    IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+    const int64_t index = integerArgument(pLuaState, 1);
+    lua_pushboolean(
+        pLuaState,
+        pWorld != nullptr && index >= 0
+            && pWorld->moveWorldItem(
+                static_cast<size_t>(index),
+                static_cast<float>(luaL_checknumber(pLuaState, 2)),
+                static_cast<float>(luaL_checknumber(pLuaState, 3)),
+                static_cast<float>(luaL_checknumber(pLuaState, 4))));
+    return 1;
+}
+
+// modrt.hoveredMonster(): the map monster under the mouse pointer (the game's hover), nil for none.
+int nativeHoveredMonster(lua_State *pLuaState)
+{
+    IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+
+    if (pWorld == nullptr)
+    {
+        return 0;
+    }
+
+    const GameplayHoverStatusPayload hover = pWorld->readCachedWorldHover();
+
+    if (!hover.worldHit.actor || hover.worldHit.actor->actorIndex == GameplayInvalidWorldIndex)
+    {
+        return 0;
+    }
+
+    lua_pushinteger(pLuaState, static_cast<lua_Integer>(hover.worldHit.actor->actorIndex));
+    return 1;
+}
+
 // modrt.turnBasedEndWalk(): ends the party's turn-based walk (Game.TurnBasedPhase set away from 3).
 int nativeTurnBasedEndWalk(lua_State *pLuaState)
 {
@@ -4885,6 +4973,9 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"gameGet", nativeGameGet},
         {"turnBasedEndWalk", nativeTurnBasedEndWalk},
         {"houseGet", nativeHouseGet},
+        {"worldItemGet", nativeWorldItemGet},
+        {"worldItemMove", nativeWorldItemMove},
+        {"hoveredMonster", nativeHoveredMonster},
         {"castSpell", nativeCastSpell},
         {"showStatusText", nativeShowStatusText},
         {"statisticEffect", nativeStatisticEffect},
