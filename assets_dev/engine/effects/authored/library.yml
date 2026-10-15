@@ -38,6 +38,82 @@ effects:
     - {time: 0, rgb: [255, 170, 80], transparency: 65}
     - {time: 1, rgb: [200, 45, 10], transparency: 255}
     motion_keys: []
+- id: openyamm:fx/creature_dark_staff
+  display_name: Creature dark staff
+  # Moving-emitter recipe for a dark-magic staff head (actors.yml "Necromancer A"): a violet arcane knot with a short
+  # trail of violet sparks, like creature_fire_hand, using the CC0 showcase sprites.
+  duration_seconds: 30
+  compatibility_profile: predictable
+  components:
+  - id: 1
+    type: sprite
+    start_seconds: 0
+    end_seconds: 30
+    sprite_resource: openyamm:effect-sprite/arcane
+    blend: additive
+    scale_keys:
+    - {time: 0, value: 0.3}
+    color_keys:
+    - {time: 0, rgb: [190, 90, 255], transparency: 70}
+    motion_keys: []
+  - id: 2
+    type: sprite_system
+    start_seconds: 0
+    end_seconds: 30
+    sprite_resource: openyamm:effect-sprite/spark
+    particle_space: world
+    blend: additive
+    sprites_per_emission: 2
+    emission_interval_seconds: 0.03
+    particle_lifetime_seconds: 0.35
+    emission_shape: sphere
+    radius: 4
+    velocity: 14
+    scale_keys:
+    - {time: 0, value: 0.1}
+    - {time: 1, value: 0.02}
+    color_keys:
+    - {time: 0, rgb: [220, 150, 255], transparency: 60}
+    - {time: 1, rgb: [90, 20, 160], transparency: 255}
+    motion_keys: []
+- id: openyamm:fx/creature_air_staff
+  display_name: Creature air staff
+  # Moving-emitter recipe for an air-magic staff head (actors.yml "Cleric A/B/C" ranged Air bolt): the MM9 blurred
+  # blue star (at MM9's 2.56 world scale) with a short trail of white-blue sparks, like creature_dark_staff.
+  duration_seconds: 30
+  compatibility_profile: predictable
+  components:
+  - id: 1
+    type: sprite
+    start_seconds: 0
+    end_seconds: 30
+    sprite_resource: mm9:effect-sprite/weapons/blurredbluestar
+    blend: additive
+    scale_keys:
+    - {time: 0, value: 2.56}
+    color_keys:
+    - {time: 0, rgb: [255, 255, 255], transparency: 40}
+    motion_keys: []
+  - id: 2
+    type: sprite_system
+    start_seconds: 0
+    end_seconds: 30
+    sprite_resource: openyamm:effect-sprite/spark
+    particle_space: world
+    blend: additive
+    sprites_per_emission: 2
+    emission_interval_seconds: 0.03
+    particle_lifetime_seconds: 0.35
+    emission_shape: sphere
+    radius: 4
+    velocity: 14
+    scale_keys:
+    - {time: 0, value: 0.1}
+    - {time: 1, value: 0.02}
+    color_keys:
+    - {time: 0, rgb: [235, 245, 255], transparency: 60}
+    - {time: 1, rgb: [60, 120, 220], transparency: 255}
+    motion_keys: []
 - id: openyamm:fx/healing_bloom
   display_name: Healing Bloom
   duration_seconds: 2.8
@@ -572,4 +648,43 @@ effects:
     - 0
     - 0
     - 0
+    wind_amount: 1
+- id: openyamm:fx/shadow_ward
+  display_name: Shadow Ward Sparks
+  # Sparks drifting inward over an actor behaviour ward (engine/behaviors/bosses/necro_mage.lua) at a 400-unit radius
+  # around the actor's centre; the shell itself is the ward's shield dome (ShieldDomeRenderer). Respawned about every
+  # 0.8 s while the ward holds; spawn scale also scales the radius (scale = ward radius / 400).
+  duration_seconds: 1.2
+  compatibility_profile: predictable
+  components:
+  - id: 1
+    type: sprite_system
+    start_seconds: 0
+    end_seconds: 0.8
+    sprite_resource: openyamm:effect-sprite/spark
+    blend: additive
+    color_keys:
+    - time: 0
+      rgb: [225, 165, 255]
+      transparency: 190
+    - time: 0.25
+      rgb: [200, 120, 255]
+      transparency: 70
+    - time: 1
+      rgb: [90, 25, 160]
+      transparency: 255
+    scale_keys:
+    - time: 0
+      value: 0.3
+    - time: 1
+      value: 0.06
+    motion_keys: []
+    particle_lifetime_seconds: 0.7
+    emission_shape: sphere
+    radius: 400
+    velocity: -25
+    plane_direction: [0, 0, 1]
+    sprites_per_emission: 5
+    emission_interval_seconds: 0.05
+    wind_direction: [0, 0, 0]
     wind_amount: 1

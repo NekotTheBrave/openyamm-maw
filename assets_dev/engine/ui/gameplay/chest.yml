@@ -146,6 +146,26 @@ elements:
       z_index: 270
       asset:
         default: ticonCH
+  - id: ChestTakeAllButton
+    anchor: top_right
+    offset_x: -42
+    offset_y: 182
+    width: 83
+    height: 30
+    z_index: 300
+    interactive: true
+    asset:
+      default: obsidian_button_close_normal
+      highlighted: obsidian_button_close_hover
+      pressed: obsidian_button_close_pressed
+    notes: Moves every chest item that fits into the party inventories, active member first; the rest stays.
+    text:
+      value: Take All
+      font: Fondamento
+      align_x: center
+      align_y: middle
+      color: '#e8d1a4'
+      scale: 0.41666665625
   - id: ChestCloseButton
     anchor: bottom_right
     offset_x: -42

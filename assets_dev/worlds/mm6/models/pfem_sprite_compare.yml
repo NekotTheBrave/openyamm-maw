@@ -1,0 +1,25 @@
+# Review-only (debug.actor_models_manifest): 3D PeasantF1 A beside native-sprite B/C peasants.
+actors:
+- descriptor: PeasantF1 A
+  model: worlds/mm6/models/mm6_pfem.glb
+  scale: 111.6
+  z_offset: 0.07
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walking
+    stride_length: 1.31
+    upper_body_root: mixamorig:Spine
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: pfem_a

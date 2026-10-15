@@ -1,0 +1,18 @@
+# State overlays of decoration models (outdoor and indoor maps): one more model drawn with a bound decoration's own
+# placement matrix (authored in that decoration model's asset space), chosen by the decoration's interactive state.
+# Kept apart from decorations.yml, a dependency of every baked outdoor map: overlays cast no baked shadow.
+#   states: one model per state, null for none. A decoration without a model binding on the map is skipped.
+overlays:
+  # Stat barrel liquid by barrel state (Global.lua events 268-275): empty, then red Might, yellow Accuracy, blue
+  # Personality, orange Intellect, green Endurance, purple Speed and white Luck. Drinking empties the barrel.
+  # Built by level_generation/decorations/mm6_new_sorpigal_3d/barrel/scripts/build_liquids.py.
+  - name: bigbarel
+    states:
+      - null
+      - worlds/mm6/models/mm6_deco_barrel_liquid_red.glb
+      - worlds/mm6/models/mm6_deco_barrel_liquid_yellow.glb
+      - worlds/mm6/models/mm6_deco_barrel_liquid_blue.glb
+      - worlds/mm6/models/mm6_deco_barrel_liquid_orange.glb
+      - worlds/mm6/models/mm6_deco_barrel_liquid_green.glb
+      - worlds/mm6/models/mm6_deco_barrel_liquid_purple.glb
+      - worlds/mm6/models/mm6_deco_barrel_liquid_white.glb

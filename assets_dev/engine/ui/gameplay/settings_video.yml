@@ -412,7 +412,7 @@ elements:
     - id: SettingsVideoGroup3
       anchor: top_left
       offset_x: 0.0
-      offset_y: 979.7253
+      offset_y: 923.7253
       width: 525.3333
       height: 18.1333
       z_index: 10
@@ -976,10 +976,65 @@ elements:
         pad_x: 6.9333
       notes: Bind to video.sky_style; see contracts/settings.yml. Ranges need a track and thumb renderer; selection
         controls need native dropdown/focus behavior. Controller supplies live text.
-    - id: SettingsVideoWeatherQualityLabel
+    - id: SettingsVideoProjectileStyleLabel
       anchor: top_left
       offset_x: 1.6
       offset_y: 524.5333
+      width: 241.3915
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Projectiles
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsVideoProjectileStyleDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 540.7419
+      width: 397.2
+      height: 11.5168
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Enhanced gives spell bolts glowing heads and flowing trails; Classic keeps the original.
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsVideoProjectileStyleControl
+      anchor: top_left
+      offset_x: 412.8
+      offset_y: 526.6586
+      width: 110.9333
+      height: 23.4667
+      z_index: 10
+      visible: true
+      interactive: true
+      asset:
+        default: hud_x2/menus/omenu_text_field.png
+      text:
+        value: '{projectile_style}'
+        font: menu_lucida
+        color: '#e9dcc0'
+        align_x: left
+        align_y: middle
+        scale: 0.71529
+        pad_x: 6.9333
+      notes: Bind to video.projectile_style; see contracts/settings.yml. Selection controls need native dropdown/focus
+        behavior. Controller supplies live text.
+    - id: SettingsVideoWeatherQualityLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 580.5333
       width: 241.3915
       height: 14.0752
       z_index: 10
@@ -996,7 +1051,7 @@ elements:
     - id: SettingsVideoWeatherQualityDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 540.7419
+      offset_y: 596.7419
       width: 397.2
       height: 11.5168
       z_index: 10
@@ -1013,7 +1068,7 @@ elements:
     - id: SettingsVideoWeatherQualityControl
       anchor: top_left
       offset_x: 412.8
-      offset_y: 526.6586
+      offset_y: 582.6586
       width: 110.9333
       height: 23.4667
       z_index: 10
@@ -1033,7 +1088,7 @@ elements:
     - id: SettingsVideoWetSurfacesLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 580.5333
+      offset_y: 636.5333
       width: 288.0
       height: 14.0752
       z_index: 10
@@ -1050,7 +1105,7 @@ elements:
     - id: SettingsVideoWetSurfacesDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 596.7419
+      offset_y: 652.7419
       width: 397.2
       height: 23.0336
       z_index: 10
@@ -1067,7 +1122,7 @@ elements:
     - id: SettingsVideoWetSurfacesControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 578.313
+      offset_y: 634.313
       width: 70.4
       height: 32.158
       z_index: 10
@@ -1085,61 +1140,6 @@ elements:
         scale: 0.64
         pad_x: 3.2
       notes: Apply the surface setting without reloading the map. Controller supplies live text.
-    - id: SettingsVideoWaterShaderLabel
-      anchor: top_left
-      offset_x: 1.6
-      offset_y: 649.3253
-      width: 288.0
-      height: 14.0752
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Enhanced water
-        font: menu_arrus
-        color: '#eadfc6'
-        align_x: left
-        align_y: middle
-        scale: 0.74105
-        pad_x: 0.0
-    - id: SettingsVideoWaterShaderDescription
-      anchor: top_left
-      offset_x: 1.6
-      offset_y: 665.5339
-      width: 397.2
-      height: 23.0336
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Animate waves with sunlight highlights and angle-dependent reflections.
-        font: menu_lucida
-        color: '#aeb5a5'
-        align_x: left
-        align_y: middle
-        scale: 0.60235
-        pad_x: 0.0
-    - id: SettingsVideoWaterShaderControl
-      anchor: top_left
-      offset_x: 453.3333
-      offset_y: 647.105
-      width: 70.4
-      height: 32.158
-      z_index: 10
-      visible: true
-      interactive: true
-      asset:
-        default: hud_x2/menus/omenu_toggle_off.png
-        selected: hud_x2/menus/omenu_toggle_on.png
-      text:
-        value: '{water_shader}'
-        font: menu_lucida
-        color: '#b8b8a9'
-        align_x: center
-        align_y: middle
-        scale: 0.64
-        pad_x: 3.2
-      notes: Apply the water rendering setting without reloading the map. Controller supplies live text.
     - id: SettingsVideoWaterReflectionsLabel
       anchor: top_left
       offset_x: 1.6
@@ -1652,10 +1652,73 @@ elements:
         scale: 0.67765
         pad_x: 0.0
       notes: Controller supplies live text.
-    - id: SettingsVideoColoredLightsLabel
+    - id: SettingsVideoSharpeningLabel
       anchor: top_left
       offset_x: 1.6
       offset_y: 1161.0245
+      width: 185.4085
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Sharpening
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsVideoSharpeningDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 1177.2331
+      width: 384.9333
+      height: 11.5168
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Sharpen the 3D view; the interface is unaffected. Zero turns it off.
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsVideoSharpeningControl
+      anchor: top_left
+      offset_x: 400.5333
+      offset_y: 1166.8827
+      width: 88.5333
+      height: 16.0
+      z_index: 10
+      visible: true
+      interactive: true
+      notes: Bind to video.sharpening; see contracts/settings.yml. Ranges need a track and thumb renderer; selection
+        controls need native dropdown/focus behavior.
+    - id: SettingsVideoSharpeningValue
+      anchor: top_left
+      offset_x: 497.0667
+      offset_y: 1169.016
+      width: 26.6667
+      height: 11.7333
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: '{sharpening}%'
+        font: menu_lucida
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.67765
+        pad_x: 0.0
+      notes: Controller supplies live text.
+    - id: SettingsVideoColoredLightsLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 1199.9493
       width: 184.8085
       height: 14.0752
       z_index: 10
@@ -1672,7 +1735,7 @@ elements:
     - id: SettingsVideoColoredLightsDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 1177.2331
+      offset_y: 1216.1579
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -1711,7 +1774,7 @@ elements:
     - id: SettingsVideoTintingLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 1199.9499
+      offset_y: 1238.8747
       width: 151.1003
       height: 14.0752
       z_index: 10
@@ -1728,7 +1791,7 @@ elements:
     - id: SettingsVideoTintingDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 1216.1579
+      offset_y: 1255.0827
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -1745,7 +1808,7 @@ elements:
     - id: SettingsVideoTintingControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 1197.729
+      offset_y: 1236.6538
       width: 70.4
       height: 32.158
       z_index: 10
@@ -1767,7 +1830,7 @@ elements:
     - id: SettingsVideoBloodSplatsLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 1238.8747
+      offset_y: 1277.7995
       width: 116.7835
       height: 14.0752
       z_index: 10
@@ -1784,7 +1847,7 @@ elements:
     - id: SettingsVideoBloodSplatsDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 1255.0832
+      offset_y: 1294.008
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -1801,7 +1864,7 @@ elements:
     - id: SettingsVideoBloodSplatsControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 1236.6543
+      offset_y: 1275.5791
       width: 70.4
       height: 32.158
       z_index: 10
@@ -1823,7 +1886,7 @@ elements:
     - id: SettingsVideoMeleeHitBloodEffectsLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 1277.8
+      offset_y: 1316.7248
       width: 219.1168
       height: 14.0752
       z_index: 10
@@ -1840,7 +1903,7 @@ elements:
     - id: SettingsVideoMeleeHitBloodEffectsDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 1294.008
+      offset_y: 1332.9328
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -1857,7 +1920,7 @@ elements:
     - id: SettingsVideoMeleeHitBloodEffectsControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 1275.5791
+      offset_y: 1314.5039
       width: 70.4
       height: 32.158
       z_index: 10
@@ -1876,10 +1939,234 @@ elements:
         pad_x: 3.2
       notes: Bind to gameplay.melee_hit_blood_effects; see contracts/settings.yml. Ranges need a track and thumb renderer;
         selection controls need native dropdown/focus behavior. Controller supplies live text.
+    - id: SettingsVideoMeleeHitEffectsLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 1355.6501
+      width: 219.1168
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Melee hit effects
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsVideoMeleeHitEffectsDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 1371.8581
+      width: 437.3333
+      height: 11.5168
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Show a slash, thrust or crush where melee attacks connect.
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsVideoMeleeHitEffectsControl
+      anchor: top_left
+      offset_x: 453.3333
+      offset_y: 1353.4292
+      width: 70.4
+      height: 32.158
+      z_index: 10
+      visible: true
+      interactive: true
+      asset:
+        default: hud_x2/menus/omenu_toggle_off.png
+        selected: hud_x2/menus/omenu_toggle_on.png
+      text:
+        value: '{melee_hit_effects}'
+        font: menu_lucida
+        color: '#b8b8a9'
+        align_x: center
+        align_y: middle
+        scale: 0.64
+        pad_x: 3.2
+      notes: Bind to gameplay.melee_hit_effects; see contracts/settings.yml. Ranges need a track and thumb renderer;
+        selection controls need native dropdown/focus behavior. Controller supplies live text.
+    - id: SettingsVideoMeleeHitFeedbackLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 1394.5754
+      width: 219.1168
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Melee impact feedback
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsVideoMeleeHitFeedbackDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 1410.7834
+      width: 437.3333
+      height: 11.5168
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Play impact sounds by what was struck and briefly hold the struck creature.
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsVideoMeleeHitFeedbackControl
+      anchor: top_left
+      offset_x: 453.3333
+      offset_y: 1392.3545
+      width: 70.4
+      height: 32.158
+      z_index: 10
+      visible: true
+      interactive: true
+      asset:
+        default: hud_x2/menus/omenu_toggle_off.png
+        selected: hud_x2/menus/omenu_toggle_on.png
+      text:
+        value: '{melee_hit_feedback}'
+        font: menu_lucida
+        color: '#b8b8a9'
+        align_x: center
+        align_y: middle
+        scale: 0.64
+        pad_x: 3.2
+      notes: Bind to gameplay.melee_hit_feedback; see contracts/settings.yml. Ranges need a track and thumb renderer;
+        selection controls need native dropdown/focus behavior. Controller supplies live text.
+    - id: SettingsVideoMeleeHitFlashLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 1433.5007
+      width: 219.1168
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Melee hit flash
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsVideoMeleeHitFlashDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 1449.7087
+      width: 437.3333
+      height: 11.5168
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Briefly brighten a creature struck in melee.
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsVideoMeleeHitFlashControl
+      anchor: top_left
+      offset_x: 453.3333
+      offset_y: 1431.2798
+      width: 70.4
+      height: 32.158
+      z_index: 10
+      visible: true
+      interactive: true
+      asset:
+        default: hud_x2/menus/omenu_toggle_off.png
+        selected: hud_x2/menus/omenu_toggle_on.png
+      text:
+        value: '{melee_hit_flash}'
+        font: menu_lucida
+        color: '#b8b8a9'
+        align_x: center
+        align_y: middle
+        scale: 0.64
+        pad_x: 3.2
+      notes: Bind to gameplay.melee_hit_flash; see contracts/settings.yml. Ranges need a track and thumb renderer;
+        selection controls need native dropdown/focus behavior. Controller supplies live text.
+    - id: SettingsVideoMeleeCameraKickLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 1472.426
+      width: 219.1168
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Melee camera kick
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsVideoMeleeCameraKickDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 1488.634
+      width: 437.3333
+      height: 11.5168
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Nudge the view along the blow on critical hits and kills.
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsVideoMeleeCameraKickControl
+      anchor: top_left
+      offset_x: 453.3333
+      offset_y: 1470.2051
+      width: 70.4
+      height: 32.158
+      z_index: 10
+      visible: true
+      interactive: true
+      asset:
+        default: hud_x2/menus/omenu_toggle_off.png
+        selected: hud_x2/menus/omenu_toggle_on.png
+      text:
+        value: '{melee_camera_kick}'
+        font: menu_lucida
+        color: '#b8b8a9'
+        align_x: center
+        align_y: middle
+        scale: 0.64
+        pad_x: 3.2
+      notes: Bind to gameplay.melee_camera_kick; see contracts/settings.yml. Ranges need a track and thumb renderer;
+        selection controls need native dropdown/focus behavior. Controller supplies live text.
     - id: SettingsVideoCorpsesLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 1316.7248
+      offset_y: 1511.3508
       width: 219.1168
       height: 14.0752
       z_index: 10
@@ -1896,14 +2183,14 @@ elements:
     - id: SettingsVideoCorpsesDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 1332.9328
+      offset_y: 1527.5588
       width: 397.2
       height: 11.5168
       z_index: 10
       visible: true
       interactive: false
       text:
-        value: Slain creatures keep their bodies, as in the original games.
+        value: A satchel replaces each body once it sinks away; keeping bodies costs more GPU time.
         font: menu_lucida
         color: '#aeb5a5'
         align_x: left
@@ -1913,7 +2200,7 @@ elements:
     - id: SettingsVideoCorpsesControl
       anchor: top_left
       offset_x: 412.8
-      offset_y: 1318.8501
+      offset_y: 1513.4761
       width: 110.9333
       height: 23.4667
       z_index: 10

@@ -1,0 +1,9 @@
+schema_version: 1
+frame_width: 118
+frame_height: 158
+columns: 8
+frames: [girld01, girld02, girld03, girld04, girld05, girld06, girld07, girld08, girld09, girld10, girld11, girld12, girld13,
+  girld14, girld15, girld16, girld17, girld18, girld19, girld20, girld21, girld22, girld23, girld24, girld25, girld26, girld27,
+  girld28, girld29, girld30, girld31, girld32, girld33, girld34, girld35, girld36, girld37, girld38, girld39, girld40, girld41,
+  girld42, girld43, girld44, girld45, girld46, girld47, girld48, girld49, girld50, girld51, girld52, girld53, girld54, girld55,
+  girld56]

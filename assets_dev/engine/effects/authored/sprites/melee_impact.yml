@@ -1,0 +1,10 @@
+schema: openyamm.effectSprite.v2
+id: openyamm:effect-sprite/melee_impact
+framesPerSecond: 40
+logicalWidth: 150
+logicalHeight: 150
+atlas: openyamm:texture/fx/melee_impact_atlas
+atlasColumns: 3
+frameCount: 5
+frameWidth: 256
+frameHeight: 256

@@ -401,104 +401,104 @@ Item #	Pic File	1	2	3	4	5	6
 397	item202	0	0	0	0	2	1	Armageddon
 398	item201	0	0	0	0	0	2	Souldrinker
 399	null	0	0	0	0	0	0	null
-400	item207	0	0	0	0	0	0	Torch Light
-401	item207	0	0	0	0	0	0	Fire Bolt
-402	item207	0	0	0	0	0	0	Fire Resistance
-403	item207	0	0	0	0	0	0	Fire Aura
-404	item208	0	0	2	0	0	0	Haste
-405	item208	0	0	2	0	0	0	Fireball
-406	item208	0	0	2	0	0	0	Fire Spike
-407	item210	0	0	0	1	0	0	Immolation
-408	item210	0	0	0	1	0	0	Meteor Shower
-409	item210	0	0	0	1	0	0	Inferno
-410	item209	0	0	0	0	1	0	Incinerate
-411	item207	0	0	0	0	0	0	Wizard Eye
-412	item207	0	0	0	0	0	0	Feather Fall
-413	item207	0	0	0	0	0	0	Air Resistance
-414	item207	0	0	0	0	0	0	Sparks
-415	item208	0	0	2	0	0	0	Jump
-416	item208	0	0	2	0	0	0	Shield
-417	item208	0	0	2	0	0	0	Lightning Bolt
-418	item210	0	0	0	1	0	0	Invisibility
-419	item210	0	0	0	1	0	0	Implosion
-420	item210	0	0	0	1	0	0	Fly
-421	item209	0	0	0	0	1	0	Starburst
-422	item207	0	0	0	0	0	0	Awaken
-423	item207	0	0	0	0	0	0	Poison Spray
-424	item207	0	0	0	0	0	0	Water Resistance
-425	item207	0	0	0	0	0	0	Ice Bolt
-426	item208	0	0	2	0	0	0	Water Walk
-427	item208	0	0	2	0	0	0	Recharge Item
-428	item208	0	0	2	0	0	0	Acid Burst
-429	item210	0	0	0	1	0	0	Enchant Item
-430	item210	0	0	0	1	0	0	Town Portal
-431	item210	0	0	0	1	0	0	Ice Blast
-432	item209	0	0	0	0	1	0	Lloyd's Beacon
-433	item207	0	0	0	0	0	0	Stun
-434	item207	0	0	0	0	0	0	Slow
-435	item207	0	0	0	0	0	0	Earth Resistance
-436	item207	0	0	0	0	0	0	Deadly Swarm
-437	item208	0	0	2	0	0	0	Stone Skin
-438	item208	0	0	2	0	0	0	Blades
-439	item208	0	0	2	0	0	0	Stone to Flesh
-440	item210	0	0	0	1	0	0	Rock Blast
-441	item210	0	0	0	1	0	0	Telekinesis
-442	item210	0	0	0	1	0	0	Death Blossom
-443	item209	0	0	0	0	1	0	Mass Distortion
-444	item207	0	0	0	0	0	0	Detect Life
-445	item207	0	0	0	0	0	0	Bless
-446	item207	0	0	0	0	0	0	Fate
-447	item207	0	0	0	0	0	0	Turn Undead
-448	item208	0	0	2	0	0	0	Remove Curse
-449	item208	0	0	2	0	0	0	Preservation
-450	item208	0	0	2	0	0	0	Heroism
-451	item210	0	0	0	1	0	0	Spirit Lash
-452	item210	0	0	0	1	0	0	Raise Dead
-453	item210	0	0	0	1	0	0	Shared Life
-454	item209	0	0	0	0	1	0	Resurrection
-455	item207	0	0	0	0	0	0	Telepathy
-456	item207	0	0	0	0	0	0	Remove Fear
-457	item207	0	0	0	0	0	0	Mind Resistance
-458	item207	0	0	0	0	0	0	Mind Blast
-459	item208	0	0	2	0	0	0	Charm
-460	item208	0	0	2	0	0	0	Cure Paralysis
-461	item208	0	0	2	0	0	0	Berserk
-462	item210	0	0	0	1	0	0	Mass Fear
-463	item210	0	0	0	1	0	0	Cure Insanity
-464	item210	0	0	0	1	0	0	Psychic Shock
-465	item209	0	0	0	0	1	0	Enslave
-466	item207	0	0	0	0	0	0	Cure Weakness
-467	item207	0	0	0	0	0	0	Heal
-468	item207	0	0	0	0	0	0	Body Resistance
-469	item207	0	0	0	0	0	0	Harm
-470	item208	0	0	2	0	0	0	Regeneration
-471	item208	0	0	2	0	0	0	Cure Poison
-472	item208	0	0	2	0	0	0	Hammerhands
-473	item210	0	0	0	1	0	0	Cure Disease
-474	item210	0	0	0	1	0	0	Protection from Magic
-475	item210	0	0	0	1	0	0	Flying Fist
-476	item209	0	0	0	0	1	0	Power Cure
-477	item207	0	0	0	1	0	0	Light Bolt
-478	item207	0	0	0	1	0	0	Destroy Undead
-479	item207	0	0	0	0	1	0	Dispel Magic
-480	item207	0	0	0	0	1	0	Paralyze
-481	item208	0	0	0	0	1	0	Summon Wisp
-482	item208	0	0	0	0	1	0	Day of the Gods
-483	item208	0	0	0	0	0	1	Prismatic Light
-484	item210	0	0	0	0	0	1	Day of Protection
-485	item210	0	0	0	0	0	1	Hour of Power
-486	item210	0	0	0	0	0	1	Sunray
-487	item209	0	0	0	0	0	1	Divine Intervention
-488	item207	0	0	0	1	0	0	Reanimate
-489	item207	0	0	0	1	0	0	Toxic Cloud
-490	item207	0	0	0	0	1	0	Vampiric Weapon
-491	item207	0	0	0	0	1	0	Shrinking Ray
-492	item208	0	0	0	0	1	0	Shrapmetal
-493	item208	0	0	0	0	1	0	Control Undead
-494	item208	0	0	0	0	0	1	Pain Reflection
-495	item210	0	0	0	0	0	1	Dark Grasp
-496	item210	0	0	0	0	0	1	Dragon Breath
-497	item210	0	0	0	0	0	1	Armageddon
+400	item207	0	2	0	0	0	0	Torch Light
+401	item207	0	2	0	0	0	0	Fire Bolt
+402	item207	0	0	4	0	0	0	Fire Resistance
+403	item207	0	0	4	0	0	0	Fire Aura
+404	item208	0	0	4	1	0	0	Haste
+405	item208	0	0	4	1	0	0	Fireball
+406	item208	0	0	4	0	1	0	Fire Spike
+407	item210	0	0	0	2	1	0	Immolation
+408	item210	0	0	0	2	0	1	Meteor Shower
+409	item210	0	0	0	2	0	1	Inferno
+410	item209	0	0	0	0	2	1	Incinerate
+411	item207	0	2	0	0	0	0	Wizard Eye
+412	item207	0	2	0	0	0	0	Feather Fall
+413	item207	0	0	4	0	0	0	Air Resistance
+414	item207	0	0	4	0	0	0	Sparks
+415	item208	0	0	4	1	0	0	Jump
+416	item208	0	0	4	1	0	0	Shield
+417	item208	0	0	4	0	1	0	Lightning Bolt
+418	item210	0	0	0	2	1	0	Invisibility
+419	item210	0	0	0	2	0	1	Implosion
+420	item210	0	0	0	2	0	1	Fly
+421	item209	0	0	0	0	2	1	Starburst
+422	item207	0	2	0	0	0	0	Awaken
+423	item207	0	2	0	0	0	0	Poison Spray
+424	item207	0	0	4	0	0	0	Water Resistance
+425	item207	0	0	4	0	0	0	Ice Bolt
+426	item208	0	0	4	1	0	0	Water Walk
+427	item208	0	0	4	1	0	0	Recharge Item
+428	item208	0	0	4	0	1	0	Acid Burst
+429	item210	0	0	0	2	1	0	Enchant Item
+430	item210	0	0	0	2	0	1	Town Portal
+431	item210	0	0	0	2	0	1	Ice Blast
+432	item209	0	0	0	0	2	1	Lloyd's Beacon
+433	item207	0	2	0	0	0	0	Stun
+434	item207	0	2	0	0	0	0	Slow
+435	item207	0	0	4	0	0	0	Earth Resistance
+436	item207	0	0	4	0	0	0	Deadly Swarm
+437	item208	0	0	4	1	0	0	Stone Skin
+438	item208	0	0	4	1	0	0	Blades
+439	item208	0	0	4	0	1	0	Stone to Flesh
+440	item210	0	0	0	2	1	0	Rock Blast
+441	item210	0	0	0	2	0	1	Telekinesis
+442	item210	0	0	0	2	0	1	Death Blossom
+443	item209	0	0	0	0	2	1	Mass Distortion
+444	item207	0	2	0	0	0	0	Detect Life
+445	item207	0	2	0	0	0	0	Bless
+446	item207	0	0	4	0	0	0	Fate
+447	item207	0	0	4	0	0	0	Turn Undead
+448	item208	0	0	4	1	0	0	Remove Curse
+449	item208	0	0	4	1	0	0	Preservation
+450	item208	0	0	4	0	1	0	Heroism
+451	item210	0	0	0	2	1	0	Spirit Lash
+452	item210	0	0	0	2	0	1	Raise Dead
+453	item210	0	0	0	2	0	1	Shared Life
+454	item209	0	0	0	0	2	1	Resurrection
+455	item207	0	2	0	0	0	0	Telepathy
+456	item207	0	2	0	0	0	0	Remove Fear
+457	item207	0	0	4	0	0	0	Mind Resistance
+458	item207	0	0	4	0	0	0	Mind Blast
+459	item208	0	0	4	1	0	0	Charm
+460	item208	0	0	4	1	0	0	Cure Paralysis
+461	item208	0	0	4	0	1	0	Berserk
+462	item210	0	0	0	2	1	0	Mass Fear
+463	item210	0	0	0	2	0	1	Cure Insanity
+464	item210	0	0	0	2	0	1	Psychic Shock
+465	item209	0	0	0	0	2	1	Enslave
+466	item207	0	2	0	0	0	0	Cure Weakness
+467	item207	0	2	0	0	0	0	Heal
+468	item207	0	0	4	0	0	0	Body Resistance
+469	item207	0	0	4	0	0	0	Harm
+470	item208	0	0	4	1	0	0	Regeneration
+471	item208	0	0	4	1	0	0	Cure Poison
+472	item208	0	0	4	0	1	0	Hammerhands
+473	item210	0	0	0	2	1	0	Cure Disease
+474	item210	0	0	0	2	0	1	Protection from Magic
+475	item210	0	0	0	2	0	1	Flying Fist
+476	item209	0	0	0	0	2	1	Power Cure
+477	item207	0	0	0	3	0	0	Light Bolt
+478	item207	0	0	0	3	0	0	Destroy Undead
+479	item207	0	0	0	0	4	0	Dispel Magic
+480	item207	0	0	0	0	4	0	Paralyze
+481	item208	0	0	0	0	3	0	Summon Wisp
+482	item208	0	0	0	0	3	0	Day of the Gods
+483	item208	0	0	0	0	0	3	Prismatic Light
+484	item210	0	0	0	0	0	3	Day of Protection
+485	item210	0	0	0	0	0	3	Hour of Power
+486	item210	0	0	0	0	0	3	Sunray
+487	item209	0	0	0	0	0	2	Divine Intervention
+488	item207	0	0	0	3	0	0	Reanimate
+489	item207	0	0	0	3	0	0	Toxic Cloud
+490	item207	0	0	0	0	4	0	Vampiric Weapon
+491	item207	0	0	0	0	4	0	Shrinking Ray
+492	item208	0	0	0	0	3	0	Shrapmetal
+493	item208	0	0	0	0	3	0	Control Undead
+494	item208	0	0	0	0	0	3	Pain Reflection
+495	item210	0	0	0	0	0	3	Dark Grasp
+496	item210	0	0	0	0	0	3	Dragon Breath
+497	item210	0	0	0	0	0	3	Armageddon
 498	item209	0	0	0	0	0	1	Souldrinker
 499	Placeholder	0	0	0	0	0	0	book 499
 500	item235	0	0	0	0	0	1	Elsenrail
@@ -1203,105 +1203,105 @@ Item #	Pic File	1	2	3	4	5	6
 1199	7item186	0	0	0	0	2	1	Armageddon
 1200	7item183	0	0	0	0	0	2	Souldrinker
 1201	Placeholder	0	0	0	0	0	0	_scroll/book399
-1202	7item190	0	0	0	0	0	0	Torch Light
-1203	7item190	0	0	0	0	0	0	Fire Bolt
-1204	7item190	0	0	0	0	0	0	Fire Resistance
-1205	7item190	0	0	0	0	0	0	Fire Aura
-1206	7item191	0	0	2	0	0	0	Haste
-1207	7item191	0	0	2	0	0	0	Fireball
-1208	7item191	0	0	2	0	0	0	Fire Spike
-1209	7item192	0	0	0	1	0	0	Immolation
-1210	7item192	0	0	0	1	0	0	Meteor Shower
-1211	7item192	0	0	0	1	0	0	Inferno
-1212	7item193	0	0	0	0	1	0	Incinerate
-1213	7item190	0	0	0	0	0	0	Wizard Eye
-1214	7item190	0	0	0	0	0	0	Feather Fall
-1215	7item190	0	0	0	0	0	0	Air Resistance
-1216	7item190	0	0	0	0	0	0	Sparks
-1217	7item191	0	0	2	0	0	0	Jump
-1218	7item191	0	0	2	0	0	0	Shield
-1219	7item191	0	0	2	0	0	0	Lightning Bolt
-1220	7item192	0	0	0	1	0	0	Invisibility
-1221	7item192	0	0	0	1	0	0	Implosion
-1222	7item192	0	0	0	1	0	0	Fly
-1223	7item193	0	0	0	0	1	0	Starburst
-1224	7item190	0	0	0	0	0	0	Awaken
-1225	7item190	0	0	0	0	0	0	Poison Spray
-1226	7item190	0	0	0	0	0	0	Water Resistance
-1227	7item190	0	0	0	0	0	0	Ice Bolt
-1228	7item191	0	0	2	0	0	0	Water Walk
-1229	7item191	0	0	2	0	0	0	Recharge Item
-1230	7item191	0	0	2	0	0	0	Acid Burst
-1231	7item192	0	0	0	1	0	0	Enchant Item
-1232	7item192	0	0	0	1	0	0	Town Portal
-1233	7item192	0	0	0	1	0	0	Ice Blast
-1234	7item193	0	0	0	0	1	0	Lloyd's Beacon
-1235	7item190	0	0	0	0	0	0	Stun
-1236	7item190	0	0	0	0	0	0	Slow
-1237	7item190	0	0	0	0	0	0	Earth Resistance
-1238	7item190	0	0	0	0	0	0	Deadly Swarm
-1239	7item191	0	0	2	0	0	0	Stone Skin
-1240	7item191	0	0	2	0	0	0	Blades
-1241	7item191	0	0	2	0	0	0	Stone to Flesh
-1242	7item192	0	0	0	1	0	0	Rock Blast
-1243	7item192	0	0	0	1	0	0	Telekinesis
-1244	7item192	0	0	0	1	0	0	Death Blossom
-1245	7item193	0	0	0	0	1	0	Mass Distortion
-1246	7item190	0	0	0	0	0	0	Detect Life
-1247	7item190	0	0	0	0	0	0	Bless
-1248	7item190	0	0	0	0	0	0	Fate
-1249	7item190	0	0	0	0	0	0	Turn Undead
-1250	7item191	0	0	2	0	0	0	Remove Curse
-1251	7item191	0	0	2	0	0	0	Preservation
-1252	7item191	0	0	2	0	0	0	Heroism
-1253	7item192	0	0	0	1	0	0	Spirit Lash
-1254	7item192	0	0	0	1	0	0	Raise Dead
-1255	7item192	0	0	0	1	0	0	Shared Life
-1256	7item193	0	0	0	0	1	0	Resurrection
-1257	7item190	0	0	0	0	0	0	Remove Fear
-1258	7item190	0	0	0	0	0	0	Mind Blast
-1259	7item190	0	0	0	0	0	0	Mind Resistance
-1260	7item190	0	0	0	0	0	0	Telepathy
-1261	7item191	0	0	2	0	0	0	Charm
-1262	7item191	0	0	2	0	0	0	Cure Paralysis
-1263	7item191	0	0	2	0	0	0	Berserk
-1264	7item192	0	0	0	1	0	0	Mass Fear
-1265	7item192	0	0	0	1	0	0	Cure Insanity
-1266	7item192	0	0	0	1	0	0	Psychic Shock
-1267	7item193	0	0	0	0	1	0	Enslave
-1268	7item190	0	0	0	0	0	0	Cure Weakness
-1269	7item190	0	0	0	0	0	0	Heal
-1270	7item190	0	0	0	0	0	0	Body Resistance
-1271	7item190	0	0	0	0	0	0	Harm
-1272	7item191	0	0	2	0	0	0	Regeneration
-1273	7item191	0	0	2	0	0	0	Cure Poison
-1274	7item191	0	0	2	0	0	0	Hammerhands
-1275	7item192	0	0	0	1	0	0	Cure Disease
-1276	7item192	0	0	0	1	0	0	Protection from Magic
-1277	7item192	0	0	0	1	0	0	Flying Fist
-1278	7item193	0	0	0	0	1	0	Power Cure
-1279	7item190	0	0	0	1	0	0	Light Bolt
-1280	7item190	0	0	0	1	0	0	Destroy Undead
-1281	7item190	0	0	0	0	1	0	Dispel Magic
-1282	7item190	0	0	0	0	1	0	Paralyze
-1283	7item191	0	0	0	0	1	0	Summon Elemental
-1284	7item191	0	0	0	0	1	0	Day of the Gods
-1285	7item191	0	0	0	0	0	1	Prismatic Light
-1286	7item192	0	0	0	0	0	1	Day of Protection
-1287	7item192	0	0	0	0	0	1	Hour of Power
-1288	7item192	0	0	0	0	0	1	Sunray
-1289	7item193	0	0	0	0	0	0	Divine Intervention
-1290	7item190	0	0	0	1	0	0	Reanimate
-1291	7item190	0	0	0	1	0	0	Toxic Cloud
-1292	7item190	0	0	0	0	1	0	Vampiric Weapon
-1293	7item190	0	0	0	0	1	0	Shrinking Ray
-1294	7item191	0	0	0	0	1	0	Shrapmetal
-1295	7item191	0	0	0	0	1	0	Control Undead
-1296	7item191	0	0	0	0	0	1	Pain Reflection
-1297	7item192	0	0	0	0	0	1	Sacrifice
-1298	7item192	0	0	0	0	0	1	Dragon Breath
-1299	7item192	0	0	0	0	0	1	Armageddon
-1300	7item193	0	0	0	0	0	0	Souldrinker
+1202	7item190	0	2	0	0	0	0	Torch Light
+1203	7item190	0	2	0	0	0	0	Fire Bolt
+1204	7item190	0	0	4	0	0	0	Fire Resistance
+1205	7item190	0	0	4	0	0	0	Fire Aura
+1206	7item191	0	0	4	1	0	0	Haste
+1207	7item191	0	0	4	1	0	0	Fireball
+1208	7item191	0	0	4	0	1	0	Fire Spike
+1209	7item192	0	0	0	2	1	0	Immolation
+1210	7item192	0	0	0	2	0	1	Meteor Shower
+1211	7item192	0	0	0	2	0	1	Inferno
+1212	7item193	0	0	0	0	2	1	Incinerate
+1213	7item190	0	2	0	0	0	0	Wizard Eye
+1214	7item190	0	2	0	0	0	0	Feather Fall
+1215	7item190	0	0	4	0	0	0	Air Resistance
+1216	7item190	0	0	4	0	0	0	Sparks
+1217	7item191	0	0	4	1	0	0	Jump
+1218	7item191	0	0	4	1	0	0	Shield
+1219	7item191	0	0	4	0	1	0	Lightning Bolt
+1220	7item192	0	0	0	2	1	0	Invisibility
+1221	7item192	0	0	0	2	0	1	Implosion
+1222	7item192	0	0	0	2	0	1	Fly
+1223	7item193	0	0	0	0	2	1	Starburst
+1224	7item190	0	2	0	0	0	0	Awaken
+1225	7item190	0	2	0	0	0	0	Poison Spray
+1226	7item190	0	0	4	0	0	0	Water Resistance
+1227	7item190	0	0	4	0	0	0	Ice Bolt
+1228	7item191	0	0	4	1	0	0	Water Walk
+1229	7item191	0	0	4	1	0	0	Recharge Item
+1230	7item191	0	0	4	0	1	0	Acid Burst
+1231	7item192	0	0	0	2	1	0	Enchant Item
+1232	7item192	0	0	0	2	0	1	Town Portal
+1233	7item192	0	0	0	2	0	1	Ice Blast
+1234	7item193	0	0	0	0	2	1	Lloyd's Beacon
+1235	7item190	0	2	0	0	0	0	Stun
+1236	7item190	0	2	0	0	0	0	Slow
+1237	7item190	0	0	4	0	0	0	Earth Resistance
+1238	7item190	0	0	4	0	0	0	Deadly Swarm
+1239	7item191	0	0	4	1	0	0	Stone Skin
+1240	7item191	0	0	4	1	0	0	Blades
+1241	7item191	0	0	4	0	1	0	Stone to Flesh
+1242	7item192	0	0	0	2	1	0	Rock Blast
+1243	7item192	0	0	0	2	0	1	Telekinesis
+1244	7item192	0	0	0	2	0	1	Death Blossom
+1245	7item193	0	0	0	0	2	1	Mass Distortion
+1246	7item190	0	2	0	0	0	0	Detect Life
+1247	7item190	0	2	0	0	0	0	Bless
+1248	7item190	0	0	4	0	0	0	Fate
+1249	7item190	0	0	4	0	0	0	Turn Undead
+1250	7item191	0	0	4	1	0	0	Remove Curse
+1251	7item191	0	0	4	1	0	0	Preservation
+1252	7item191	0	0	4	0	1	0	Heroism
+1253	7item192	0	0	0	2	1	0	Spirit Lash
+1254	7item192	0	0	0	2	0	1	Raise Dead
+1255	7item192	0	0	0	2	0	1	Shared Life
+1256	7item193	0	0	0	0	2	1	Resurrection
+1257	7item190	0	2	0	0	0	0	Remove Fear
+1258	7item190	0	2	0	0	0	0	Mind Blast
+1259	7item190	0	0	4	0	0	0	Mind Resistance
+1260	7item190	0	0	4	0	0	0	Telepathy
+1261	7item191	0	0	4	1	0	0	Charm
+1262	7item191	0	0	4	1	0	0	Cure Paralysis
+1263	7item191	0	0	4	0	1	0	Berserk
+1264	7item192	0	0	0	2	1	0	Mass Fear
+1265	7item192	0	0	0	2	0	1	Cure Insanity
+1266	7item192	0	0	0	2	0	1	Psychic Shock
+1267	7item193	0	0	0	0	2	1	Enslave
+1268	7item190	0	2	0	0	0	0	Cure Weakness
+1269	7item190	0	2	0	0	0	0	Heal
+1270	7item190	0	0	4	0	0	0	Body Resistance
+1271	7item190	0	0	4	0	0	0	Harm
+1272	7item191	0	0	4	1	0	0	Regeneration
+1273	7item191	0	0	4	1	0	0	Cure Poison
+1274	7item191	0	0	4	0	1	0	Hammerhands
+1275	7item192	0	0	0	2	1	0	Cure Disease
+1276	7item192	0	0	0	2	0	1	Protection from Magic
+1277	7item192	0	0	0	2	0	1	Flying Fist
+1278	7item193	0	0	0	0	2	1	Power Cure
+1279	7item190	0	0	0	3	0	0	Light Bolt
+1280	7item190	0	0	0	3	0	0	Destroy Undead
+1281	7item190	0	0	0	0	4	0	Dispel Magic
+1282	7item190	0	0	0	0	4	0	Paralyze
+1283	7item191	0	0	0	0	3	0	Summon Elemental
+1284	7item191	0	0	0	0	3	0	Day of the Gods
+1285	7item191	0	0	0	0	0	3	Prismatic Light
+1286	7item192	0	0	0	0	0	3	Day of Protection
+1287	7item192	0	0	0	0	0	3	Hour of Power
+1288	7item192	0	0	0	0	0	3	Sunray
+1289	7item193	0	0	0	0	0	2	Divine Intervention
+1290	7item190	0	0	0	3	0	0	Reanimate
+1291	7item190	0	0	0	3	0	0	Toxic Cloud
+1292	7item190	0	0	0	0	4	0	Vampiric Weapon
+1293	7item190	0	0	0	0	4	0	Shrinking Ray
+1294	7item191	0	0	0	0	3	0	Shrapmetal
+1295	7item191	0	0	0	0	3	0	Control Undead
+1296	7item191	0	0	0	0	0	3	Pain Reflection
+1297	7item192	0	0	0	0	0	3	Sacrifice
+1298	7item192	0	0	0	0	0	3	Dragon Breath
+1299	7item192	0	0	0	0	0	3	Armageddon
+1300	7item193	0	0	0	0	0	1	Souldrinker
 1301	Placeholder	0	0	0	0	0	0	_scroll/book499
 1302	7item217	0	0	0	0	0	1	Puck
 1303	7item218	0	0	0	0	0	1	Iron Feather
@@ -1905,121 +1905,121 @@ Item #	Pic File	1	2	3	4	5	6
 1901	Placeholder	0	0	0	0	0	0	
 1902	book1	0	2	0	0	0	0	Torch Light
 1903	book1	0	2	0	0	0	0	Flame Arrow
-1904	6book2	0	0	2	0	0	0	Protection from Fire
-1905	6book2	0	0	2	0	0	0	Protection from Fire
-1906	6book2	0	0	2	0	0	0	Fire Bolt
-1907	6book2	0	0	2	0	0	0	Fire Bolt
-1908	book3	0	0	0	1	0	0	Haste
-1909	book3	0	0	0	1	0	0	Fireball
-1910	book4	0	0	0	0	1	0	Ring of Fire
-1911	book4	0	0	0	0	1	0	Fire Blast
-1912	book5	0	0	0	0	0	1	Meteor Shower
-1913	book5	0	0	0	0	0	1	Inferno
-1914	book5	0	0	0	0	0	1	Incinerate
+1904	6book2	0	0	4	0	0	0	Protection from Fire
+1905	6book2	0	0	0	0	0	0	Protection from Fire
+1906	6book2	0	0	4	0	0	0	Fire Bolt
+1907	6book2	0	0	0	0	0	0	Fire Bolt
+1908	book3	0	0	4	1	0	0	Haste
+1909	book3	0	0	4	1	0	0	Fireball
+1910	book4	0	0	4	0	1	0	Ring of Fire
+1911	book4	0	0	0	2	1	0	Fire Blast
+1912	book5	0	0	0	2	0	1	Meteor Shower
+1913	book5	0	0	0	2	0	1	Inferno
+1914	book5	0	0	0	0	2	1	Incinerate
 1915	book1	0	2	0	0	0	0	Wizard Eye
 1916	book1	0	2	0	0	0	0	Static Charge
-1917	6book2	0	0	2	0	0	0	Protection from Elec
-1918	6book2	0	0	2	0	0	0	Protection from Elec
-1919	6book2	0	0	2	0	0	0	Sparks
-1920	6book2	0	0	2	0	0	0	Sparks
-1921	book3	0	0	0	1	0	0	Feather Fall
-1922	book3	0	0	0	1	0	0	Shield
-1923	book4	0	0	0	0	1	0	Lightning Bolt
-1924	book4	0	0	0	0	1	0	Jump
-1925	book5	0	0	0	0	0	1	Implosion
-1926	book5	0	0	0	0	0	1	Fly
-1927	book5	0	0	0	0	0	1	Starburst
+1917	6book2	0	0	4	0	0	0	Protection from Elec
+1918	6book2	0	0	0	0	0	0	Protection from Elec
+1919	6book2	0	0	4	0	0	0	Sparks
+1920	6book2	0	0	0	0	0	0	Sparks
+1921	book3	0	0	4	1	0	0	Feather Fall
+1922	book3	0	0	4	1	0	0	Shield
+1923	book4	0	0	4	0	1	0	Lightning Bolt
+1924	book4	0	0	0	2	1	0	Jump
+1925	book5	0	0	0	2	0	1	Implosion
+1926	book5	0	0	0	2	0	1	Fly
+1927	book5	0	0	0	0	2	1	Starburst
 1928	book1	0	2	0	0	0	0	Awaken
 1929	book1	0	2	0	0	0	0	Cold Beam
-1930	6book2	0	0	2	0	0	0	Protection from Cold
-1931	6book2	0	0	2	0	0	0	Protection from Cold
-1932	6book2	0	0	2	0	0	0	Poison Spray
-1933	6book2	0	0	2	0	0	0	Poison Spray
-1934	book3	0	0	0	1	0	0	Water Walk
-1935	book3	0	0	0	1	0	0	Ice Bolt
-1936	book4	0	0	0	0	1	0	Enchant Item
-1937	book4	0	0	0	0	1	0	Acid Burst
-1938	book5	0	0	0	0	0	1	Town Portal
-1939	book5	0	0	0	0	0	1	Ice Blast
-1940	book5	0	0	0	0	0	1	Lloyd's Beacon
+1930	6book2	0	0	4	0	0	0	Protection from Cold
+1931	6book2	0	0	0	0	0	0	Protection from Cold
+1932	6book2	0	0	4	0	0	0	Poison Spray
+1933	6book2	0	0	0	0	0	0	Poison Spray
+1934	book3	0	0	4	1	0	0	Water Walk
+1935	book3	0	0	4	1	0	0	Ice Bolt
+1936	book4	0	0	4	0	1	0	Enchant Item
+1937	book4	0	0	0	2	1	0	Acid Burst
+1938	book5	0	0	0	2	0	1	Town Portal
+1939	book5	0	0	0	2	0	1	Ice Blast
+1940	book5	0	0	0	0	2	1	Lloyd's Beacon
 1941	book1	0	2	0	0	0	0	Stun
 1942	book1	0	2	0	0	0	0	Magic Arrow
-1943	6book2	0	0	2	0	0	0	Protection from Magic
-1944	6book2	0	0	2	0	0	0	Protection from Magic
-1945	6book2	0	0	2	0	0	0	Deadly Swarm
-1946	6book2	0	0	2	0	0	0	Deadly Swarm
-1947	book3	0	0	0	1	0	0	Stone Skin
-1948	book3	0	0	0	1	0	0	Blades
-1949	book4	0	0	0	0	1	0	Stone to Flesh
-1950	book4	0	0	0	0	1	0	Rock Blast
-1951	book5	0	0	0	0	0	1	Turn to Stone
-1952	book5	0	0	0	0	0	1	Death Blossom
-1953	book5	0	0	0	0	0	1	Mass Distortion
+1943	6book2	0	0	4	0	0	0	Protection from Magic
+1944	6book2	0	0	0	0	0	0	Protection from Magic
+1945	6book2	0	0	4	0	0	0	Deadly Swarm
+1946	6book2	0	0	0	0	0	0	Deadly Swarm
+1947	book3	0	0	4	1	0	0	Stone Skin
+1948	book3	0	0	4	1	0	0	Blades
+1949	book4	0	0	4	0	1	0	Stone to Flesh
+1950	book4	0	0	0	2	1	0	Rock Blast
+1951	book5	0	0	0	2	0	1	Turn to Stone
+1952	book5	0	0	0	2	0	1	Death Blossom
+1953	book5	0	0	0	0	2	1	Mass Distortion
 1954	book1	0	2	0	0	0	0	Spirit Arrow
 1955	book1	0	2	0	0	0	0	Bless
-1956	6book2	0	0	2	0	0	0	Healing Touch
-1957	6book2	0	0	2	0	0	0	Healing Touch
-1958	6book2	0	0	2	0	0	0	Lucky Day
-1959	6book2	0	0	2	0	0	0	Lucky Day
-1960	book3	0	0	0	1	0	0	Remove Curse
-1961	book3	0	0	0	1	0	0	Guardian Angel
-1962	book4	0	0	0	0	1	0	Heroism
-1963	book4	0	0	0	0	1	0	Turn Undead
-1964	book5	0	0	0	0	0	1	Raise Dead
-1965	book5	0	0	0	0	0	1	Shared Life
-1966	book5	0	0	0	0	0	1	Resurrection
+1956	6book2	0	0	4	0	0	0	Healing Touch
+1957	6book2	0	0	0	0	0	0	Healing Touch
+1958	6book2	0	0	4	0	0	0	Lucky Day
+1959	6book2	0	0	0	0	0	0	Lucky Day
+1960	book3	0	0	4	1	0	0	Remove Curse
+1961	book3	0	0	4	1	0	0	Guardian Angel
+1962	book4	0	0	4	0	1	0	Heroism
+1963	book4	0	0	0	2	1	0	Turn Undead
+1964	book5	0	0	0	2	0	1	Raise Dead
+1965	book5	0	0	0	2	0	1	Shared Life
+1966	book5	0	0	0	0	2	1	Resurrection
 1967	book1	0	2	0	0	0	0	Meditation
 1968	book1	0	2	0	0	0	0	Remove Fear
-1969	6book2	0	0	2	0	0	0	Mind Blast
-1970	6book2	0	0	2	0	0	0	Mind Blast
-1971	6book2	0	0	2	0	0	0	Precision
-1972	6book2	0	0	2	0	0	0	Precision
-1973	book3	0	0	0	1	0	0	Cure Paralysis
-1974	book3	0	0	0	1	0	0	Charm
-1975	book4	0	0	0	0	1	0	Mass Fear
-1976	book4	0	0	0	0	1	0	Feeblemind
-1977	book5	0	0	0	0	0	1	Cure Insanity
-1978	book5	0	0	0	0	0	1	Psychic Shock
-1979	book5	0	0	0	0	0	1	Telekinesis
+1969	6book2	0	0	4	0	0	0	Mind Blast
+1970	6book2	0	0	0	0	0	0	Mind Blast
+1971	6book2	0	0	4	0	0	0	Precision
+1972	6book2	0	0	0	0	0	0	Precision
+1973	book3	0	0	4	1	0	0	Cure Paralysis
+1974	book3	0	0	4	1	0	0	Charm
+1975	book4	0	0	4	0	1	0	Mass Fear
+1976	book4	0	0	0	2	1	0	Feeblemind
+1977	book5	0	0	0	2	0	1	Cure Insanity
+1978	book5	0	0	0	2	0	1	Psychic Shock
+1979	book5	0	0	0	0	2	1	Telekinesis
 1980	book1	0	2	0	0	0	0	Cure Weakness
 1981	book1	0	2	0	0	0	0	First Aid
-1982	6book2	0	0	2	0	0	0	Protection from Poison
-1983	6book2	0	0	2	0	0	0	Protection from Poison
-1984	6book2	0	0	2	0	0	0	Harm
-1985	6book2	0	0	2	0	0	0	Harm
-1986	book3	0	0	0	1	0	0	Cure Wounds
-1987	book3	0	0	0	1	0	0	Cure Poison
-1988	book4	0	0	0	0	1	0	Speed
-1989	book4	0	0	0	0	1	0	Cure Disease
-1990	book5	0	0	0	0	0	1	Power
-1991	book5	0	0	0	0	0	1	Flying Fist
-1992	book5	0	0	0	0	0	1	Power Cure
-1993	book1	0	0	0	1	0	0	Create Food
-1994	book1	0	0	0	1	0	0	Golden Touch
-1995	6book2	0	0	0	0	1	0	Dispel Magic
-1996	6book2	0	0	0	0	1	0	Dispel Magic
-1997	6book2	0	0	0	0	1	0	Slow
-1998	6book2	0	0	0	0	1	0	Slow
-1999	book3	0	0	0	0	1	0	Destroy Undead
-2000	book3	0	0	0	0	1	0	Day of the Gods
-2001	book4	0	0	0	0	0	1	Prismatic Light
-2002	book4	0	0	0	0	0	1	Hour of Power
-2003	book5	0	0	0	0	0	1	Paralyze
-2004	book5	0	0	0	0	0	1	Sun Ray
-2005	book5	0	0	0	0	0	1	Divine Intervention
-2006	book1	0	0	0	1	0	0	Reanimate
-2007	book1	0	0	0	1	0	0	Toxic Cloud
-2008	6book2	0	0	0	0	1	0	Mass Curse
-2009	6book2	0	0	0	0	1	0	Mass Curse
-2010	6book2	0	0	0	0	1	0	Shrapmetal
-2011	6book2	0	0	0	0	1	0	Shrapmetal
-2012	book3	0	0	0	0	1	0	Shrinking Ray
-2013	book3	0	0	0	0	1	0	Day of Protection
-2014	book4	0	0	0	0	0	1	Finger of Death
-2015	book4	0	0	0	0	0	1	Moon Ray
-2016	book5	0	0	0	0	0	1	Dragon Breath
-2017	book5	0	0	0	0	0	1	Armageddon
-2018	book5	0	0	0	0	0	0	Dark Containment
+1982	6book2	0	0	4	0	0	0	Protection from Poison
+1983	6book2	0	0	0	0	0	0	Protection from Poison
+1984	6book2	0	0	4	0	0	0	Harm
+1985	6book2	0	0	0	0	0	0	Harm
+1986	book3	0	0	4	1	0	0	Cure Wounds
+1987	book3	0	0	4	1	0	0	Cure Poison
+1988	book4	0	0	4	0	1	0	Speed
+1989	book4	0	0	0	2	1	0	Cure Disease
+1990	book5	0	0	0	2	0	1	Power
+1991	book5	0	0	0	2	0	1	Flying Fist
+1992	book5	0	0	0	0	2	1	Power Cure
+1993	book1	0	0	0	3	0	0	Create Food
+1994	book1	0	0	0	3	0	0	Golden Touch
+1995	6book2	0	0	0	0	4	0	Dispel Magic
+1996	6book2	0	0	0	0	0	0	Dispel Magic
+1997	6book2	0	0	0	0	4	0	Slow
+1998	6book2	0	0	0	0	0	0	Slow
+1999	book3	0	0	0	0	3	0	Destroy Undead
+2000	book3	0	0	0	0	3	0	Day of the Gods
+2001	book4	0	0	0	0	0	3	Prismatic Light
+2002	book4	0	0	0	0	0	3	Hour of Power
+2003	book5	0	0	0	0	0	3	Paralyze
+2004	book5	0	0	0	0	0	3	Sun Ray
+2005	book5	0	0	0	0	0	2	Divine Intervention
+2006	book1	0	0	0	3	0	0	Reanimate
+2007	book1	0	0	0	3	0	0	Toxic Cloud
+2008	6book2	0	0	0	0	4	0	Mass Curse
+2009	6book2	0	0	0	0	0	0	Mass Curse
+2010	6book2	0	0	0	0	4	0	Shrapmetal
+2011	6book2	0	0	0	0	0	0	Shrapmetal
+2012	book3	0	0	0	0	3	0	Shrinking Ray
+2013	book3	0	0	0	0	3	0	Day of Protection
+2014	book4	0	0	0	0	0	3	Finger of Death
+2015	book4	0	0	0	0	0	3	Moon Ray
+2016	book5	0	0	0	0	0	3	Dragon Breath
+2017	book5	0	0	0	0	0	3	Armageddon
+2018	book5	0	0	0	0	0	1	Dark Containment
 2019	Placeholder	0	0	0	0	0	0	
 2020	ldagger3	0	0	0	0	0	0	Mordred
 2021	hammer3	0	0	0	0	0	1	Thor

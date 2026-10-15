@@ -1,0 +1,9 @@
+schema_version: 1
+frame_width: 118
+frame_height: 158
+columns: 8
+frames: [malef01, malef02, malef03, malef04, malef05, malef06, malef07, malef08, malef09, malef10, malef11, malef12, malef13,
+  malef14, malef15, malef16, malef17, malef18, malef19, malef20, malef21, malef22, malef23, malef24, malef25, malef26, malef27,
+  malef28, malef29, malef30, malef31, malef32, malef33, malef34, malef35, malef36, malef37, malef38, malef39, malef40, malef41,
+  malef42, malef43, malef44, malef45, malef46, malef47, malef48, malef49, malef50, malef51, malef52, malef53, malef54, malef55,
+  malef56]

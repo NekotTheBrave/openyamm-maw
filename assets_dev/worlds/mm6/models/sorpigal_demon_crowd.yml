@@ -1,0 +1,118 @@
+actors:
+- descriptor: BGoblin A
+  model: worlds/mm6/models/mm6_demon.glb
+  death_effect: disintegration
+  scale: 104.8623316
+  yaw_offset: -1.570796327
+  animation: &id001
+    cast: Cast_FireBolt
+    run: Running
+    stride_length: 1.5
+    upper_body_root: mixamorig:Spine
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    eye_color:
+    - 231
+    - 156
+    - 156
+  clips: &id002
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: demon_a
+- descriptor: BGoblin B
+  model: worlds/mm6/models/mm6_demon.glb
+  death_effect: disintegration
+  scale: 104.8623316
+  yaw_offset: -1.570796327
+  animation: *id001
+  clips: *id002
+  skin: demon_a
+- descriptor: BGoblin C
+  model: worlds/mm6/models/mm6_demon.glb
+  death_effect: disintegration
+  scale: 104.8623316
+  yaw_offset: -1.570796327
+  animation: *id001
+  clips: *id002
+  skin: demon_a
+- descriptor: Sorcerer A
+  model: worlds/mm6/models/mm6_demon.glb
+  death_effect: disintegration
+  scale: 104.8623316
+  yaw_offset: -1.570796327
+  animation: *id001
+  clips: *id002
+  skin: demon_a
+- descriptor: Sorcerer B
+  model: worlds/mm6/models/mm6_demon.glb
+  death_effect: disintegration
+  scale: 104.8623316
+  yaw_offset: -1.570796327
+  animation: *id001
+  clips: *id002
+  skin: demon_a
+- descriptor: Sorcerer C
+  model: worlds/mm6/models/mm6_demon.glb
+  death_effect: disintegration
+  scale: 104.8623316
+  yaw_offset: -1.570796327
+  animation: *id001
+  clips: *id002
+  skin: demon_a
+- descriptor: PeasantM2 A
+  model: worlds/mm6/models/mm6_demon.glb
+  death_effect: disintegration
+  scale: 104.8623316
+  yaw_offset: -1.570796327
+  animation: *id001
+  clips: *id002
+  skin: demon_a
+- descriptor: PeasantM2 B
+  model: worlds/mm6/models/mm6_demon.glb
+  death_effect: disintegration
+  scale: 104.8623316
+  yaw_offset: -1.570796327
+  animation: *id001
+  clips: *id002
+  skin: demon_a
+- descriptor: PeasantM2 C
+  model: worlds/mm6/models/mm6_demon.glb
+  death_effect: disintegration
+  scale: 104.8623316
+  yaw_offset: -1.570796327
+  animation: *id001
+  clips: *id002
+  skin: demon_a
+- descriptor: custom:pmn2_red
+  model: worlds/mm6/models/mm6_demon.glb
+  death_effect: disintegration
+  scale: 104.8623316
+  yaw_offset: -1.570796327
+  animation: *id001
+  clips: *id002
+  skin: demon_a
+- descriptor: custom:pmn2_green
+  model: worlds/mm6/models/mm6_demon.glb
+  death_effect: disintegration
+  scale: 104.8623316
+  yaw_offset: -1.570796327
+  animation: *id001
+  clips: *id002
+  skin: demon_a
+- descriptor: custom:pmn2_blue
+  model: worlds/mm6/models/mm6_demon.glb
+  death_effect: disintegration
+  scale: 104.8623316
+  yaw_offset: -1.570796327
+  animation: *id001
+  clips: *id002
+  skin: demon_a

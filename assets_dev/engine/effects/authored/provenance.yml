@@ -15,6 +15,41 @@ sources:
   url: https://opengameart.org/content/arcane-magic-effect
   author: Cethiel
   title: Arcane Magic Effect
+- key: picca
+  sha256: ba2c321c25dcf3dcab25ba3769ce700e498d90daf481868acca935a3ae48b5f7
+  url: https://github.com/RPicster/Godot-particle-and-vfx-textures/archive/refs/heads/main.zip
+  author: Raffaele Picca
+  title: Particle and VFX textures
+- key: explosion00
+  sha256: 5931820e3e8f5062446b059bf4b0489a8fc56df5de35170721fe9cd4139d6d42
+  url: https://unity3d.com/files/labs/downloads/vfx/assets01/Explosion00/Explosion00-flipbooks.zip
+  author: Unity Labs / Thomas ICHÉ
+  title: Explosion00
+- key: explosion02
+  sha256: 1426be2dcfc9008b8b8f0c7d54a241da3f611725aa3c84fc33f919f56036f538
+  url: https://unity3d.com/files/labs/downloads/vfx/assets01/Explosion02/Explosion02-flipbooks.zip
+  author: Unity Labs / Thomas ICHÉ
+  title: Explosion02
+- key: flame02
+  sha256: f37b12cdae090591d537ed3bb50396f03833a49864362bf665d6817b7282c954
+  url: https://unity3d.com/files/labs/downloads/vfx/assets01/Flame02/Flame02-flipbooks.zip
+  author: Unity Labs / Thomas ICHÉ
+  title: Flame02
+- key: wispysmoke01
+  sha256: f9bdc88948ff18a7d3e6332b68f2f2ff17e9a64c6feb821e05388f4f23dbcff0
+  url: https://unity3d.com/files/labs/downloads/vfx/assets01/WispySmoke01/WispySmoke01-flipbooks.zip
+  author: Unity Labs / Thomas ICHÉ
+  title: WispySmoke01
+- key: cloud02
+  sha256: 99ce5ed3ec21646dd4a0644c2149978ed4f2fd9ab2ef269b5cfcc89a7a9cc036
+  url: https://unity3d.com/files/labs/downloads/vfx/assets01/Cloud02/Cloud02-flipbooks.zip
+  author: Unity Labs / Thomas ICHÉ
+  title: Cloud02
+- key: openyamm
+  sha256: ''
+  url: tools/fx/generate_projectile_textures.py
+  author: OpenYAMM
+  title: Procedural projectile textures (original, generated)
 conversions:
 - sprite: openyamm:effect-sprite/ring
   source: kenney
@@ -28,6 +63,91 @@ conversions:
   source: kenney
   conversion: PNG (Transparent)/smoke_01.png; RGBA decode and Lanczos 512 to 128;
     retain soft alpha
+- sprite: openyamm:effect-sprite/glint
+  source: kenney
+  conversion: PNG (Transparent)/star_07.png; RGBA decode and Lanczos 512 to 128; retain
+    soft alpha
+- sprite: openyamm:effect-sprite/starburst
+  source: kenney
+  conversion: PNG (Transparent)/star_09.png; RGBA decode and Lanczos 512 to 128; retain
+    soft alpha
+- sprite: openyamm:effect-sprite/soft_star
+  source: kenney
+  conversion: PNG (Transparent)/magic_05.png; RGBA decode and Lanczos 512 to 128;
+    retain soft alpha
+- sprite: openyamm:effect-sprite/wisp
+  source: kenney
+  conversion: PNG (Transparent)/twirl_02.png; RGBA decode and Lanczos 512 to 128;
+    retain soft alpha
+- sprite: openyamm:effect-sprite/electric
+  source: kenney
+  conversion: PNG (Transparent)/spark_02.png; RGBA decode and Lanczos 512 to 128;
+    retain soft alpha
+- sprite: openyamm:effect-sprite/debris
+  source: kenney
+  conversion: PNG (Transparent)/dirt_02.png; RGBA decode and Lanczos 512 to 128; retain
+    soft alpha
+- sprite: openyamm:effect-sprite/wisp_smoke
+  source: kenney
+  conversion: PNG (Transparent)/smoke_05.png; RGBA decode and Lanczos 512 to 128;
+    retain soft alpha
+- sprite: openyamm:effect-sprite/streak
+  source: kenney
+  conversion: PNG (Transparent)/trace_02.png; RGBA decode and Lanczos 512 to 128;
+    retain soft alpha; rotated 90 degrees so the streak runs along the width
+- sprite: openyamm:effect-sprite/flame_lick
+  source: kenney
+  conversion: PNG (Transparent)/flame_06.png; RGBA decode and Lanczos 512 to 128;
+    retain soft alpha
+- sprite: openyamm:effect-sprite/ripple
+  source: kenney
+  conversion: PNG (Transparent)/light_02.png; RGBA decode and Lanczos 512 to 128;
+    retain soft alpha
+- sprite: openyamm:effect-sprite/slash
+  source: kenney
+  conversion: PNG (Transparent)/slash_02.png; RGBA decode and Lanczos 512 to 128;
+    retain soft alpha
+- sprite: openyamm:effect-sprite/flare
+  source: picca
+  conversion: textures/256/alpha/spotlight_4.png; RGBA, unchanged
+- sprite: openyamm:effect-sprite/flare_star
+  source: picca
+  conversion: textures/256/alpha/spotlight_5.png; RGBA, unchanged
+- sprite: openyamm:effect-sprite/flare_cross
+  source: picca
+  conversion: textures/256/alpha/spotlight_8.png; RGBA, unchanged
+- sprite: openyamm:effect-sprite/flare_wide
+  source: picca
+  conversion: textures/256/alpha/spotlight_2.png; RGBA, unchanged
+- sprite: openyamm:effect-sprite/rays
+  source: picca
+  conversion: textures/256/alpha/effect_2.png; RGBA, unchanged
+- sprite: openyamm:effect-sprite/rays_thin
+  source: picca
+  conversion: textures/256/alpha/effect_3.png; RGBA, unchanged
+- sprite: openyamm:effect-sprite/swirl
+  source: picca
+  conversion: textures/256/alpha/effect_4.png; RGBA, unchanged
+- sprite: openyamm:effect-sprite/explosion
+  source: explosion02
+  conversion: Explosion02_5x5.tga; row-major cells, every 1; Lanczos to 192x192; 25
+    FPS; straight alpha
+- sprite: openyamm:effect-sprite/fire_burst
+  source: explosion00
+  conversion: Explosion00_5x5.tga; row-major cells, every 1; Lanczos to 192x192; 25
+    FPS; straight alpha
+- sprite: openyamm:effect-sprite/flame_column
+  source: flame02
+  conversion: Flame02_16x4.tga; row-major cells, every 2; Lanczos to 128x256; 24 FPS;
+    straight alpha
+- sprite: openyamm:effect-sprite/smoke_puff
+  source: wispysmoke01
+  conversion: WispySmoke01_8x8.tga; row-major cells, every 2; Lanczos to 128x128;
+    24 FPS; straight alpha
+- sprite: openyamm:effect-sprite/dust_cloud
+  source: cloud02
+  conversion: Cloud02_8x8.tga; row-major cells, every 4; Lanczos to 128x128; 12 FPS;
+    straight alpha
 - sprite: openyamm:effect-sprite/fireball
   source: fireball
   conversion: FireBall01_8x8.tga; row-major cells 0,4,...,60; 16 FPS authored timing;
@@ -35,3 +155,59 @@ conversions:
 - sprite: openyamm:effect-sprite/arcane
   source: arcane
   conversion: 04/Arcane_Effect_5.png; centered on 128 RGBA canvas; static variant
+- sprite: openyamm:effect-sprite/glow
+  source: openyamm
+  conversion: tools/fx/generate_projectile_textures.py; procedural soft radial glow
+- sprite: openyamm:effect-sprite/trail_noise
+  source: openyamm
+  conversion: tools/fx/generate_projectile_textures.py; periodic fractal value noise,
+    tileable along U
+- sprite: openyamm:effect-sprite/trail_electric
+  source: openyamm
+  conversion: tools/fx/generate_projectile_textures.py; procedural filaments, tileable
+    along U
+- sprite: openyamm:effect-sprite/melee_arc
+  source: openyamm
+  conversion: tools/fx/generate_melee_effects.py; procedural melee contact artwork
+- sprite: openyamm:effect-sprite/melee_arc_glow
+  source: openyamm
+  conversion: tools/fx/generate_melee_effects.py; procedural melee contact artwork
+- sprite: openyamm:effect-sprite/melee_arc_end
+  source: openyamm
+  conversion: tools/fx/generate_melee_effects.py; procedural melee contact artwork
+- sprite: openyamm:effect-sprite/melee_arc_glow_end
+  source: openyamm
+  conversion: tools/fx/generate_melee_effects.py; procedural melee contact artwork
+- sprite: openyamm:effect-sprite/melee_thrust
+  source: openyamm
+  conversion: tools/fx/generate_melee_effects.py; procedural melee contact artwork
+- sprite: openyamm:effect-sprite/melee_thrust_glow
+  source: openyamm
+  conversion: tools/fx/generate_melee_effects.py; procedural melee contact artwork
+- sprite: openyamm:effect-sprite/melee_thrust_end
+  source: openyamm
+  conversion: tools/fx/generate_melee_effects.py; procedural melee contact artwork
+- sprite: openyamm:effect-sprite/melee_thrust_glow_end
+  source: openyamm
+  conversion: tools/fx/generate_melee_effects.py; procedural melee contact artwork
+- sprite: openyamm:effect-sprite/melee_impact
+  source: openyamm
+  conversion: tools/fx/generate_melee_effects.py; procedural melee contact artwork
+- sprite: openyamm:effect-sprite/melee_ring
+  source: openyamm
+  conversion: tools/fx/generate_melee_effects.py; procedural melee contact artwork
+- sprite: openyamm:effect-sprite/melee_flare
+  source: openyamm
+  conversion: tools/fx/generate_melee_effects.py; procedural melee contact artwork
+- sprite: openyamm:effect-sprite/melee_chip
+  source: openyamm
+  conversion: tools/fx/generate_melee_effects.py; procedural melee contact artwork
+- sprite: openyamm:effect-sprite/melee_drop
+  source: openyamm
+  conversion: tools/fx/generate_melee_effects.py; procedural melee contact artwork
+- sprite: openyamm:effect-sprite/melee_streak_drop
+  source: openyamm
+  conversion: tools/fx/generate_melee_effects.py; procedural melee contact artwork
+- sprite: openyamm:effect-sprite/melee_mist
+  source: openyamm
+  conversion: tools/fx/generate_melee_effects.py; procedural melee contact artwork

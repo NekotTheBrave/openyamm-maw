@@ -1,0 +1,9 @@
+schema_version: 1
+frame_width: 118
+frame_height: 158
+columns: 8
+frames: [maled01, maled02, maled03, maled04, maled05, maled06, maled07, maled08, maled09, maled10, maled11, maled12, maled13,
+  maled14, maled15, maled16, maled17, maled18, maled19, maled20, maled21, maled22, maled23, maled24, maled25, maled26, maled27,
+  maled28, maled29, maled30, maled31, maled32, maled33, maled34, maled35, maled36, maled37, maled38, maled39, maled40, maled41,
+  maled42, maled43, maled44, maled45, maled46, maled47, maled48, maled49, maled50, maled51, maled52, maled53, maled54, maled55,
+  maled56]

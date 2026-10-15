@@ -2,4 +2,5 @@ schema: openyamm.effectResourceBindings.v1
 imports:
   - engine/effects/mm9/resource_bindings.yml
   - engine/effects/authored/resource_bindings.yml
+  - engine/effects/authored/melee_resource_bindings.yml
 bindings: []

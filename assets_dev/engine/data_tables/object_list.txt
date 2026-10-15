@@ -416,6 +416,7 @@ Memory Crystal	null	413	64	16	0	0	0	0x00000000	0	0	0	Bounce
 Infused rod	null	414	64	16	0	0	17963	0x00000000	0	0	0	Bounce
 Wisp wrappings	3CAPE	415	64	16	0	0	17551	0x00000000	0	0	0	Bounce
 Black and white potion	obj160	416	64	64	0	0	59	0x00000000	0	0	0	Bounce
+Blaster Shotgun	blastsg	417	64	64	0	0	23990	0x00000000	0	0	0	Bounce
 Air	spell101	500	16	16	768	6000	862	0x00000000	0	0	0	LifeTime,NoPickup,NoGravity,FlagOnIntercept
 Earth	spell102	505	16	16	768	4000	869	0x00000000	0	0	0	LifeTime,NoPickup,NoGravity,FlagOnIntercept
 Fire	spell103	510	16	16	768	4000	876	0x00000000	0	0	0	LifeTime,NoPickup,NoGravity,FlagOnIntercept
@@ -537,6 +538,4 @@ Fear	null	12000	16	16	768	4000	0	0x00000000	0	0	0	LifeTime,NoPickup,NoGravity,Fl
 explosion	null	12001	16	16	0	0	0	0x00000000	0	0	0	LifeTime,FTLifeTime,NoPickup,NoGravity
 Breath Weapon 2	spell100	12010	16	16	768	4000	853	0x00000000	0	0	0	LifeTime,NoPickup,NoGravity,FlagOnIntercept
 explosion	spell100x	12011	16	16	8	0	861	0x00000000	0	0	0	LifeTime,FTLifeTime,NoPickup,NoGravity
-Rain	Rain	12012	32	32	768	4000	23313	0x00000000	0	0	0	LifeTime,NoPickup,NoGravity,FlagOnIntercept
-Snow	Snow	12013	32	32	768	4000	23339	0x00000000	0	0	0	LifeTime,NoPickup,NoGravity,FlagOnIntercept
 MM9 Treasure Bag	bag01	19001	49	60	0	0	17877	0x00000000	0	0	0	NoGravity

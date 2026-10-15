@@ -648,7 +648,4 @@
 646	Demon Queen	Immobile	NoArena	Dark		Endurance	0	x	x	-	-	-	-			300
 647	Reactor	Immobile	NoArena	Neutral		Endurance	0	x	x	-	-	-	-			300
 648	Reactor	Immobile	NoArena	Neutral		Endurance	0	x	x	-	-	-	-			300
-649	Cactus	Demon		Neutral		Speed	0	x	-	-	-	-	-			300
-650	Cactus	Demon		Neutral		Speed	0	x	-	-	-	-	-			300
-651	Cactus	Demon		Neutral		Speed	0	x	-	-	-	-	-			300
 652	Reactor	Immobile	NoArena	Neutral		Endurance	0	x	x	-	-	-	-			300

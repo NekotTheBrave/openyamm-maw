@@ -1,0 +1,171 @@
+# Attack timing of monster attack sprites.
+# contact_frame: the 0-based frame that first shows the blow, the missile leaving or the spell's release; the game
+#   applies the attack as that frame appears and the action still lasts the whole animation. Without it the attack
+#   applies when the animation has played, as MM8 does (re_mm8/ACTOR_ATTACK_TIMING.md).
+# sound_delay: seconds after the attack starts that its attack sound plays; without it the sound plays as it starts.
+# Picked in level_generation/creatures/timing_review/ and written by its apply_decisions.py.
+sprites:
+  aie1ata: {contact_frame: 3}
+  aie2ata: {contact_frame: 3}
+  aie3ata: {contact_frame: 3}
+  arc1atk: {contact_frame: 5}
+  arc2atk: {contact_frame: 5}
+  arc3atk: {contact_frame: 5}
+  b2datta: {contact_frame: 2}
+  b2tata: {contact_frame: 3}
+  b3datta: {contact_frame: 2}
+  b3tata: {contact_frame: 3}
+  baatka: {contact_frame: 3}
+  bar1ata: {contact_frame: 4, sound_delay: 0.3}
+  bar2ata: {contact_frame: 4, sound_delay: 0.3}
+  bar3ata: {contact_frame: 4, sound_delay: 0.3}
+  batata: {contact_frame: 3}
+  bbatka: {contact_frame: 3}
+  bcatka: {contact_frame: 3}
+  bldatta: {contact_frame: 2}
+  cdr1bia0: {contact_frame: 5}
+  cdr2bia0: {contact_frame: 5}
+  cdr3bia0: {contact_frame: 5}
+  ck2atka: {contact_frame: 3}
+  ck3atka: {contact_frame: 3}
+  cktatka: {contact_frame: 3}
+  cl1atta: {contact_frame: 2}
+  cl2atta: {contact_frame: 2}
+  cl3atta: {contact_frame: 2}
+  coatta: {contact_frame: 5}
+  cobatta: {contact_frame: 5}
+  cocatta: {contact_frame: 5}
+  danatka0: {contact_frame: 4}
+  dbnatka0: {contact_frame: 4}
+  dcnatka0: {contact_frame: 4}
+  djaatta: {contact_frame: 3}
+  djbatta: {contact_frame: 3}
+  djcatta: {contact_frame: 3}
+  dragata: {contact_frame: 3}
+  drbgata: {contact_frame: 3}
+  drcgata: {contact_frame: 3}
+  drg1ata: {contact_frame: 3}
+  drg2ata: {contact_frame: 3}
+  drg3ata: {contact_frame: 3}
+  drr1ata: {contact_frame: 4}
+  drr2ata: {contact_frame: 4}
+  drr3ata: {contact_frame: 4}
+  dru1ata: {contact_frame: 4}
+  dru2ata: {contact_frame: 4}
+  dru3ata: {contact_frame: 4}
+  dwa1at: {contact_frame: 5}
+  dwa2at: {contact_frame: 5}
+  dwa3at: {contact_frame: 5}
+  eraata: {contact_frame: 4}
+  erbata: {contact_frame: 4}
+  ercata: {contact_frame: 4}
+  f2gcata: {contact_frame: 4, sound_delay: 0.3}
+  f2tatka: {contact_frame: 4, sound_delay: 0.27}
+  f3gcata: {contact_frame: 4, sound_delay: 0.3}
+  f3tatka: {contact_frame: 4, sound_delay: 0.27}
+  fgtatka: {contact_frame: 4, sound_delay: 0.27}
+  fie1ata0: {contact_frame: 4}
+  fie2ata0: {contact_frame: 4}
+  fie3ata0: {contact_frame: 4}
+  figcata: {contact_frame: 4, sound_delay: 0.3}
+  ga1atka0: {contact_frame: 3}
+  ga2atka0: {contact_frame: 3}
+  ga3atka0: {contact_frame: 3}
+  gbbata0: {contact_frame: 4}
+  gcbata0: {contact_frame: 4}
+  gobata0: {contact_frame: 4}
+  gs2atk: {contact_frame: 4}
+  gs3atk: {contact_frame: 4}
+  gstatk: {contact_frame: 4}
+  guaatka0: {contact_frame: 4, sound_delay: 0.25}
+  gubatka0: {contact_frame: 4, sound_delay: 0.25}
+  gucatka0: {contact_frame: 4, sound_delay: 0.25}
+  hrp1atk: {contact_frame: 3}
+  hrp2atk: {contact_frame: 3}
+  hrp3atk: {contact_frame: 3}
+  hy2atk: {contact_frame: 4, sound_delay: 0.15}
+  hy3atk: {contact_frame: 4, sound_delay: 0.15}
+  hydatk: {contact_frame: 4, sound_delay: 0.15}
+  jak1ata0: {contact_frame: 3, sound_delay: 0.1}
+  jak2ata0: {contact_frame: 3, sound_delay: 0.1}
+  jak3ata0: {contact_frame: 3, sound_delay: 0.1}
+  knbatk: {contact_frame: 3}
+  kncatk: {contact_frame: 3}
+  kniatk: {contact_frame: 3}
+  lc2atk: {contact_frame: 4, sound_delay: 0.3}
+  lc3atk: {contact_frame: 4, sound_delay: 0.3}
+  lchatk: {contact_frame: 4, sound_delay: 0.3}
+  lz2atk: {contact_frame: 3}
+  lz3atk: {contact_frame: 3}
+  lzdatk: {contact_frame: 3}
+  mbpatta0: {contact_frame: 4, sound_delay: 0.2}
+  mcpatta0: {contact_frame: 4, sound_delay: 0.2}
+  med2tta0: {contact_frame: 2}
+  med3tta0: {contact_frame: 2}
+  medatta0: {contact_frame: 2}
+  mepatta0: {contact_frame: 4, sound_delay: 0.2}
+  mer1at: {contact_frame: 4}
+  mer2at: {contact_frame: 4}
+  mer3at: {contact_frame: 4}
+  mf2atta: {contact_frame: 3}
+  mf3atta: {contact_frame: 3}
+  mfpatta: {contact_frame: 3}
+  min1ata0: {contact_frame: 3}
+  min2ata0: {contact_frame: 3}
+  min3ata0: {contact_frame: 3}
+  mnk1ata0: {contact_frame: 3}
+  mnk2ata0: {contact_frame: 3}
+  mnk3ata0: {contact_frame: 3}
+  natfata: {contact_frame: 3}
+  natmata: {contact_frame: 3}
+  nbtfata: {contact_frame: 3}
+  nbtmata: {contact_frame: 3}
+  nctfata: {contact_frame: 3}
+  nctmata: {contact_frame: 3}
+  nob2ata: {contact_frame: 3, sound_delay: 0.15}
+  nob3ata: {contact_frame: 3, sound_delay: 0.15}
+  noblata: {contact_frame: 3, sound_delay: 0.15}
+  obzata: {contact_frame: 3}
+  oczata: {contact_frame: 3}
+  ogaatka: {contact_frame: 4}
+  ogbatka: {contact_frame: 4}
+  ogcatka: {contact_frame: 4}
+  oozata: {contact_frame: 3}
+  pmn1ata: {contact_frame: 4}
+  pmn2ata: {contact_frame: 4}
+  pmn3ata: {contact_frame: 4}
+  qata0: {contact_frame: 4}
+  ratatta0: {contact_frame: 4}
+  rbtatta0: {contact_frame: 4}
+  rctatta0: {contact_frame: 4}
+  reaat01: {contact_frame: 8}
+  rob1ata: {contact_frame: 4, sound_delay: 0.6}
+  rob2ata: {contact_frame: 4, sound_delay: 0.6}
+  rob3ata: {contact_frame: 4, sound_delay: 0.6}
+  seasata: {contact_frame: 3}
+  sebsata: {contact_frame: 3}
+  secsata: {contact_frame: 3}
+  ske1at: {contact_frame: 4, sound_delay: 0.2}
+  ske2at: {contact_frame: 4, sound_delay: 0.2}
+  ske3at: {contact_frame: 4, sound_delay: 0.2}
+  sor1ata0: {contact_frame: 4}
+  sor2ata0: {contact_frame: 4}
+  sor3ata0: {contact_frame: 4}
+  spi1ata: {contact_frame: 4}
+  spi2ata: {contact_frame: 4}
+  spi3ata: {contact_frame: 4}
+  th2atta: {contact_frame: 3}
+  th3atta: {contact_frame: 3}
+  thfatta: {contact_frame: 3}
+  ttn1ata0: {contact_frame: 3}
+  ttn2ata0: {contact_frame: 3}
+  ttn3ata0: {contact_frame: 3}
+  wbite1a0: {contact_frame: 3}
+  wbite2a0: {contact_frame: 3}
+  wbite3a0: {contact_frame: 3}
+  wdm1atk: {contact_frame: 4}
+  wdm2atk: {contact_frame: 4}
+  wdm3atk: {contact_frame: 4}
+  weaatk: {contact_frame: 5}
+  webatk: {contact_frame: 5}
+  wecatk: {contact_frame: 5}

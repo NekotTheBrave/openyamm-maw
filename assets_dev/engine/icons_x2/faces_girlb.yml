@@ -1,0 +1,9 @@
+schema_version: 1
+frame_width: 118
+frame_height: 158
+columns: 8
+frames: [girlb01, girlb02, girlb03, girlb04, girlb05, girlb06, girlb07, girlb08, girlb09, girlb10, girlb11, girlb12, girlb13,
+  girlb14, girlb15, girlb16, girlb17, girlb18, girlb19, girlb20, girlb21, girlb22, girlb23, girlb24, girlb25, girlb26, girlb27,
+  girlb28, girlb29, girlb30, girlb31, girlb32, girlb33, girlb34, girlb35, girlb36, girlb37, girlb38, girlb39, girlb40, girlb41,
+  girlb42, girlb43, girlb44, girlb45, girlb46, girlb47, girlb48, girlb49, girlb50, girlb51, girlb52, girlb53, girlb54, girlb55,
+  girlb56]

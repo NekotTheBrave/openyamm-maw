@@ -1,0 +1,9 @@
+schema_version: 1
+frame_width: 118
+frame_height: 158
+columns: 8
+frames: [maleh01, maleh02, maleh03, maleh04, maleh05, maleh06, maleh07, maleh08, maleh09, maleh10, maleh11, maleh12, maleh13,
+  maleh14, maleh15, maleh16, maleh17, maleh18, maleh19, maleh20, maleh21, maleh22, maleh23, maleh24, maleh25, maleh26, maleh27,
+  maleh28, maleh29, maleh30, maleh31, maleh32, maleh33, maleh34, maleh35, maleh36, maleh37, maleh38, maleh39, maleh40, maleh41,
+  maleh42, maleh43, maleh44, maleh45, maleh46, maleh47, maleh48, maleh49, maleh50, maleh51, maleh52, maleh53, maleh54, maleh55,
+  maleh56]

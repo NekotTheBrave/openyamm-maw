@@ -1,0 +1,7 @@
+schema: openyamm.effectSprite.v2
+id: openyamm:effect-sprite/swirl
+framesPerSecond: 1
+logicalWidth: 128
+logicalHeight: 128
+frames:
+- openyamm:texture/fx/swirl_00

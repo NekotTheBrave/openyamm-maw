@@ -1,0 +1,6 @@
+# Actor behaviour scripts (see ACTOR_SCRIPTING_INVESTIGATION.md). Behaviours are shared; worlds attach them to monster
+# ids in worlds/<id>/behaviors.yml, which may also declare world-local behaviours.
+schema: openyamm.actorBehaviors.v1
+library: engine/behaviors/behavior.lua
+behaviors:
+  bosses/necro_mage: engine/behaviors/bosses/necro_mage.lua

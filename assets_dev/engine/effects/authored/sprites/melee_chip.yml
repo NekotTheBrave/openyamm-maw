@@ -1,0 +1,10 @@
+schema: openyamm.effectSprite.v2
+id: openyamm:effect-sprite/melee_chip
+framesPerSecond: 1
+logicalWidth: 16
+logicalHeight: 16
+atlas: openyamm:texture/fx/melee_chip_atlas
+atlasColumns: 1
+frameCount: 1
+frameWidth: 64
+frameHeight: 64

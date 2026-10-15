@@ -650,9 +650,6 @@ Default Monster Data					Stats								Movement and Combat					Attack 1			Attack 
 646	Demon Queen	zDemonQueen	100	1300	40	11000	0	1	N	Med	Suicidal	4	0	70	0	DrainSP	Phys	2D8+20	0	0	0	0	0	40	"Incinerate,M,14"	0	0	Imm	50	50	50	Imm	Imm	Imm	50	50	50	0
 647	Reactor	zReactor	100	1300	40	11000	0	0	N	Short	Suicidal	4	0	60	0	0	Ener	20D5+20	Ener	0	0	0	0	0	0	0	0	Imm	Imm	Imm	Imm	Imm	Imm	Imm	Imm	Imm	Imm	0
 648	Reactor	zReactor	100	1300	40	11000	0	0	N	Short	Suicidal	4	0	60	0	0	Ener	20D5+20	Ener	0	0	0	0	0	0	0	0	Imm	Imm	Imm	Imm	Imm	Imm	Imm	Imm	Imm	Imm	0
-649	Cactus	Cactus A	30	180	25	50	0	0	Y	Free	Aggress	4	300	70	0	Asleep	Phys	5D6	0	0	0	0	0	20	"Deadly Swarm,N,2"	0	0	0	0	0	0	0	0	0	0	0	0	0
-650	Cactus	Cactus B	40	280	30	50	0	0	Y	Free	Aggress	4	300	60	0	Afraid	Phys	6D6	0	0	0	0	0	20	"Deadly Swarm,N,2"	0	0	0	0	0	0	0	0	0	0	0	0	0
-651	Cactus	Cactus C	50	400	35	50	0	0	Y	Free	Aggress	4	300	50	0	Insane	Phys	7D6	0	0	0	0	0	20	"Deadly Swarm,N,2"	0	0	0	0	0	0	0	0	0	0	0	0	"Summon,air,Cactus A"
 652	Reactor	zReactor	100	1300	40	11000	0	0	N	Short	Suicidal	4	0	60	0	0	Ener	20D5+20	Ener	0	0	0	0	0	0	0	0	Imm	Imm	Imm	Imm	Imm	Imm	Imm	Imm	Imm	Imm	0
 901	Crusader (Green)	custom:crusader_green	40	280	45	2000	10%10D100+L4Plate	1	N	Long	Normal	2	250	80	XK	0	Phys	4D5+20	0	0	0	0	0	33	Bless,N,3	33	Heroism,N,3	20	20	20	20	30	10	30	5	5	20	0
 902	Crusader (Blue)	custom:crusader_blue	60	540	65	4200	10%20D100+L5Plate	1	N	Med	Aggress	2	300	70	XK	0	Phys	4D5+30	0	0	0	0	0	33	Bless,E,6	33	Heroism,E,6	30	30	30	30	40	10	40	5	5	30	0
