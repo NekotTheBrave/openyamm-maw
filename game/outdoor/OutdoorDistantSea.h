@@ -7,7 +7,7 @@
 namespace OpenYAMM::Game
 {
 struct OutdoorMapData;
-struct OutdoorTerrainTextureAtlas;
+struct OutdoorTerrainTiles;
 
 // What lies past each side of an outdoor map's edge. Most MM6-MM8 maps face the sea on some sides; the Enhanced sky
 // continues that sea to the horizon instead of leaving fog where the terrain square ends.
@@ -20,7 +20,8 @@ struct OutdoorDistantSea
     std::array<float, 3> waterColorDisplay = {};
 };
 
-// landMask is the per-cell land (1) / water (0) mask of the terrain grid; pAtlas supplies the water tiles' colours.
+// landMask is the per-cell land (1) / water (0) mask of the terrain grid; pTerrainTiles supplies the water tiles'
+// colours.
 OutdoorDistantSea measureOutdoorDistantSea(
-    const OutdoorMapData &mapData, const std::vector<uint8_t> &landMask, const OutdoorTerrainTextureAtlas *pAtlas);
+    const OutdoorMapData &mapData, const std::vector<uint8_t> &landMask, const OutdoorTerrainTiles *pTerrainTiles);
 }

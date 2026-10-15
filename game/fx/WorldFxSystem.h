@@ -5,12 +5,20 @@
 #include "game/fx/EffectSystem.h"
 #include "game/fx/ParticleRecipes.h"
 #include "game/fx/ParticleSystem.h"
+#include "game/fx/ProjectileEffectBindings.h"
+#include "game/fx/SpellAuraEffectBindings.h"
 #include "game/fx/WaterRippleRuntime.h"
 #include "game/fx/import/EffectResourceLibrary.h"
+#include "game/render/ShieldDomeRenderer.h"
 #include "game/render/lighting/RenderLight.h"
 
 #include <array>
+#include <functional>
+#include <optional>
 #include <map>
+#include <memory>
+#include <span>
+#include <string>
 #include <tuple>
 #include <cstdint>
 #include <unordered_map>
@@ -27,7 +35,14 @@ namespace OpenYAMM::Game
 class GameSession;
 class GameAudioSystem;
 class IGameplayWorldRuntime;
+struct GameplayRuntimeActorState;
+enum class ActorAiAnimationState : uint8_t;
+class ActorModelManifest;
 class MonsterTable;
+class MonsterProjectileTable;
+class ObjectTable;
+struct GameplayProjectilePresentationState;
+struct GameplayProjectileImpactPresentationState;
 class SpriteFrameTable;
 struct PartySpellCastResult;
 
@@ -88,9 +103,28 @@ public:
         const std::string &bindingManifestPath,
         std::string &error);
     void bindNamedEffectAudio(GameAudioSystem *pAudioSystem);
+    // Actor models of the merged world manifests (ActorModelManifest). The monsters a map shows when it loads
+    // (eagerDescriptors) get their models now; any other bound monster when it first appears (a summon, an arena
+    // opponent). Called every frame: later calls only update the tables later bindings read.
+    bool configureActorModels(const Engine::AssetFileSystem &assets,
+        std::shared_ptr<const ActorModelManifest> pManifest, const MonsterTable &monsters,
+        const SpriteFrameTable *pSpriteFrames, std::span<const std::string> eagerDescriptors, std::string &error);
+    bool actorModelsConfigured() const
+    {
+        return m_actorModelsConfigured;
+    }
+    // Diagnostics: the bindings of one manifest, all built at once.
     bool configureActorModels(const Engine::AssetFileSystem &assets, const std::string &manifestPath,
         const MonsterTable &monsters, const SpriteFrameTable *pSpriteFrames, std::string &error);
-    void syncActorModels(const IGameplayWorldRuntime &world, float deltaSeconds = 0.0f);
+    // While a dialogue pauses the world, its partner's model keeps running on the frame clock (liveDeltaSeconds), so
+    // it turns to face the party and finishes its pose blend; every other model holds still.
+    void syncActorModels(const IGameplayWorldRuntime &world, float deltaSeconds = 0.0f,
+        std::optional<size_t> liveActorIndex = std::nullopt, float liveDeltaSeconds = 0.0f);
+    // Shield domes of active actor behaviour wards (ActorBehaviorRuntime::wardDisplays): they grow in when raised,
+    // swell and fade when they lapse, and ripple where projectiles hit them.
+    void syncShieldDomes(const IGameplayWorldRuntime &world, float deltaSeconds);
+    const std::vector<ShieldDomeDraw> &shieldDomes() const { return m_shieldDomes; }
+    float shieldDomeTimeSeconds() const { return m_shieldDomeTimeSeconds; }
     // Animation LOD: actors far from the party sample their clips at 15 Hz (beyond ~14 m) and 8 Hz (beyond ~28 m).
     // Off by default (exact clip timing, e.g. for diagnostics); the game enables it with the model LOD setting.
     void setActorAnimationLod(bool enabled) { m_actorAnimationLod = enabled; }
@@ -105,14 +139,47 @@ public:
     // True when a model or a loot satchel presents this actor (its sprite is not drawn).
     bool hasActorModel(size_t actorIndex) const;
     const Engine::ModelBounds *actorModelBounds(size_t actorIndex) const;
+    // World height of an actor model's standing pose above the actor's feet, at the actor's scale: where health bars
+    // and quest markers sit. Empty without a model (also for a loot satchel).
+    std::optional<float> actorModelStandingTop(size_t actorIndex) const;
+    // World point a model actor launches its missile (spell = false) or spell (spell = true) from: the action's
+    // actors.yml release point (ActionEvent). Empty without a model, without a release point for that action, or when
+    // it lies away from the actor's body (x, y, z feet, collision radius and height: a stale or broken pose); the
+    // caller then keeps the body origin.
+    std::optional<std::array<float, 3>> actorLaunchPoint(size_t actorIndex, bool spell, float x, float y, float z,
+        float radius, float height) const;
+    // Name and time of the clip an actor's model last sampled, and of its upper-body layer (empty name without one).
+    bool actorModelClipSample(size_t actorIndex, std::string &clip, float &time, std::string &layerClip,
+        float &layerTime) const;
     const Engine::ModelBounds *actorModelCullingBounds(size_t actorIndex) const;
     const Engine::ModelBounds *actorModelPoseBounds(size_t actorIndex) const;
     void setActorModelOutline(size_t actorIndex, uint32_t colorAbgr);
+    // Shows only the actor models and loot satchels whose actor passes visible (indoors: the actor's sector is
+    // revealed through the portals, as for actor sprites). Hidden models are neither posed nor drawn.
+    void setActorModelVisibility(const std::function<bool(size_t actorIndex)> &visible);
+    // Actor inspect portrait (ActorModelPreview): a copy of the actor's model, hidden from the world passes and drawn
+    // only into the inspect popup, facing +X at the origin. Like the sprite preview it demonstrates the creature on the
+    // popup's own clock: fidget first, then standing, then a fidget or an attack (the monster's inspect attack
+    // chance). Null when the actor has no model. A portrait not requested since the previous syncActorModels is
+    // released there.
+    struct InspectPortrait
+    {
+        Engine::ModelInstanceHandle handle;
+        // Framing, in the portrait's space: corners of every demonstrated pose's bounds and of its carried items (not
+        // swung in the attack). The first restPointCount belong to the standing and fidget poses, the rest to the
+        // attack.
+        std::vector<std::array<float, 3>> framePoints;
+        size_t restPointCount = 0;
+    };
+    const InspectPortrait *syncInspectPortrait(const IGameplayWorldRuntime &world, size_t actorIndex,
+        uint32_t animationTicks);
     void beginFrame();
     void updateParticles(float deltaSeconds, bool paused);
     void syncProjectileFx(GameSession &session, float deltaSeconds, bool refreshSpatialFx);
     void triggerPartySpellFx(const PartySpellCastResult &result);
     void setShadowsEnabled(bool enabled);
+    // A debuff's onset on a creature: the enhanced style plays its bound aura effect (engine/effects/spell_auras.yml),
+    // following the creature when its index is given; otherwise the procedural aura particles.
     void spawnActorDebuffFx(
         uint32_t spellId,
         uint32_t seed,
@@ -121,7 +188,25 @@ public:
         float z,
         float actorHeight,
         float frontDirectionX,
-        float frontDirectionY);
+        float frontDirectionY,
+        size_t actorIndex = static_cast<size_t>(-1));
+    // A debuff the party casts on an actor. When the enhanced style binds a flight to the spell's recipe (Shrinking
+    // Ray), a visual-only bolt flies from the party to the actor first, and the debuff particles and the bound impact
+    // play when it arrives; otherwise the debuff particles appear at once.
+    void spawnPartyActorDebuffFx(
+        uint32_t spellId,
+        uint32_t seed,
+        size_t actorIndex,
+        float x,
+        float y,
+        float z,
+        float actorHeight,
+        float partyX,
+        float partyY);
+    // Plays the impact effect the enhanced style binds to the spell's recipe at a point (Armageddon's strikes).
+    // Returns false when nothing is bound (the classic style).
+    bool spawnSpellImpactEffect(uint32_t spellId, float x, float y, float z, uint32_t seed);
+    // A creature's buff or heal on itself, as spawnActorDebuffFx.
     void spawnActorBuffFx(
         uint32_t spellId,
         uint32_t seed,
@@ -130,7 +215,21 @@ public:
         float z,
         float actorHeight,
         float frontDirectionX,
-        float frontDirectionY);
+        float frontDirectionY,
+        size_t actorIndex = static_cast<size_t>(-1));
+    // Enhanced projectile visuals: engine/effects/projectiles.yml binds recipes (and monsters' variants of them) to
+    // named flight, settled and impact effects that replace the recipe's trail particles, beam and impact burst, and
+    // may override the native sprite and the flight light. Off (the classic setting) keeps every recipe as it was.
+    void setProjectileFlightEffects(bool enabled);
+    // The enhanced binding for a projectile of this recipe thrown by this monster (0: none); null when the setting
+    // is classic or nothing is bound.
+    const ProjectileEffectBinding *projectileEffectBinding(FxRecipes::ProjectileRecipe recipe, int16_t monsterId) const;
+    // Whether a projectile's native sprite draws: its gameplay visual mode unless its binding overrides it.
+    bool projectileShowsNativeSprite(const GameplayProjectilePresentationState &projectile) const;
+    // Whether a named effect (a debug rebind or a bound impact) replaces an impact's native sprite and recipe burst.
+    bool projectileImpactUsesNamedEffect(const GameplayProjectileImpactPresentationState &impact) const;
+    // The sprite resources of every bound projectile effect (none in the classic style), for preloading.
+    std::vector<std::string> projectileEffectSpriteResources() const;
     bool setProjectileImpactEffectRebind(FxRecipes::ProjectileRecipe recipe, const std::string &effectId);
     bool clearProjectileImpactEffectRebind(FxRecipes::ProjectileRecipe recipe);
     bool hasProjectileImpactEffectRebind(FxRecipes::ProjectileRecipe recipe) const;
@@ -186,38 +285,113 @@ public:
     const std::vector<WorldFxSegmentProjectile> &segmentProjectiles() const;
 
 private:
+    // Points of a model's skinned surface (LOD 0 vertices) in burn order, where the flames of a burn rise.
+    struct ActorBurnSurface
+    {
+        struct Point
+        {
+            float order = 0.0f;
+            uint32_t nodeIndex = 0;
+            uint32_t primitiveIndex = 0;
+            uint32_t vertexIndex = 0;
+        };
+        // Ascending order.
+        std::vector<Point> points;
+    };
+    // actors.yml `death_effect: {type: burn, ...}`: as dying starts, the body chars and burns away along its burn maps
+    // (Engine::ModelBurn), with flames rising from the burning band and a fire light. The death clip plays to its end
+    // (a longer clip continues after the AI's native death length); the burnt-out corpse draws nothing.
+    struct ActorBurnDeath
+    {
+        // Seconds after dying starts at which the first texels begin to char and the last have burnt away (the fire
+        // over them lingers for its width after that).
+        float startSeconds = 0.0f;
+        float endSeconds = 1.0f;
+        Engine::ModelBurn style;
+        float flamesPerSecond = 0.0f;
+        // Flame width in world units at the binding's reference scale.
+        float flameSize = 0.0f;
+        uint32_t lightColorAbgr = 0;
+        float lightRadius = 0.0f;
+        // Flame particle RGB (flame_color); the particles' default orange without one.
+        std::optional<std::array<uint8_t, 3>> flameTint;
+        std::shared_ptr<const ActorBurnSurface> surface;
+    };
+    // The burn surface of a model in one material variant: every skinned material needs an uncooked burn map.
+    static std::shared_ptr<const ActorBurnSurface> buildActorBurnSurface(const Engine::ModelAsset &asset,
+        uint32_t variant, std::string &error);
     struct ActorModelBinding
     {
         std::shared_ptr<const Engine::ModelAsset> asset;
         uint32_t materialVariant = 0;
         uint32_t eyeColorAbgr = 0;
-        // Cast charge colour instead of the spell's element colour (0 = the element's).
-        uint32_t castColorAbgr = 0;
         // Rigid models carried on nodes (actors.yml `attachments`): a staff split out of the body, a boss's weapon.
         std::vector<Engine::ModelAttachment> attachments;
         std::array<uint32_t, 8> clips = {};
         float scale = 1.0f;
         float fxReferenceScale = 1.0f;
         float yawOffset = 0.0f;
+        // actors.yml `fixed_yaw_degrees`: the model keeps this world facing (0 = +x) instead of turning with the actor,
+        // for bodies built into the scenery (the Demon Queen's rock alcove). A `look` block can still turn the upper body.
+        std::optional<float> fixedYaw;
         float zOffset = 0.0f;
         bool disintegrates = false;
         // Fireball burst at the body centre when dying starts (models whose native death is an explosion).
         bool explodes = false;
+        std::optional<ActorBurnDeath> burn;
         float height = 0.0f;
+        // Top of the standing clip's first pose above the feet, in model units.
+        float standingHeight = 0.0f;
         uint32_t castClip = UINT32_MAX;
-        // Size of the palm cast charge glow, its sparks and light relative to the default charge.
-        float castGlowScale = 1.0f;
-        // Optional second charge glow at a held focus (e.g. a staff head), with its own size.
-        uint32_t castFocusSocket = UINT32_MAX;
-        float castFocusGlowScale = 1.0f;
         uint32_t runClip = UINT32_MAX;
+        // actors.yml `animation.look`: nodes, root to tip (neck, head), that share a turn toward the party's eyes over
+        // the clip, and the turn's limits in radians. Empty when the model does not look.
+        std::vector<uint32_t> lookNodes;
+        float lookMaxYaw = 0.0f;
+        float lookMaxPitch = 0.0f;
+        float lookHeadHeight = 0.0f;
+        // actors.yml `animation.sockets`: a named point on the skeleton, a node (a GLB socket node or a bone) and an
+        // offset in that node's space, in model units.
+        struct Socket
+        {
+            uint32_t node = UINT32_MAX;
+            std::array<float, 3> offset = {};
+        };
+        // actors.yml `animation.events`, per action role (melee attack, ranged attack, cast): the clip time at which
+        // the game applies the action (the melee hit lands, the missile or spell is released). A marked clip's wind-up
+        // [0, impact] spans the native action, so the marker frame plays when the game acts; the rest follows the
+        // action as follow-through. Unmarked clips run on the action clock as before.
+        // Ranged roles may also name sockets: `glow`, where the projectile's element charges while the action winds
+        // up (both palms, a staff head, an eye), and `release`, where it leaves; without `release` it leaves the one
+        // glow socket, or the middle of several.
+        struct ActionEvent
+        {
+            float impactSeconds = -1.0f;
+            std::array<Socket, 4> glow;
+            size_t glowCount = 0;
+            std::optional<Socket> release;
+            // Size of the charge glows, their sparks and light relative to the default charge.
+            float glowScale = 1.0f;
+            // Charge colour instead of the projectile's (0 = the projectile's).
+            uint32_t colorAbgr = 0;
+            // Ranged attack only (`effects`, element -> named effect): drawn at the glow sockets instead of the glow
+            // while the Attack1/Attack2 missile of that element winds up; empty for the plain glow.
+            std::array<std::string, 2> effects;
+        };
+        std::array<ActionEvent, 3> actionEvents;
+        // Behaviour script clip roles (actors.yml `script_clips`): role name -> clip index.
+        std::unordered_map<std::string, uint32_t> scriptClips;
         float strideLength = 0.0f;
+        // Running clip stride (actors.yml `run_stride_length`); defaults to 1.55 x the walking stride.
+        float runStrideLength = 0.0f;
+        // actors.yml `animation.blend_seconds`: blend length of every clip change except into dying (negative = the
+        // defaults, 0.12 s and 0.06 s into a hit), for bodies whose clips change pose a lot (the drake's forward flight
+        // and upright hover). `animation.death_blend_seconds`: blend into the death clip (default none).
+        float blendSeconds = -1.0f;
+        float deathBlendSeconds = 0.0f;
         std::shared_ptr<const std::vector<float>> upperBodyMask;
-        // Authored non-deforming socket nodes: eyes, palms. Missing sockets simply have no attached FX.
-        std::array<uint32_t, 4> sockets = {UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX};
-        // Resolved once from Attack1/Attack2 missile tokens; physical missiles have no hand recipe.
-        std::array<std::string, 2> rangedHandEffects;
-        std::array<uint32_t, 2> rangedHandSockets = {UINT32_MAX, UINT32_MAX};
+        // The sockets named `eye_left` and `eye_right`, lit with eyeColorAbgr; missing eyes have no glow.
+        std::array<std::optional<Socket>, 2> eyes;
     };
     // Static copy of a model frozen in its Dead clip at timeSeconds, baked on the first corpse that holds that pose.
     std::shared_ptr<const Engine::ModelAsset> corpseAsset(const std::shared_ptr<const Engine::ModelAsset> &asset,
@@ -227,10 +401,18 @@ private:
         Engine::ModelInstanceHandle handle;
         uint32_t actorId = 0;
         int16_t monsterId = 0;
+        // The syncActorModels pass that last kept this model.
+        uint32_t syncPass = 0;
         bool dying = false;
         float deathClipTime = -1.0f;
+        // Seconds since the burn death started (ActorBurnDeath), -1 when not burning; flames owed and spawned so far.
+        float burnSeconds = -1.0f;
+        float burnFlameBudget = 0.0f;
+        uint32_t burnFlameSerial = 0;
         // Drawn through its binding's baked corpse (static stand-in) once the Dead clip has reached its end.
         bool corpseStandIn = false;
+        // Placement last sampled: a burning model outlives its actor in it (burningRemains).
+        Engine::ModelTransform transform;
         bool initialized = false;
         float yaw = 0.0f;
         float previousX = 0.0f;
@@ -240,31 +422,97 @@ private:
         float previousTime = 0.0f;
         uint8_t previousState = 0;
         bool casting = false;
-        bool rangedHandActive = false;
+        bool scripted = false;
         bool secondaryAttack = false;
-        std::array<EffectHandle, 2> rangedHandEffects;
+        // The ranged action whose charge is showing (1 ranged attack, 2 cast; 0 none), its wind-up length (the
+        // action up to the moment the game releases it, captured at its start) and progress through it.
+        size_t chargeRole = 0;
+        uint32_t chargeSpellId = 0;
+        float chargeDuration = 0.0f;
+        float chargeProgress = 0.0f;
+        // Resolved from the projectile when the charge is first drawn: colour, and the named effect replacing the
+        // glow (empty for the glow; none at all for a physical missile such as an arrow).
+        bool chargeResolved = false;
+        bool chargeGlows = false;
+        uint32_t chargeColor = 0;
+        std::string chargeEffect;
+        std::array<EffectHandle, 4> chargeEffects;
         float fxScale = 1.0f;
-        float castDuration = 0.0f;
-        float castProgress = 0.0f;
-        uint32_t castColor = 0;
+        // Current head look relative to the body's facing (radians), eased toward the party on its own clock.
+        float lookYaw = 0.0f;
+        float lookPitch = 0.0f;
+        float lookClock = 0.0f;
+        bool lookStarted = false;
+        // A marked action (ActionEvent) in progress: its clip, marker, wind-up length (the native action up to the
+        // moment the game applies it, captured at its start) and the clip time last shown; then its follow-through,
+        // played after the action while the actor stands or walks.
+        // A fidget clip longer than the native fidget follows the same way after the AI returns to standing, but only
+        // while the actor stands (followStandingOnly).
+        uint32_t markedClip = UINT32_MAX;
+        float markedImpact = 0.0f;
+        float markedDuration = 0.0f;
+        // Action clock when the game applied the marked action; the clip runs on from its marker from then.
+        float markedReleaseElapsed = -1.0f;
+        float markedTime = 0.0f;
+        uint32_t followClip = UINT32_MAX;
+        float followTime = 0.0f;
+        bool followStandingOnly = false;
         float fxCooldown = 0.0f;
         bool pendingRelease = false;
         bool previousImpact = false;
-        bool hasCastOrigin = false;
-        float castOriginAge = 0.0f;
-        // Palm midpoint and/or focus socket; castOriginScales are the bindings' glow scales.
-        std::array<std::array<float, 3>, 2> castOrigins = {};
-        std::array<float, 2> castOriginScales = {};
-        size_t castOriginCount = 0;
+        // The charge's glow sockets as last posed, and how long ago; the release sparkles there.
+        bool hasChargeOrigin = false;
+        float chargeOriginAge = 0.0f;
+        std::array<std::array<float, 3>, 4> chargeOrigins = {};
+        size_t chargeOriginCount = 0;
         const ActorModelBinding *pBinding = nullptr;
     };
+    struct InspectPortraitState
+    {
+        InspectPortrait portrait;
+        size_t actorIndex = 0;
+        uint32_t actorId = 0;
+        int16_t monsterId = 0;
+        bool requested = false;
+        bool started = false;
+        bool movingAtFirstInspect = false;
+        ActorAiAnimationState animation = {};
+        float timeSeconds = 0.0f;
+        float lengthSeconds = 0.0f;
+        uint32_t lastTicks = 0;
+        uint32_t randomState = 0x6d2b79f5u;
+    };
+    std::optional<InspectPortraitState> m_inspectPortrait;
+    void releaseInspectPortrait();
+    // The binding of a bound monster, built on first use; null when unbound or when its binding failed to build.
+    const ActorModelBinding *actorModelBinding(const std::string &descriptor);
+    bool buildActorModelBinding(const std::string &descriptor, std::string &error);
     bool m_actorModelsConfigured = false;
     bool m_actorAnimationLod = false;
+    std::shared_ptr<const ActorModelManifest> m_pActorModelManifest;
+    const Engine::AssetFileSystem *m_pActorModelAssets = nullptr;
+    const MonsterTable *m_pActorModelMonsters = nullptr;
+    const SpriteFrameTable *m_pActorModelSpriteFrames = nullptr;
+    // Built bindings keep their address: actor model instances point at them.
     std::unordered_map<std::string, ActorModelBinding> m_actorModelBindings;
+    std::unordered_set<std::string> m_failedActorModelBindings;
+    // Bindings of one model and skin share its burn surface.
+    std::map<std::pair<const Engine::ModelAsset *, uint32_t>, std::shared_ptr<const ActorBurnSurface>>
+        m_actorBurnSurfaces;
     // Baked corpse poses by (source asset, Dead clip, held time in ms).
     std::map<std::tuple<const Engine::ModelAsset *, uint32_t, uint32_t>, std::shared_ptr<const Engine::ModelAsset>>
         m_corpseAssets;
     std::unordered_map<size_t, ActorModelInstance> m_actorModels;
+    uint32_t m_actorModelSyncPass = 0;
+    struct ShieldDomeState
+    {
+        ShieldDomeDraw draw;
+        float fadeOutSeconds = 0.0f;
+        bool present = false;
+    };
+    std::unordered_map<std::string, ShieldDomeState> m_shieldDomeStates;
+    std::vector<ShieldDomeDraw> m_shieldDomes;
+    float m_shieldDomeTimeSeconds = 0.0f;
     struct CorpseSatchel
     {
         uint32_t actorId = 0;
@@ -282,9 +530,21 @@ private:
     const CorpseSatchel *goneCorpse(size_t actorIndex) const;
     bool m_corpseSatchels = false;
     std::array<std::shared_ptr<const Engine::ModelAsset>, 6> m_satchelAssets;
-    std::unordered_map<size_t, CorpseSatchel> m_corpseSatchelStates;
+    // By actor index, ordered: the per-frame sync walks it alongside the actors.
+    std::map<size_t, CorpseSatchel> m_corpseSatchelStates;
     void syncActorModelFx(const IGameplayWorldRuntime &world, float deltaSeconds, bool refreshSpatialFx);
-    void stopActorHandFx(ActorModelInstance &model, EffectStopMode mode);
+    // The burn front of a burning model, or null when it is not burning.
+    std::optional<Engine::ModelBurn> actorBurn(const ActorModelInstance &model) const;
+    bool burningRemains(ActorModelInstance &model, float deltaSeconds);
+    void spawnActorBurnFlames(ActorModelInstance &model, const Engine::ModelBurn &burn, float deltaSeconds);
+    void stopActorChargeFx(ActorModelInstance &model, EffectStopMode mode);
+    // World point of an actor model's socket in its current pose; empty without the node's matrix.
+    std::optional<std::array<float, 3>> actorSocketPoint(const ActorModelInstance &model,
+        const ActorModelBinding::Socket &socket) const;
+    // Colour, glow and effect of a charge that just started (chargeResolved), from the projectile it will release.
+    void resolveActorCharge(ActorModelInstance &model) const;
+    void updateActorLook(ActorModelInstance &model, const GameplayRuntimeActorState &state,
+        const IGameplayWorldRuntime &world, float scale, float partyDistance, float deltaSeconds, bool canLook);
     struct ProjectileFxTrailState
     {
         bool hasPreviousPosition = false;
@@ -311,6 +571,18 @@ private:
         EffectHandle handle;
         size_t actorIndex = static_cast<size_t>(-1);
         std::array<float, 3> position = {};
+        // Auras are sized to their creature.
+        float scale = 1.0f;
+    };
+
+    // A buff or heal aura the party cast on itself: kept just in front of and below the party's eyes while it plays.
+    struct PartyAuraEffect
+    {
+        // Spawned on the first update, once the party's view is known.
+        EffectHandle handle;
+        std::string effectId;
+        uint32_t seed = 0;
+        bool started = false;
     };
 
     struct NamedSoundKey
@@ -330,8 +602,28 @@ private:
     void updatePersistentImpactLights(float deltaSeconds);
     void emitPersistentImpactLights(bool refreshSpatialFx);
     void syncProjectileTrails(GameSession &session, bool refreshSpatialFx);
+    bool syncProjectileFlightEffect(
+        uint32_t projectileId,
+        const ProjectileEffectBinding *pBinding,
+        bool settled,
+        const std::array<float, 3> &projectilePosition,
+        float anchorOffsetZ,
+        const std::array<float, 3> &velocity);
+    void stopProjectileFlightEffects();
     void syncProjectileImpacts(GameSession &session);
     void updateAttachedImpactEffects(GameSession &session);
+    void updateSpellVisualFlights(GameSession &session, float deltaSeconds);
+    void stopSpellVisualFlights();
+    void updatePartyAuraEffects(GameSession &session);
+    bool spawnActorAuraEffect(
+        SpellAuraKind kind,
+        uint32_t spellId,
+        uint32_t seed,
+        float x,
+        float y,
+        float z,
+        float actorHeight,
+        size_t actorIndex);
     void cleanupSeenProjectileImpactIds(GameSession &session);
     void processNamedEffectAudio();
 
@@ -354,6 +646,57 @@ private:
     std::unordered_set<uint32_t> m_seenImpactIds;
     std::unordered_map<FxRecipes::ProjectileRecipe, std::string> m_projectileImpactEffectRebinds;
     std::vector<AttachedImpactEffect> m_attachedImpactEffects;
+    struct ProjectileFlightEffect
+    {
+        EffectHandle handle;
+        // The effect plays the binding's settled effect (the projectile lies on the ground), not its flight.
+        bool settled = false;
+        // Height of the effect above the projectile's position, and its last orientation, to place it at the
+        // projectile's end point.
+        float anchorOffsetZ = 0.0f;
+        std::array<float, 4> rotation = {0.0f, 0.0f, 0.0f, 1.0f};
+    };
+
+    // A visual-only flight between the party and an actor, with no gameplay projectile behind it: a debuff's bolt
+    // from the party to its target, or a drain's stolen life from a victim back to the party.
+    struct SpellVisualFlight
+    {
+        // Spawned on the first update, once the party's eyes are known.
+        EffectHandle handle;
+        std::string flightEffect;
+        std::array<float, 3> origin = {};
+        std::array<float, 3> target = {};
+        // Starts in front of the party's eyes instead of at origin.
+        bool fromParty = false;
+        bool started = false;
+        // The actor flown to, followed while it lives; static_cast<size_t>(-1) flies to the party instead.
+        size_t targetActorIndex = static_cast<size_t>(-1);
+        float progress = 0.0f;
+        // The flight takes its starting distance at speed (world units per second), kept within these times.
+        float speed = 0.0f;
+        float minSeconds = 0.0f;
+        float maxSeconds = 0.0f;
+        float durationSeconds = 0.0f;
+        // Height of the upward bow at mid-flight (drains swoop; bolts fly straight).
+        float bow = 0.0f;
+        std::string impactEffect;
+        bool impactFollowsTarget = false;
+        // Debuff particles to spawn on the actor when the flight arrives (0: none).
+        uint32_t debuffSpellId = 0;
+        uint32_t seed = 0;
+    };
+
+    ProjectileEffectBindings m_projectileEffectBindings;
+    std::unordered_map<uint32_t, ProjectileFlightEffect> m_projectileFlightEffects;
+    std::vector<SpellVisualFlight> m_spellVisualFlights;
+    SpellAuraEffectBindings m_spellAuraEffectBindings;
+    std::vector<PartyAuraEffect> m_partyAuraEffects;
+    // The session's monster table, for monster variants of projectile bindings (set on each projectile sync).
+    const MonsterTable *m_pProjectileMonsterTable = nullptr;
+    // Missile token -> object -> projectile recipe, for the colour of a ranged attack's charge.
+    const MonsterProjectileTable *m_pMonsterProjectileTable = nullptr;
+    const ObjectTable *m_pProjectileObjectTable = nullptr;
+    bool m_projectileFlightEffectsEnabled = true;
     bool m_shadowsEnabled = false;
 };
 }

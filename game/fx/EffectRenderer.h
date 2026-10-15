@@ -4,9 +4,14 @@
 
 #include <bgfx/bgfx.h>
 
+#include <array>
 #include <cstddef>
+#include <functional>
+#include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace bx
 {
@@ -22,6 +27,7 @@ namespace OpenYAMM::Game
 {
 class EffectResourceLibrary;
 class EffectSystem;
+struct EffectSpriteResource;
 class WorldFxRenderResources;
 
 class EffectRenderer
@@ -31,6 +37,7 @@ public:
     {
         size_t sourceParticles = 0;
         size_t sourceFixedSprites = 0;
+        size_t visibleRibbons = 0;
         size_t visibleQuads = 0;
         size_t drawCalls = 0;
         size_t textureSwitches = 0;
@@ -55,15 +62,73 @@ public:
         const float *pViewMatrix,
         const bx::Vec3 &cameraPosition);
     void shutdown(bool destroyGpu);
+    // Loads the textures of the active effects' sprites and of extraSpriteResources (effects that may start later,
+    // such as projectile flights and impacts), so their first use does not stall on image decoding.
     void preload(const EffectSystem &effects, const EffectResourceLibrary &effectResources,
-        const Engine::AssetFileSystem &assetFileSystem);
+        const Engine::AssetFileSystem &assetFileSystem, const std::vector<std::string> &extraSpriteResources = {});
+    // Uses the other renderer's texture cache from now on, so the indoor and outdoor renderers load each effect
+    // texture once between them.
+    void shareTextureCache(const EffectRenderer &other);
     const Diagnostics &diagnostics() const;
 
 private:
-    const Texture *loadTexture(const Engine::AssetFileSystem &assetFileSystem, const std::string &path);
+    // An effect sprite's frames packed into one texture, so particles at different animation frames still draw in
+    // one batch; a single-frame sprite uses its own texture whole.
+    struct SpriteAtlas
+    {
+        const Texture *pTexture = nullptr;
+        // Per frame: u0, v0, u1, v1.
+        std::vector<std::array<float, 4>> frameUvs;
+        uint32_t framesPerSecond = 0;
+        float logicalWidth = 0.0f;
+        float logicalHeight = 0.0f;
+    };
 
-    std::unordered_map<std::string, Texture> m_textures;
-    Engine::BinaryAssetCache m_binaryAssets;
+    struct StringHash
+    {
+        using is_transparent = void;
+        size_t operator()(std::string_view value) const
+        {
+            return std::hash<std::string_view>{}(value);
+        }
+    };
+
+    struct TextureCache
+    {
+        std::unordered_map<std::string, Texture> textures;
+        std::unordered_map<std::string, SpriteAtlas, StringHash, std::equal_to<>> atlases;
+        Engine::BinaryAssetCache binaryAssets;
+    };
+
+    const Texture *loadTexture(const Engine::AssetFileSystem &assetFileSystem, const std::string &path);
+    // A sprite read, decoded, packed and edge-bled without bgfx (safe on any thread); finishAtlas uploads it.
+    struct PreparedAtlas;
+    static PreparedAtlas prepareAtlas(
+        const EffectResourceLibrary &effectResources,
+        const Engine::AssetFileSystem &assetFileSystem,
+        const std::string &spriteResource);
+    const SpriteAtlas *finishAtlas(PreparedAtlas &prepared);
+    const SpriteAtlas *loadAtlas(
+        const EffectResourceLibrary &effectResources,
+        const Engine::AssetFileSystem &assetFileSystem,
+        std::string_view spriteResource);
+    void renderRibbons(
+        WorldFxRenderResources &resources,
+        const EffectSystem &effects,
+        const EffectResourceLibrary &effectResources,
+        const Engine::AssetFileSystem &assetFileSystem,
+        uint16_t viewId,
+        const bx::Vec3 &cameraPosition,
+        const bx::Vec3 &cameraForward);
+    bool initializeRibbonProgram();
+
+    bgfx::ProgramHandle m_ribbonProgram = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_ribbonParamsUniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_ribbonScrollUniform = BGFX_INVALID_HANDLE;
+    bgfx::VertexLayout m_ribbonLayout;
+    bool m_ribbonProgramAttempted = false;
+
+    std::shared_ptr<TextureCache> m_pTextureCache = std::make_shared<TextureCache>();
     Diagnostics m_diagnostics;
 };
 }

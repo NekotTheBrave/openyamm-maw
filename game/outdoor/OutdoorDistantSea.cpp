@@ -1,6 +1,6 @@
 #include "game/outdoor/OutdoorDistantSea.h"
 
-#include "game/maps/MapAssetLoader.h"
+#include "game/maps/OutdoorTerrainTiles.h"
 #include "game/outdoor/OutdoorMapData.h"
 
 #include <algorithm>
@@ -18,7 +18,7 @@ constexpr std::array<float, 3> FallbackWaterColor = {0.18f, 0.27f, 0.32f};
 }
 
 OutdoorDistantSea measureOutdoorDistantSea(
-    const OutdoorMapData &mapData, const std::vector<uint8_t> &landMask, const OutdoorTerrainTextureAtlas *pAtlas)
+    const OutdoorMapData &mapData, const std::vector<uint8_t> &landMask, const OutdoorTerrainTiles *pTerrainTiles)
 {
     constexpr int CellsWide = OutdoorMapData::TerrainWidth - 1;
     constexpr int CellsHigh = OutdoorMapData::TerrainHeight - 1;
@@ -67,9 +67,9 @@ OutdoorDistantSea measureOutdoorDistantSea(
             const size_t sample = size_t(y) * OutdoorMapData::TerrainWidth + size_t(x);
             heightSum += float(mapData.heightMap[sample]) * float(OutdoorMapData::TerrainHeightScale);
 
-            if (pAtlas != nullptr && sample < mapData.tileMap.size())
+            if (pTerrainTiles != nullptr && sample < mapData.tileMap.size())
             {
-                const uint32_t abgr = pAtlas->tileRegions[mapData.tileMap[sample]].waterColorAbgr;
+                const uint32_t abgr = pTerrainTiles->tiles[mapData.tileMap[sample]].waterColorAbgr;
 
                 if (abgr != 0)
                 {

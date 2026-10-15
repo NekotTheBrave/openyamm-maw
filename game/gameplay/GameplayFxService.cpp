@@ -69,6 +69,7 @@ void GameplayFxService::clear()
     m_gameplayScreenOverlayState = {};
     m_activeProjectilePresentationStates.clear();
     m_activeProjectileImpactPresentationStates.clear();
+    m_endedProjectilePresentationStates.clear();
     m_pendingWorldEffects.clear();
     m_nextWorldEffectSeed = 1;
 }
@@ -81,6 +82,7 @@ void GameplayFxService::syncProjectilePresentation()
     m_session.gameplayProjectileService().collectProjectilePresentationState(
         m_activeProjectilePresentationStates,
         m_activeProjectileImpactPresentationStates);
+    m_endedProjectilePresentationStates = m_session.gameplayProjectileService().takeEndedProjectiles();
 }
 
 GameplayProjectileService::ProjectileImpactSpawnResult GameplayFxService::spawnProjectileImpactVisual(
@@ -120,7 +122,8 @@ GameplayProjectileService::ProjectileImpactSpawnResult GameplayFxService::spawnI
     float y,
     float z,
     bool centerVertically,
-    bool freezeAnimation)
+    bool freezeAnimation,
+    size_t targetActorIndex)
 {
     return m_session.gameplayProjectileService().spawnImmediateSpellImpactVisual(
         definition,
@@ -131,7 +134,8 @@ GameplayProjectileService::ProjectileImpactSpawnResult GameplayFxService::spawnI
         y,
         z,
         centerVertically,
-        freezeAnimation);
+        freezeAnimation,
+        targetActorIndex);
 }
 
 void GameplayFxService::triggerPortraitEventFxWithoutSpeech(
@@ -246,24 +250,38 @@ void GameplayFxService::renderGameplayScreenOverlay(
     runtime.submitHudTexturedQuad(*texture, 0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height));
 }
 
-void GameplayFxService::queueMeleeHitBloodEffect(
+void GameplayFxService::queueSurfaceEffect(
+    const std::string &effectId,
     const std::array<float, 3> &contactPosition,
-    const std::array<float, 3> &outwardNormal)
+    const std::array<float, 3> &outwardNormal,
+    float scale)
 {
     const std::optional<std::array<float, 4>> rotation = rotationFromPositiveZ(outwardNormal);
-    if (!rotation
-        || !std::isfinite(contactPosition[0])
-        || !std::isfinite(contactPosition[1])
-        || !std::isfinite(contactPosition[2]))
+    if (!rotation)
+    {
+        return;
+    }
+
+    queueWorldEffect(effectId, contactPosition, *rotation, scale);
+}
+
+void GameplayFxService::queueWorldEffect(
+    const std::string &effectId,
+    const std::array<float, 3> &position,
+    const std::array<float, 4> &rotation,
+    float scale)
+{
+    if (!std::isfinite(position[0]) || !std::isfinite(position[1]) || !std::isfinite(position[2])
+        || !std::isfinite(scale) || scale <= 0.0f)
     {
         return;
     }
 
     m_pendingWorldEffects.push_back({
-        .id = "mm9:melee_blood",
-        .position = contactPosition,
-        .rotation = *rotation,
-        .scale = 1.0f,
+        .id = effectId,
+        .position = position,
+        .rotation = rotation,
+        .scale = scale,
         .seed = m_nextWorldEffectSeed++,
     });
 }
@@ -402,6 +420,11 @@ void GameplayFxService::consumePendingWorldFxRequests(
 const std::vector<GameplayProjectilePresentationState> &GameplayFxService::activeProjectilePresentationStates() const
 {
     return m_activeProjectilePresentationStates;
+}
+
+const std::vector<GameplayProjectileEndPresentationState> &GameplayFxService::endedProjectilePresentationStates() const
+{
+    return m_endedProjectilePresentationStates;
 }
 
 const std::vector<GameplayProjectileImpactPresentationState> &

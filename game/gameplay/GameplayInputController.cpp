@@ -168,6 +168,12 @@ void GameplayInputController::handleStandardUiHotkeys(
     GameplayScreenRuntime &context,
     const GameplayStandardUiHotkeyConfig &config)
 {
+    // Letters typed into the alchemy bench search are text, not hotkeys; the bench handles Escape itself.
+    if (GameplayUiController::alchemyBenchSearchActive(context.characterScreenReadOnly()))
+    {
+        return;
+    }
+
     IGameplayWorldRuntime *pWorldRuntime = context.worldRuntime();
     const bool hasActiveLootView =
         pWorldRuntime != nullptr
@@ -230,7 +236,8 @@ void GameplayInputController::handleStandardUiHotkeys(
             return;
         }
 
-        if (characterScreenOpen)
+        // An open alchemy bench takes this Escape itself and leaves the character screen open.
+        if (characterScreenOpen && !context.characterScreenReadOnly().alchemyBench.active)
         {
             context.closeCharacterScreen();
             context.interactionState().menuToggleLatch = true;
@@ -465,7 +472,8 @@ void GameplayInputController::handleSharedGameplayHotkeys(
     GameplayScreenRuntime &context,
     const GameplaySharedGameplayHotkeyConfig &config)
 {
-    if (config.pKeyboardState == nullptr)
+    if (config.pKeyboardState == nullptr
+        || GameplayUiController::alchemyBenchSearchActive(context.characterScreenReadOnly()))
     {
         context.interactionState().alwaysRunToggleLatch = false;
         context.interactionState().adventurersInnToggleLatch = false;

@@ -216,15 +216,13 @@ std::optional<std::vector<uint8_t>> loadTexturePixelsBgra(
 bgfx::VertexLayout MenuScreenBase::MenuVertex::ms_layout;
 std::vector<MenuScreenBase::TextureHandle> MenuScreenBase::s_textureHandles;
 std::vector<MenuScreenBase::DynamicTextureHandle> MenuScreenBase::s_dynamicTextureHandles;
-std::vector<MenuScreenBase::FontHandle> MenuScreenBase::s_fontHandles;
 std::unordered_map<std::string, size_t> MenuScreenBase::s_textureIndexByName;
-std::unordered_map<std::string, size_t> MenuScreenBase::s_fontIndexByName;
 int MenuScreenBase::s_fontFrameWidth = 0;
 int MenuScreenBase::s_fontFrameHeight = 0;
 std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
     MenuScreenBase::s_directoryEntriesByPath;
 std::unordered_map<std::string, std::optional<std::string>> MenuScreenBase::s_resolvedTexturePaths;
-std::unordered_map<std::string, std::optional<std::string>> MenuScreenBase::s_resolvedFontPaths;
+uint64_t MenuScreenBase::s_assetContentGeneration = 0;
 
 void MenuScreenBase::MenuVertex::init()
 {
@@ -246,64 +244,45 @@ MenuScreenBase::~MenuScreenBase()
 
 void MenuScreenBase::shutdownSharedResources()
 {
-    if (!Engine::BgfxContext::isBgfxInitialized())
-    {
-        s_textureHandles.clear();
-        s_textureIndexByName.clear();
-        s_resolvedTexturePaths.clear();
-        s_dynamicTextureHandles.clear();
-        s_fontHandles.clear();
-        s_fontIndexByName.clear();
-        s_resolvedFontPaths.clear();
-        s_directoryEntriesByPath.clear();
-        return;
-    }
+    releaseSharedTextures();
+    SharedFontCache::release(Engine::BgfxContext::isBgfxInitialized());
+}
+
+void MenuScreenBase::releaseSharedTextures()
+{
+    const bool destroyGpu = Engine::BgfxContext::isBgfxInitialized();
 
     for (TextureHandle &textureHandle : s_textureHandles)
     {
-        if (bgfx::isValid(textureHandle.handle))
+        if (destroyGpu && bgfx::isValid(textureHandle.handle))
         {
             bgfx::destroy(textureHandle.handle);
-            textureHandle.handle = BGFX_INVALID_HANDLE;
+        }
+    }
+
+    for (DynamicTextureHandle &textureHandle : s_dynamicTextureHandles)
+    {
+        if (destroyGpu && bgfx::isValid(textureHandle.handle))
+        {
+            bgfx::destroy(textureHandle.handle);
         }
     }
 
     s_textureHandles.clear();
     s_textureIndexByName.clear();
     s_resolvedTexturePaths.clear();
-
-
-    for (DynamicTextureHandle &textureHandle : s_dynamicTextureHandles)
-    {
-        if (bgfx::isValid(textureHandle.handle))
-        {
-            bgfx::destroy(textureHandle.handle);
-            textureHandle.handle = BGFX_INVALID_HANDLE;
-        }
-    }
-
     s_dynamicTextureHandles.clear();
-
-    for (FontHandle &fontHandle : s_fontHandles)
-    {
-        if (bgfx::isValid(fontHandle.mainTextureHandle))
-        {
-            bgfx::destroy(fontHandle.mainTextureHandle);
-            fontHandle.mainTextureHandle = BGFX_INVALID_HANDLE;
-        }
-
-        if (bgfx::isValid(fontHandle.shadowTextureHandle))
-        {
-            bgfx::destroy(fontHandle.shadowTextureHandle);
-            fontHandle.shadowTextureHandle = BGFX_INVALID_HANDLE;
-        }
-    }
-
-    s_fontHandles.clear();
-    s_fontIndexByName.clear();
-    s_resolvedFontPaths.clear();
-
     s_directoryEntriesByPath.clear();
+}
+
+void MenuScreenBase::releaseTexturesIfAssetsChanged()
+{
+    // Menu art lives for the whole run; a world switch or an asset edit changes what its names resolve to.
+    if (m_pAssetFileSystem != nullptr && m_pAssetFileSystem->contentGeneration() != s_assetContentGeneration)
+    {
+        releaseSharedTextures();
+        s_assetContentGeneration = m_pAssetFileSystem->contentGeneration();
+    }
 }
 
 void MenuScreenBase::renderFrame(
@@ -317,6 +296,7 @@ void MenuScreenBase::renderFrame(
     m_pInputFrame = &inputFrame;
     m_mouseWheelDelta = inputFrame.mouseWheelDelta;
     ensureRendererInitialized();
+    releaseTexturesIfAssetsChanged();
     resizeFontCache(width, height);
 
     m_mouseX = inputFrame.pointerX;
@@ -1008,6 +988,7 @@ void MenuScreenBase::preloadTexture(const std::string &textureName)
     }
 
     ensureRendererInitialized();
+    releaseTexturesIfAssetsChanged();
     ensureTexture(textureName);
 }
 
@@ -1153,25 +1134,9 @@ const MenuScreenBase::TextureHandle *MenuScreenBase::ensureTexture(const std::st
     return &s_textureHandles.back();
 }
 
-void MenuScreenBase::setFontSettings(const Engine::FontSettings &settings)
-{
-    m_fontSettings = settings;
-}
-
-std::string MenuScreenBase::fontCacheKey(const std::string &fontName, int pixelHeight) const
-{
-    if (isIndependentOutlineFont(fontName))
-    {
-        return toLowerCopy(fontName) + "|pixels:" + std::to_string(pixelHeight);
-    }
-    return toLowerCopy(fontName) + (m_fontSettings.usesTrueType(fontName) ? "|ttf" : "|bitmap");
-}
-
 const MenuScreenBase::FontHandle *MenuScreenBase::findFont(const std::string &fontName, int pixelHeight) const
 {
-    const std::string normalized = fontCacheKey(fontName, pixelHeight);
-    const std::unordered_map<std::string, size_t>::const_iterator it = s_fontIndexByName.find(normalized);
-    return it != s_fontIndexByName.end() ? &s_fontHandles[it->second] : nullptr;
+    return SharedFontCache::find(fontName, isIndependentOutlineFont(fontName) ? pixelHeight : 0);
 }
 
 const MenuScreenBase::FontHandle *MenuScreenBase::ensureTextFont(const std::string &fontName, float &scale)
@@ -1199,24 +1164,8 @@ void MenuScreenBase::resizeFontCache(int width, int height)
     }
     s_fontFrameWidth = width;
     s_fontFrameHeight = height;
-    // Resizing must not accumulate every intermediate raster size. Keep only the
-    // base layout faces.
-    std::erase_if(s_fontHandles,
-                  [](const FontHandle &font)
-                  {
-                      if (font.rasterPixelHeight == 0)
-                      {
-                          return false;
-                      }
-                      bgfx::destroy(font.mainTextureHandle);
-                      bgfx::destroy(font.shadowTextureHandle);
-                      return true;
-                  });
-    s_fontIndexByName.clear();
-    for (size_t index = 0; index < s_fontHandles.size(); ++index)
-    {
-        s_fontIndexByName[s_fontHandles[index].normalizedFontName] = index;
-    }
+    // Resizing must not accumulate every intermediate raster size. Keep only the base layout faces.
+    SharedFontCache::releaseRasterSizes();
 }
 
 const MenuScreenBase::FontHandle *MenuScreenBase::ensureFont(const std::string &fontName, int pixelHeight)
@@ -1225,67 +1174,13 @@ const MenuScreenBase::FontHandle *MenuScreenBase::ensureFont(const std::string &
     {
         return pExisting;
     }
-
-    std::string error;
-    std::optional<Engine::FontAtlasImage> image;
-    const bool independentOutline = isIndependentOutlineFont(fontName);
-    if (independentOutline)
+    if (m_pAssetFileSystem == nullptr)
     {
-        image = Engine::loadTrueTypeFontAtlas(*m_pAssetFileSystem, fontName, error, pixelHeight);
-    }
-    else
-    {
-        const std::optional<std::string> path = resolveFontPath(fontName);
-        const std::optional<std::vector<uint8_t>> bytes =
-            path ? m_pAssetFileSystem->readBinaryFile(*path) : std::nullopt;
-        if (!bytes || bytes->empty())
-        {
-            return nullptr;
-        }
-        image = Engine::loadFontAtlas(*m_pAssetFileSystem, *bytes, fontName, m_fontSettings, error);
-    }
-    if (!image)
-    {
-        std::cerr << "Menu font load failed: font=\"" << fontName << "\" reason=" << error << '\n';
         return nullptr;
     }
-
-    FontHandle fontHandle = {};
-    static_cast<Engine::FontAtlas &>(fontHandle) = std::move(image->atlas);
-    fontHandle.normalizedFontName = fontCacheKey(fontName, pixelHeight);
-    fontHandle.rasterPixelHeight = pixelHeight;
-    const int atlasWidth = fontHandle.atlasWidth;
-    const int atlasHeight = fontHandle.atlasHeight;
-    const std::vector<uint8_t> &mainPixels = fontHandle.mainAtlasPixels;
-    const std::vector<uint8_t> &shadowPixels = image->shadowPixels;
-    const TextureFilterProfile filter =
-        independentOutline || fontHandle.atlasScale > 1 ? TextureFilterProfile::SmoothText : TextureFilterProfile::Text;
-
-    fontHandle.mainTextureHandle =
-        createBgraTexture2D(uint16_t(atlasWidth), uint16_t(atlasHeight), mainPixels.data(), uint32_t(mainPixels.size()),
-                            filter, BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
-    fontHandle.shadowTextureHandle =
-        createBgraTexture2D(uint16_t(atlasWidth), uint16_t(atlasHeight), shadowPixels.data(),
-                            uint32_t(shadowPixels.size()), filter, BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
-
-    if (!bgfx::isValid(fontHandle.mainTextureHandle) || !bgfx::isValid(fontHandle.shadowTextureHandle))
-    {
-        if (bgfx::isValid(fontHandle.mainTextureHandle))
-        {
-            bgfx::destroy(fontHandle.mainTextureHandle);
-        }
-
-        if (bgfx::isValid(fontHandle.shadowTextureHandle))
-        {
-            bgfx::destroy(fontHandle.shadowTextureHandle);
-        }
-
-        return nullptr;
-    }
-
-    s_fontHandles.push_back(std::move(fontHandle));
-    s_fontIndexByName[s_fontHandles.back().normalizedFontName] = s_fontHandles.size() - 1;
-    return &s_fontHandles.back();
+    SharedFontCache::ensure(
+        *m_pAssetFileSystem, {{fontName, isIndependentOutlineFont(fontName) ? pixelHeight : 0}});
+    return findFont(fontName, pixelHeight);
 }
 
 bgfx::TextureHandle MenuScreenBase::ensureDynamicTexture(
@@ -1379,52 +1274,6 @@ std::optional<std::string> MenuScreenBase::resolveTexturePath(const std::string 
         *m_pAssetFileSystem, "Data/icons", textureName, s_directoryEntriesByPath, s_resolvedTexturePaths);
 }
 
-std::optional<std::string> MenuScreenBase::resolveFontPath(const std::string &fontName)
-{
-    const std::string normalizedName = toLowerCopy(fontName);
-    const std::unordered_map<std::string, std::optional<std::string>>::const_iterator cachedIt =
-        s_resolvedFontPaths.find(normalizedName);
-
-    if (cachedIt != s_resolvedFontPaths.end())
-    {
-        return cachedIt->second;
-    }
-
-    const std::array<std::string, 2> directories = {
-        "Data/icons",
-        "Data/EnglishT"
-    };
-
-    for (const std::string &directory : directories)
-    {
-        std::unordered_map<std::string, std::unordered_map<std::string, std::string>>::iterator entriesIt =
-            s_directoryEntriesByPath.find(directory);
-
-        if (entriesIt == s_directoryEntriesByPath.end())
-        {
-            std::unordered_map<std::string, std::string> entries;
-
-            for (const std::string &entry : m_pAssetFileSystem->enumerate(directory))
-            {
-                entries.emplace(toLowerCopy(entry), directory + "/" + entry);
-            }
-
-            entriesIt = s_directoryEntriesByPath.emplace(directory, std::move(entries)).first;
-        }
-
-        const std::unordered_map<std::string, std::string>::const_iterator resolvedIt =
-            entriesIt->second.find(normalizedName + ".fnt");
-
-        if (resolvedIt != entriesIt->second.end())
-        {
-            s_resolvedFontPaths[normalizedName] = resolvedIt->second;
-            return resolvedIt->second;
-        }
-    }
-
-    s_resolvedFontPaths[normalizedName] = std::nullopt;
-    return std::nullopt;
-}
 void MenuScreenBase::setClipRect(const std::optional<Rect> &rect)
 {
     m_clipRect = rect;

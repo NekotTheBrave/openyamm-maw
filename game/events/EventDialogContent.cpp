@@ -1377,7 +1377,9 @@ EventDialogContent buildEventDialogContent(
         }
         else if (pNpc != nullptr && !pNpc->name.empty())
         {
-            dialog.title = pNpc->name;
+            dialog.title = pNpcProfessionTable != nullptr
+                ? pNpcProfessionTable->nameAndTitle(pNpc->name, pNpc->professionId)
+                : pNpc->name;
         }
         else if (pGreeting != nullptr && !pGreeting->owner.empty())
         {

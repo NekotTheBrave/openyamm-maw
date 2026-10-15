@@ -201,6 +201,11 @@ bool parseSpriteOrientation(
         alignment = EffectSpriteAlignment::CameraFacing;
         return true;
     }
+    if (alignmentName == "velocity")
+    {
+        alignment = EffectSpriteAlignment::Velocity;
+        return true;
+    }
     if (alignmentName != "world_plane")
     {
         error = "sprite component has an unknown alignment value";
@@ -224,12 +229,16 @@ bool parseEmitter(const YAML::Node &node, EffectSpriteEmitterDefinition &emitter
         !readOptional(node, "repeat_count", emitter.repeatCount, error) ||
         !readOptional(node, "sprites_per_emission", emitter.spritesPerEmission, error) ||
         !readOptional(node, "emission_interval_seconds", emitter.emissionIntervalSeconds, error) ||
+        !readOptional(node, "emission_distance", emitter.emissionDistance, error) ||
+        !readOptional(node, "random_roll", emitter.randomRoll, error) ||
+        !readOptional(node, "spin_speed", emitter.spinSpeed, error) ||
         !readOptional(node, "particle_lifetime_seconds", emitter.particleLifetimeSeconds, error) ||
         !readOptional(node, "radius", emitter.radius, error) ||
         !readOptionalVector(node, "plane_direction", emitter.planeDirection, error) ||
         !readOptional(node, "velocity", emitter.velocity, error) ||
         !readOptionalVector(node, "wind_direction", emitter.windDirection, error) ||
         !readOptional(node, "wind_amount", emitter.windAmount, error) ||
+        !readOptional(node, "gravity", emitter.gravity, error) ||
         !readOptionalVector(node, "offset", emitter.offset, error) ||
         !readOptionalVector(node, "rotation_per_tick", emitter.rotationPerTick, error) ||
         !readOptional(node, "stretch_u", emitter.stretchU, error) ||
@@ -339,6 +348,47 @@ bool parseSprite(const YAML::Node &node, EffectSpriteDefinition &sprite, std::st
     return true;
 }
 
+bool parseRibbon(const YAML::Node &node, EffectRibbonDefinition &ribbon, std::string &error)
+{
+    std::string blendMode = "additive";
+    if (!readRequired(node, "id", ribbon.componentId, error) ||
+        !readRequired(node, "start_seconds", ribbon.startSeconds, error) ||
+        !readRequired(node, "end_seconds", ribbon.endSeconds, error) ||
+        !readRequired(node, "sprite_resource", ribbon.spriteResource, error) ||
+        !readRequired(node, "lifetime_seconds", ribbon.lifetimeSeconds, error) ||
+        !readRequired(node, "width", ribbon.width, error) ||
+        !readOptional(node, "blend", blendMode, error) ||
+        !readOptionalVector(node, "offset", ribbon.offset, error) ||
+        !readOptional(node, "max_length", ribbon.maxLength, error) ||
+        !readOptional(node, "sample_distance", ribbon.sampleDistance, error) ||
+        !readOptional(node, "texture_length", ribbon.textureLength, error) ||
+        !readOptional(node, "scroll_speed", ribbon.scrollSpeed, error) ||
+        !readOptional(node, "fill", ribbon.fill, error) ||
+        !readOptional(node, "erosion", ribbon.erosion, error) ||
+        !readOptional(node, "core", ribbon.core, error) ||
+        !readOptional(node, "jitter", ribbon.jitter, error) ||
+        !readOptional(node, "jitter_rate", ribbon.jitterRate, error) ||
+        !parseScaleKeys(node["width_keys"], ribbon.widthKeys, error) ||
+        !parseColorKeys(node["color_keys"], ribbon.colorKeys, error))
+    {
+        return false;
+    }
+    if (blendMode == "additive")
+    {
+        ribbon.blendMode = EffectBlendMode::Additive;
+    }
+    else if (blendMode == "alpha")
+    {
+        ribbon.blendMode = EffectBlendMode::Alpha;
+    }
+    else
+    {
+        error = "ribbon component blend must be additive or alpha";
+        return false;
+    }
+    return true;
+}
+
 bool parseSound(const YAML::Node &node, EffectSoundDefinition &sound, std::string &error)
 {
     return readRequired(node, "id", sound.componentId, error) &&
@@ -426,6 +476,15 @@ std::shared_ptr<EffectDefinition> parseDefinition(const YAML::Node &node, std::s
                 return nullptr;
             }
             definition->sprites.push_back(std::move(sprite));
+        }
+        else if (type == "ribbon")
+        {
+            EffectRibbonDefinition ribbon;
+            if (!parseRibbon(componentNode, ribbon, error))
+            {
+                return nullptr;
+            }
+            definition->ribbons.push_back(std::move(ribbon));
         }
         else if (type == "sound")
         {

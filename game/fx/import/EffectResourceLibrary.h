@@ -23,7 +23,15 @@ struct EffectSpriteResource
     uint32_t framesPerSecond = 0;
     uint32_t logicalWidth = 0;
     uint32_t logicalHeight = 0;
+    // Source image per frame, packed into an atlas at load; empty for a cooked sprite.
     std::vector<std::string> framePaths;
+    // A cooked sprite (tools/cook_effect_textures.py): one .oytex atlas holding frameCount frames of frameWidth x
+    // frameHeight texels, row by row in atlasColumns columns.
+    std::string atlasPath;
+    uint32_t atlasColumns = 0;
+    uint32_t frameCount = 0;
+    uint32_t frameWidth = 0;
+    uint32_t frameHeight = 0;
 };
 
 class EffectResourceLibrary

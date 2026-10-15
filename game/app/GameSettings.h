@@ -1,13 +1,13 @@
 #pragma once
 
 #include "engine/AssetScaleTier.h"
-#include "engine/FontAsset.h"
 #include "game/app/KeyboardBindings.h"
 #include "game/gameplay/CharacterAttackTuning.h"
 
 #include <SDL3/SDL.h>
 
 #include <array>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -40,14 +40,16 @@ enum class MonsterProjectileVisuals
     Sprites
 };
 
-enum class SkyStyle
+// Projectiles: Enhanced flies those bound in engine/effects/projectiles.yml as layered effects (head, ribbon trail,
+// sheds); Classic keeps the original particle trails for all of them.
+enum class ProjectileStyle
 {
     Enhanced,
     Classic
 };
 
-bool parseSkyStyleValue(const std::string &value, SkyStyle &result);
-std::string skyStyleValue(SkyStyle style);
+bool parseProjectileStyleValue(const std::string &value, ProjectileStyle &result);
+std::string projectileStyleValue(ProjectileStyle style);
 
 // Slain creatures: Satchel sinks the body after its death and leaves a loot satchel sized by what it holds; Keep leaves
 // the bodies on the ground (each one a creature model or sprite to draw).
@@ -151,6 +153,8 @@ struct GameSettings
     bool shadows = false;
     int modelShadowQuality = 2;
     bool modelLods = true;
+    // Dark contour shell around 3D creatures (ModelRenderer::setCreatureContour).
+    bool creatureOutlines = false;
     int modelLodOverride = -1; // Debug review only; native AI/picking always use the original model.
     bool spriteOutline = false;
     bool textureFiltering = true;
@@ -161,10 +165,13 @@ struct GameSettings
     std::array<float, 3> bakedSunColor = {1.0f, 1.0f, 1.0f};
     std::array<float, 3> bakedSkyColor = {0.8f, 0.9f, 1.0f};
     bool terrainDecorations = false;
-    bool waterShader = true;
     bool waterReflections = true;
     bool waterSpriteReflections = false;
-    SkyStyle skyStyle = SkyStyle::Enhanced;
+    // Rendered terrain subdivisions per native cell: 1, 2 or 4.
+    int terrainSubdivision = 4;
+    // A second, rotated sample per ground material hides its repeat (two more texture reads each).
+    bool terrainAntiTiling = true;
+    ProjectileStyle projectileStyle = ProjectileStyle::Enhanced;
     // Enhanced sky render resolution relative to the view (0.25-1); the Android profile uses 0.5.
     float skyResolutionScale = 1.0f;
     bool waterMovementRipples = true;
@@ -174,7 +181,9 @@ struct GameSettings
     bool wetSurfaces = true;
     int waterReflectionSize = 512;
     std::string terrainFiltering = "anisotropic";
-    std::string terrainAnisotropy = "8x";
+    // Level of every anisotropic sampler (terrain when enabled, buildings, models). 4x: at 16x the materials terrain
+    // cost up to 0.2 ms more per frame.
+    std::string terrainAnisotropy = "4x";
     std::string bmodelFiltering = "anisotropic";
     std::string billboardFiltering = "linear";
     std::string uiFiltering = "linear";
@@ -184,7 +193,6 @@ struct GameSettings
     float outdoorBillboardDepthSlice = 256.0f;
     bool skipEventCutscenes = false;
     bool waitForLevelSprites = true;
-    Engine::FontSettings fonts;
     Engine::AssetScaleProfile assetScaleProfile = Engine::createUniformAssetScaleProfile(Engine::AssetScaleTier::X1);
     WindowMode windowMode = WindowMode::Windowed;
     int resolutionWidth = 1600;
@@ -194,6 +202,8 @@ struct GameSettings
     int ambientOcclusionStrength = 35;
     bool cinematicGrading = true;
     int cinematicStrength = 60;
+    // Contrast-adaptive sharpening of the 3D view, 0 (off) to 100; the interface is unaffected.
+    int sharpening = 0;
 
     bool startInMainMenu = false;
     std::string startupSaveFile;
@@ -235,14 +245,17 @@ struct GameSettings
     bool newGameGodLich = false;
     bool allowIncompleteCharacterCreation = false;
     bool debugConsole = true;
-    // 3D actor models instead of sprites ([debug] actor_models); persisted like the other debug toggles.
-    bool actorModels = false;
+    // 3D actor models instead of sprites ([debug] actor_models); persisted like the other debug toggles. Monsters
+    // with a model ship no sprites, so turning it off leaves them without a presentation.
+    bool actorModels = true;
     // Launch-only directives: never persisted by saveGameSettings.
     std::string actorModelsManifest;
     std::string screenshotPath;
     std::string menuInputTourPath;
     float screenshotDelaySeconds = 0.0f;
     std::string screenshotTourPath;
+    // Game time per real second (slow motion below 1), for capturing fast effects such as projectiles.
+    float timeScale = 1.0f;
     std::string effectSpawnId;
     std::array<float, 3> effectSpawnPosition = {};
     float effectSpawnScale = 1.0f;
@@ -266,6 +279,14 @@ struct GameSettings
     bool enemyHealthBarDamageTrail = true;
     bool questMarkers = true;
     bool meleeHitBloodEffects = false;
+    // Melee hit impact sound by struck material and a brief hitstop on the target (GameplayActorHitFeedback).
+    bool meleeHitFeedback = true;
+    // Slash, thrust or crush effect at the contact point of a landed melee blow.
+    bool meleeHitEffects = true;
+    // Brief flash over the struck creature.
+    bool meleeHitFlash = false;
+    // Small camera turn along the blow on critical hits and kills.
+    bool meleeCameraKick = false;
     CorpseStyle corpseStyle = CorpseStyle::Keep;
 #if defined(__ANDROID__)
     bool contextActionPopup = true;
@@ -283,5 +304,6 @@ bool setBakedLightingSetting(
 bool saveGameSettings(const std::filesystem::path &path, const GameSettings &settings, std::string &error);
 bool migrateLegacyAndroidSettings(GameSettings &settings);
 CharacterAttackTuning characterAttackTuningFromSettings(const GameSettings &settings);
+uint8_t textureAnisotropyLevel(const GameSettings &settings);
 float resolveViewDistanceSetting(const std::string &value, float defaultDistance);
 }

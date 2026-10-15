@@ -39,10 +39,11 @@
 #include "game/tables/ItemTable.h"
 #include "game/tables/MonsterTable.h"
 #include "game/tables/SpriteTables.h"
-#include "game/tables/SurfaceMaterialTable.h"
+#include "game/tables/LiquidTable.h"
 #include "game/ui/GameplayOverlayTypes.h"
 
 #include "tests/RegressionGameData.h"
+#include "tests/RegressionMapLoader.h"
 #include "tests/PartySpellTestHarness.h"
 
 #include <algorithm>
@@ -581,7 +582,8 @@ bool initializeTestAssetFileSystem(OpenYAMM::Engine::AssetFileSystem &assetFileS
 {
     const std::filesystem::path sourceRoot = OPENYAMM_SOURCE_DIR;
     const std::filesystem::path assetsRoot = sourceRoot / "assets_dev";
-    return assetFileSystem.initialize(sourceRoot, assetsRoot, OpenYAMM::Engine::AssetScaleTier::X1);
+    return assetFileSystem.initialize(sourceRoot, assetsRoot, OpenYAMM::Engine::AssetScaleTier::X1,
+        OpenYAMM::Tests::developmentAssetScaleProfile(), "");
 }
 }
 
@@ -665,6 +667,40 @@ TEST_CASE("outdoor water damage tick reports drowning status text")
     CHECK_EQ(partyRuntime.party().waterDamageTicks(), 1u);
     CHECK_EQ(partyRuntime.party().lastStatus(), "water damage");
     CHECK_EQ(partyRuntime.movementStatusText(), "You are drowning!");
+}
+
+TEST_CASE("outdoor running recovery penalty applies only while the party runs")
+{
+    const SyntheticOutdoorWaterBoundaryScenario boundary = createSyntheticOutdoorWaterBoundaryScenario();
+    OpenYAMM::Game::OutdoorMovementDriver movementDriver(
+        boundary.mapData,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt);
+    movementDriver.setRunning(true);
+
+    OpenYAMM::Game::OutdoorMovementInput input = {};
+    CHECK_FALSE(movementDriver.isRunningMovement(input));
+
+    input.forward = true;
+    CHECK(movementDriver.isRunningMovement(input));
+
+    input.runWalkModifier = true;
+    CHECK_FALSE(movementDriver.isRunningMovement(input));
+
+    input = {};
+    input.left = true;
+    CHECK(movementDriver.isRunningMovement(input));
+
+    input = {};
+    input.backward = true;
+    CHECK_FALSE(movementDriver.isRunningMovement(input));
+
+    movementDriver.setRunning(false);
+    input = {};
+    input.forward = true;
+    CHECK_FALSE(movementDriver.isRunningMovement(input));
 }
 
 TEST_CASE("outdoor water landing still applies fall damage")
@@ -775,6 +811,48 @@ TEST_CASE("outdoor mouse wheel flight steps survive fast frames and obey the fli
         CHECK_FALSE(driver.partyMovementState().flying);
         CHECK(driver.state().footZ <= driver.tuning().maxFlightHeight);
     }
+}
+
+TEST_CASE("outdoor mouse wheel flight right after a landing keeps flying and stays under the ceiling")
+{
+    using namespace OpenYAMM::Game;
+    const SyntheticOutdoorWaterBoundaryScenario boundary = createSyntheticOutdoorWaterBoundaryScenario();
+    OutdoorMovementDriver driver(boundary.mapData, std::nullopt, std::nullopt, std::nullopt, std::nullopt);
+    driver.initialize(boundary.landX, boundary.landY, 0.0f);
+    const float groundFootZ = driver.state().footZ;
+
+    OutdoorMoveState state = driver.state();
+    state.footZ = groundFootZ + 96.0f;
+    state.airborne = true;
+    state.fallStartZ = state.footZ;
+    driver.restoreState(state, OutdoorPartyMovementState{});
+    driver.setFlyingAvailable(true);
+
+    for (int frame = 0; frame < 30 && !driver.lastEvents().landed; ++frame)
+    {
+        driver.update(OutdoorMovementInput{}, 1.0f / 30.0f);
+    }
+
+    REQUIRE(driver.lastEvents().landed);
+
+    OutdoorMovementInput up = {};
+    up.flyHeightDelta = 64.0f;
+    driver.update(up, 1.0f / 30.0f);
+    CHECK(driver.partyMovementState().flying);
+    CHECK_EQ(driver.state().verticalVelocity, 0.0f);
+
+    float highestFootZ = driver.state().footZ;
+
+    for (int frame = 0; frame < 120; ++frame)
+    {
+        driver.update(OutdoorMovementInput{}, 1.0f / 30.0f);
+        highestFootZ = std::max(highestFootZ, driver.state().footZ);
+    }
+
+    CHECK(driver.partyMovementState().flying);
+    CHECK(highestFootZ <= groundFootZ + 64.0f + 1.0f);
+    CHECK(highestFootZ <= driver.tuning().maxFlightHeight);
+    CHECK_EQ(driver.pendingEffects().maxFallDamageDistance, 0.0f);
 }
 
 TEST_CASE("modern outdoor flying keeps camera pitch for forward movement")
@@ -1993,6 +2071,49 @@ TEST_CASE("mm6 Dragoons Caverns flour sack states use MMMerge food search and cl
     }
 }
 
+TEST_CASE("stat barrel and cauldron hover effects follow the autonotes their events set")
+{
+    const std::string globalLua = loadSourceFileText("assets_dev/engine/events/Global.lua");
+    const std::string globalSource =
+        loadSourceFileText("assets_dev/engine/scripts/common/event_support.lua") + "\n\n" + globalLua + "\n\n"
+        + loadSourceFileText("assets_dev/engine/events/Global_learned_effects.lua");
+    std::string error;
+    const std::optional<OpenYAMM::Game::ScriptedEventProgram> globalProgram =
+        OpenYAMM::Game::ScriptedEventProgram::loadFromLuaText(
+            globalSource,
+            "@events/Global.lua + events/Global_learned_effects.lua",
+            OpenYAMM::Game::ScriptedEventScope::Global,
+            error);
+    REQUIRE_MESSAGE(globalProgram.has_value(), error.c_str());
+
+    const OpenYAMM::Game::ScriptedEventProgram::LearnedEffect *pOrange = globalProgram->learnedEffect(272);
+    REQUIRE(pOrange != nullptr);
+    CHECK_EQ(pOrange->autonoteId, 18u);
+    CHECK_EQ(pOrange->effect, "+2 Intellect");
+    CHECK(globalProgram->learnedEffect(268) == nullptr);
+    CHECK(globalProgram->learnedEffect(276) == nullptr);
+
+    // Each effect must be gated by the autonote its own event sets, or the hover would reveal an untried barrel.
+    for (uint16_t eventId = 269; eventId <= 280; ++eventId)
+    {
+        const OpenYAMM::Game::ScriptedEventProgram::LearnedEffect *pEffect = globalProgram->learnedEffect(eventId);
+
+        if (eventId == 276)
+        {
+            continue;
+        }
+
+        REQUIRE_MESSAGE(pEffect != nullptr, eventId);
+        const std::string header = "RegisterGlobalEvent(" + std::to_string(eventId) + ",";
+        const size_t begin = globalLua.find(header);
+        REQUIRE_NE(begin, std::string::npos);
+        const size_t end = globalLua.find("RegisterGlobalEvent(", begin + header.size());
+        const std::string body = globalLua.substr(begin, end - begin);
+        CHECK_MESSAGE(body.find("SetAutonote(" + std::to_string(pEffect->autonoteId) + ")") != std::string::npos,
+            eventId);
+    }
+}
+
 TEST_CASE("food inventory items explicitly retain the eating sound")
 {
     const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
@@ -2403,63 +2524,44 @@ TEST_CASE("outdoor terrain descriptors use mm6 and mm7 merged tile tables")
     OpenYAMM::Engine::AssetFileSystem assetFileSystem;
     REQUIRE(initializeTestAssetFileSystem(assetFileSystem));
 
-    const std::optional<std::string> surfaceMaterialYaml =
-        assetFileSystem.readTextFile("Data/rendering/surface_materials.yml");
-    REQUIRE(surfaceMaterialYaml.has_value());
+    const std::optional<std::string> liquidYaml = assetFileSystem.readTextFile("engine/liquids/liquids.yml");
+    REQUIRE(liquidYaml.has_value());
 
-    OpenYAMM::Game::SurfaceMaterialTable surfaceMaterialTable;
-    std::string surfaceMaterialError;
-    REQUIRE(surfaceMaterialTable.loadFromYaml(*surfaceMaterialYaml, surfaceMaterialError));
-    const OpenYAMM::Game::SurfaceMaterialDefinition *pMm6WaterMaterial =
-        surfaceMaterialTable.findMatch("6wtrtyl", 0, true);
-    REQUIRE(pMm6WaterMaterial != nullptr);
-    REQUIRE(pMm6WaterMaterial->animation.frames.size() == 14);
-    CHECK(pMm6WaterMaterial->animation.animationLengthTicks == 210);
-    CHECK(pMm6WaterMaterial->animation.frames.front().textureName == "6hdwtr000");
-    CHECK(pMm6WaterMaterial->animation.frames.back().textureName == "6hdwtr013");
-
-    for (const OpenYAMM::Game::SurfaceAnimationFrame &frame : pMm6WaterMaterial->animation.frames)
+    OpenYAMM::Game::LiquidTable liquidTable;
+    std::string liquidError;
+    REQUIRE_MESSAGE(liquidTable.loadFromYaml(*liquidYaml, liquidError), liquidError);
+    // Each world's water keeps its own tint; terrain shore tiles and legacy frame faces resolve to the same water.
+    std::array<uint32_t, 3> waterColors = {};
+    size_t waterIndex = 0;
+    for (const char *pTile : {"6wtrtyl", "7wtrtyl", "wtrtyl"})
     {
-        CHECK(frame.frameLengthTicks == 15);
+        const OpenYAMM::Game::LiquidDefinition *pWater = liquidTable.findMatch(pTile, 0, true);
+        REQUIRE(pWater != nullptr);
+        CHECK(pWater->kind == OpenYAMM::Game::LiquidKind::Water);
+        CHECK(pWater->terrainTransitionOverlay);
+        waterColors[waterIndex++] = pWater->colorAbgr;
     }
+    CHECK(waterColors[0] != waterColors[1]);
+    CHECK(waterColors[1] != waterColors[2]);
+    CHECK(liquidTable.findMatch("6wtrdrNE", 0, true) == liquidTable.findMatch("6wtrtyl", 0, true));
+    CHECK(liquidTable.findMatch("7hwtrdrne", 0, true) == liquidTable.findMatch("7wtrtyl", 0, true));
+    CHECK(liquidTable.findMatch("6hdwtr000", 0, false) == liquidTable.findMatch("6wtrtyl", 0, false));
+    CHECK(liquidTable.findMatch("7hdwtr013", 0, false) == liquidTable.findMatch("7wtrtyl", 0, false));
+    CHECK(liquidTable.findMatch("hdwtr000", 0, false) == liquidTable.findMatch("wtrtyl", 0, false));
 
-    REQUIRE(surfaceMaterialTable.findMatch("6wtrdrNE", 0, true) != nullptr);
-
-    const OpenYAMM::Game::SurfaceMaterialDefinition *pMm7WaterMaterial =
-        surfaceMaterialTable.findMatch("7wtrtyl", 0, true);
-    REQUIRE(pMm7WaterMaterial != nullptr);
-    CHECK(pMm7WaterMaterial->animation.frames.front().textureName == "7hdwtr000");
-    CHECK(pMm7WaterMaterial->animation.frames.back().textureName == "7hdwtr013");
-    REQUIRE(surfaceMaterialTable.findMatch("7hwtrdrne", 0, true) != nullptr);
-
-    const OpenYAMM::Game::SurfaceMaterialDefinition *pMm8WaterMaterial =
-        surfaceMaterialTable.findMatch("wtrtyl", 0, true);
-    REQUIRE(pMm8WaterMaterial != nullptr);
-    CHECK(pMm8WaterMaterial->animation.frames.front().textureName == "hdwtr000");
-    CHECK(pMm8WaterMaterial->animation.frames.back().textureName == "hdwtr013");
-
-    for (const char *pTexture : {"6hdwtr000", "7hdwtr013", "hdwtr000"})
+    for (const char *pTexture : {"lavtyl", "lavatyl"})
     {
-        const OpenYAMM::Game::SurfaceMaterialDefinition *pFrameMaterial =
-            surfaceMaterialTable.findMatch(pTexture, 0, false);
-        REQUIRE(pFrameMaterial != nullptr);
-        CHECK(pFrameMaterial->semantic == OpenYAMM::Game::SurfaceMaterialSemantic::Water);
-        CHECK(pFrameMaterial->animation.frames.empty());
+        const OpenYAMM::Game::LiquidDefinition *pLava = liquidTable.findMatch(pTexture, 0, false);
+        REQUIRE(pLava != nullptr);
+        CHECK(pLava->kind == OpenYAMM::Game::LiquidKind::Lava);
     }
-
-    const OpenYAMM::Game::SurfaceMaterialDefinition *pLavaMaterial =
-        surfaceMaterialTable.findMatch("lavtyl", 0, true);
-    REQUIRE(pLavaMaterial != nullptr);
-    REQUIRE(pLavaMaterial->animation.frames.size() == 14);
-    CHECK(pLavaMaterial->animation.frames.front().textureName == "hdlav000");
-    CHECK(pLavaMaterial->animation.frames.back().textureName == "hdlav013");
-
-    const OpenYAMM::Game::SurfaceMaterialDefinition *pOilMaterial =
-        surfaceMaterialTable.findMatch("tartyl", 0, true);
-    REQUIRE(pOilMaterial != nullptr);
-    REQUIRE(pOilMaterial->animation.frames.size() == 14);
-    CHECK(pOilMaterial->animation.frames.front().textureName == "hwoil000");
-    CHECK(pOilMaterial->animation.frames.back().textureName == "hwoil013");
+    for (const char *pTexture : {"tartyl", "oiltyl"})
+    {
+        const OpenYAMM::Game::LiquidDefinition *pTar = liquidTable.findMatch(pTexture, 0, true);
+        REQUIRE(pTar != nullptr);
+        CHECK(pTar->kind == OpenYAMM::Game::LiquidKind::Tar);
+    }
+    CHECK(liquidTable.findMatch("6grastyl", 0, true) == nullptr);
 
     OpenYAMM::Game::OutdoorMapData newSorpigal = {};
     newSorpigal.fileName = "oute3.odm";
@@ -2486,7 +2588,6 @@ TEST_CASE("outdoor terrain descriptors use mm6 and mm7 merged tile tables")
     CHECK((*emeraldIslandDescriptors)[90].textureName == "7grastyl");
     CHECK((*emeraldIslandDescriptors)[126].textureName == "7wtrtyl");
     CHECK(((*emeraldIslandDescriptors)[126].flags & OpenYAMM::Game::TerrainTileFlagWater) != 0);
-    CHECK(assetFileSystem.exists("terrain/7wtrtyl.bmp"));
 
     OpenYAMM::Game::OutdoorMapData nighon = {};
     nighon.worldId = "mm7";

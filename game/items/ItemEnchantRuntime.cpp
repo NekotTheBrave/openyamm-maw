@@ -1341,7 +1341,6 @@ void applyRareItemBonus(Character &member, uint32_t itemId)
             member.magicalBonuses.luck += 20;
             addSkillBonus(member, "DisarmTraps", 10);
             member.healthRegenPerSecond -= 1.0f;
-            member.equippedItemEffectFlags.insert("PoisonWeaponDamage");
             break;
 
         case 2036:
@@ -2162,7 +2161,7 @@ ElementalDamageBonuses ItemEnchantRuntime::characterAttackElementalDamageBonuses
         result.dark += rareDamage.dark;
     };
     const auto addWeapon =
-        [pItemTable, attackMode, &addSpecialEnchantDamage, &addRareItemDamage](
+        [pItemTable, attackMode, &addSpecialEnchantDamage, &addRareItemDamage, &result](
             uint32_t itemId,
             const EquippedItemRuntimeState &runtimeState)
     {
@@ -2191,6 +2190,16 @@ ElementalDamageBonuses ItemEnchantRuntime::characterAttackElementalDamageBonuses
 
         addSpecialEnchantDamage(runtimeState.specialEnchantId);
         addRareItemDamage(rareItemId(*pDefinition, runtimeState));
+
+        // A weapon whose own damage bonus is poison or disease (MM9 Integris) adds it as body damage; the rest of
+        // the hit stays physical.
+        const std::vector<std::string> &flags = pDefinition->contentEffect.flags;
+
+        if (std::find(flags.begin(), flags.end(), "PoisonWeaponDamage") != flags.end()
+            || std::find(flags.begin(), flags.end(), "DiseaseWeaponDamage") != flags.end())
+        {
+            result.body += pDefinition->contentEffect.weaponDamage;
+        }
     };
 
     if (attackMode == CharacterAttackMode::Melee)

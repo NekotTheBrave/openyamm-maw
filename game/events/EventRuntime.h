@@ -446,6 +446,8 @@ struct EventRuntimeState
     };
 
     std::string mapFileName;
+    // World (mm6, mm7, mm8, ...) of the current map; event-granted random items follow its world gates.
+    std::string mapWorldId;
     std::unordered_map<uint32_t, int32_t> variables;
     std::unordered_map<std::string, int32_t> namedMapVars;
     std::unordered_map<std::string, int32_t> namedGlobalVars;

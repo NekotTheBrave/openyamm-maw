@@ -91,6 +91,22 @@ bool interactiveDecorationIsCleared(uint8_t state, uint8_t eventCount, bool hide
 std::optional<uint16_t> interactiveDecorationEventId(
     uint8_t state, uint16_t baseEventId, uint8_t eventCount, bool hideWhenCleared, bool fixedEvent);
 
+// How each indoor entity's decor var can hide it; it depends only on the map and decoration table, so a world
+// resolves it once per map and applies it to the current event state.
+struct IndoorDecorationClearRule
+{
+    int16_t decorVarIndex = -1;
+    uint8_t eventCount = 0;
+    bool hideWhenCleared = false;
+};
+
+std::vector<IndoorDecorationClearRule> indoorDecorationClearRules(
+    std::span<const IndoorEntity> entities, const DecorationTable &table);
+
+std::vector<bool> hiddenIndoorDecorationEntities(
+    std::span<const IndoorEntity> entities, std::span<const IndoorDecorationClearRule> rules,
+    const EventRuntimeState &state);
+
 std::vector<bool> hiddenIndoorDecorationEntities(
     std::span<const IndoorEntity> entities, const DecorationTable &table, const EventRuntimeState &state);
 }

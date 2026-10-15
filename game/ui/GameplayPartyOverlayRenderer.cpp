@@ -777,7 +777,7 @@ void renderJournalVectorMap(
         mapQuads.push_back(quad);
     }
 
-    context.submitHudQuadBatch(mapQuads, width, height);
+    context.submitHudQuadBatch(mapQuads);
 
     if (context.worldRuntime() == nullptr || context.partyReadOnly() == nullptr)
     {
@@ -1148,12 +1148,8 @@ void renderHudLines(
     float justifiedWidth = 0.0f,
     const std::vector<uint8_t> &paragraphEnds = {})
 {
-    bgfx::TextureHandle coloredMainTextureHandle = context.ensureHudFontMainTextureColor(font, colorAbgr);
+    const GameplayHudFontLayer coloredMainLayer = context.hudFontMainLayer(font, colorAbgr);
 
-    if (!bgfx::isValid(coloredMainTextureHandle))
-    {
-        coloredMainTextureHandle = font.mainTextureHandle;
-    }
 
     const float lineHeight = static_cast<float>(font.fontHeight) * fontScale;
 
@@ -1166,7 +1162,7 @@ void renderHudLines(
         if (justifiedWidth <= 0 || finalLine || spaces == 0)
         {
             context.renderHudFontLayer(font, font.shadowTextureHandle, line, x, lineY, fontScale);
-            context.renderHudFontLayer(font, coloredMainTextureHandle, line, x, lineY, fontScale);
+            context.renderHudFontLayer(font, coloredMainLayer, line, x, lineY, fontScale);
             continue;
         }
         const float extra = std::max(0.0f,
@@ -1179,7 +1175,7 @@ void renderHudLines(
             const size_t last = space == std::string::npos ? line.size() : space + 1;
             const std::string word = line.substr(first, last - first);
             context.renderHudFontLayer(font, font.shadowTextureHandle, word, pen, lineY, fontScale);
-            context.renderHudFontLayer(font, coloredMainTextureHandle, word, pen, lineY, fontScale);
+            context.renderHudFontLayer(font, coloredMainLayer, word, pen, lineY, fontScale);
             pen += context.measureHudTextWidth(font.fontName, word) * fontScale + extra;
             first = last;
         }
@@ -5759,22 +5755,14 @@ void GameplayPartyOverlayRenderer::renderSpellbookOverlay(GameplayScreenRuntime 
 
             const uint32_t shadowColor = makeAbgrColor(255, 255, 255);
             const uint32_t textColor = makeAbgrColor(40, 24, 12);
-            bgfx::TextureHandle shadowTexture = context.ensureHudFontMainTextureColor(*font, shadowColor);
-            bgfx::TextureHandle textTexture = context.ensureHudFontMainTextureColor(*font, textColor);
+            const GameplayHudFontLayer shadowLayer = context.hudFontMainLayer(*font, shadowColor);
+            const GameplayHudFontLayer textLayer = context.hudFontMainLayer(*font, textColor);
 
-            if (!bgfx::isValid(shadowTexture))
-            {
-                shadowTexture = font->mainTextureHandle;
-            }
 
-            if (!bgfx::isValid(textTexture))
-            {
-                textTexture = font->mainTextureHandle;
-            }
 
             const float shadowOffset = std::max(1.0f, std::round(resolved->scale));
-            context.renderHudFontLayer(*font, shadowTexture, text, textX + shadowOffset, textY + shadowOffset, fontScale);
-            context.renderHudFontLayer(*font, textTexture, text, textX, textY, fontScale);
+            context.renderHudFontLayer(*font, shadowLayer, text, textX + shadowOffset, textY + shadowOffset, fontScale);
+            context.renderHudFontLayer(*font, textLayer, text, textX, textY, fontScale);
         };
 
     renderSpellbookTopLabel(
@@ -6374,13 +6362,9 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
 
         if (pDetailFont != nullptr && !specialDetailLines.empty())
         {
-            bgfx::TextureHandle coloredMainTextureHandle =
-                context.ensureHudFontMainTextureColor(*pDetailFont, pDetailValueLayout->textColorAbgr);
+            const GameplayHudFontLayer coloredMainLayer =
+                context.hudFontMainLayer(*pDetailFont, pDetailValueLayout->textColorAbgr);
 
-            if (!bgfx::isValid(coloredMainTextureHandle))
-            {
-                coloredMainTextureHandle = pDetailFont->mainTextureHandle;
-            }
 
             const float totalSpecialTextHeight =
                 detailLineHeight * static_cast<float>(std::max<size_t>(1, specialDetailLines.size()));
@@ -6413,7 +6397,7 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
             for (const std::string &wrappedLine : specialDetailLines)
             {
                 context.renderHudFontLayer(*pDetailFont, pDetailFont->shadowTextureHandle, wrappedLine, textX, textY, detailFontScale);
-                context.renderHudFontLayer(*pDetailFont, coloredMainTextureHandle, wrappedLine, textX, textY, detailFontScale);
+                context.renderHudFontLayer(*pDetailFont, coloredMainLayer, wrappedLine, textX, textY, detailFontScale);
                 textY += detailLineHeight;
             }
         }
@@ -6442,8 +6426,8 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
 
     if (!itemDescription.empty() && pBodyFont != nullptr && resolvedDescription)
     {
-        const bgfx::TextureHandle main =
-            context.ensureHudFontMainTextureColor(*pBodyFont, pDescriptionLayout->textColorAbgr);
+        const GameplayHudFontLayer main =
+            context.hudFontMainLayer(*pBodyFont, pDescriptionLayout->textColorAbgr);
         const float footerTop = rootRect.y + rootRect.height - 46 * popupScale - durationHeight;
         const GameplayResolvedHudLayoutElement clip = {resolvedDescription->x, resolvedDescription->y,
             resolvedDescription->width, std::max(0.0f, footerTop - resolvedDescription->y), popupScale};
@@ -6804,13 +6788,9 @@ void GameplayPartyOverlayRenderer::renderCharacterInspectOverlay(GameplayScreenR
 
     if (bodyBaseRect && pBodyFont != nullptr)
     {
-        bgfx::TextureHandle coloredMainTextureHandle =
-            context.ensureHudFontMainTextureColor(*pBodyFont, pBodyLayout->textColorAbgr);
+        const GameplayHudFontLayer coloredMainLayer =
+            context.hudFontMainLayer(*pBodyFont, pBodyLayout->textColorAbgr);
 
-        if (!bgfx::isValid(coloredMainTextureHandle))
-        {
-            coloredMainTextureHandle = pBodyFont->mainTextureHandle;
-        }
 
         float textX = std::round(bodyBaseRect->x + pBodyLayout->textPadX * popupScale);
         float textY = std::round(bodyBaseRect->y + pBodyLayout->textPadY * popupScale);
@@ -6818,7 +6798,7 @@ void GameplayPartyOverlayRenderer::renderCharacterInspectOverlay(GameplayScreenR
         for (const std::string &line : bodyLines)
         {
             context.renderHudFontLayer(*pBodyFont, pBodyFont->shadowTextureHandle, line, textX, textY, popupScale);
-            context.renderHudFontLayer(*pBodyFont, coloredMainTextureHandle, line, textX, textY, popupScale);
+            context.renderHudFontLayer(*pBodyFont, coloredMainLayer, line, textX, textY, popupScale);
             textY += bodyLineHeight;
         }
 
@@ -6864,13 +6844,9 @@ void GameplayPartyOverlayRenderer::renderCharacterInspectOverlay(GameplayScreenR
                     return rowY;
                 }
 
-                bgfx::TextureHandle coloredMainTextureHandle =
-                    context.ensureHudFontMainTextureColor(*pFont, masteryColorForAvailability(line.availability));
+                const GameplayHudFontLayer coloredMainLayer =
+                    context.hudFontMainLayer(*pFont, masteryColorForAvailability(line.availability));
 
-                if (!bgfx::isValid(coloredMainTextureHandle))
-                {
-                    coloredMainTextureHandle = pFont->mainTextureHandle;
-                }
 
                 const float lineHeight = static_cast<float>(pFont->fontHeight) * popupScale;
                 float textX = std::round(baseResolved.x + baseLayout.textPadX * popupScale);
@@ -6879,7 +6855,7 @@ void GameplayPartyOverlayRenderer::renderCharacterInspectOverlay(GameplayScreenR
                 for (const std::string &wrappedLine : wrappedLines)
                 {
                     context.renderHudFontLayer(*pFont, pFont->shadowTextureHandle, wrappedLine, textX, textY, popupScale);
-                    context.renderHudFontLayer(*pFont, coloredMainTextureHandle, wrappedLine, textX, textY, popupScale);
+                    context.renderHudFontLayer(*pFont, coloredMainLayer, wrappedLine, textX, textY, popupScale);
                     textY += lineHeight;
                 }
 
@@ -6907,20 +6883,12 @@ void GameplayPartyOverlayRenderer::renderCharacterInspectOverlay(GameplayScreenR
                     return;
                 }
 
-                bgfx::TextureHandle labelTextureHandle =
-                    context.ensureHudFontMainTextureColor(*pFont, baseLayout.textColorAbgr);
-                bgfx::TextureHandle bonusTextureHandle =
-                    context.ensureHudFontMainTextureColor(*pFont, GameplayUiSkin::Bonus);
+                const GameplayHudFontLayer labelLayer =
+                    context.hudFontMainLayer(*pFont, baseLayout.textColorAbgr);
+                const GameplayHudFontLayer bonusLayer =
+                    context.hudFontMainLayer(*pFont, GameplayUiSkin::Bonus);
 
-                if (!bgfx::isValid(labelTextureHandle))
-                {
-                    labelTextureHandle = pFont->mainTextureHandle;
-                }
 
-                if (!bgfx::isValid(bonusTextureHandle))
-                {
-                    bonusTextureHandle = pFont->mainTextureHandle;
-                }
 
                 const std::string label = "Skill bonus: ";
                 const std::string value = "+" + std::to_string(skillBonus);
@@ -6929,9 +6897,9 @@ void GameplayPartyOverlayRenderer::renderCharacterInspectOverlay(GameplayScreenR
                 const float textY = std::round(rowY + baseLayout.textPadY * popupScale);
 
                 context.renderHudFontLayer(*pFont, pFont->shadowTextureHandle, label, labelX, textY, popupScale);
-                context.renderHudFontLayer(*pFont, labelTextureHandle, label, labelX, textY, popupScale);
+                context.renderHudFontLayer(*pFont, labelLayer, label, labelX, textY, popupScale);
                 context.renderHudFontLayer(*pFont, pFont->shadowTextureHandle, value, valueX, textY, popupScale);
-                context.renderHudFontLayer(*pFont, bonusTextureHandle, value, valueX, textY, popupScale);
+                context.renderHudFontLayer(*pFont, bonusLayer, value, valueX, textY, popupScale);
             };
 
         const std::optional<GameplayScreenRuntime::ResolvedHudLayoutElement> normalRect = resolveLayout("CharacterInspectNormal");
@@ -7301,13 +7269,9 @@ void GameplayPartyOverlayRenderer::renderSpellInspectOverlay(GameplayScreenRunti
 
         if (bodyBaseRect)
         {
-            bgfx::TextureHandle coloredMainTextureHandle =
-                context.ensureHudFontMainTextureColor(*pBodyFont, pBodyLayout->textColorAbgr);
+            const GameplayHudFontLayer coloredMainLayer =
+                context.hudFontMainLayer(*pBodyFont, pBodyLayout->textColorAbgr);
 
-            if (!bgfx::isValid(coloredMainTextureHandle))
-            {
-                coloredMainTextureHandle = pBodyFont->mainTextureHandle;
-            }
 
             float textX = std::round(bodyBaseRect->x + pBodyLayout->textPadX * popupScale);
             float textY = std::round(bodyBaseRect->y + pBodyLayout->textPadY * popupScale);
@@ -7315,7 +7279,7 @@ void GameplayPartyOverlayRenderer::renderSpellInspectOverlay(GameplayScreenRunti
             for (const std::string &line : bodyLines)
             {
                 context.renderHudFontLayer(*pBodyFont, pBodyFont->shadowTextureHandle, line, textX, textY, popupScale);
-                context.renderHudFontLayer(*pBodyFont, coloredMainTextureHandle, line, textX, textY, popupScale);
+                context.renderHudFontLayer(*pBodyFont, coloredMainLayer, line, textX, textY, popupScale);
                 textY += bodyLineHeight;
             }
 
@@ -7339,13 +7303,9 @@ void GameplayPartyOverlayRenderer::renderSpellInspectOverlay(GameplayScreenRunti
                         return rowY;
                     }
 
-                    bgfx::TextureHandle coloredMainTextureHandle =
-                        context.ensureHudFontMainTextureColor(*pFont, layout.textColorAbgr);
+                    const GameplayHudFontLayer coloredMainLayer =
+                        context.hudFontMainLayer(*pFont, layout.textColorAbgr);
 
-                    if (!bgfx::isValid(coloredMainTextureHandle))
-                    {
-                        coloredMainTextureHandle = pFont->mainTextureHandle;
-                    }
 
                     const float lineHeight = static_cast<float>(pFont->fontHeight) * popupScale;
                     float textX = std::round(baseResolved.x + layout.textPadX * popupScale);
@@ -7354,7 +7314,7 @@ void GameplayPartyOverlayRenderer::renderSpellInspectOverlay(GameplayScreenRunti
                     for (const std::string &wrappedLine : wrappedLines)
                     {
                         context.renderHudFontLayer(*pFont, pFont->shadowTextureHandle, wrappedLine, textX, textY, popupScale);
-                        context.renderHudFontLayer(*pFont, coloredMainTextureHandle, wrappedLine, textX, textY, popupScale);
+                        context.renderHudFontLayer(*pFont, coloredMainLayer, wrappedLine, textX, textY, popupScale);
                         textY += lineHeight;
                     }
 
@@ -7592,13 +7552,9 @@ void GameplayPartyOverlayRenderer::renderReadableScrollOverlay(GameplayScreenRun
         return;
     }
 
-    bgfx::TextureHandle coloredMainTextureHandle =
-        context.ensureHudFontMainTextureColor(*pBodyFont, pBodyLayout->textColorAbgr);
+    const GameplayHudFontLayer coloredMainLayer =
+        context.hudFontMainLayer(*pBodyFont, pBodyLayout->textColorAbgr);
 
-    if (!bgfx::isValid(coloredMainTextureHandle))
-    {
-        coloredMainTextureHandle = pBodyFont->mainTextureHandle;
-    }
 
     float textX = std::round(bodyBaseRect->x + pBodyLayout->textPadX * popupScale);
     float textY = std::round(bodyBaseRect->y + pBodyLayout->textPadY * popupScale);
@@ -7606,7 +7562,7 @@ void GameplayPartyOverlayRenderer::renderReadableScrollOverlay(GameplayScreenRun
     for (const std::string &line : bodyLines)
     {
         context.renderHudFontLayer(*pBodyFont, pBodyFont->shadowTextureHandle, line, textX, textY, popupScale);
-        context.renderHudFontLayer(*pBodyFont, coloredMainTextureHandle, line, textX, textY, popupScale);
+        context.renderHudFontLayer(*pBodyFont, coloredMainLayer, line, textX, textY, popupScale);
         textY += bodyLineHeight;
     }
 }
@@ -7793,13 +7749,9 @@ void GameplayPartyOverlayRenderer::renderBuffInspectOverlay(GameplayScreenRuntim
         return;
     }
 
-    bgfx::TextureHandle coloredMainTextureHandle =
-        context.ensureHudFontMainTextureColor(*pBodyFont, pBodyLayout->textColorAbgr);
+    const GameplayHudFontLayer coloredMainLayer =
+        context.hudFontMainLayer(*pBodyFont, pBodyLayout->textColorAbgr);
 
-    if (!bgfx::isValid(coloredMainTextureHandle))
-    {
-        coloredMainTextureHandle = pBodyFont->mainTextureHandle;
-    }
 
     float textX = std::round(bodyBaseRect->x + pBodyLayout->textPadX * popupScale);
     float textY = std::round(bodyBaseRect->y + pBodyLayout->textPadY * popupScale);
@@ -7807,7 +7759,7 @@ void GameplayPartyOverlayRenderer::renderBuffInspectOverlay(GameplayScreenRuntim
     for (const std::string &line : bodyLines)
     {
         context.renderHudFontLayer(*pBodyFont, pBodyFont->shadowTextureHandle, line, textX, textY, popupScale);
-        context.renderHudFontLayer(*pBodyFont, coloredMainTextureHandle, line, textX, textY, popupScale);
+        context.renderHudFontLayer(*pBodyFont, coloredMainLayer, line, textX, textY, popupScale);
         textY += bodyLineHeight;
     }
 }
@@ -7980,16 +7932,12 @@ void GameplayPartyOverlayRenderer::renderCharacterDetailOverlay(GameplayScreenRu
                 return;
             }
 
-            bgfx::TextureHandle coloredMainTextureHandle =
-                context.ensureHudFontMainTextureColor(font, colorAbgr);
+            const GameplayHudFontLayer coloredMainLayer =
+                context.hudFontMainLayer(font, colorAbgr);
 
-            if (!bgfx::isValid(coloredMainTextureHandle))
-            {
-                coloredMainTextureHandle = font.mainTextureHandle;
-            }
 
             context.renderHudFontLayer(font, font.shadowTextureHandle, text, textX, textY, fontScale);
-            context.renderHudFontLayer(font, coloredMainTextureHandle, text, textX, textY, fontScale);
+            context.renderHudFontLayer(font, coloredMainLayer, text, textX, textY, fontScale);
         };
     const auto submitSolidQuad =
         [&context](float x, float y, float quadWidth, float quadHeight, uint32_t abgr)
@@ -9099,27 +9047,19 @@ void GameplayPartyOverlayRenderer::renderCharacterOverlay(
 
             textX = std::round(textX);
             textY = std::round(textY);
-            bgfx::TextureHandle actualTexture = context.ensureHudFontMainTextureColor(*font, value.actualColorAbgr);
-            bgfx::TextureHandle baseTexture = context.ensureHudFontMainTextureColor(*font, layout.textColorAbgr);
+            const GameplayHudFontLayer actualLayer = context.hudFontMainLayer(*font, value.actualColorAbgr);
+            const GameplayHudFontLayer baseLayer = context.hudFontMainLayer(*font, layout.textColorAbgr);
 
-            if (!bgfx::isValid(actualTexture))
-            {
-                actualTexture = font->mainTextureHandle;
-            }
 
-            if (!bgfx::isValid(baseTexture))
-            {
-                baseTexture = font->mainTextureHandle;
-            }
 
             context.renderHudFontLayer(*font, font->shadowTextureHandle, value.actualText, textX, textY, fontScale);
-            context.renderHudFontLayer(*font, actualTexture, value.actualText, textX, textY, fontScale);
+            context.renderHudFontLayer(*font, actualLayer, value.actualText, textX, textY, fontScale);
             textX += actualWidth;
             context.renderHudFontLayer(*font, font->shadowTextureHandle, separatorText, textX, textY, fontScale);
-            context.renderHudFontLayer(*font, baseTexture, separatorText, textX, textY, fontScale);
+            context.renderHudFontLayer(*font, baseLayer, separatorText, textX, textY, fontScale);
             textX += separatorWidth;
             context.renderHudFontLayer(*font, font->shadowTextureHandle, value.baseText, textX, textY, fontScale);
-            context.renderHudFontLayer(*font, baseTexture, value.baseText, textX, textY, fontScale);
+            context.renderHudFontLayer(*font, baseLayer, value.baseText, textX, textY, fontScale);
         };
 
     const std::optional<GameplayResolvedHudLayoutElement> skillViewport =
@@ -9194,6 +9134,30 @@ void GameplayPartyOverlayRenderer::renderCharacterOverlay(
         if (normalizedLayoutId == "characterdismissbutton"
             && (context.isAdventurersInnCharacterSourceActive() || party.activeMemberIndex() == 0))
         {
+            continue;
+        }
+
+        if (normalizedLayoutId == "characteralchemyicon" || normalizedLayoutId == "characteralchemybutton")
+        {
+            if (context.isAdventurersInnCharacterSourceActive())
+            {
+                continue;
+            }
+
+            if (normalizedLayoutId == "characteralchemybutton")
+            {
+                GameplayUiSkin::renderButton(context, pLayout->id, width, height, characterScreen.alchemyBench.active);
+                continue;
+            }
+        }
+
+        if (normalizedLayoutId == "characterinventorysortbutton")
+        {
+            if (!context.isAdventurersInnCharacterSourceActive())
+            {
+                GameplayUiSkin::renderButton(context, pLayout->id, width, height);
+            }
+
             continue;
         }
 
@@ -10165,13 +10129,9 @@ void GameplayPartyOverlayRenderer::renderCharacterOverlay(
                     std::max(1.0f, (AdventurersInnBlurbWidth * baseScale) / std::max(0.5f, fontScale));
                 const std::vector<std::string> wrappedLines =
                     context.wrapHudTextToWidth(*font, adventurersInnBlurb, wrapWidth);
-                bgfx::TextureHandle coloredTextureHandle =
-                    context.ensureHudFontMainTextureColor(*font, AdventurersInnTextColorAbgr);
+                const GameplayHudFontLayer coloredLayer =
+                    context.hudFontMainLayer(*font, AdventurersInnTextColorAbgr);
 
-                if (!bgfx::isValid(coloredTextureHandle))
-                {
-                    coloredTextureHandle = font->mainTextureHandle;
-                }
 
                 float blurbX = std::round(uiViewport.x + AdventurersInnBlurbX * baseScale);
                 float blurbY = std::round(uiViewport.y + AdventurersInnBlurbY * baseScale);
@@ -10179,7 +10139,7 @@ void GameplayPartyOverlayRenderer::renderCharacterOverlay(
                 for (const std::string &line : wrappedLines)
                 {
                     context.renderHudFontLayer(*font, font->shadowTextureHandle, line, blurbX, blurbY, fontScale);
-                    context.renderHudFontLayer(*font, coloredTextureHandle, line, blurbX, blurbY, fontScale);
+                    context.renderHudFontLayer(*font, coloredLayer, line, blurbX, blurbY, fontScale);
                     blurbY += lineHeight;
                 }
             }
@@ -10580,8 +10540,9 @@ void GameplayPartyOverlayRenderer::renderActorInspectOverlay(GameplayScreenRunti
         rect.y = std::round(rect.y + (rect.height - size) * 0.5f);
         rect.width = size;
         rect.height = size;
-        context.gameplayUiRuntime().renderActorInspectPreview(
-            actorState.previewTextureName, actorState.previewPaletteId, rect, popupScale, actorState.previewYOffset);
+        context.gameplayUiRuntime().renderActorInspectPreview(*pWorldRuntime, actorInspect.runtimeActorIndex,
+            animationTicks, actorState.previewTextureName, actorState.previewPaletteId, rect, popupScale,
+            actorState.previewYOffset);
     }
 
     if (previewRect)

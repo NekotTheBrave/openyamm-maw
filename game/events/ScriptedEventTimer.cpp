@@ -113,6 +113,13 @@ void advanceTimerAfterFire(ScriptedEventTimerState &state, double currentGameMin
             const double intervalGameMinutes =
                 std::max(MinimumNativeTimerIntervalGameMinutes, definition.intervalGameMinutes);
             state.nextAlarmGameMinutes += intervalGameMinutes;
+
+            // Rest, waiting and map re-entry advance time without running timers; drop the missed intervals
+            // instead of replaying one per frame.
+            if (state.nextAlarmGameMinutes <= currentGameMinutes)
+            {
+                state.nextAlarmGameMinutes = currentGameMinutes + intervalGameMinutes;
+            }
         }
         else
         {

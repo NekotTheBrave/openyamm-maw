@@ -148,6 +148,8 @@ public:
     const SkyPreset *fallback() const;
     // Legacy sky texture name (any case) to preset name, or empty when unknown.
     std::string presetForSkyName(const std::string &skyTextureName) const;
+    // Every legacy sky name the library knows (lower case): all the names the data can select.
+    std::vector<std::string> skyNames() const;
     // Merged MMerge weather ladder position (clear to storm) to preset name.
     std::string presetForWeatherState(int state, int stateCount) const;
     const SkySpecialPresets &specials() const;

@@ -201,6 +201,33 @@ HouseEntry::DeterministicStockPage *findOrAddStockPage(
     return &pages.back();
 }
 
+// MM6's temple heal check (MM6.exe 0x49DAD0) restricts by house, not by table data: only Temple Stone in Free Haven
+// cures eradication, Temple Baa cannot treat death, petrification or eradication, and every other MM6 temple
+// treats everything except eradication. Tiers match templeConditionHealingTier; 0 means unrestricted.
+float mm6TempleHealingTier(uint32_t houseId)
+{
+    constexpr uint32_t NewSorpigalTempleHouseId = 325;
+    constexpr uint32_t TempleStoneHouseId = 326;
+    constexpr uint32_t TempleBaaHouseId = 334;
+
+    if (houseId == TempleStoneHouseId)
+    {
+        return 0.0f;
+    }
+
+    if (houseId == TempleBaaHouseId)
+    {
+        return 1.5f;
+    }
+
+    if (houseId >= NewSorpigalTempleHouseId && houseId < TempleBaaHouseId)
+    {
+        return 2.0f;
+    }
+
+    return 0.0f;
+}
+
 bool isTransportHouseTypeName(const std::string &houseType)
 {
     return houseType == "Stables" || houseType == "Boats";
@@ -709,9 +736,9 @@ bool HouseTable::loadFromRows(const std::vector<std::vector<std::string>> &rows)
         entry.skillPriceMultiplier =
             (row.size() > 13 && !row[13].empty()) ? std::strtof(row[13].c_str(), nullptr) : 0.0f;
         entry.templeBehavior = (row.size() > 15 && !row[15].empty()) ? parseSigned(row[15]) : 0;
-        if (entry.type == "Temple" && ((entry.id >= 325 && entry.id <= 334) || entry.id == 1442))
+        if (entry.type == "Temple")
         {
-            entry.templeHealingTier = entry.skillPriceMultiplier;
+            entry.templeHealingTier = mm6TempleHealingTier(entry.id);
         }
         entry.stockRefreshDays = (row.size() > 15 && !row[15].empty()) ? std::atoi(row[15].c_str()) : 0;
         entry.openHour = (row.size() > 18 && !row[18].empty()) ? std::atoi(row[18].c_str()) : 0;
@@ -1363,6 +1390,16 @@ bool HouseTable::applyHouseRules(
     }
 
     return true;
+}
+
+void HouseTable::applyMapWorlds(const MapStats &mapStats)
+{
+    for (auto &[houseId, entry] : m_entries)
+    {
+        (void)houseId;
+        const MapStatsEntry *pMap = entry.mapId != 0 ? mapStats.findById(entry.mapId) : nullptr;
+        entry.worldId = pMap != nullptr ? pMap->worldId : std::string();
+    }
 }
 
 bool HouseTable::applyHouseExits(const MergedHouseExitTable &houseExits, const MapStats &mapStats)

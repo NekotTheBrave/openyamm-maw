@@ -141,6 +141,8 @@ struct HouseEntry
     std::optional<ExtraExit> extraExit;
     std::string packageId;
     std::string canonicalId;
+    // World (mm6, mm7, mm8, ...) of the house's map; generated stock follows its item world gates.
+    std::string worldId;
     uint32_t sourceVendorId = 0;
     uint32_t sourceServiceId = 0;
     VendorStockProfile vendorStockProfile = VendorStockProfile::None;
@@ -184,6 +186,7 @@ public:
         const MapStats &mapStats
     );
     bool applyHouseExits(const MergedHouseExitTable &houseExits, const MapStats &mapStats);
+    void applyMapWorlds(const MapStats &mapStats);
     std::optional<std::string> getName(uint32_t houseId) const;
     const HouseEntry *get(uint32_t houseId) const;
     const HouseEntry *resolvePackageSourceVendorId(

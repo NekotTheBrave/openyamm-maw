@@ -668,3 +668,43 @@ TEST_CASE("Terrain decoration cutout encloses the tuft and trims transparent car
     CHECK(empty[2][0] == 1.0f);
     CHECK(empty[2][1] == 1.0f);
 }
+
+TEST_CASE("Smoothed terrain passes through native vertices and stays near the native triangles")
+{
+    OutdoorMapData map = flatMap();
+    // A rolling hill plus a cliff: the cliff is where unbounded bicubic smoothing would overshoot.
+    for (int y = 0; y < 128; ++y)
+    {
+        for (int x = 0; x < 128; ++x)
+        {
+            const float hill = 20.0f + 18.0f * std::sin(float(x) * 0.4f) * std::cos(float(y) * 0.3f);
+            map.heightMap[size_t(y * 128 + x)] = uint8_t(x >= 70 && x < 74 ? 120.0f : hill);
+        }
+    }
+    float largestDeviation = 0.0f;
+    bool smoothedSomewhere = false;
+    for (int y = 2; y < 125; ++y)
+    {
+        for (int x = 2; x < 125; ++x)
+        {
+            const float vertex = float(map.heightMap[size_t(y * 128 + x)] * OutdoorMapData::TerrainHeightScale);
+            CHECK(outdoorSmoothedTerrainHeight(map, float(x), float(y), 1.0f) == doctest::Approx(vertex).epsilon(0.001));
+            for (float fraction : {0.25f, 0.5f, 0.75f})
+            {
+                const float gridX = float(x) + fraction;
+                const float gridY = float(y) + 1.0f - fraction;
+                const float native = outdoorNativeTerrainHeight(map, gridX, gridY);
+                const float smoothed = outdoorSmoothedTerrainHeight(map, gridX, gridY, 1.0f);
+                largestDeviation = std::max(largestDeviation, std::abs(smoothed - native));
+                smoothedSomewhere = smoothedSomewhere || std::abs(smoothed - native) > 1.0f;
+                CHECK(outdoorSmoothedTerrainHeight(map, gridX, gridY, 0.0f) == doctest::Approx(native));
+            }
+        }
+    }
+    CHECK(smoothedSomewhere);
+    CHECK(largestDeviation <= 32.0f);
+    // The native triangles match the rendered classic terrain everywhere.
+    CHECK(outdoorNativeTerrainHeight(map, 40.3f, 50.6f)
+        == doctest::Approx(sampleOutdoorRenderedTerrainHeight(map, outdoorGridCornerWorldX(40) + 0.3f * 512.0f,
+            outdoorGridCornerWorldY(50) - 0.6f * 512.0f)).epsilon(0.001));
+}

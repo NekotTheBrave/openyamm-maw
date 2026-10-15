@@ -36,3 +36,15 @@ mat4 modelSkinMatrix(float row)
     }
     return skin;
 }
+
+// Creature contour shell (outline flag 3): the vertex pushed out along its screen-space normal by pixelsPer1080 pixels
+// per 1080 view rows (at least one) at its own depth. Only its back faces are drawn, after the body, so it shows as a
+// dark rim past the silhouette and along limbs that cross the body; the rest fails the depth test.
+vec4 modelContourPosition(vec3 worldPosition, vec3 worldNormal, float pixelsPer1080)
+{
+    vec4 clip = mul(u_viewProj, vec4(worldPosition, 1.0));
+    vec2 screenNormal = mul(u_viewProj, vec4(worldNormal, 0.0)).xy * u_viewRect.zw;
+    float pixels = max(1.0, pixelsPer1080 * u_viewRect.w / 1080.0);
+    clip.xy += screenNormal / max(length(screenNormal), 0.0001) * (pixels * 2.0) / u_viewRect.zw * clip.w;
+    return clip;
+}

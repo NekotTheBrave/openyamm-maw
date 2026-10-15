@@ -71,10 +71,6 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
     {
         return settings.terrainDecorations ? "true" : "false";
     }
-    if (id == "water_shader")
-    {
-        return settings.waterShader ? "true" : "false";
-    }
     if (id == "water_reflections")
     {
         return settings.waterReflections ? "true" : "false";
@@ -91,9 +87,9 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
     {
         return settings.waterSpriteReflections ? "true" : "false";
     }
-    if (id == "sky_style")
+    if (id == "projectile_style")
     {
-        return skyStyleValue(settings.skyStyle);
+        return projectileStyleValue(settings.projectileStyle);
     }
     if (id == "weather_quality")
     {
@@ -123,6 +119,10 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
     {
         return std::to_string(settings.cinematicStrength);
     }
+    if (id == "sharpening")
+    {
+        return std::to_string(settings.sharpening);
+    }
     if (id == "colored_lights")
     {
         return settings.coloredLights ? "true" : "false";
@@ -138,6 +138,22 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
     if (id == "melee_hit_blood_effects")
     {
         return settings.meleeHitBloodEffects ? "true" : "false";
+    }
+    if (id == "melee_hit_effects")
+    {
+        return settings.meleeHitEffects ? "true" : "false";
+    }
+    if (id == "melee_hit_feedback")
+    {
+        return settings.meleeHitFeedback ? "true" : "false";
+    }
+    if (id == "melee_hit_flash")
+    {
+        return settings.meleeHitFlash ? "true" : "false";
+    }
+    if (id == "melee_camera_kick")
+    {
+        return settings.meleeCameraKick ? "true" : "false";
     }
     if (id == "corpses")
     {
@@ -376,18 +392,13 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
         settings.terrainDecorations = value == "true";
         return true;
     }
-    if (id == "water_shader" || id == "water_reflections" || id == "water_sprite_reflections"
-        || id == "water_movement_ripples")
+    if (id == "water_reflections" || id == "water_sprite_reflections" || id == "water_movement_ripples")
     {
         if (value != "true" && value != "false")
         {
             return false;
         }
-        if (id == "water_shader")
-        {
-            settings.waterShader = value == "true";
-        }
-        else if (id == "water_reflections")
+        if (id == "water_reflections")
         {
             settings.waterReflections = value == "true";
         }
@@ -401,9 +412,10 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
         }
         return true;
     }
-    if (id == "sky_style")
+    if (id == "projectile_style")
     {
-        return (value == "enhanced" || value == "classic") && parseSkyStyleValue(value, settings.skyStyle);
+        return (value == "enhanced" || value == "classic") &&
+            parseProjectileStyleValue(value, settings.projectileStyle);
     }
     if (id == "weather_quality")
     {
@@ -470,6 +482,17 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
         settings.cinematicStrength = number;
         return true;
     }
+    if (id == "sharpening")
+    {
+        int number = 0;
+        const auto result = std::from_chars(value.data(), value.data() + value.size(), number);
+        if (result.ec != std::errc{} || result.ptr != value.data() + value.size() || number < 0 || number > 100)
+        {
+            return false;
+        }
+        settings.sharpening = number;
+        return true;
+    }
     if (id == "colored_lights")
     {
         if (value != "true" && value != "false")
@@ -504,6 +527,42 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
             return false;
         }
         settings.meleeHitBloodEffects = value == "true";
+        return true;
+    }
+    if (id == "melee_hit_effects")
+    {
+        if (value != "true" && value != "false")
+        {
+            return false;
+        }
+        settings.meleeHitEffects = value == "true";
+        return true;
+    }
+    if (id == "melee_hit_feedback")
+    {
+        if (value != "true" && value != "false")
+        {
+            return false;
+        }
+        settings.meleeHitFeedback = value == "true";
+        return true;
+    }
+    if (id == "melee_hit_flash")
+    {
+        if (value != "true" && value != "false")
+        {
+            return false;
+        }
+        settings.meleeHitFlash = value == "true";
+        return true;
+    }
+    if (id == "melee_camera_kick")
+    {
+        if (value != "true" && value != "false")
+        {
+            return false;
+        }
+        settings.meleeCameraKick = value == "true";
         return true;
     }
     if (id == "corpses")

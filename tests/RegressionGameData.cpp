@@ -633,6 +633,22 @@ bool loadRegressionGameData(RegressionGameData &data, std::string &failure)
         return false;
     }
 
+    std::vector<std::pair<std::string, std::string>> worldMapFiles;
+
+    for (const char *pWorldId : {"mm6", "mm7", "mm8"})
+    {
+        for (const std::string &fileName : assetFileSystem.enumerate(std::string("worlds/") + pWorldId + "/maps"))
+        {
+            worldMapFiles.emplace_back(pWorldId, fileName);
+        }
+    }
+
+    if (!mapStats.applyWorldOwnership(worldMapFiles))
+    {
+        failure = "could not apply map world ownership for regression tests";
+        return false;
+    }
+
     std::vector<std::vector<std::string>> houseRuleRows;
 
     if (!loadTextTableRows(assetFileSystem, engineDataTablePath("house_rules.txt"), houseRuleRows, failure))
@@ -693,6 +709,8 @@ bool loadRegressionGameData(RegressionGameData &data, std::string &failure)
         failure = "could not apply merged house exits for regression tests";
         return false;
     }
+
+    data.houseTable.applyMapWorlds(mapStats);
 
     Game::ArcomageLoader arcomageLoader;
 

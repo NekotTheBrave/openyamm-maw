@@ -16,6 +16,8 @@
 
 namespace OpenYAMM::Game
 {
+class ActorBehaviorRuntime;
+class GameplayActorHitFeedback;
 class MergedBolsterMonsterTable;
 struct MapArenaDefinition;
 struct GameplayMinimapState;
@@ -117,6 +119,16 @@ enum class ActorAiAnimationState : uint8_t
     Bored = 7,
 };
 
+enum class ActorTurnBasedMode : uint8_t
+{
+    // Real-time play: actors attack whenever their recovery cooldown allows.
+    RealTime,
+    // Turn-based wait stage: actors move but never attack.
+    MoveOnly,
+    // Turn-based attack and movement stages: actors hold position and only granted actors take their action.
+    Hold,
+};
+
 struct GameplayRuntimeActorState
 {
     uint32_t actorId = 0;
@@ -131,6 +143,8 @@ struct GameplayRuntimeActorState
     bool secondaryAttack = false;
     uint32_t castingSpellId = 0;
     bool attackImpactTriggered = false;
+    // Action seconds still to run once the attack applies at its sprite's contact frame; 0 when it applies at the end.
+    float attackImpactLeadSeconds = 0.0f;
     float visualScale = 1.0f;
     int16_t monsterId = 0;
     int32_t mm9RudeId = 0;
@@ -148,6 +162,13 @@ struct GameplayRuntimeActorState
     bool hostileToParty = false;
     bool hasDetectedParty = false;
     bool combatTargetingParty = false;
+    int currentHp = 0;
+    int maxHp = 0;
+    // A behaviour script's clip role (actors.yml `script_clips`) and its playback time; empty when none plays.
+    std::string scriptedClip;
+    float scriptedClipSeconds = 0.0f;
+    // Hit flash mixed over the sprite or model (GameplayActorHitFeedback), 0 when none.
+    float hitFlash = 0.0f;
 };
 
 struct GameplayCombatFeedbackEvent
@@ -337,6 +358,8 @@ struct GameplayProjectilePresentationState
     uint16_t radius = 0;
     uint16_t height = 0;
     int spellId = 0;
+    // The monster that threw it (0: party, event or unknown), for per-monster enhanced visuals.
+    int16_t sourceMonsterId = 0;
     std::string objectName;
     std::string objectSpriteName;
     float x = 0.0f;
@@ -350,6 +373,16 @@ struct GameplayProjectilePresentationState
     bool isSettled = false;
 };
 
+// A projectile that ended (hit something or ran out of lifetime) and where it stopped, so its flight effect can
+// reach that point before it fades.
+struct GameplayProjectileEndPresentationState
+{
+    uint32_t projectileId = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+};
+
 struct GameplayProjectileImpactPresentationState
 {
     uint32_t effectId = 0;
@@ -358,6 +391,7 @@ struct GameplayProjectileImpactPresentationState
     uint16_t objectSpriteFrameIndex = 0;
     uint16_t sourceObjectFlags = 0;
     int sourceSpellId = 0;
+    int16_t sourceMonsterId = 0;
     std::string objectName;
     std::string objectSpriteName;
     std::string sourceObjectName;
@@ -528,6 +562,8 @@ public:
     virtual float partyX() const = 0;
     virtual float partyY() const = 0;
     virtual float partyFootZ() const = 0;
+    // The party's eyes: the camera height over the party's feet in this world.
+    virtual float partyEyeZ() const = 0;
     virtual float partyEngagementRange() const
     {
         return 10240.0f;
@@ -587,6 +623,31 @@ public:
     virtual void stopTurnBasedActorMovement()
     {
     }
+    // The turn engine schedules turn-based actor actions; the world applies them to actor AI.
+    virtual void setTurnBasedActorMode(ActorTurnBasedMode mode)
+    {
+        (void)mode;
+    }
+    // Lets the actor take its queued action (attack when it can) in the next actor AI step.
+    virtual void grantTurnBasedActorAction(size_t actorIndex)
+    {
+        (void)actorIndex;
+    }
+    virtual bool turnBasedActorActionGrantPending() const
+    {
+        return false;
+    }
+    // Monster recovery in turn-based initiative ticks, doubled while the actor is slowed.
+    virtual int turnBasedActorRecoveryTicks(size_t actorIndex) const
+    {
+        (void)actorIndex;
+        return 100;
+    }
+    virtual void setActorAttackCooldownSeconds(size_t actorIndex, float seconds)
+    {
+        (void)actorIndex;
+        (void)seconds;
+    }
     virtual void updateWorld(float deltaSeconds) = 0;
     virtual void renderWorld(
         int width,
@@ -636,6 +697,16 @@ public:
     }
     virtual size_t mapActorCount() const = 0;
     virtual bool actorRuntimeState(size_t actorIndex, GameplayRuntimeActorState &state) const = 0;
+    virtual GameplayActorHitFeedback &actorHitFeedback() = 0;
+    virtual const GameplayActorHitFeedback &actorHitFeedback() const = 0;
+    virtual ActorBehaviorRuntime *actorBehaviorRuntime()
+    {
+        return nullptr;
+    }
+    virtual const ActorBehaviorRuntime *actorBehaviorRuntime() const
+    {
+        return nullptr;
+    }
     // Gold plus item value left in a dead actor's corpse (its loot is rolled at death); nullopt without corpse loot.
     virtual std::optional<uint32_t> corpseLootValue(size_t actorIndex) const
     {
@@ -724,6 +795,18 @@ public:
         float x,
         float y,
         float z) = 0;
+    // Debug: the actor launches its attack or spell projectile at a point now, regardless of range, recovery and
+    // targeting, for reviewing projectile visuals. Worlds without support return false.
+    virtual bool debugFireActorProjectile(
+        size_t actorIndex,
+        GameplayActorAttackAbility ability,
+        const GameplayWorldPoint &target)
+    {
+        (void)actorIndex;
+        (void)ability;
+        (void)target;
+        return false;
+    }
     virtual bool summonHostileMonsterById(
         int16_t monsterId,
         uint32_t count,

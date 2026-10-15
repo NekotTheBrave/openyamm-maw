@@ -1176,6 +1176,18 @@ const MergedNpcProfessionEntry *MergedNpcProfessionTable::get(uint32_t professio
     return nullptr;
 }
 
+std::string MergedNpcProfessionTable::nameAndTitle(const std::string &name, uint32_t professionId) const
+{
+    const MergedNpcProfessionEntry *pProfession = professionId != 0 ? get(professionId) : nullptr;
+
+    if (pProfession == nullptr || pProfession->profession.empty())
+    {
+        return name;
+    }
+
+    return name + " the " + pProfession->profession;
+}
+
 bool MergedNpcNameTable::loadFromRows(const std::vector<std::vector<std::string>> &rows)
 {
     m_npcMaleNames.clear();

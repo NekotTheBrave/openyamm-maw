@@ -344,93 +344,48 @@ bool itemMatchesHouseRuleTypes(const ItemDefinition &itemDefinition, const std::
         });
 }
 
-std::optional<uint32_t> tryParseSpellId(const ItemDefinition &itemDefinition)
+constexpr uint32_t SpellsPerSchool = 11;
+constexpr uint32_t MagicSchoolCount = 9;
+
+// Schools are numbered in spell id order: Fire, Air, Water, Earth, Spirit, Mind, Body, Light, Dark.
+std::vector<uint32_t> guildMagicSchools(const HouseEntry &houseEntry)
 {
-    if (itemDefinition.equipStat != "Book" || itemDefinition.mod1.size() < 2 || itemDefinition.mod1[0] != 'S')
-    {
-        return std::nullopt;
-    }
+    constexpr std::array<const char *, MagicSchoolCount> SingleSchoolGuildTypes = {
+        "Fire Guild",
+        "Air Guild",
+        "Water Guild",
+        "Earth Guild",
+        "Spirit Guild",
+        "Mind Guild",
+        "Body Guild",
+        "Light Guild",
+        "Dark Guild",
+    };
 
-    try
+    for (uint32_t school = 0; school < MagicSchoolCount; ++school)
     {
-        return static_cast<uint32_t>(std::stoul(itemDefinition.mod1.substr(1)));
-    }
-    catch (...)
-    {
-        return std::nullopt;
-    }
-}
-
-bool isSpellbookAllowedForGuild(const HouseEntry &houseEntry, const ItemDefinition &itemDefinition)
-{
-    const std::optional<uint32_t> spellId = tryParseSpellId(itemDefinition);
-
-    if (!spellId)
-    {
-        return false;
+        if (isHouseType(houseEntry, SingleSchoolGuildTypes[school]))
+        {
+            return {school};
+        }
     }
 
     if (isHouseType(houseEntry, "Elemental Guild"))
     {
-        return *spellId >= 1 && *spellId <= 44;
-    }
-
-    if (isHouseType(houseEntry, "Fire Guild"))
-    {
-        return *spellId >= 1 && *spellId <= 11;
-    }
-
-    if (isHouseType(houseEntry, "Air Guild"))
-    {
-        return *spellId >= 12 && *spellId <= 22;
-    }
-
-    if (isHouseType(houseEntry, "Water Guild"))
-    {
-        return *spellId >= 23 && *spellId <= 33;
-    }
-
-    if (isHouseType(houseEntry, "Earth Guild"))
-    {
-        return *spellId >= 34 && *spellId <= 44;
+        return {0, 1, 2, 3};
     }
 
     if (isHouseType(houseEntry, "Self Guild"))
     {
-        return *spellId >= 45 && *spellId <= 77;
-    }
-
-    if (isHouseType(houseEntry, "Spirit Guild"))
-    {
-        return *spellId >= 45 && *spellId <= 55;
-    }
-
-    if (isHouseType(houseEntry, "Mind Guild"))
-    {
-        return *spellId >= 56 && *spellId <= 66;
-    }
-
-    if (isHouseType(houseEntry, "Body Guild"))
-    {
-        return *spellId >= 67 && *spellId <= 77;
-    }
-
-    if (isHouseType(houseEntry, "Light Guild"))
-    {
-        return *spellId >= 78 && *spellId <= 88;
-    }
-
-    if (isHouseType(houseEntry, "Dark Guild"))
-    {
-        return *spellId >= 89 && *spellId <= 99;
+        return {4, 5, 6};
     }
 
     if (isHouseType(houseEntry, "Spell Shop"))
     {
-        return *spellId >= 1 && *spellId <= 99;
+        return {0, 1, 2, 3, 4, 5, 6, 7, 8};
     }
 
-    return false;
+    return {};
 }
 
 int stockRuleTreasureTier(const HouseEntry::StockRule &rule)
@@ -492,31 +447,6 @@ int itemTreasureWeightForSpecialStock(const ItemDefinition &entry, int tier)
     return 0;
 }
 
-int spellbookQualityFromItemValue(const ItemDefinition &entry)
-{
-    if (entry.equipStat != "Book")
-    {
-        return 0;
-    }
-
-    if (entry.value > 3000)
-    {
-        return 4;
-    }
-
-    if (entry.value > 1000)
-    {
-        return 3;
-    }
-
-    if (entry.value > 400)
-    {
-        return 2;
-    }
-
-    return 1;
-}
-
 std::mt19937 createStockRng(const Party &party, const HouseEntry &houseEntry, const Party::HouseStockState &state)
 {
     const uint32_t houseSeed = houseEntry.id != 0 ? houseEntry.id : 1;
@@ -551,7 +481,11 @@ std::vector<InventoryItem> generateStockItems(
 
     for (const ItemDefinition &entry : itemTable.entries())
     {
-        if (entry.itemId == 0 || entry.name.empty() || entry.hasContentFlag("NoShop") || !predicate(entry))
+        if (entry.itemId == 0
+            || entry.name.empty()
+            || entry.hasContentFlag("NoShop")
+            || !entry.availableInWorld(houseEntry.worldId)
+            || !predicate(entry))
         {
             continue;
         }
@@ -598,7 +532,12 @@ std::vector<InventoryItem> generateStockItems(
                 itemTable,
                 standardItemEnchantTable,
                 specialItemEnchantTable,
-                ItemGenerationRequest{treasureLevel, ItemGenerationMode::Shop, false},
+                ItemGenerationRequest{
+                    .treasureLevel = treasureLevel,
+                    .mode = ItemGenerationMode::Shop,
+                    .allowRareItems = false,
+                    .worldId = houseEntry.worldId,
+                },
                 nullptr,
                 rng,
                 [itemId](const ItemDefinition &entry)
@@ -801,43 +740,63 @@ std::vector<InventoryItem> generateShopSpecialStock(
 
 std::vector<InventoryItem> generateGuildSpellbookStock(
     const ItemTable &itemTable,
-    const StandardItemEnchantTable &standardItemEnchantTable,
-    const SpecialItemEnchantTable &specialItemEnchantTable,
     const HouseEntry &houseEntry,
     std::mt19937 &rng,
     size_t count)
 {
-    const int tier = std::clamp(houseEntry.spellbookStockRule.quality, 0, 11);
+    // The guild rule is the highest spell number sold within each of the guild's schools. Each spell is sold as
+    // the first book of the guild's world, so every continent keeps its own book design.
+    const uint32_t maxSpellInSchool =
+        static_cast<uint32_t>(std::clamp(houseEntry.spellbookStockRule.quality, 0, static_cast<int>(SpellsPerSchool)));
+    std::vector<uint32_t> candidates;
 
-    if (tier <= 0)
+    for (uint32_t school : guildMagicSchools(houseEntry))
     {
-        return std::vector<InventoryItem>(count);
+        for (uint32_t spellInSchool = 0; spellInSchool < maxSpellInSchool; ++spellInSchool)
+        {
+            const std::optional<uint32_t> itemId = itemTable.spellbookItemIdForSpell(
+                school * SpellsPerSchool + spellInSchool + 1,
+                houseEntry.worldId);
+
+            if (itemId)
+            {
+                candidates.push_back(*itemId);
+            }
+        }
     }
 
-    return generateStockItems(
-        itemTable,
-        standardItemEnchantTable,
-        specialItemEnchantTable,
-        houseEntry,
-        tier,
-        rng,
-        count,
-        [&houseEntry](const ItemDefinition &entry)
-        {
-            return isSpellbookAllowedForGuild(houseEntry, entry);
-        },
-        [tier](const ItemDefinition &entry)
-        {
-            const int weight = itemTreasureWeightUpToTier(entry, std::min(tier, 6));
+    // When the shelves have room, every spell the guild teaches is offered and spare slots repeat random spells.
+    std::vector<uint32_t> selected;
 
-            if (weight > 0)
+    if (candidates.size() <= count)
+    {
+        selected = candidates;
+
+        if (!candidates.empty())
+        {
+            std::uniform_int_distribution<size_t> distribution(0, candidates.size() - 1);
+
+            while (selected.size() < count)
             {
-                return weight;
+                selected.push_back(candidates[distribution(rng)]);
             }
+        }
+    }
+    else
+    {
+        std::shuffle(candidates.begin(), candidates.end(), rng);
+        selected.assign(candidates.begin(), candidates.begin() + count);
+    }
 
-            const int spellbookTier = spellbookQualityFromItemValue(entry);
-            return spellbookTier > 0 && spellbookTier <= tier ? 1 : 0;
-        });
+    std::sort(selected.begin(), selected.end());
+    std::vector<InventoryItem> results(count);
+
+    for (size_t slotIndex = 0; slotIndex < selected.size(); ++slotIndex)
+    {
+        results[slotIndex] = ItemGenerator::makeInventoryItem(selected[slotIndex], itemTable, ItemGenerationMode::Shop);
+    }
+
+    return results;
 }
 
 std::vector<InventoryItem> deterministicStockItems(
@@ -932,8 +891,6 @@ Party::HouseStockState &ensureHouseStockGenerated(
     state.spellbookStock =
         generateGuildSpellbookStock(
             itemTable,
-            standardItemEnchantTable,
-            specialItemEnchantTable,
             houseEntry,
             rng,
             spellbookCount);

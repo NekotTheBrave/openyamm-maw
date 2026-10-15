@@ -229,6 +229,7 @@ GameplayActorService::DirectSpellImpactResult GameplayActorService::resolveDirec
     if (spellName == "mass distortion")
     {
         result.disposition = DirectSpellImpactDisposition::ApplyDamage;
+        result.visualKind = DirectSpellImpactVisualKind::ActorCenter;
         result.damage = std::max(
             1,
             static_cast<int>(std::round(static_cast<float>(actorCurrentHp) * (0.25f + 0.02f * skillLevel))));
@@ -371,12 +372,8 @@ GameplayActorService::SharedSpellEffectResult GameplayActorService::tryApplyShar
                 : skillMastery == SkillMastery::Master
                 ? 0.25f
                 : 0.5f;
-        state.slowRecoveryMultiplier =
-            skillMastery == SkillMastery::Grandmaster
-                ? 8.0f
-                : skillMastery == SkillMastery::Master
-                ? 4.0f
-                : 2.0f;
+        // Mastery deepens the walking slowdown only; recovery is always doubled.
+        state.slowRecoveryMultiplier = 2.0f;
         result.disposition = SharedSpellDisposition::Applied;
         result.effectKind = SharedSpellEffectKind::Slow;
         return result;

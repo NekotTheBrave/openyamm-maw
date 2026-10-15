@@ -168,19 +168,6 @@ EventRuntimeState::PendingSound buildStopMechanismSound(uint32_t doorId)
     return sound;
 }
 
-bool mechanismDoorContainsFace(const MapDeltaDoor &door, size_t faceIndex)
-{
-    for (uint16_t doorFaceId : door.faceIds)
-    {
-        if (static_cast<size_t>(doorFaceId) == faceIndex)
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 float mechanismDistanceFromBaseDoorState(const MapDeltaDoor &door)
 {
     RuntimeMechanismState mechanism = {};
@@ -330,6 +317,7 @@ IndoorSceneRuntime::IndoorSceneRuntime(
     {
         m_eventRuntimeState->mapFileName = mapFileName;
         setActiveHistoryContinent(*m_eventRuntimeState, map.mergedContinentId);
+        m_eventRuntimeState->mapWorldId = map.worldId;
     }
 
     if (m_mapDeltaData)
@@ -418,6 +406,7 @@ IndoorSceneRuntime::IndoorSceneRuntime(
     {
         m_eventRuntimeState->mapFileName = mapFileName;
         setActiveHistoryContinent(*m_eventRuntimeState, map.mergedContinentId);
+        m_eventRuntimeState->mapWorldId = map.worldId;
     }
 
     if (m_mapDeltaData)
@@ -603,6 +592,7 @@ void IndoorSceneRuntime::restoreSnapshot(const Snapshot &snapshot)
     {
         m_eventRuntimeState->mapFileName = m_mapFileName;
         setActiveHistoryContinent(*m_eventRuntimeState, m_map.mergedContinentId);
+        m_eventRuntimeState->mapWorldId = m_map.worldId;
         clearTransientEventRuntimeState(*m_eventRuntimeState);
     }
     m_worldRuntime.restoreSnapshot(snapshot.worldRuntime);
@@ -822,27 +812,39 @@ bool IndoorSceneRuntime::updatePartyFaceTriggers()
 
     m_lastProcessedPartyMoveStateForFaceTriggers = currentMoveState;
 
-    if (!hasIndoorPressurePlateSupportFace(currentMoveState))
+    // Every floor face crossed by this frame's movement steps, then the current one (teleports, carried party).
+    m_partyRuntime.takeSteppedFloorFaces(m_partyFloorFacesForPressurePlateTriggers);
+
+    if (hasIndoorPressurePlateSupportFace(currentMoveState)
+        && (m_partyFloorFacesForPressurePlateTriggers.empty()
+            || m_partyFloorFacesForPressurePlateTriggers.back() != currentMoveState.supportFaceIndex))
     {
-        return false;
+        m_partyFloorFacesForPressurePlateTriggers.push_back(currentMoveState.supportFaceIndex);
     }
 
+    bool executed = false;
+
+    for (size_t floorFaceIndex : m_partyFloorFacesForPressurePlateTriggers)
+    {
+        executed = enterPartyFloorFace(floorFaceIndex) || executed;
+    }
+
+    return executed;
+}
+
+bool IndoorSceneRuntime::enterPartyFloorFace(size_t floorFaceIndex)
+{
     // Match OE floor-face semantics: short airborne/jitter frames do not re-enter the same pressure plate.
     if (!m_lastPartyFloorFaceForPressurePlateTriggers)
     {
-        m_lastPartyFloorFaceForPressurePlateTriggers = currentMoveState.supportFaceIndex;
+        m_lastPartyFloorFaceForPressurePlateTriggers = floorFaceIndex;
         return false;
     }
 
     const size_t previousFloorFaceIndex = *m_lastPartyFloorFaceForPressurePlateTriggers;
-    m_lastPartyFloorFaceForPressurePlateTriggers = currentMoveState.supportFaceIndex;
+    m_lastPartyFloorFaceForPressurePlateTriggers = floorFaceIndex;
 
-    if (previousFloorFaceIndex == currentMoveState.supportFaceIndex)
-    {
-        return false;
-    }
-
-    if (m_pIndoorMapData == nullptr)
+    if (previousFloorFaceIndex == floorFaceIndex || m_pIndoorMapData == nullptr)
     {
         return false;
     }
@@ -850,17 +852,14 @@ bool IndoorSceneRuntime::updatePartyFaceTriggers()
     const std::optional<uint16_t> previousPressureEvent =
         indoorPressurePlateEventId(*m_pIndoorMapData, m_mapDeltaData, previousFloorFaceIndex);
     const std::optional<uint16_t> currentPressureEvent =
-        indoorPressurePlateEventId(*m_pIndoorMapData, m_mapDeltaData, currentMoveState.supportFaceIndex);
+        indoorPressurePlateEventId(*m_pIndoorMapData, m_mapDeltaData, floorFaceIndex);
 
     if (previousPressureEvent && currentPressureEvent && *previousPressureEvent == *currentPressureEvent)
     {
         return false;
     }
 
-    return m_worldRuntime.executeFaceTriggeredEvent(
-        currentMoveState.supportFaceIndex,
-        FaceAttribute::PressurePlate,
-        false);
+    return m_worldRuntime.executeFaceTriggeredEvent(floorFaceIndex, FaceAttribute::PressurePlate, false);
 }
 
 bool IndoorSceneRuntime::updateTimers(float deltaGameMinutes)

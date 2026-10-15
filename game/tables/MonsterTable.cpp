@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <iostream>
 #include <limits>
 #include <optional>
 #include <regex>
@@ -817,6 +818,7 @@ bool MonsterTable::loadFromBytes(const std::vector<uint8_t> &bytes)
     }
 
     rebuildMonsterEntryInternalNameIndex(m_entries, m_entryIndexByInternalName);
+    rebuildEntryIndexByDisplayId();
     return !m_entries.empty();
 }
 
@@ -838,6 +840,7 @@ bool MonsterTable::loadEntriesFromRows(const std::vector<std::vector<std::string
     static constexpr size_t ColumnInspectYOffset = 19;
     static constexpr size_t ColumnInspectAttackChance = 20;
     static constexpr size_t ColumnInspectFidgetWhenMoving = 21;
+    static constexpr size_t ColumnHitMaterial = 22;
 
     size_t maxId = 0;
 
@@ -902,6 +905,7 @@ bool MonsterTable::loadEntriesFromRows(const std::vector<std::vector<std::string
             ? std::clamp(std::stoi(row[ColumnInspectAttackChance]), 0, 100) : 100;
         entry.inspectFidgetWhenMoving = row.size() > ColumnInspectFidgetWhenMoving
             && trimCopy(row[ColumnInspectFidgetWhenMoving]) == "1";
+        entry.hitMaterial = row.size() > ColumnHitMaterial ? trimCopy(row[ColumnHitMaterial]) : "";
 
         for (size_t spriteIndex = 0; spriteIndex < entry.spriteNames.size(); ++spriteIndex)
         {
@@ -920,6 +924,7 @@ bool MonsterTable::loadEntriesFromRows(const std::vector<std::vector<std::string
     }
 
     rebuildMonsterEntryInternalNameIndex(m_entries, m_entryIndexByInternalName);
+    rebuildEntryIndexByDisplayId();
     return !m_entries.empty();
 }
 
@@ -975,7 +980,38 @@ bool MonsterTable::loadDisplayNamesFromRows(const std::vector<std::vector<std::s
         }
     }
 
+    rebuildEntryIndexByDisplayId();
     return !m_displayNames.empty();
+}
+
+void MonsterTable::rebuildEntryIndexByDisplayId()
+{
+    m_entryIndexByDisplayId.assign(m_displayNameIndexById.size(), -1);
+
+    for (size_t id = 0; id < m_displayNameIndexById.size(); ++id)
+    {
+        const MonsterDisplayNameEntry *pDisplayEntry = findDisplayEntryById(int(id));
+        if (pDisplayEntry == nullptr)
+        {
+            continue;
+        }
+
+        const auto iterator = m_entryIndexByInternalName.find(pDisplayEntry->pictureName);
+        if (iterator != m_entryIndexByInternalName.end())
+        {
+            m_entryIndexByDisplayId[id] = iterator->second;
+        }
+    }
+}
+
+const MonsterEntry *MonsterTable::findByDisplayEntryId(int id) const
+{
+    if (id < 0 || size_t(id) >= m_entryIndexByDisplayId.size())
+    {
+        return nullptr;
+    }
+
+    return findById(m_entryIndexByDisplayId[size_t(id)]);
 }
 
 bool MonsterTable::loadStatsFromRows(const std::vector<std::vector<std::string>> &rows)
@@ -1235,6 +1271,92 @@ const MonsterEntry *MonsterTable::findById(int16_t monsterId) const
     }
 
     return &m_entries[index];
+}
+
+bool MonsterTable::loadMeleeHitMaterialsFromRows(const std::vector<std::vector<std::string>> &materialRows)
+{
+    static constexpr size_t ColumnName = 1;
+    static constexpr size_t ColumnFirstSound = 2;
+    static constexpr size_t ColumnContactEffect = 5;
+    static constexpr size_t ColumnBlood = 6;
+
+    m_meleeHitMaterials.clear();
+    m_meleeHitMaterialIndexByEntry.clear();
+    std::unordered_map<std::string, size_t> materialIndexByName;
+
+    for (const std::vector<std::string> &row : materialRows)
+    {
+        if (row.size() <= ColumnName || !isNumericString(trimCopy(row[0])) || trimCopy(row[ColumnName]).empty())
+        {
+            continue;
+        }
+
+        MeleeHitMaterial material = {};
+        material.name = trimCopy(row[ColumnName]);
+
+        for (size_t strength = 0; strength < material.impactSoundPaths.size(); ++strength)
+        {
+            const size_t column = ColumnFirstSound + strength;
+            material.impactSoundPaths[strength] = row.size() > column ? trimCopy(row[column]) : "";
+        }
+
+        material.contactEffectId = row.size() > ColumnContactEffect ? trimCopy(row[ColumnContactEffect]) : "";
+        material.blood = row.size() > ColumnBlood && trimCopy(row[ColumnBlood]) == "1";
+        materialIndexByName[toLowerCopy(material.name)] = m_meleeHitMaterials.size();
+        m_meleeHitMaterials.push_back(std::move(material));
+    }
+
+    const auto fleshIt = materialIndexByName.find("flesh");
+
+    if (fleshIt == materialIndexByName.end())
+    {
+        return false;
+    }
+
+    m_meleeHitMaterialIndexByEntry.assign(m_entries.size(), fleshIt->second);
+
+    for (size_t entryIndex = 0; entryIndex < m_entries.size(); ++entryIndex)
+    {
+        const std::string &materialName = m_entries[entryIndex].hitMaterial;
+
+        if (materialName.empty())
+        {
+            continue;
+        }
+
+        const auto materialIt = materialIndexByName.find(toLowerCopy(materialName));
+
+        if (materialIt == materialIndexByName.end())
+        {
+            std::cerr << "Monster " << m_entries[entryIndex].internalName << " names unknown hit material "
+                      << materialName << '\n';
+            return false;
+        }
+
+        m_meleeHitMaterialIndexByEntry[entryIndex] = materialIt->second;
+    }
+
+    return true;
+}
+
+const MonsterTable::MeleeHitMaterial *MonsterTable::findMeleeHitMaterial(int16_t monsterId) const
+{
+    if (m_meleeHitMaterials.empty())
+    {
+        return nullptr;
+    }
+
+    const MonsterEntry *pEntry = findByDisplayEntryId(monsterId);
+
+    if (pEntry == nullptr)
+    {
+        pEntry = findById(monsterId);
+    }
+
+    const size_t entryIndex = pEntry != nullptr ? static_cast<size_t>(pEntry - m_entries.data()) : 0;
+    return entryIndex < m_meleeHitMaterialIndexByEntry.size()
+        ? &m_meleeHitMaterials[m_meleeHitMaterialIndexByEntry[entryIndex]]
+        : &m_meleeHitMaterials.front();
 }
 
 const MonsterTable::MonsterStatsEntry *MonsterTable::findStatsById(int16_t monsterId) const

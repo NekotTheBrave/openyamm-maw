@@ -24,6 +24,15 @@ void main()
     float rangeScale = mix(0.8, 1.0, seed);
     float fade = 1.0 - smoothstep(u_terrainDecorationParams.y * rangeScale,
                                 u_terrainDecorationParams.z * rangeScale, distance);
+    if (u_terrainDecorationParams.w > 0.5)
+    {
+        // Grass thins out tuft by tuft: each vanishes at its own distance in the far band, over a short stretch in
+        // which the fragment shader raises its alpha cutoff. Per-pixel noise there sparkled while the camera moved:
+        // a distant tuft is a few pixels across, so every pixel hit a different noise cell from frame to frame.
+        float vanish = mix(u_terrainDecorationParams.y, u_terrainDecorationParams.z, fract(seed * 61.7 + 0.31));
+        float stretch = (u_terrainDecorationParams.z - u_terrainDecorationParams.y) * 0.12;
+        fade = 1.0 - smoothstep(vanish - stretch, vanish, distance);
+    }
     float c = cos(i_data0.w);
     float s = sin(i_data0.w);
     vec3 position = a_position;

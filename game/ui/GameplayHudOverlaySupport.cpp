@@ -1202,51 +1202,34 @@ void GameplayHudOverlaySupport::renderGameplayMouseLookOverlay(
     const float stroke = std::max(1.0f, std::round(1.0f * overlayScale));
     const uint32_t dotColor = packHudColorAbgr(255, 250, 224);
     const uint32_t outlineColor = packHudColorAbgr(16, 20, 17);
-    const std::optional<GameplayScreenRuntime::HudTextureHandle> dotTexture =
-        context.gameplayUiRuntime().ensureSolidHudTextureLoaded("__gameplay_mouse_look_marker__", dotColor);
-    const std::optional<GameplayScreenRuntime::HudTextureHandle> outlineTexture =
-        context.gameplayUiRuntime().ensureSolidHudTextureLoaded("__gameplay_mouse_look_marker_outline__", outlineColor);
+    const std::optional<GameplayHudPaletteColor> dotColorTexel =
+        context.gameplayUiRuntime().ensureHudPaletteColor(dotColor);
+    const std::optional<GameplayHudPaletteColor> outlineColorTexel =
+        context.gameplayUiRuntime().ensureHudPaletteColor(outlineColor);
 
-    if (!dotTexture || !outlineTexture)
+    if (!dotColorTexel || !outlineColorTexel)
     {
         return;
     }
 
-    const auto submitQuad =
-        [&context](const GameplayScreenRuntime::HudTextureHandle &texture, float x, float y, float quadWidth, float quadHeight)
-        {
-            context.submitHudTexturedQuad(texture, x, y, quadWidth, quadHeight);
-        };
-
     // Keep the aiming center open, with a complete dark contour on every ivory arm.
-    submitQuad(
-        *outlineTexture,
-        centerX - stroke * 0.5f - outlineWidth,
-        centerY - armGap - armLength - outlineWidth,
-        stroke + outlineWidth * 2.0f,
-        armLength + outlineWidth * 2.0f);
-    submitQuad(
-        *outlineTexture,
-        centerX - stroke * 0.5f - outlineWidth,
-        centerY + armGap - outlineWidth,
-        stroke + outlineWidth * 2.0f,
-        armLength + outlineWidth * 2.0f);
-    submitQuad(
-        *outlineTexture,
-        centerX - armGap - armLength - outlineWidth,
-        centerY - stroke * 0.5f - outlineWidth,
-        armLength + outlineWidth * 2.0f,
-        stroke + outlineWidth * 2.0f);
-    submitQuad(
-        *outlineTexture,
-        centerX + armGap - outlineWidth,
-        centerY - stroke * 0.5f - outlineWidth,
-        armLength + outlineWidth * 2.0f,
-        stroke + outlineWidth * 2.0f);
-
-    submitQuad(*dotTexture, centerX - stroke * 0.5f, centerY - armGap - armLength, stroke, armLength);
-    submitQuad(*dotTexture, centerX - stroke * 0.5f, centerY + armGap, stroke, armLength);
-    submitQuad(*dotTexture, centerX - armGap - armLength, centerY - stroke * 0.5f, armLength, stroke);
-    submitQuad(*dotTexture, centerX + armGap, centerY - stroke * 0.5f, armLength, stroke);
+    const float outlineStroke = stroke + outlineWidth * 2.0f;
+    const float outlineArm = armLength + outlineWidth * 2.0f;
+    const std::vector<GameplayHudBatchQuad> quads = {
+        gameplayHudPaletteQuad(*outlineColorTexel, centerX - stroke * 0.5f - outlineWidth,
+            centerY - armGap - armLength - outlineWidth, outlineStroke, outlineArm),
+        gameplayHudPaletteQuad(*outlineColorTexel, centerX - stroke * 0.5f - outlineWidth,
+            centerY + armGap - outlineWidth, outlineStroke, outlineArm),
+        gameplayHudPaletteQuad(*outlineColorTexel, centerX - armGap - armLength - outlineWidth,
+            centerY - stroke * 0.5f - outlineWidth, outlineArm, outlineStroke),
+        gameplayHudPaletteQuad(*outlineColorTexel, centerX + armGap - outlineWidth,
+            centerY - stroke * 0.5f - outlineWidth, outlineArm, outlineStroke),
+        gameplayHudPaletteQuad(*dotColorTexel, centerX - stroke * 0.5f, centerY - armGap - armLength,
+            stroke, armLength),
+        gameplayHudPaletteQuad(*dotColorTexel, centerX - stroke * 0.5f, centerY + armGap, stroke, armLength),
+        gameplayHudPaletteQuad(*dotColorTexel, centerX - armGap - armLength, centerY - stroke * 0.5f,
+            armLength, stroke),
+        gameplayHudPaletteQuad(*dotColorTexel, centerX + armGap, centerY - stroke * 0.5f, armLength, stroke)};
+    context.submitHudQuadBatch(quads);
 }
 } // namespace OpenYAMM::Game

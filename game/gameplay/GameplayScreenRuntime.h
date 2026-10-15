@@ -41,6 +41,8 @@ class ItemTable;
 class MergedComplexItemPictureTable;
 class MonsterTable;
 class MergedPotionSettingTable;
+class PotionMixingTable;
+class PotionNoteTable;
 class MergedReagentSettingTable;
 class MergedNpcProfessionTable;
 class StandardItemEnchantTable;
@@ -100,7 +102,7 @@ public:
     bool contextActionButtonVisible() const;
     bool passTurnBasedTurn();
     // Android turn-based Pass strip: the context action slot, or directly above a visible context action.
-    std::optional<ResolvedHudLayoutElement> resolveMobilePassTurnButton(int width, int height) const;
+    std::optional<ResolvedHudLayoutElement> resolvePassTurnButton(int width, int height) const;
     float partyX() const;
     float partyY() const;
     float partyFootZ() const;
@@ -113,6 +115,8 @@ public:
     const CharacterInspectTable *characterInspectTable() const;
     const RosterTable *rosterTable() const;
     const ReadableScrollTable *readableScrollTable() const;
+    const PotionMixingTable *potionMixingTable() const;
+    const PotionNoteTable *potionNoteTable() const;
     const MergedPotionSettingTable *mergedPotionSettingTable() const;
     const MergedReagentSettingTable *mergedReagentSettingTable() const;
     const MergedNpcProfessionTable *mergedNpcProfessionTable() const;
@@ -390,10 +394,10 @@ public:
         const HudFontHandle &font,
         const std::string &text,
         float maxWidth) const;
-    bgfx::TextureHandle ensureHudFontMainTextureColor(const HudFontHandle &font, uint32_t colorAbgr) const;
+    GameplayHudFontLayer hudFontMainLayer(const HudFontHandle &font, uint32_t colorAbgr) const;
     void renderHudFontLayer(
         const HudFontHandle &font,
-        bgfx::TextureHandle textureHandle,
+        const GameplayHudFontLayer &layer,
         const std::string &text,
         float textX,
         float textY,
@@ -405,10 +409,7 @@ public:
     void clearSharedUiRuntime();
     bool hasHudRenderResources() const;
     void prepareHudView(int width, int height) const;
-    void submitHudQuadBatch(
-        const std::vector<GameplayHudBatchQuad> &quads,
-        int screenWidth,
-        int screenHeight) const;
+    void submitHudQuadBatch(const std::vector<GameplayHudBatchQuad> &quads) const;
     void renderViewportSidePanels(
         int screenWidth,
         int screenHeight,

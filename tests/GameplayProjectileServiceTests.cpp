@@ -9,8 +9,15 @@
 #include "game/party/SpellIds.h"
 
 #include <algorithm>
+#include <cctype>
+#include <filesystem>
+#include <fstream>
+#include <map>
+#include <sstream>
+#include <string>
 #include <vector>
 
+using OpenYAMM::Game::GameplayProjectileEndPresentationState;
 using OpenYAMM::Game::GameplayProjectileService;
 using OpenYAMM::Game::SoundId;
 using OpenYAMM::Game::SkillMastery;
@@ -431,12 +438,16 @@ TEST_CASE("Normal-sprite projectile families do not get particle-only recipes")
         int spellId = 0;
         const char *pObjectName = "";
         const char *pSpriteName = "";
+        ProjectileRecipe expectedRecipe = ProjectileRecipe::None;
     };
 
     const Fixture fixtures[] = {
-        {0, "FireArrow", "FrArw"},
-        {static_cast<int>(SpellId::DeadlySwarm), "Deadly Swarm", "spell37"},
-        {static_cast<int>(SpellId::PrismaticLight), "Prismatic Light", "spell84"},
+        {0, "FireArrow", "FrArw", ProjectileRecipe::FireArrow},
+        {static_cast<int>(SpellId::DeadlySwarm), "Deadly Swarm", "spell37", ProjectileRecipe::DeadlySwarm},
+        {0, "Deadly Swarm", "spell37", ProjectileRecipe::DeadlySwarm},
+        {static_cast<int>(SpellId::PrismaticLight), "Prismatic Light", "spell84", ProjectileRecipe::PrismaticLight},
+        {static_cast<int>(SpellId::ShrinkingRay), "Shrinking Ray", "spell92", ProjectileRecipe::ShrinkingRay},
+        {static_cast<int>(SpellId::Lifedrain), "LifeDrain", "spell107", ProjectileRecipe::Lifedrain},
     };
 
     for (const Fixture &fixture : fixtures)
@@ -449,8 +460,12 @@ TEST_CASE("Normal-sprite projectile families do not get particle-only recipes")
         const OpenYAMM::Game::FxRecipes::ProjectileFxRecipe &fxRecipe =
             OpenYAMM::Game::FxRecipes::projectileFxRecipe(recipe);
 
-        CHECK(recipe == ProjectileRecipe::None);
+        // These recipes exist only so the enhanced style can bind them; classically they are plain.
+        CHECK(recipe == fixture.expectedRecipe);
+        CHECK(OpenYAMM::Game::FxRecipes::projectileRecipeIsBindingOnly(recipe));
         CHECK(fxRecipe.renderProjectileBillboard);
+        CHECK_EQ(fxRecipe.trailPrimitive, OpenYAMM::Game::FxRecipes::ProjectileFxPrimitive::None);
+        CHECK_EQ(OpenYAMM::Game::FxRecipes::projectileRecipeGlowRadius(recipe), doctest::Approx(0.0f));
         CHECK_FALSE(OpenYAMM::Game::FxRecipes::projectileRecipeUsesDedicatedImpactFx(recipe));
     }
 }
@@ -897,6 +912,40 @@ TEST_CASE("direct party projectile impact does not also apply splash to the part
     CHECK(result.expireProjectile);
 }
 
+TEST_CASE("projectile that hits something ends at the hit point for its flight effect")
+{
+    GameplayProjectileService service;
+    GameplayProjectileService::ProjectileState projectile = makeActorProjectile();
+    projectile.projectileId = 42;
+    projectile.x = 0.0f;
+    projectile.y = 0.0f;
+    projectile.z = 64.0f;
+    projectile.velocityX = 8000.0f;
+    projectile.lifetimeTicks = 1000;
+
+    GameplayProjectileService::ProjectileFrameFacts facts = {};
+    facts.deltaSeconds = 1.0f / 60.0f;
+    facts.hasCollision = true;
+    facts.collision.kind = GameplayProjectileService::ProjectileFrameCollisionKind::Party;
+    facts.collision.point = {120.0f, 0.0f, 64.0f};
+    facts.canHitParty = true;
+
+    const GameplayProjectileService::ProjectileFrameResult result =
+        service.updateProjectileFrame(projectile, facts);
+
+    REQUIRE(result.expireProjectile);
+    REQUIRE(result.endPoint.has_value());
+    service.expireProjectile(projectile, result.endPoint);
+    CHECK(projectile.isExpired);
+
+    const std::vector<GameplayProjectileEndPresentationState> ended = service.takeEndedProjectiles();
+    REQUIRE_EQ(ended.size(), 1u);
+    CHECK_EQ(ended[0].projectileId, 42u);
+    CHECK_EQ(ended[0].x, doctest::Approx(120.0f));
+    CHECK_EQ(ended[0].z, doctest::Approx(64.0f));
+    CHECK(service.takeEndedProjectiles().empty());
+}
+
 TEST_CASE("projectile lifetime advances at 128hz instead of render-frame rate")
 {
     GameplayProjectileService service;
@@ -1026,4 +1075,60 @@ TEST_CASE("center anchored projectile impact visuals keep the collision point z"
     REQUIRE(centerAnchoredResult.spawned);
     REQUIRE(centerAnchoredResult.pImpact != nullptr);
     CHECK_EQ(centerAnchoredResult.pImpact->z, 100.0f);
+}
+
+TEST_CASE("Every spell's projectile object classifies to the same recipe as the spell itself")
+{
+    // Sprite tokens must not catch other spells' sprites: "spell10" (Inferno) once caught MM8's "spell100" breath
+    // weapon, so Flame Blast flew as an invisible Inferno.
+    const std::filesystem::path tables = std::filesystem::path(OPENYAMM_SOURCE_DIR) / "assets_dev/engine/data_tables";
+    const auto readRows = [](const std::filesystem::path &path)
+    {
+        std::vector<std::vector<std::string>> rows;
+        std::ifstream file(path);
+        std::string line;
+        while (std::getline(file, line))
+        {
+            std::vector<std::string> columns;
+            std::stringstream row(line);
+            std::string column;
+            while (std::getline(row, column, '\t'))
+            {
+                columns.push_back(column);
+            }
+            rows.push_back(std::move(columns));
+        }
+        return rows;
+    };
+    std::map<int, std::pair<std::string, std::string>> objects;
+    for (const std::vector<std::string> &row : readRows(tables / "object_list.txt"))
+    {
+        if (row.size() > 2 && !row[2].empty() && std::isdigit(static_cast<unsigned char>(row[2][0])) != 0)
+        {
+            objects[std::stoi(row[2])] = {row[0], row[1]};
+        }
+    }
+    size_t checked = 0;
+    for (const std::vector<std::string> &row : readRows(tables / "spells.txt"))
+    {
+        if (row.size() < 21 || row[0].empty() || std::isdigit(static_cast<unsigned char>(row[0][0])) == 0
+            || row[20].empty() || std::isdigit(static_cast<unsigned char>(row[20][0])) == 0)
+        {
+            continue;
+        }
+        const int spellId = std::stoi(row[0]);
+        const ProjectileRecipe bySpell = OpenYAMM::Game::FxRecipes::classifyProjectileRecipe(spellId, "", "", 0);
+        const auto object = objects.find(std::stoi(row[20]));
+        if (bySpell == ProjectileRecipe::None || object == objects.end())
+        {
+            continue;
+        }
+        INFO(spellId, " ", row[2], " object ", object->second.first, " sprite ", object->second.second);
+        CHECK(OpenYAMM::Game::FxRecipes::classifyProjectileRecipe(
+                  spellId, object->second.first, object->second.second, 0) == bySpell);
+        ++checked;
+    }
+    CHECK(checked > 20);
+    CHECK(OpenYAMM::Game::FxRecipes::classifyProjectileRecipe(123, "Breath Weapon 2", "spell100", 0)
+        == ProjectileRecipe::DragonBreath);
 }

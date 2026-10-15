@@ -161,6 +161,7 @@ public:
 BgfxContext::BgfxContext()
     : m_isInitialized(false)
     , m_verticalSync(false)
+    , m_maxAnisotropy(1)
     , m_rendererType(bgfx::RendererType::Noop)
     , m_pCallback(std::make_unique<Callback>())
 {
@@ -171,9 +172,15 @@ BgfxContext::~BgfxContext()
     shutdown();
 }
 
-uint32_t bgfxResetFlags(bool verticalSync)
+uint32_t bgfxResetFlags(bool verticalSync, uint8_t maxAnisotropy)
 {
-    uint32_t flags = BGFX_RESET_MAXANISOTROPY;
+    uint32_t flags = BGFX_RESET_NONE;
+
+    // Anisotropic samplers filter up to this level (the device maximum clamps it); without the flag they are trilinear.
+    if (maxAnisotropy > 1)
+    {
+        flags |= BGFX_RESET_MAXANISOTROPY | BGFX_RESET_MAXANISOTROPY_LEVEL(maxAnisotropy);
+    }
 
     if (verticalSync)
     {
@@ -183,7 +190,8 @@ uint32_t bgfxResetFlags(bool verticalSync)
     return flags;
 }
 
-bool BgfxContext::initialize(SDL_Window *pWindow, int windowWidth, int windowHeight, bool verticalSync)
+bool BgfxContext::initialize(
+    SDL_Window *pWindow, int windowWidth, int windowHeight, bool verticalSync, uint8_t maxAnisotropy)
 {
     shutdown();
 
@@ -196,7 +204,7 @@ bool BgfxContext::initialize(SDL_Window *pWindow, int windowWidth, int windowHei
     init.platformData = resolvePlatformData(pWindow);
     init.resolution.width = static_cast<uint32_t>(windowWidth);
     init.resolution.height = static_cast<uint32_t>(windowHeight);
-    init.resolution.reset = bgfxResetFlags(verticalSync);
+    init.resolution.reset = bgfxResetFlags(verticalSync, maxAnisotropy);
     init.callback = m_pCallback.get();
 
     if (!bgfx::init(init))
@@ -208,6 +216,7 @@ bool BgfxContext::initialize(SDL_Window *pWindow, int windowWidth, int windowHei
     g_bgfxInitialized = true;
     m_isInitialized = true;
     m_verticalSync = verticalSync;
+    m_maxAnisotropy = maxAnisotropy;
     m_rendererType = bgfx::getRendererType();
 
     bgfx::setDebug(BGFX_DEBUG_NONE);
@@ -233,7 +242,7 @@ void BgfxContext::resize(SDL_Window *pWindow, int windowWidth, int windowHeight)
     bgfx::reset(
         static_cast<uint32_t>(windowWidth),
         static_cast<uint32_t>(windowHeight),
-        bgfxResetFlags(m_verticalSync));
+        bgfxResetFlags(m_verticalSync, m_maxAnisotropy));
 }
 
 void BgfxContext::shutdown()
@@ -246,6 +255,7 @@ void BgfxContext::shutdown()
     bgfx::shutdown();
     m_isInitialized = false;
     m_verticalSync = false;
+    m_maxAnisotropy = 1;
     m_rendererType = bgfx::RendererType::Noop;
     g_bgfxInitialized = false;
 }

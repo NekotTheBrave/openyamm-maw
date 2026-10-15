@@ -223,6 +223,42 @@ void checkFirstSpriteFrameTexture(
 }
 }
 
+TEST_CASE("sprite frame table resolves authored attack contact frames and sound delays")
+{
+    const std::string yamlText =
+        "sprites:\n"
+        "  - sprite_id: 10\n"
+        "    sprite_name: \"testatk\"\n"
+        "    animation_length_raw: 7\n"
+        "    frames:\n"
+        "      - {texture_name: \"testata\", frame_length_raw: 2}\n"
+        "      - {texture_name: \"testatb\", frame_length_raw: 3}\n"
+        "      - {texture_name: \"testatc\", frame_length_raw: 2}\n"
+        "  - sprite_id: 20\n"
+        "    sprite_name: \"otheratk\"\n"
+        "    animation_length_raw: 2\n"
+        "    frames:\n"
+        "      - {texture_name: \"otherata\", frame_length_raw: 2}\n";
+    OpenYAMM::Game::SpriteFrameTable spriteFrameTable;
+    std::string errorMessage;
+    REQUIRE_MESSAGE(spriteFrameTable.loadFromYaml(yamlText, errorMessage, false), errorMessage);
+    CHECK_FALSE(spriteFrameTable.attackImpactTicks(10).has_value());
+
+    REQUIRE_MESSAGE(spriteFrameTable.loadAttackTimingFromYaml(
+        "sprites:\n  TestAtk: {contact_frame: 2, sound_delay: 0.2}\n  otheratk: {contact_frame: 1}\n", errorMessage),
+        errorMessage);
+    const std::optional<int32_t> impactTicks = spriteFrameTable.attackImpactTicks(10);
+    REQUIRE(impactTicks.has_value());
+    CHECK_EQ(*impactTicks, 40);
+    CHECK(spriteFrameTable.attackSoundDelaySeconds(10) == doctest::Approx(0.2f));
+    // A contact frame past the animation's last frame is ignored.
+    CHECK_FALSE(spriteFrameTable.attackImpactTicks(20).has_value());
+    CHECK(spriteFrameTable.attackSoundDelaySeconds(20) == doctest::Approx(0.0f));
+    CHECK_FALSE(spriteFrameTable.loadAttackTimingFromYaml("sprites:\n  testatk: {contact_frame: 0}\n", errorMessage));
+    CHECK_FALSE(spriteFrameTable.loadAttackTimingFromYaml("sprites:\n  testatk: {sound_delay: -1}\n", errorMessage));
+    CHECK_FALSE(spriteFrameTable.loadAttackTimingFromYaml("sprites:\n  testatk: 2\n", errorMessage));
+}
+
 TEST_CASE("settings debug startup options round trip")
 {
     const std::filesystem::path path =
@@ -331,7 +367,11 @@ TEST_CASE("android settings profile uses mobile interaction defaults without dia
 
     REQUIRE_MESSAGE(settings.has_value(), error.c_str());
     CHECK_EQ(settings->settingsProfileName, "android");
-    CHECK_EQ(settings->settingsProfileVersion, 2);
+    CHECK_EQ(settings->settingsProfileVersion, 3);
+    CHECK_EQ(settings->terrainSubdivision, 2);
+    CHECK_FALSE(settings->terrainAntiTiling);
+    CHECK_EQ(settings->terrainAnisotropy, "2x");
+    CHECK_EQ(settings->waterReflectionSize, 256);
     CHECK(settings->contextActionPopup);
     CHECK(settings->startInMainMenu);
     CHECK(settings->verticalSync);
@@ -383,7 +423,7 @@ TEST_CASE("legacy Android settings migration changes platform defaults once and 
 
     REQUIRE(OpenYAMM::Game::migrateLegacyAndroidSettings(settings));
     CHECK_EQ(settings.settingsProfileName, "android");
-    CHECK_EQ(settings.settingsProfileVersion, 2);
+    CHECK_EQ(settings.settingsProfileVersion, 3);
     CHECK(settings.contextActionPopup);
     CHECK(settings.startInMainMenu);
     CHECK(settings.verticalSync);
@@ -426,13 +466,34 @@ TEST_CASE("Android profile version two only migrates character creation defaults
     settings.allowIncompleteCharacterCreation = true;
 
     REQUIRE(OpenYAMM::Game::migrateLegacyAndroidSettings(settings));
-    CHECK_EQ(settings.settingsProfileVersion, 2);
+    CHECK_EQ(settings.settingsProfileVersion, 3);
     CHECK_EQ(settings.soundVolume, 5);
     CHECK_EQ(settings.startWorldId, "mm6");
     CHECK_FALSE(settings.contextActionPopup);
     CHECK_FALSE(settings.preseedParty);
     CHECK_FALSE(settings.newGameGodLich);
     CHECK_FALSE(settings.allowIncompleteCharacterCreation);
+}
+
+TEST_CASE("Android profile version three lightens terrain filtering and water reflections it still defaults")
+{
+    OpenYAMM::Game::GameSettings settings = OpenYAMM::Game::GameSettings::createDefault();
+    settings.settingsProfileName = "android";
+    settings.settingsProfileVersion = 2;
+    settings.terrainAnisotropy = "4x";
+    settings.waterReflectionSize = 512;
+
+    REQUIRE(OpenYAMM::Game::migrateLegacyAndroidSettings(settings));
+    CHECK_EQ(settings.settingsProfileVersion, 3);
+    CHECK_EQ(settings.terrainAnisotropy, "2x");
+    CHECK_EQ(settings.waterReflectionSize, 256);
+
+    settings.settingsProfileVersion = 2;
+    settings.terrainAnisotropy = "8x";
+    settings.waterReflectionSize = 1024;
+    REQUIRE(OpenYAMM::Game::migrateLegacyAndroidSettings(settings));
+    CHECK_EQ(settings.terrainAnisotropy, "8x");
+    CHECK_EQ(settings.waterReflectionSize, 1024);
 }
 
 TEST_CASE("settings monster bolster feature defaults off")

@@ -432,20 +432,8 @@ float resolveMechanismDistance(
 
 const MonsterEntry *resolveRuntimeMonsterEntry(const MonsterTable &monsterTable, const MapDeltaActor &actor)
 {
-    const MonsterTable::MonsterDisplayNameEntry *pDisplayEntry =
-        monsterTable.findDisplayEntryById(actor.monsterInfoId);
-
-    if (pDisplayEntry != nullptr)
-    {
-        const MonsterEntry *pMonsterEntry = monsterTable.findByInternalName(pDisplayEntry->pictureName);
-
-        if (pMonsterEntry != nullptr)
-        {
-            return pMonsterEntry;
-        }
-    }
-
-    return monsterTable.findById(actor.monsterId);
+    const MonsterEntry *pMonsterEntry = monsterTable.findByDisplayEntryId(actor.monsterInfoId);
+    return pMonsterEntry != nullptr ? pMonsterEntry : monsterTable.findById(actor.monsterId);
 }
 
 uint16_t resolveRuntimeActorSpriteFrameIndex(
@@ -2583,11 +2571,13 @@ IndoorRenderer::IndoorRenderer(SpriteAtlasCache &spriteAtlasCache, NativeSpriteT
     , m_doorMarkerVertexBufferHandle(BGFX_INVALID_HANDLE)
     , m_programHandle(BGFX_INVALID_HANDLE)
     , m_texturedProgramHandle(BGFX_INVALID_HANDLE)
+    , m_hudTintedProgramHandle(BGFX_INVALID_HANDLE)
     , m_indoorLitProgramHandle(BGFX_INVALID_HANDLE)
     , m_billboardProgramHandle(BGFX_INVALID_HANDLE)
     , m_bloodSplatVertexBufferHandle(BGFX_INVALID_HANDLE)
     , m_bloodSplatTextureHandle(BGFX_INVALID_HANDLE)
     , m_textureSamplerHandle(BGFX_INVALID_HANDLE)
+    , m_hudTintUniformHandle(BGFX_INVALID_HANDLE)
     , m_indoorLightPositionsUniformHandle(BGFX_INVALID_HANDLE)
     , m_indoorLightColorsUniformHandle(BGFX_INVALID_HANDLE)
     , m_indoorLightParamsUniformHandle(BGFX_INVALID_HANDLE)
@@ -2668,6 +2658,7 @@ bool IndoorRenderer::initialize(
     m_pItemTable = &itemTable;
     m_pIndoorMapData = &indoorMapData;
     m_billboardLightingCache.clear();
+    m_modelSectorCache.clear();
     clearPortalVisibilityCaches();
     m_pSceneRuntime = &sceneRuntime;
     m_indoorPortalGraph = buildIndoorPortalGraph(
@@ -2939,6 +2930,7 @@ bool IndoorRenderer::initialize(
     m_faceCount = static_cast<uint32_t>(indoorMapData.faces.size());
     m_programHandle = loadProgram("vs_cubes", "fs_cubes");
     m_texturedProgramHandle = loadProgram("vs_shadowmaps_texture", "fs_shadowmaps_texture");
+    m_hudTintedProgramHandle = loadProgram("vs_shadowmaps_texture", "fs_menu_tint");
     m_indoorLitProgramHandle = loadProgram("vs_indoor_textured_lit", "fs_indoor_textured_lit");
     m_billboardProgramHandle = loadProgram("vs_outdoor_billboard_lit", "fs_outdoor_billboard_lit");
     if (!m_spriteAtlasCache.hasProgram())
@@ -2963,6 +2955,7 @@ bool IndoorRenderer::initialize(
         std::cerr << "IndoorRenderer: model attachments require renderer instancing support\n";
     }
     m_textureSamplerHandle = bgfx::createUniform("s_texColor", bgfx::UniformType::Sampler);
+    m_hudTintUniformHandle = bgfx::createUniform("u_menuTint", bgfx::UniformType::Vec4);
     m_indoorLightPositionsUniformHandle =
         bgfx::createUniform("u_indoorLightPositions", bgfx::UniformType::Vec4, MaxIndoorShaderLights);
     m_indoorLightColorsUniformHandle =
@@ -3084,19 +3077,28 @@ void IndoorRenderer::preloadAtlasAnimations()
                 m_spriteAtlasCache.preload(*m_pAssetFileSystem, frames, actionFrame);
             }
         };
+        // A model draws a bound monster: none of its sprites is needed.
         if (runtimeMapDeltaData())
         {
             for (const RuntimeActorBillboard &actor : buildRuntimeActorBillboards(
                 *m_monsterTable, frames, *runtimeMapDeltaData(), &m_pSceneRuntime->worldRuntime()))
             {
-                preloadActor(actor);
+                const IndoorWorldRuntime::MapActorAiState *pActorAiState =
+                    m_pSceneRuntime->worldRuntime().mapActorAiState(actor.actorIndex);
+                if (pActorAiState == nullptr || !m_indoorActorPreviewBillboardSet->drawsModel(pActorAiState->monsterId))
+                {
+                    preloadActor(actor);
+                }
             }
         }
         else
         {
             for (const ActorPreviewBillboard &actor : m_indoorActorPreviewBillboardSet->billboards)
             {
-                preloadActor(actor);
+                if (!actor.modelled)
+                {
+                    preloadActor(actor);
+                }
             }
         }
     }
@@ -3191,10 +3193,10 @@ std::vector<uint8_t> IndoorRenderer::buildVisibleSectorMask(const bx::Vec3 &came
         return cache.visibleSectorMask;
     }
 
-    const float cosPitch = std::cos(m_cameraPitchRadians);
-    const float sinPitch = std::sin(m_cameraPitchRadians);
-    const float cosYaw = std::cos(m_cameraYawRadians);
-    const float sinYaw = std::sin(m_cameraYawRadians);
+    const float cosPitch = std::cos(viewPitchRadians());
+    const float sinPitch = std::sin(viewPitchRadians());
+    const float cosYaw = std::cos(viewYawRadians());
+    const float sinYaw = std::sin(viewYawRadians());
     IndoorPortalVisibilityInput input = {};
     input.pMapData = m_pIndoorMapData;
     input.pPortalGraph = m_indoorPortalGraph ? &m_indoorPortalGraph.value() : nullptr;
@@ -3681,7 +3683,7 @@ void IndoorRenderer::render(
 
     const GameSettings &settings = gameSession.gameplayScreenRuntime().settingsSnapshot();
     m_worldFxSystem.waterRipples().setEnabled(
-        settings.waterShader && settings.waterMovementRipples && m_waterRenderer.isReady());
+        settings.waterMovementRipples && m_waterRenderer.isReady());
     m_logIndoorVisibilityDiagnostics = settings.logIndoorVisibility;
     m_logIndoorPerformanceDiagnostics = settings.performanceTrace;
     const bool bakedStaticColorModeChanged = m_bakedStaticColoredLights != settings.coloredLights;
@@ -3865,14 +3867,14 @@ void IndoorRenderer::render(
         m_modelRenderer.preload(m_worldFxSystem.models());
         m_modelRenderer.preloadStatic(m_decorationModels.groups());
         m_effectRenderer.preload(m_worldFxSystem.namedEffects(), m_worldFxSystem.namedEffectResources(),
-            *m_pAssetFileSystem);
+            *m_pAssetFileSystem, m_worldFxSystem.projectileEffectSpriteResources());
     }
 
     const uint64_t viewSetupBeginTickCount = collectRenderDiagnostics ? SDL_GetTicksNS() : 0;
-    const float cosPitch = std::cos(m_cameraPitchRadians);
-    const float sinPitch = std::sin(m_cameraPitchRadians);
-    const float cosYaw = std::cos(m_cameraYawRadians);
-    const float sinYaw = std::sin(m_cameraYawRadians);
+    const float cosPitch = std::cos(viewPitchRadians());
+    const float sinPitch = std::sin(viewPitchRadians());
+    const float cosYaw = std::cos(viewYawRadians());
+    const float sinYaw = std::sin(viewYawRadians());
     const bx::Vec3 viewForward = {cosYaw * cosPitch, sinYaw * cosPitch, sinPitch};
 
     const bx::Vec3 eye = {m_cameraPositionX, m_cameraPositionY, m_cameraPositionZ};
@@ -3910,12 +3912,11 @@ void IndoorRenderer::render(
         m_indoorPerformanceDiagnostics.renderViewSetupNanoseconds += SDL_GetTicksNS() - viewSetupBeginTickCount;
     }
 
-    if (settings.waterShader && m_waterGeometryDirty)
+    if (m_waterGeometryDirty)
     {
         updateWaterGeometry();
     }
-    const bool enhancedWater = settings.waterShader && m_waterRenderer.isReady()
-        && !m_indoorGeometryRenderingDisabled && !m_indoorGeometryTranslucent;
+    const bool enhancedWater = m_waterRenderer.isReady() && !m_indoorGeometryRenderingDisabled && !m_indoorGeometryTranslucent;
 
     const uint64_t visibilityBeginTickCount = collectRenderDiagnostics ? SDL_GetTicksNS() : 0;
     const std::vector<uint8_t> renderVisibleSectorMask = buildVisibleSectorMask(eye);
@@ -4278,8 +4279,45 @@ void IndoorRenderer::render(
         modelLighting.keyDirection = {key.x, key.y, key.z};
         modelLighting.keyFraction = IndoorModelKeyFraction;
     }
-    IndoorFaceGeometryCache modelGeometryCache(
-        m_worldFxSystem.models().size() != 0 ? m_pIndoorMapData->faces.size() : 0);
+    if (m_pSceneRuntime != nullptr && runtimeMapDeltaData())
+    {
+        // Like actor sprites, actor models draw only in the sectors the portals reveal.
+        const IndoorWorldRuntime &worldRuntime = m_pSceneRuntime->worldRuntime();
+        const MapDeltaData &mapDeltaData = *runtimeMapDeltaData();
+        m_worldFxSystem.setActorModelVisibility([&](size_t actorIndex)
+        {
+            const IndoorWorldRuntime::MapActorAiState *pActorAiState = worldRuntime.mapActorAiState(actorIndex);
+            const int16_t sectorId = pActorAiState != nullptr && pActorAiState->sectorId >= 0
+                ? pActorAiState->sectorId
+                : actorIndex < mapDeltaData.actors.size() ? mapDeltaData.actors[actorIndex].sectorId : -1;
+            return sectorVisibleForRuntimeBillboard(sectorId, &renderVisibleSectorMask);
+        });
+    }
+    std::optional<IndoorFaceGeometryCache> modelGeometryCache;
+    const auto modelSector = [&](Engine::ModelInstanceHandle handle, const bx::Vec3 &center)
+    {
+        // Light selection only needs the sector; a model is resampled after its centre moves a little.
+        constexpr float ResampleDistanceSquared = 16.0f * 16.0f;
+        if (handle.index >= m_modelSectorCache.size())
+        {
+            m_modelSectorCache.resize(handle.index + 1);
+        }
+        ModelSectorCacheEntry &entry = m_modelSectorCache[handle.index];
+        const bx::Vec3 offset = bx::sub(center, entry.center);
+        if (!entry.valid || entry.generation != handle.generation || bx::dot(offset, offset) > ResampleDistanceSquared)
+        {
+            if (!modelGeometryCache)
+            {
+                modelGeometryCache.emplace(m_pIndoorMapData->faces.size());
+            }
+            entry.generation = handle.generation;
+            entry.center = center;
+            entry.sectorId = findIndoorSectorForPoint(
+                *m_pIndoorMapData, m_renderVertices, center, &*modelGeometryCache).value_or(-1);
+            entry.valid = true;
+        }
+        return entry.sectorId;
+    };
     const ViewFrustum modelFrustum(viewMatrix, projectionMatrix, bgfx::getCaps()->homogeneousDepth);
     const float modelFocalPixels = settings.modelLods ? std::abs(projectionMatrix[5]) * viewHeight * 0.5f : 0.0f;
     if (!m_decorationModels.empty())
@@ -4306,14 +4344,13 @@ void IndoorRenderer::render(
         MainViewId,
         {eye.x, eye.y, eye.z},
         modelLighting,
-        [&](Engine::ModelInstanceHandle, const Engine::ModelBounds &modelBounds)
+        [&](Engine::ModelInstanceHandle handle, const Engine::ModelBounds &modelBounds)
         {
             Engine::ModelRenderLighting selected = modelLighting;
             const bx::Vec3 center = {(modelBounds.min[0] + modelBounds.max[0]) * 0.5f,
                 (modelBounds.min[1] + modelBounds.max[1]) * 0.5f,
                 (modelBounds.min[2] + modelBounds.max[2]) * 0.5f};
-            const int16_t sector = findIndoorSectorForPoint(
-                *m_pIndoorMapData, m_renderVertices, center, &modelGeometryCache).value_or(-1);
+            const int16_t sector = modelSector(handle, center);
             const IndoorLightSelectionBounds bounds = {{modelBounds.min[0], modelBounds.min[1], modelBounds.min[2]},
                 {modelBounds.max[0], modelBounds.max[1], modelBounds.max[2]}, modelBounds.valid};
             const IndoorDrawLightSet lights = IndoorLightingRuntime::selectDrawLightSetForBounds(
@@ -4327,7 +4364,7 @@ void IndoorRenderer::render(
         {
             return modelFrustum.intersectsBounds({bounds.min[0], bounds.min[1], bounds.min[2]},
                 {bounds.max[0], bounds.max[1], bounds.max[2]});
-        }, modelFocalPixels, settings.modelLodOverride, transparentView);
+        }, modelFocalPixels, settings.modelLodOverride, float(SDL_GetTicks()) * 0.001f, transparentView);
     if (collectRenderDiagnostics)
     {
         m_indoorPerformanceDiagnostics.renderParticleNanoseconds += SDL_GetTicksNS() - modelBeginTickCount;
@@ -4372,6 +4409,8 @@ void IndoorRenderer::render(
             viewMatrix,
             eye);
     }
+    m_shieldDomeRenderer.render(transparentView, m_worldFxSystem.shieldDomes(), eye,
+        m_worldFxSystem.shieldDomeTimeSeconds());
 
     if (collectRenderDiagnostics)
     {
@@ -4424,6 +4463,16 @@ bgfx::ProgramHandle IndoorRenderer::hudTexturedProgramHandle() const
 bgfx::UniformHandle IndoorRenderer::hudTextureSamplerHandle() const
 {
     return m_textureSamplerHandle;
+}
+
+bgfx::ProgramHandle IndoorRenderer::hudTintedProgramHandle() const
+{
+    return m_hudTintedProgramHandle;
+}
+
+bgfx::UniformHandle IndoorRenderer::hudTintUniformHandle() const
+{
+    return m_hudTintUniformHandle;
 }
 
 void IndoorRenderer::prepareHudView(int width, int height) const
@@ -4594,13 +4643,16 @@ IndoorRenderer::gameplayActorPickAtCursor(
 
         for (const RuntimeActorBillboard &actor : runtimeActors)
         {
-            if (!isSectorVisible(actor.sectorId, visibleSectorMask))
+            const IndoorWorldRuntime::MapActorAiState *pActorAiState =
+                m_pSceneRuntime->worldRuntime().mapActorAiState(actor.actorIndex);
+
+            // A model actor has no sprite; the inspect ray below picks its model.
+            if (!isSectorVisible(actor.sectorId, visibleSectorMask) || m_worldFxSystem.hasActorModel(actor.actorIndex)
+                || (pActorAiState != nullptr && m_indoorActorPreviewBillboardSet->drawsModel(pActorAiState->monsterId)))
             {
                 continue;
             }
 
-            const IndoorWorldRuntime::MapActorAiState *pActorAiState =
-                m_pSceneRuntime->worldRuntime().mapActorAiState(actor.actorIndex);
             uint16_t spriteFrameIndex = actor.spriteFrameIndex;
             uint32_t frameTimeTicks = actor.useStaticFrame ? 0U : currentAnimationTicks();
 
@@ -4850,10 +4902,10 @@ GameplayWorldPickRequest IndoorRenderer::buildGameplayWorldPickRequest(
     const int viewWidth = std::max(input.screenWidth, 1);
     const int viewHeight = std::max(input.screenHeight, 1);
     const float aspectRatio = float(viewWidth) / float(viewHeight);
-    const float cosPitch = std::cos(m_cameraPitchRadians);
-    const float sinPitch = std::sin(m_cameraPitchRadians);
-    const float cosYaw = std::cos(m_cameraYawRadians);
-    const float sinYaw = std::sin(m_cameraYawRadians);
+    const float cosPitch = std::cos(viewPitchRadians());
+    const float sinPitch = std::sin(viewPitchRadians());
+    const float cosYaw = std::cos(viewYawRadians());
+    const float sinYaw = std::sin(viewYawRadians());
     const bx::Vec3 eye = {
         m_cameraPositionX,
         m_cameraPositionY,
@@ -5021,6 +5073,7 @@ GameplayWorldHit IndoorRenderer::translateInspectHitToGameplayWorldHit(
     const std::optional<std::string> eventTargetStatusText = resolveEventTargetHoverStatusText(inspectHit);
     eventTargetHit.name =
         eventTargetStatusText && !eventTargetStatusText->empty() ? *eventTargetStatusText : inspectHit.name;
+    eventTargetHit.nameEventId = resolveInteractiveDecorationHitEventId(inspectHit).value_or(0);
     eventTargetHit.hitPoint = hitPoint;
     eventTargetHit.distance = inspectHit.distance;
     const uint16_t eventId = inspectHitEventId(inspectHit);
@@ -5135,38 +5188,38 @@ std::optional<std::string> IndoorRenderer::resolveEntityDecorationHoverStatusTex
     return std::nullopt;
 }
 
+std::optional<uint16_t> IndoorRenderer::resolveInteractiveDecorationHitEventId(const InspectHit &inspectHit) const
+{
+    const EventRuntimeState *pEventRuntimeState = runtimeEventRuntimeState();
+
+    if (inspectHit.kind != "entity" || pEventRuntimeState == nullptr)
+    {
+        return std::nullopt;
+    }
+
+    const std::optional<IndoorInteractiveDecorationBinding> binding =
+        resolveIndoorInteractiveDecorationBinding(
+            m_indoorInteractiveDecorationDecorVarIndicesByEntity,
+            m_indoorInteractiveDecorationBaseEventIdsByEntity,
+            m_indoorInteractiveDecorationEventCountsByEntity,
+            m_indoorInteractiveDecorationHideWhenClearedByEntity,
+            m_indoorInteractiveDecorationFixedEventByEntity,
+            inspectHit.index);
+
+    return binding ? resolveIndoorInteractiveDecorationEventId(*pEventRuntimeState, *binding) : std::nullopt;
+}
+
 std::optional<std::string> IndoorRenderer::resolveEventTargetHoverStatusText(const InspectHit &inspectHit) const
 {
     if (inspectHit.kind == "entity")
     {
-        const EventRuntimeState *pEventRuntimeState = runtimeEventRuntimeState();
-
-        if (pEventRuntimeState != nullptr)
+        if (const std::optional<uint16_t> eventId = resolveInteractiveDecorationHitEventId(inspectHit))
         {
-            const std::optional<IndoorInteractiveDecorationBinding> binding =
-                resolveIndoorInteractiveDecorationBinding(
-                    m_indoorInteractiveDecorationDecorVarIndicesByEntity,
-                    m_indoorInteractiveDecorationBaseEventIdsByEntity,
-                    m_indoorInteractiveDecorationEventCountsByEntity,
-                    m_indoorInteractiveDecorationHideWhenClearedByEntity,
-                    m_indoorInteractiveDecorationFixedEventByEntity,
-                    inspectHit.index);
+            const std::optional<std::string> eventHint = resolveIndoorGlobalEventHintText(m_pSceneRuntime, *eventId);
 
-            if (binding)
+            if (eventHint && !eventHint->empty())
             {
-                const std::optional<uint16_t> eventId =
-                    resolveIndoorInteractiveDecorationEventId(*pEventRuntimeState, *binding);
-
-                if (eventId)
-                {
-                    const std::optional<std::string> eventHint =
-                        resolveIndoorGlobalEventHintText(m_pSceneRuntime, *eventId);
-
-                    if (eventHint && !eventHint->empty())
-                    {
-                        return eventHint;
-                    }
-                }
+                return eventHint;
             }
         }
 
@@ -5832,10 +5885,10 @@ bool IndoorRenderer::projectGameplayWorldPointToScreen(
     viewHeight = std::max(viewHeight, 1);
 
     const float aspectRatio = static_cast<float>(viewWidth) / static_cast<float>(viewHeight);
-    const float cosYaw = std::cos(m_cameraYawRadians);
-    const float sinYaw = std::sin(m_cameraYawRadians);
-    const float cosPitch = std::cos(m_cameraPitchRadians);
-    const float sinPitch = std::sin(m_cameraPitchRadians);
+    const float cosYaw = std::cos(viewYawRadians());
+    const float sinYaw = std::sin(viewYawRadians());
+    const float cosPitch = std::cos(viewPitchRadians());
+    const float sinPitch = std::sin(viewPitchRadians());
     const bx::Vec3 eye = {m_cameraPositionX, m_cameraPositionY, m_cameraPositionZ};
     const bx::Vec3 at = {
         eye.x + cosYaw * cosPitch,
@@ -6018,6 +6071,28 @@ std::optional<bx::Vec3> IndoorRenderer::gameplayActorNearestOpaquePoint(
         || !runtimeMapDeltaData())
     {
         return std::nullopt;
+    }
+
+    // A model presents the actor: where the line from the camera to its bounds' centre enters them.
+    if (m_worldFxSystem.hasActorModel(actorIndex))
+    {
+        const Engine::ModelBounds *pBounds = m_worldFxSystem.actorModelBounds(actorIndex);
+        if (pBounds == nullptr || !pBounds->valid)
+        {
+            return std::nullopt;
+        }
+        const bx::Vec3 origin = {m_cameraPositionX, m_cameraPositionY, m_cameraPositionZ};
+        const bx::Vec3 minBounds = {pBounds->min[0], pBounds->min[1], pBounds->min[2]};
+        const bx::Vec3 maxBounds = {pBounds->max[0], pBounds->max[1], pBounds->max[2]};
+        const bx::Vec3 toCenter = bx::sub(bx::mul(bx::add(minBounds, maxBounds), 0.5f), origin);
+        const float length = bx::length(toCenter);
+        float distance = 0.0f;
+        if (length <= 0.0f
+            || !intersectRayAabb(origin, bx::mul(toCenter, 1.0f / length), minBounds, maxBounds, distance))
+        {
+            return std::nullopt;
+        }
+        return bx::mad(toCenter, distance / length, origin);
     }
 
     const std::optional<RuntimeActorBillboard> actor = buildRuntimeActorBillboard(
@@ -6215,6 +6290,20 @@ float IndoorRenderer::cameraPitchRadians() const
     return m_cameraPitchRadians;
 }
 
+float IndoorRenderer::viewYawRadians() const
+{
+    return m_pSceneRuntime != nullptr
+        ? m_cameraYawRadians + m_pSceneRuntime->worldRuntime().actorHitFeedback().cameraKickYawRadians()
+        : m_cameraYawRadians;
+}
+
+float IndoorRenderer::viewPitchRadians() const
+{
+    return m_pSceneRuntime != nullptr
+        ? m_cameraPitchRadians + m_pSceneRuntime->worldRuntime().actorHitFeedback().cameraKickPitchRadians()
+        : m_cameraPitchRadians;
+}
+
 std::optional<IndoorRenderer::InspectHit> IndoorRenderer::inspectHitFromGameplayWorldHit(
     const GameplayWorldHit &hit) const
 {
@@ -6389,11 +6478,13 @@ void IndoorRenderer::shutdown()
     }
     m_worldClipPlaneUniform = BGFX_INVALID_HANDLE;
     m_effectRenderer.shutdown(Engine::BgfxContext::isBgfxInitialized());
+    m_shieldDomeRenderer.shutdown(Engine::BgfxContext::isBgfxInitialized());
     m_modelRenderer.shutdown(Engine::BgfxContext::isBgfxInitialized());
     m_pIndoorMapData = nullptr;
     m_indoorPortalGraph.reset();
     m_indoorLightingRuntime.clearStaticCache();
     m_billboardLightingCache.clear();
+    m_modelSectorCache.clear();
     m_renderVertices.clear();
     m_neighboringSectorIds.clear();
     m_pSceneRuntime = nullptr;
@@ -6429,6 +6520,7 @@ void IndoorRenderer::shutdown()
         m_worldFxRenderResources.reset();
         m_programHandle = BGFX_INVALID_HANDLE;
         m_texturedProgramHandle = BGFX_INVALID_HANDLE;
+        m_hudTintedProgramHandle = BGFX_INVALID_HANDLE;
         m_indoorLitProgramHandle = BGFX_INVALID_HANDLE;
         m_billboardProgramHandle = BGFX_INVALID_HANDLE;
         m_bloodSplatVertexBufferHandle = BGFX_INVALID_HANDLE;
@@ -6438,6 +6530,7 @@ void IndoorRenderer::shutdown()
         m_spawnMarkerVertexBufferHandle = BGFX_INVALID_HANDLE;
         m_doorMarkerVertexBufferHandle = BGFX_INVALID_HANDLE;
         m_textureSamplerHandle = BGFX_INVALID_HANDLE;
+        m_hudTintUniformHandle = BGFX_INVALID_HANDLE;
         m_indoorLightPositionsUniformHandle = BGFX_INVALID_HANDLE;
         m_indoorLightColorsUniformHandle = BGFX_INVALID_HANDLE;
         m_indoorLightParamsUniformHandle = BGFX_INVALID_HANDLE;
@@ -6496,6 +6589,12 @@ void IndoorRenderer::shutdown()
         m_texturedProgramHandle = BGFX_INVALID_HANDLE;
     }
 
+    if (bgfx::isValid(m_hudTintedProgramHandle))
+    {
+        bgfx::destroy(m_hudTintedProgramHandle);
+        m_hudTintedProgramHandle = BGFX_INVALID_HANDLE;
+    }
+
     if (bgfx::isValid(m_indoorLitProgramHandle))
     {
         bgfx::destroy(m_indoorLitProgramHandle);
@@ -6551,6 +6650,12 @@ void IndoorRenderer::shutdown()
     {
         bgfx::destroy(m_textureSamplerHandle);
         m_textureSamplerHandle = BGFX_INVALID_HANDLE;
+    }
+
+    if (bgfx::isValid(m_hudTintUniformHandle))
+    {
+        bgfx::destroy(m_hudTintUniformHandle);
+        m_hudTintUniformHandle = BGFX_INVALID_HANDLE;
     }
 
     if (bgfx::isValid(m_indoorLightPositionsUniformHandle))
@@ -6755,6 +6860,7 @@ void IndoorRenderer::LitBillboardVertex::init()
         .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
         .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
         .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true)
+        .add(bgfx::Attrib::TexCoord2, 1, bgfx::AttribType::Float)
         .end();
 }
 
@@ -7207,7 +7313,6 @@ void IndoorRenderer::renderBloodSplats(
     bgfx::setState(
         BGFX_STATE_WRITE_RGB
         | BGFX_STATE_WRITE_A
-        | BGFX_STATE_WRITE_Z
         | BGFX_STATE_DEPTH_TEST_LEQUAL
         | BGFX_STATE_BLEND_ALPHA);
     bgfx::submit(viewId, m_indoorLitProgramHandle);
@@ -7284,11 +7389,22 @@ void IndoorRenderer::updateDecorationModels(const std::vector<uint8_t> &visibleS
     }
     const std::vector<DecorationBillboard> &billboards = m_indoorDecorationBillboardSet->billboards;
     // The sprite each decoration shows now selects its model; sectors the portal walk did not reach hide theirs.
-    m_decorationModels.update(billboards, [&](size_t index, bool &hidden)
+    const std::optional<EventRuntimeState> &eventRuntimeState = runtimeEventRuntimeStateStorage();
+    m_decorationModels.update(billboards, [&](size_t index, bool &hidden, int &state)
     {
         const DecorationBillboard &billboard = billboards[index];
         const uint16_t sprite = resolveDecorationBillboardSpriteId(billboard, hidden);
         hidden = hidden || !isRenderSectorVisible(billboard.sectorId, visibleSectorMask);
+        const std::optional<IndoorInteractiveDecorationBinding> binding = eventRuntimeState
+            ? resolveIndoorInteractiveDecorationBinding(
+                m_indoorInteractiveDecorationDecorVarIndicesByEntity,
+                m_indoorInteractiveDecorationBaseEventIdsByEntity,
+                m_indoorInteractiveDecorationEventCountsByEntity,
+                m_indoorInteractiveDecorationHideWhenClearedByEntity,
+                m_indoorInteractiveDecorationFixedEventByEntity,
+                billboard.entityIndex)
+            : std::nullopt;
+        state = binding ? eventRuntimeState->decorVars[binding->decorVarIndex] : -1;
         return sprite;
     });
     m_decorationModels.animate(float(SDL_GetTicks()) * 0.001f);
@@ -7307,7 +7423,7 @@ void IndoorRenderer::updateDecorationModels(const std::vector<uint8_t> &visibleS
             }
             const DecorationBillboard &billboard = billboards[billboardIndices[index]];
             placement.outlineColorAbgr = contextActionHighlightsIndoorEntity(pContextActionHit, billboard.entityIndex)
-                ? contextActionHighlightOutlineColor() : 0;
+                && !m_decorationModels.overlayGroup(group) ? contextActionHighlightOutlineColor() : 0;
             // The light the sprite would receive, as the placement's ambient: a model is as bright as the sprite it
             // replaces (a self-lit flame sprite, such as a torch, at exactly one).
             const Engine::ModelBounds &bounds = placements.bounds[index];
@@ -7852,12 +7968,15 @@ void IndoorRenderer::renderActorPreviewBillboards(
         uint32_t hoveredOutlineColorAbgr = 0;
         float heightScale = 1.0f;
         float distanceSquared = 0.0f;
+        float hitFlash = 0.0f;
         bool hasHealthBar = false;
         bool healthBarFocused = false;
         bool healthBarAttacking = false;
         uint16_t healthBarStandingFrame = 0;
         float questMarkerZ = 0.0f;
         uint64_t lightingCacheKey = 0;
+        // A model presents the actor: no sprite, health bar at questMarkerZ.
+        bool modelActor = false;
     };
 
     const std::optional<MapDeltaData> &mapDeltaData = runtimeMapDeltaData();
@@ -7888,6 +8007,32 @@ void IndoorRenderer::renderActorPreviewBillboards(
     std::vector<BillboardDrawItem> drawItems;
     CombatActorHealthBarSelection healthBarSelection = {};
     const bool useRuntimeBillboards = mapDeltaData.has_value() && m_pSceneRuntime != nullptr;
+    // Offers a hostile actor in view a health bar.
+    const auto considerActorHealthBar =
+        [&](BillboardDrawItem &drawItem, const IndoorWorldRuntime::MapActorAiState *pActorAiState)
+        {
+            const size_t actorIndex = drawItem.actorIndex;
+            if (!renderCombatActorHealthBars
+                || pActorAiState == nullptr
+                || !pActorAiState->hostileToParty
+                || !mapDeltaData
+                || actorIndex >= mapDeltaData->actors.size()
+                || mapDeltaData->actors[actorIndex].hp <= 0)
+            {
+                return;
+            }
+            const bool attacking = pActorAiState->hasDetectedParty
+                && (pActorAiState->motionState == ActorAiMotionState::Pursuing
+                    || pActorAiState->motionState == ActorAiMotionState::Attacking);
+            if (drawItem.distanceSquared <= MaximumCombatActorHealthBarDistanceSquared)
+            {
+                pHealthBars->observeActivity(actorIndex, attacking);
+            }
+            considerCombatActorHealthBarCandidate(healthBarSelection,
+                {drawItems.size(), drawItem.distanceSquared, actorIndex, focusedActor == actorIndex,
+                    attacking || pHealthBars->inCombat(actorIndex)}, pSettings->enemyHealthBarMode);
+            drawItem.healthBarAttacking = attacking;
+        };
     drawItems.reserve(
         useRuntimeBillboards
         ? runtimeBillboards.size()
@@ -7915,6 +8060,59 @@ void IndoorRenderer::renderActorPreviewBillboards(
                 m_pSceneRuntime != nullptr
                     ? m_pSceneRuntime->worldRuntime().mapActorAiState(billboard.actorIndex)
                     : nullptr;
+            const bool contextHighlighted = contextActionHighlightsActor(pContextActionHit, billboard.actorIndex);
+            const bool hovered =
+                contextHighlighted
+                || (spriteOutlineEnabled && hoveredActorIndex && *hoveredActorIndex == billboard.actorIndex);
+            const uint32_t hoveredOutlineColorAbgr =
+                hovered && mapDeltaData && billboard.actorIndex < mapDeltaData->actors.size()
+                    ? (contextHighlighted
+                        ? contextActionHighlightOutlineColor()
+                        : resolveHoveredIndoorActorOutlineColor(
+                            mapDeltaData->actors[billboard.actorIndex],
+                            pActorAiState))
+                    : 0;
+
+            // A model presents this actor (or will, from the next model sync) and no sprite is resolved: the draw item
+            // carries the hover outline to the model and anchors the health bar and quest marker at its standing top.
+            if (m_worldFxSystem.hasActorModel(billboard.actorIndex)
+                || (pActorAiState != nullptr && m_indoorActorPreviewBillboardSet->drawsModel(pActorAiState->monsterId)))
+            {
+                if (pReflection != nullptr)
+                {
+                    continue;
+                }
+
+                const float standingTop = m_worldFxSystem.actorModelStandingTop(billboard.actorIndex)
+                    .value_or(static_cast<float>(billboard.height));
+                const bx::Vec3 center = {
+                    static_cast<float>(billboard.x),
+                    static_cast<float>(billboard.y),
+                    static_cast<float>(billboard.z) + standingTop * 0.5f};
+                const float halfHeight = standingTop * 0.5f;
+                const float radius = std::hypot(static_cast<float>(billboard.radius), halfHeight);
+
+                if (!billboardSphereInFrustum(center, radius, frustumPlanes))
+                {
+                    continue;
+                }
+
+                BillboardDrawItem drawItem = {};
+                drawItem.modelActor = true;
+                drawItem.actorIndex = billboard.actorIndex;
+                drawItem.x = billboard.x;
+                drawItem.y = billboard.y;
+                drawItem.z = billboard.z - int(std::lround(m_worldFxSystem.actorCorpseSinkDepth(billboard.actorIndex)));
+                drawItem.sectorId = billboard.sectorId;
+                drawItem.hovered = hovered;
+                drawItem.hoveredOutlineColorAbgr = hoveredOutlineColorAbgr;
+                drawItem.distanceSquared = deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;
+                drawItem.questMarkerZ = static_cast<float>(drawItem.z) + standingTop;
+                considerActorHealthBar(drawItem, pActorAiState);
+                drawItems.push_back(drawItem);
+                continue;
+            }
+
             uint16_t spriteFrameIndex = billboard.spriteFrameIndex;
             uint32_t frameTimeTicks = billboard.useStaticFrame ? 0U : animationTimeTicks;
 
@@ -7985,43 +8183,14 @@ void IndoorRenderer::renderActorPreviewBillboards(
             drawItem.pFrame = pFrame;
             drawItem.pTexture = pTexture;
             drawItem.mirrored = resolvedTexture.mirrored;
-            const bool contextHighlighted = contextActionHighlightsActor(pContextActionHit, billboard.actorIndex);
-            drawItem.hovered =
-                contextHighlighted
-                || (spriteOutlineEnabled && hoveredActorIndex && *hoveredActorIndex == billboard.actorIndex);
+            drawItem.hovered = hovered;
+            drawItem.hoveredOutlineColorAbgr = hoveredOutlineColorAbgr;
             drawItem.heightScale = billboard.heightScale;
             drawItem.lightingCacheKey = billboardLightingCacheKey(2, billboard.actorIndex);
-            if (drawItem.hovered && mapDeltaData && billboard.actorIndex < mapDeltaData->actors.size())
-            {
-                drawItem.hoveredOutlineColorAbgr =
-                    contextHighlighted
-                        ? contextActionHighlightOutlineColor()
-                        : resolveHoveredIndoorActorOutlineColor(
-                            mapDeltaData->actors[billboard.actorIndex],
-                            pActorAiState);
-            }
+            drawItem.hitFlash = m_pSceneRuntime != nullptr
+                ? m_pSceneRuntime->worldRuntime().actorHitFeedback().flashAmount(billboard.actorIndex) : 0.0f;
             drawItem.distanceSquared = deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;
-
-            if (renderCombatActorHealthBars
-                && pActorAiState != nullptr
-                && pActorAiState->hostileToParty
-                && mapDeltaData
-                && billboard.actorIndex < mapDeltaData->actors.size()
-                && mapDeltaData->actors[billboard.actorIndex].hp > 0)
-            {
-                const bool attacking = pActorAiState->hasDetectedParty
-                    && (pActorAiState->motionState == ActorAiMotionState::Pursuing
-                        || pActorAiState->motionState == ActorAiMotionState::Attacking);
-                if (drawItem.distanceSquared <= MaximumCombatActorHealthBarDistanceSquared)
-                {
-                    pHealthBars->observeActivity(billboard.actorIndex, attacking);
-                }
-                considerCombatActorHealthBarCandidate(healthBarSelection,
-                    {drawItems.size(), drawItem.distanceSquared, billboard.actorIndex,
-                        focusedActor == billboard.actorIndex,
-                        attacking || pHealthBars->inCombat(billboard.actorIndex)}, pSettings->enemyHealthBarMode);
-                drawItem.healthBarAttacking = attacking;
-            }
+            considerActorHealthBar(drawItem, pActorAiState);
 
             drawItem.healthBarStandingFrame = billboard.actionSpriteFrameIndices[0] != 0
                 ? billboard.actionSpriteFrameIndices[0] : billboard.spriteFrameIndex;
@@ -8136,7 +8305,7 @@ void IndoorRenderer::renderActorPreviewBillboards(
 
     for (const BillboardDrawItem &drawItem : drawItems)
     {
-        if (m_worldFxSystem.hasActorModel(drawItem.actorIndex))
+        if (drawItem.modelActor)
         {
             if (pReflection == nullptr)
             {
@@ -8306,7 +8475,8 @@ void IndoorRenderer::renderActorPreviewBillboards(
             viewCenter.z - right.z - up.z,
             u0,
             1.0f,
-            vertexColorAbgr
+            vertexColorAbgr,
+            drawItem.hitFlash
         };
         vertices[1] = {
             viewCenter.x - right.x + up.x,
@@ -8314,7 +8484,8 @@ void IndoorRenderer::renderActorPreviewBillboards(
             viewCenter.z - right.z + up.z,
             u0,
             0.0f,
-            vertexColorAbgr
+            vertexColorAbgr,
+            drawItem.hitFlash
         };
         vertices[2] = {
             viewCenter.x + right.x + up.x,
@@ -8322,7 +8493,8 @@ void IndoorRenderer::renderActorPreviewBillboards(
             viewCenter.z + right.z + up.z,
             u1,
             0.0f,
-            vertexColorAbgr
+            vertexColorAbgr,
+            drawItem.hitFlash
         };
         vertices[3] = vertices[0];
         vertices[4] = vertices[2];
@@ -8332,7 +8504,8 @@ void IndoorRenderer::renderActorPreviewBillboards(
             viewCenter.z + right.z - up.z,
             u1,
             1.0f,
-            vertexColorAbgr
+            vertexColorAbgr,
+            drawItem.hitFlash
         };
 
         if (bgfx::getAvailTransientVertexBuffer(static_cast<uint32_t>(vertices.size()), LitBillboardVertex::ms_layout)
@@ -8386,7 +8559,16 @@ void IndoorRenderer::renderActorPreviewBillboards(
     }
     for (const BillboardDrawItem &item : drawItems)
     {
-        if (item.hasHealthBar && pGameSession != nullptr)
+        if (item.hasHealthBar && pGameSession != nullptr && item.modelActor)
+        {
+            EnemyHealthBarRenderer::render(pGameSession->gameplayScreenRuntime(), item.actorIndex,
+                {float(item.x), float(item.y), float(item.z)},
+                {float(item.x), float(item.y), item.questMarkerZ + 26.0f},
+                item.distanceSquared,
+                item.healthBarFocused, item.healthBarAttacking, viewId,
+                cameraPosition, pViewMatrix, pProjectionMatrix, m_lastRenderHeight);
+        }
+        else if (item.hasHealthBar && pGameSession != nullptr)
         {
             const SpriteFrameEntry *pStandingFrame =
                 m_indoorActorPreviewBillboardSet->spriteFrameTable.getFrame(item.healthBarStandingFrame, 0);
@@ -9050,7 +9232,7 @@ void IndoorRenderer::renderSpriteObjectBillboards(
 
         for (const GameplayProjectilePresentationState &projectile : projectiles)
         {
-            if (projectile.visualMode == GameplayProjectileVisualMode::FxOnly)
+            if (!m_worldFxSystem.projectileShowsNativeSprite(projectile))
             {
                 continue;
             }
@@ -9076,7 +9258,7 @@ void IndoorRenderer::renderSpriteObjectBillboards(
                 impact.sourceObjectSpriteName,
                 impact.sourceObjectFlags);
 
-            if (m_worldFxSystem.hasProjectileImpactEffectRebind(recipe)
+            if (m_worldFxSystem.projectileImpactUsesNamedEffect(impact)
                 || (FxRecipes::projectileRecipeUsesDedicatedImpactFx(recipe)
                     && !FxRecipes::projectileRecipeShowsImpactBillboard(recipe)))
             {
@@ -9984,7 +10166,7 @@ bool IndoorRenderer::updateWaterGeometry()
             for (const bx::Vec3 &position : positions)
             {
                 vertices.push_back({position.x, position.y, position.z, 0.0f, 0.0f, 1.0f,
-                    flow[0], flow[1], 0.0f, 0.0f, batch.waterColorAbgr});
+                    flow[0], flow[1], 0.0f, 0.0f, batch.waterColorAbgr, liquidShaderValue(batch.liquid)});
             }
         }
         std::vector<WaterSurfaceGeometry> surfaces =
@@ -10274,14 +10456,14 @@ bool IndoorRenderer::rebuildAllTexturedBatches(uint64_t &texturedBuildNanosecond
                 ? static_cast<int16_t>(face.roomBehindNumber)
                 : int16_t(-1);
         uint32_t waterColorAbgr = 0;
+        LiquidKind liquid = LiquidKind::None;
         const uint32_t attributes = runtimeMapDeltaData() && faceIndex < runtimeMapDeltaData()->faceAttributes.size()
             ? runtimeMapDeltaData()->faceAttributes[faceIndex] : face.attributes;
         const auto materialTexture = texturesByName.find(normalizedTextureName);
-        if (materialTexture != texturesByName.end()
-            && materialTexture->second->waterColorAbgr != 0
-            && isWaterSurface(attributes, materialTexture->second->surfaceSemantic))
+        if (materialTexture != texturesByName.end() && materialTexture->second->waterColorAbgr != 0)
         {
-            waterColorAbgr = materialTexture->second->waterColorAbgr;
+            liquid = faceLiquidKind(attributes, materialTexture->second->liquid);
+            waterColorAbgr = liquid != LiquidKind::None ? materialTexture->second->waterColorAbgr : 0;
         }
         const std::string batchKey = normalizedTextureName
             + "#" + std::to_string(sectorId)
@@ -10298,6 +10480,7 @@ bool IndoorRenderer::rebuildAllTexturedBatches(uint64_t &texturedBuildNanosecond
             batch.sectorId = sectorId;
             batch.backSectorId = backSectorId;
             batch.waterColorAbgr = waterColorAbgr;
+            batch.liquid = liquid;
 
             for (TexturedBatch &previousBatch : previousBatches)
             {
@@ -10357,11 +10540,11 @@ bool IndoorRenderer::rebuildAllTexturedBatches(uint64_t &texturedBuildNanosecond
                     continue;
                 }
 
-                const bgfx::TextureHandle textureHandle = createBgraTexture2D(
+                const bgfx::TextureHandle textureHandle = createSurfaceTexture2D(
                     uint16_t(pFrameTexture->physicalWidth),
                     uint16_t(pFrameTexture->physicalHeight),
-                    pFrameTexture->pixels.data(),
-                    uint32_t(pFrameTexture->pixels.size()),
+                    pFrameTexture->pixels,
+                    pFrameTexture->cookedTexture.get(),
                     TextureFilterProfile::BModel
                 );
 
@@ -13384,11 +13567,15 @@ void IndoorRenderer::updateCameraFromInput(
         }
         partyRuntime.setDecorationColliders(worldRuntime.decorationMovementColliders());
         partyRuntime.setSpriteObjectColliders(worldRuntime.spriteObjectMovementColliders());
+        const bool runningMovement =
+            running
+            && allowWorldInput
+            && (input.action(KeyboardAction::Forward).held || strafeLeftPressed || strafeRightPressed);
         partyRuntime.update(
             desiredVelocityX,
             desiredVelocityY,
             jumpRequested,
-            running,
+            runningMovement,
             deltaSeconds,
             input.turnBasedMovementStep,
             input.turnBasedPhysicsStep);

@@ -429,6 +429,17 @@ bool ItemTable::load(
         entry.equipY = parseInt(getCell(row, 15));
         entry.notes = getCell(row, 16);
         entry.contentFlags = splitPipeSeparated(getCell(row, 20));
+        entry.worldIds.clear();
+
+        for (const std::string &flag : entry.contentFlags)
+        {
+            const std::string normalizedFlag = toLowerCopy(trimCopy(flag));
+
+            if (normalizedFlag.starts_with("world:"))
+            {
+                entry.worldIds.push_back(normalizedFlag.substr(6));
+            }
+        }
         entry.normalizedTier = static_cast<uint8_t>(std::clamp(parseInt(getCell(row, 21)), 0, 7));
         entry.useAction = getCell(row, 22);
         entry.useTarget = getCell(row, 23);
@@ -500,6 +511,29 @@ bool ItemDefinition::hasContentFlag(const std::string &flag) const
         {
             return toLowerCopy(candidate) == normalizedFlag;
         });
+}
+
+std::optional<uint32_t> ItemTable::spellbookItemIdForSpell(uint32_t spellId, const std::string &worldId) const
+{
+    const std::string spellToken = "S" + std::to_string(spellId);
+
+    for (const ItemDefinition &entry : m_entries)
+    {
+        if (entry.itemId != 0
+            && entry.equipStat == "Book"
+            && entry.mod1 == spellToken
+            && entry.availableInWorld(worldId))
+        {
+            return entry.itemId;
+        }
+    }
+
+    return std::nullopt;
+}
+
+bool ItemDefinition::availableInWorld(const std::string &worldId) const
+{
+    return worldIds.empty() || std::find(worldIds.begin(), worldIds.end(), toLowerCopy(worldId)) != worldIds.end();
 }
 
 bool ItemTable::loadVisualRows(const std::vector<std::vector<std::string>> &rows, std::string &errorMessage)

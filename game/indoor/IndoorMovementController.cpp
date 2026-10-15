@@ -24,6 +24,7 @@ constexpr float SteepFloorSlideHorizontalSpeed = 10.0f;
 constexpr float SteepFloorSlideDownSpeed = 20.0f;
 constexpr float GravityPerSecond = 960.0f;
 constexpr float GroundSnapSlack = 8.0f;
+constexpr float CoplanarFloorHeightTolerance = 1.0f;
 constexpr float CylinderCollisionHorizontalEpsilon = 0.0001f;
 constexpr float SteepFloorUphillEpsilon = 0.01f;
 constexpr float IndoorMovementSubstepDistance = 24.0f;
@@ -2079,10 +2080,13 @@ IndoorMoveState IndoorMovementController::resolveMoveSingleStep(
                 return false;
             }
 
+            // A coplanar face ahead changes no height; keeping the face under the centre stops the support face
+            // flickering across tile seams, where it would toggle pressure plates every step.
             if (floor.hasFloor
                 && floor.faceIndex == state.supportFaceIndex
                 && leadingFootprintFloor.hasFloor
                 && leadingFootprintFloor.faceIndex != floor.faceIndex
+                && std::abs(leadingFootprintFloor.height - floor.height) > CoplanarFloorHeightTolerance
                 && !indoorFloorTooSteepForUphillStep(
                     *m_pIndoorMapData,
                     pMapDeltaData,

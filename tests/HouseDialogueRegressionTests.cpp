@@ -10,6 +10,7 @@
 #include "game/gameplay/MasteryTeacherDialog.h"
 #include "game/gameplay/NpcFollowerRuntime.h"
 #include "game/gameplay/TravelRuntime.h"
+#include "game/items/ItemGenerator.h"
 #include "game/items/ItemRuntime.h"
 #include "game/items/PriceCalculator.h"
 #include "game/maps/SaveGame.h"
@@ -30,6 +31,7 @@
 #include <fstream>
 #include <iterator>
 #include <optional>
+#include <random>
 #include <set>
 #include <string>
 #include <tuple>
@@ -44,6 +46,10 @@ constexpr uint32_t NewSorpigalTempleHouseId = 325;
 constexpr uint32_t FreeHavenTempleStoneHouseId = 326;
 constexpr uint32_t BlackshireTempleHouseId = 327;
 constexpr uint32_t FreeHavenTempleHouseId = 1442;
+constexpr uint32_t MistIslandTempleHouseId = 330;
+constexpr uint32_t KingsTempleHouseId = 332;
+constexpr uint32_t HouseOfHealingHouseId = 333;
+constexpr uint32_t TempleBaaHouseId = 334;
 constexpr uint32_t ElementalGuildHouseId = 139;
 constexpr uint32_t EarthGuildHouseId = 146;
 constexpr uint32_t TrainingHallHouseId = 1564;
@@ -772,35 +778,32 @@ TEST_CASE("Verdant dimensional travel topic hands off from dialogue to the trave
     OpenYAMM::Tests::RegressionGameData verdantData = gameData;
     verdantData.globalEventProgram = program;
 
-    for (bool storiesFinished : {false, true})
-    {
-        OpenYAMM::Tests::HouseDialogueTestHarness harness(verdantData);
-        harness.eventRuntimeState().namedGlobalVars["MMerge.CrossContinents.GotMainQuest"] = 1;
-        harness.eventRuntimeState().namedGlobalVars["MMerge.CrossContinents.GotConnectorStone"] = 1;
-        harness.eventRuntimeState().namedGlobalVars["MMerge.CrossContinents.AllStoriesFinished"] = storiesFinished;
-        harness.eventRuntimeState().activeHookContext = OpenYAMM::Game::EventRuntimeState::ActiveHookContext{};
-        harness.eventRuntimeState().activeHookContext->kind = OpenYAMM::Game::EventRuntimeHookKind::NpcEnter;
-        harness.eventRuntimeState().activeHookContext->npcId = 803;
-        OpenYAMM::Game::EventRuntime eventRuntime = {};
-        REQUIRE(eventRuntime.executeHooks(
-            std::nullopt, program, OpenYAMM::Game::EventRuntimeHookKind::NpcEnter,
-            harness.eventRuntimeState(), &harness.party()));
-        harness.eventRuntimeState().activeHookContext.reset();
-        const OpenYAMM::Game::EventDialogContent &dialog = harness.openNpcDialogue(803);
-        const std::optional<size_t> travelIndex = findActionIndexByLabel(dialog, "Dimensional travel");
-        REQUIRE(travelIndex.has_value());
-        CHECK_FALSE(dialogHasActionLabel(dialog, "Time Travel Guide"));
-        CHECK_EQ(harness.eventRuntimeState().npcTopicOverrides.at(803)[1], storiesFinished ? 1785u : 0u);
-        const OpenYAMM::Game::GameplayDialogController::Result result =
-            harness.executeActiveDialogAction(*travelIndex);
-        CHECK(result.shouldCloseActiveDialog);
-        CHECK_FALSE(result.shouldOpenPendingEventDialog);
-        CHECK(harness.eventRuntimeState().pendingDimensionDoorOverlay);
-        harness.executeAndPresent(*travelIndex);
-        CHECK(harness.uiController().eventDialog().content.actions.empty());
-        CHECK_FALSE(harness.eventRuntimeState().pendingDialogueContext.has_value());
-        CHECK(harness.eventRuntimeState().pendingDimensionDoorOverlay);
-    }
+    OpenYAMM::Tests::HouseDialogueTestHarness harness(verdantData);
+    harness.eventRuntimeState().namedGlobalVars["MMerge.CrossContinents.GotMainQuest"] = 1;
+    harness.eventRuntimeState().namedGlobalVars["MMerge.CrossContinents.GotConnectorStone"] = 1;
+    harness.eventRuntimeState().activeHookContext = OpenYAMM::Game::EventRuntimeState::ActiveHookContext{};
+    harness.eventRuntimeState().activeHookContext->kind = OpenYAMM::Game::EventRuntimeHookKind::NpcEnter;
+    harness.eventRuntimeState().activeHookContext->npcId = 803;
+    OpenYAMM::Game::EventRuntime eventRuntime = {};
+    REQUIRE(eventRuntime.executeHooks(
+        std::nullopt, program, OpenYAMM::Game::EventRuntimeHookKind::NpcEnter,
+        harness.eventRuntimeState(), &harness.party()));
+    harness.eventRuntimeState().activeHookContext.reset();
+    const OpenYAMM::Game::EventDialogContent &dialog = harness.openNpcDialogue(803);
+    const std::optional<size_t> travelIndex = findActionIndexByLabel(dialog, "Dimensional travel");
+    REQUIRE(travelIndex.has_value());
+    CHECK_FALSE(dialogHasActionLabel(dialog, "Time Travel Guide"));
+    CHECK_EQ(harness.eventRuntimeState().npcTopicOverrides.at(803)[1], 0u);
+    CHECK_EQ(harness.eventRuntimeState().npcTopicOverrides.at(803)[2], 1788u);
+    const OpenYAMM::Game::GameplayDialogController::Result result =
+        harness.executeActiveDialogAction(*travelIndex);
+    CHECK(result.shouldCloseActiveDialog);
+    CHECK_FALSE(result.shouldOpenPendingEventDialog);
+    CHECK(harness.eventRuntimeState().pendingDimensionDoorOverlay);
+    harness.executeAndPresent(*travelIndex);
+    CHECK(harness.uiController().eventDialog().content.actions.empty());
+    CHECK_FALSE(harness.eventRuntimeState().pendingDialogueContext.has_value());
+    CHECK(harness.eventRuntimeState().pendingDimensionDoorOverlay);
 }
 
 TEST_CASE("dread pirate stanley false report keeps multiline npc text")
@@ -1117,7 +1120,7 @@ TEST_CASE("generated generic actors use merged NPC names, professions, and rarit
     OpenYAMM::Game::applyGenericActorDialogResolution(harness.eventRuntimeState(), *resolution);
     const OpenYAMM::Game::EventDialogContent &dialog = harness.openNpcDialogue(resolution->npcId);
 
-    CHECK_EQ(dialog.title, resolution->generatedName);
+    CHECK_EQ(dialog.title, resolution->generatedName + " the " + pProfession->profession);
     CHECK_FALSE(dialog.lines.empty());
     CHECK_FALSE(dialogHasActionLabel(dialog, "Beg"));
     CHECK_FALSE(dialogHasActionLabel(dialog, "Threat"));
@@ -1317,7 +1320,7 @@ TEST_CASE("generated NPC greetings use imported first and repeat text across the
         harness.eventRuntimeState().npcProfessionOverrides[1184] = 31; // Factor, Official personality.
 
         const OpenYAMM::Game::EventDialogContent first = harness.openNpcDialogue(1184);
-        CHECK_EQ(first.title, "Arden");
+        CHECK_EQ(first.title, "Arden the Factor");
         CHECK(dialogContainsText(first, "<sigh> Yes?"));
         CHECK_EQ(harness.eventRuntimeState().npcGreetingDisplayCounts.at(1184), 1u);
         CHECK_EQ(harness.refreshCurrentNpcDialog().lines, first.lines);
@@ -1677,8 +1680,7 @@ TEST_CASE("hired follower views use runtime NPC overrides")
     const OpenYAMM::Game::MergedNpcProfessionEntry *pProfession = gameData.mergedNpcProfessionTable.get(52);
     REQUIRE(pProfession != nullptr);
     CHECK_EQ(views.front().profession, pProfession->profession);
-    CHECK_EQ(OpenYAMM::Game::totalHiredNpcFollowerFeePercent(runtimeState), 3u);
-    CHECK_EQ(OpenYAMM::Game::hiredNpcFollowerGoldShare(1000, runtimeState), 30u);
+    CHECK_EQ(OpenYAMM::Game::resolveFoundGold(1000, &runtimeState).followerShare, 30u);
     CHECK(OpenYAMM::Game::hiredNpcHasProfession(runtimeState.hiredNpcFollowers, 52));
 
     OpenYAMM::Game::EventRuntimeState travelState = {};
@@ -3147,6 +3149,145 @@ TEST_CASE("house service guild spellbook stock generates and buys")
     CHECK_GT(harness.party().inventoryItemCount(), initialInventoryCount);
 }
 
+TEST_CASE("house service guild spellbook stock offers its world's books up to the guild spell level")
+{
+    const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
+    constexpr uint32_t EmeraldIslandFireGuildHouseId = 128;
+    constexpr uint32_t DaggerWoundElementalGuildHouseId = 182;
+
+    OpenYAMM::Tests::HouseDialogueTestHarness fireHarness(gameData);
+    const OpenYAMM::Game::HouseEntry *pFireGuild = gameData.houseTable.get(EmeraldIslandFireGuildHouseId);
+    REQUIRE(pFireGuild != nullptr);
+    REQUIRE_EQ(pFireGuild->worldId, "mm7");
+    REQUIRE_EQ(pFireGuild->spellbookStockRule.quality, 4);
+
+    const std::vector<OpenYAMM::Game::InventoryItem> &fireStock = OpenYAMM::Game::HouseServiceRuntime::ensureStock(
+        fireHarness.party(),
+        gameData.itemTable,
+        gameData.standardItemEnchantTable,
+        gameData.specialItemEnchantTable,
+        *pFireGuild,
+        fireHarness.worldRuntime().gameMinutes(),
+        OpenYAMM::Game::HouseStockMode::GuildSpellbooks);
+    std::set<uint32_t> fireBooks;
+
+    for (const OpenYAMM::Game::InventoryItem &item : fireStock)
+    {
+        fireBooks.insert(item.objectDescriptionId);
+    }
+
+    // MM7 books teaching Fire spells 1-4, every one on the shelves.
+    CHECK_EQ(fireBooks, std::set<uint32_t>{1202, 1203, 1204, 1205});
+
+    OpenYAMM::Tests::HouseDialogueTestHarness elementalHarness(gameData);
+    const OpenYAMM::Game::HouseEntry *pElementalGuild = gameData.houseTable.get(DaggerWoundElementalGuildHouseId);
+    REQUIRE(pElementalGuild != nullptr);
+    REQUIRE_EQ(pElementalGuild->worldId, "mm8");
+
+    const std::vector<OpenYAMM::Game::InventoryItem> &elementalStock =
+        OpenYAMM::Game::HouseServiceRuntime::ensureStock(
+            elementalHarness.party(),
+            gameData.itemTable,
+            gameData.standardItemEnchantTable,
+            gameData.specialItemEnchantTable,
+            *pElementalGuild,
+            elementalHarness.worldRuntime().gameMinutes(),
+            OpenYAMM::Game::HouseStockMode::GuildSpellbooks);
+    const int maxSpellInSchool = pElementalGuild->spellbookStockRule.quality;
+    std::set<uint32_t> elementalBooks;
+
+    for (const OpenYAMM::Game::InventoryItem &item : elementalStock)
+    {
+        REQUIRE_GE(item.objectDescriptionId, 400u);
+        const uint32_t bookOffset = item.objectDescriptionId - 400;
+        CHECK_LT(bookOffset, 44u);
+        CHECK_LT(static_cast<int>(bookOffset % 11), maxSpellInSchool);
+        elementalBooks.insert(item.objectDescriptionId);
+    }
+
+    CHECK_EQ(elementalBooks.size(), elementalStock.size());
+
+    constexpr uint32_t NewSorpigalSelfGuildHouseId = 189;
+    OpenYAMM::Tests::HouseDialogueTestHarness selfHarness(gameData);
+    const OpenYAMM::Game::HouseEntry *pSelfGuild = gameData.houseTable.get(NewSorpigalSelfGuildHouseId);
+    REQUIRE(pSelfGuild != nullptr);
+    REQUIRE_EQ(pSelfGuild->worldId, "mm6");
+
+    const std::vector<OpenYAMM::Game::InventoryItem> &selfStock = OpenYAMM::Game::HouseServiceRuntime::ensureStock(
+        selfHarness.party(),
+        gameData.itemTable,
+        gameData.standardItemEnchantTable,
+        gameData.specialItemEnchantTable,
+        *pSelfGuild,
+        selfHarness.worldRuntime().gameMinutes(),
+        OpenYAMM::Game::HouseStockMode::GuildSpellbooks);
+
+    for (const OpenYAMM::Game::InventoryItem &item : selfStock)
+    {
+        CHECK_GE(item.objectDescriptionId, 1902u);
+        CHECK_LE(item.objectDescriptionId, 2018u);
+    }
+}
+
+TEST_CASE("spellbooks are gated to their own world's design")
+{
+    const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
+    constexpr uint32_t FireBoltSpellId = 2;
+
+    CHECK_EQ(gameData.itemTable.spellbookItemIdForSpell(FireBoltSpellId, "mm8"), std::optional<uint32_t>(401));
+    CHECK_EQ(gameData.itemTable.spellbookItemIdForSpell(FireBoltSpellId, "mm7"), std::optional<uint32_t>(1203));
+    CHECK_EQ(gameData.itemTable.spellbookItemIdForSpell(FireBoltSpellId, "mm6"), std::optional<uint32_t>(1903));
+    CHECK_FALSE(gameData.itemTable.spellbookItemIdForSpell(FireBoltSpellId, "").has_value());
+
+    const OpenYAMM::Game::ItemDefinition *pMm6FireBolt = gameData.itemTable.get(1903);
+    REQUIRE(pMm6FireBolt != nullptr);
+    CHECK(pMm6FireBolt->availableInWorld("mm6"));
+    CHECK_FALSE(pMm6FireBolt->availableInWorld("mm8"));
+
+    const OpenYAMM::Game::ItemDefinition *pSword = gameData.itemTable.get(1);
+    REQUIRE(pSword != nullptr);
+    CHECK(pSword->availableInWorld("mm6"));
+    CHECK(pSword->availableInWorld(""));
+
+    const std::array<std::pair<const char *, std::pair<uint32_t, uint32_t>>, 3> worlds = {{
+        {"mm8", {400, 498}},
+        {"mm7", {1202, 1300}},
+        {"mm6", {1902, 2018}},
+    }};
+
+    for (const auto &[worldId, range] : worlds)
+    {
+        std::mt19937 rng(17);
+        size_t generatedBooks = 0;
+
+        for (int attempt = 0; attempt < 400; ++attempt)
+        {
+            OpenYAMM::Game::ItemGenerationRequest request = {};
+            request.treasureLevel = 3;
+            request.worldId = worldId;
+            const std::optional<OpenYAMM::Game::InventoryItem> item =
+                OpenYAMM::Game::ItemGenerator::generateRandomInventoryItem(
+                    gameData.itemTable,
+                    gameData.standardItemEnchantTable,
+                    gameData.specialItemEnchantTable,
+                    request,
+                    nullptr,
+                    rng,
+                    [](const OpenYAMM::Game::ItemDefinition &entry)
+                    {
+                        return entry.equipStat == "Book";
+                    });
+
+            REQUIRE(item.has_value());
+            CHECK_GE(item->objectDescriptionId, range.first);
+            CHECK_LE(item->objectDescriptionId, range.second);
+            ++generatedBooks;
+        }
+
+        CHECK_EQ(generatedBooks, 400u);
+    }
+}
+
 TEST_CASE("house service shop sell accepts a positive-value item from another merchant family")
 {
     const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
@@ -3913,7 +4054,7 @@ TEST_CASE("event-applied conditions use absolute game time for temple healing pr
     CHECK_EQ(healAction->label, "Heal 10 gold");
 }
 
-TEST_CASE("mm6 temple healing tier limits serious condition treatment")
+TEST_CASE("mm6 temples follow the original per-house treatment limits")
 {
     const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
     OpenYAMM::Tests::HouseDialogueTestHarness harness(gameData);
@@ -3927,9 +4068,9 @@ TEST_CASE("mm6 temple healing tier limits serious condition treatment")
     REQUIRE(pFreeHavenTemple != nullptr);
     REQUIRE(pBlackshireTemple != nullptr);
     CHECK_EQ(pNewSorpigalTemple->templeHealingTier, doctest::Approx(2.0f));
-    CHECK_EQ(pFreeHavenTempleStone->templeHealingTier, doctest::Approx(2.5f));
+    CHECK_EQ(pFreeHavenTempleStone->templeHealingTier, doctest::Approx(0.0f));
     CHECK_EQ(OpenYAMM::Game::resolveHouseServiceType(*pFreeHavenTemple), OpenYAMM::Game::HouseServiceType::None);
-    CHECK_EQ(pBlackshireTemple->templeHealingTier, doctest::Approx(2.5f));
+    CHECK_EQ(pBlackshireTemple->templeHealingTier, doctest::Approx(2.0f));
 
     OpenYAMM::Game::Character *pMember = harness.party().activeMember();
     REQUIRE(pMember != nullptr);
@@ -3989,7 +4130,43 @@ TEST_CASE("mm6 temple healing tier limits serious condition treatment")
         &harness.worldRuntime(),
         harness.worldRuntime().gameMinutes(),
         OpenYAMM::Game::DialogueMenuId::None);
-    CHECK(findHouseActionById(actions, OpenYAMM::Game::HouseActionId::TempleHeal).has_value());
+    CHECK_FALSE(findHouseActionById(actions, OpenYAMM::Game::HouseActionId::TempleHeal).has_value());
+
+    // Every other MM6 temple raises the dead; Temple Baa cannot.
+    pMember->conditions.reset();
+    pMember->conditionStartGameMinutes.fill(0.0f);
+    pMember->conditions.set(deadIndex);
+    pMember->conditionStartGameMinutes[deadIndex] = harness.worldRuntime().gameMinutes();
+
+    const auto canHeal =
+        [&](uint32_t houseId)
+        {
+            const OpenYAMM::Game::HouseEntry *pHouse = gameData.houseTable.get(houseId);
+            REQUIRE(pHouse != nullptr);
+            const std::vector<OpenYAMM::Game::HouseActionOption> houseActions =
+                OpenYAMM::Game::buildHouseActionOptions(
+                    *pHouse,
+                    &harness.party(),
+                    &gameData.classSkillTable,
+                    &harness.worldRuntime(),
+                    harness.worldRuntime().gameMinutes(),
+                    OpenYAMM::Game::DialogueMenuId::None);
+            return findHouseActionById(houseActions, OpenYAMM::Game::HouseActionId::TempleHeal).has_value();
+        };
+
+    CHECK(canHeal(MistIslandTempleHouseId));
+    CHECK(canHeal(KingsTempleHouseId));
+    CHECK(canHeal(BlackshireTempleHouseId));
+    CHECK_FALSE(canHeal(TempleBaaHouseId));
+
+    // Both Bootleg Bay temples treat every stage of poison.
+    const size_t severePoisonIndex = static_cast<size_t>(OpenYAMM::Game::CharacterCondition::PoisonSevere);
+    pMember->conditions.reset();
+    pMember->conditionStartGameMinutes.fill(0.0f);
+    pMember->conditions.set(severePoisonIndex);
+    pMember->conditionStartGameMinutes[severePoisonIndex] = harness.worldRuntime().gameMinutes();
+    CHECK(canHeal(HouseOfHealingHouseId));
+    CHECK(canHeal(TempleBaaHouseId));
 }
 
 TEST_CASE("dwi guild skill learning")

@@ -1,10 +1,12 @@
 #pragma once
 
 #include "engine/ImageMipmaps.h"
+#include "engine/render/CookedTexture.h"
 
 #include <bgfx/bgfx.h>
 
 #include <cstdint>
+#include <span>
 #include <vector>
 
 namespace OpenYAMM::Game
@@ -76,6 +78,40 @@ bgfx::TextureHandle createBgraTexture2D(
     TextureFilterProfile profile,
     uint64_t extraFlags = BGFX_TEXTURE_NONE,
     BgraTexturePixelPreparation pixelPreparation = BgraTexturePixelPreparation::Required);
+
+// createBgraTexture2D in two steps: the CPU work (transparent edge bleed, the profile's mip chain), safe on any
+// thread, then the upload on the bgfx thread.
+struct PreparedBgraTexture
+{
+    std::vector<Engine::BgraMipLevel> levels;
+    bool mips = false;
+};
+PreparedBgraTexture prepareBgraTexture2D(
+    uint16_t width,
+    uint16_t height,
+    const uint8_t *pPixels,
+    uint32_t pixelBytes,
+    TextureFilterProfile profile,
+    BgraTexturePixelPreparation pixelPreparation = BgraTexturePixelPreparation::Required);
+bgfx::TextureHandle createPreparedBgraTexture2D(
+    const PreparedBgraTexture &prepared, TextureFilterProfile profile, uint64_t extraFlags = BGFX_TEXTURE_NONE);
+
+// A cooked texture's blocks and stored mip chain as one 2D texture with the profile's sampler. Throws when the GPU
+// cannot sample the codec (an asset package built for another platform's texture profile).
+bgfx::TextureHandle createCookedTexture2D(
+    const Engine::CookedTexture &texture, TextureFilterProfile profile, uint64_t extraFlags = BGFX_TEXTURE_NONE);
+
+// Cooked textures of one codec, size and mip count as the layers of one 2D array texture.
+bgfx::TextureHandle createCookedTexture2DArray(
+    std::span<const Engine::CookedTexture *const> layers, TextureFilterProfile profile);
+
+// A world surface texture from its cooked blocks when it has them, otherwise from its BGRA pixels.
+bgfx::TextureHandle createSurfaceTexture2D(
+    uint16_t width,
+    uint16_t height,
+    const std::vector<uint8_t> &pixels,
+    const Engine::CookedTexture *pCookedTexture,
+    TextureFilterProfile profile);
 
 bgfx::TextureHandle createEmptyBgraTexture2D(
     uint16_t width,

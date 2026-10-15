@@ -78,6 +78,7 @@ public:
     // Returns the selected virtual file path, including its actual scale directory, also inside archives.
     std::optional<std::string> resolveExistingFilePath(const std::string &virtualPath) const;
     std::optional<AssetFileInfo> fileInfo(const std::string &virtualPath) const;
+    // Sorted entry names of a virtual directory over every mount and alias; kept until refreshLookupCache().
     std::vector<std::string> enumerate(const std::string &virtualPath) const;
     std::unique_ptr<AssetReadStream> openReadStream(const std::string &virtualPath) const;
     std::optional<std::vector<uint8_t>> readBinaryFile(const std::string &virtualPath) const;

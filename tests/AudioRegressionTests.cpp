@@ -5,6 +5,7 @@
 #include "engine/AudioSpatialization.h"
 #include "engine/TextTable.h"
 #include "game/audio/GameAudioSystem.h"
+#include "game/audio/MusicStream.h"
 #include "game/audio/ActorAudioRules.h"
 #include "game/audio/SoundCatalog.h"
 #include "game/audio/SoundIds.h"
@@ -19,9 +20,13 @@
 
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <numbers>
 #include <string>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 
@@ -48,6 +53,46 @@ TEST_CASE("registered audio clips can be released from the decode cache")
     CHECK_EQ(audioSystem.cacheStats().sampleBytes, 0);
     CHECK_FALSE(audioSystem.releaseClip("test-release"));
 }
+
+// Reads frameCount frames as the mixer would, waiting while the stream's decoder catches up.
+std::vector<float> readMusicStream(OpenYAMM::Game::MusicStream &stream, uint32_t frameCount)
+{
+    std::vector<float> samples;
+    std::vector<float> chunk(1024 * 2);
+
+    for (int idleReads = 0; samples.size() / 2 < frameCount && idleReads < 20000;)
+    {
+        const uint32_t wanted = std::min<uint32_t>(1024, frameCount - uint32_t(samples.size() / 2));
+        const uint32_t read = stream.read(chunk.data(), wanted);
+
+        if (read == 0)
+        {
+            ++idleReads;
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+            continue;
+        }
+
+        idleReads = 0;
+        samples.insert(samples.end(), chunk.begin(), chunk.begin() + read * 2);
+    }
+
+    return samples;
+}
+
+class SilentStreamSource : public OpenYAMM::Engine::AudioStreamSource
+{
+public:
+    uint32_t read(float *pSamples, uint32_t frameCount) override
+    {
+        std::fill(pSamples, pSamples + frameCount * 2, 0.0f);
+        return frameCount;
+    }
+
+    bool finished() const override
+    {
+        return false;
+    }
+};
 
 bool initializeRegressionAssetFileSystem(
     OpenYAMM::Engine::AssetFileSystem &assetFileSystem,
@@ -181,6 +226,48 @@ bool isMetalImpactSound(OpenYAMM::Game::SoundId soundId)
         || soundId == OpenYAMM::Game::SoundId::MetalArmorStrike02
         || soundId == OpenYAMM::Game::SoundId::MetalArmorStrike03;
 }
+}
+
+TEST_CASE("music streams decode a track the same way every time")
+{
+    std::ifstream file(std::filesystem::path(OPENYAMM_SOURCE_DIR) / "assets_dev/worlds/mm7/music/32.mp3",
+        std::ios::binary);
+    REQUIRE(file);
+    const std::shared_ptr<const std::vector<uint8_t>> pTrack = std::make_shared<const std::vector<uint8_t>>(
+        std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    OpenYAMM::Game::MusicStream first(pTrack);
+    OpenYAMM::Game::MusicStream second(pTrack);
+    const std::vector<float> firstSamples = readMusicStream(first, 96000);
+    const std::vector<float> secondSamples = readMusicStream(second, 96000);
+
+    REQUIRE_EQ(firstSamples.size(), 96000 * 2);
+    CHECK(firstSamples == secondSamples);
+    CHECK(std::any_of(firstSamples.begin(), firstSamples.end(), [](float sample) { return sample != 0.0f; }));
+    CHECK_FALSE(first.finished());
+}
+
+TEST_CASE("a music stream that cannot be decoded finishes")
+{
+    OpenYAMM::Game::MusicStream stream(std::make_shared<const std::vector<uint8_t>>(4096, uint8_t(0)));
+
+    for (int attempt = 0; attempt < 2000 && !stream.finished(); ++attempt)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    CHECK(stream.finished());
+}
+
+TEST_CASE("streams play until stopped like clips")
+{
+    OpenYAMM::Engine::AudioSystem audioSystem;
+    const uint64_t instanceId = audioSystem.playStream(std::make_shared<SilentStreamSource>(), {});
+
+    REQUIRE_NE(instanceId, 0);
+    CHECK(audioSystem.isClipPlaying(instanceId));
+    audioSystem.stopClip(instanceId);
+    CHECK_FALSE(audioSystem.isClipPlaying(instanceId));
+    CHECK_EQ(audioSystem.playStream(nullptr, {}), 0);
 }
 
 TEST_CASE("background music pause remains active across cutscene track requests")

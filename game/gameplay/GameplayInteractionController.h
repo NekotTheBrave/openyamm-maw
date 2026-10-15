@@ -26,6 +26,8 @@ public:
         uint64_t currentTickNanoseconds = 0;
         uint64_t refreshIntervalNanoseconds = 0;
         GameplayWorldHoverRequest hoverRequest = {};
+        // Autonotes, for the effects of events the party has learned (Orange Barrel (+2 Intellect)).
+        const GameplayScreenRuntime *pScreenRuntime = nullptr;
     };
 
     struct HoverStateResult

@@ -325,6 +325,39 @@ bool readBooleanField(lua_State *pLuaState, int tableIndex, const char *pFieldNa
     return value;
 }
 
+std::unordered_map<uint16_t, ScriptedEventProgram::LearnedEffect> readLearnedEffects(
+    lua_State *pLuaState,
+    int tableIndex)
+{
+    std::unordered_map<uint16_t, ScriptedEventProgram::LearnedEffect> values;
+    lua_getfield(pLuaState, tableIndex, "learnedEffect");
+
+    if (lua_istable(pLuaState, -1))
+    {
+        lua_pushnil(pLuaState);
+
+        while (lua_next(pLuaState, -2) != 0)
+        {
+            if (lua_isinteger(pLuaState, -2) && lua_istable(pLuaState, -1))
+            {
+                const std::optional<uint32_t> autonoteId = readOptionalUnsignedField(pLuaState, -1, "autonote");
+                const std::optional<std::string> effect = readOptionalStringField(pLuaState, -1, "effect");
+
+                if (autonoteId && effect && !effect->empty())
+                {
+                    values.emplace(static_cast<uint16_t>(lua_tointeger(pLuaState, -2)),
+                        ScriptedEventProgram::LearnedEffect{*autonoteId, *effect});
+                }
+            }
+
+            lua_pop(pLuaState, 1);
+        }
+    }
+
+    lua_pop(pLuaState, 1);
+    return values;
+}
+
 std::optional<ScriptedEventProgram::ContextActionMetadata> readContextActionMetadata(
     lua_State *pLuaState,
     int tableIndex)
@@ -558,6 +591,7 @@ bool ScriptedEventProgram::populateMetadataFromLua(
     program.m_monsterDamageHookEventIds =
         readIntegerArrayFromField<uint16_t>(pLuaState, -1, "monsterDamageHooks", true);
     program.m_hints = readStringMapFromField(pLuaState, -1, "hint");
+    program.m_learnedEffects = readLearnedEffects(pLuaState, -1);
     program.m_summaries = readStringMapFromField(pLuaState, -1, "title");
 
     if (program.m_summaries.empty())
@@ -707,6 +741,12 @@ std::optional<std::string> ScriptedEventProgram::getHint(uint16_t eventId) const
 {
     const auto iterator = m_hints.find(eventId);
     return iterator != m_hints.end() ? std::optional<std::string>(iterator->second) : std::nullopt;
+}
+
+const ScriptedEventProgram::LearnedEffect *ScriptedEventProgram::learnedEffect(uint16_t eventId) const
+{
+    const auto iterator = m_learnedEffects.find(eventId);
+    return iterator != m_learnedEffects.end() ? &iterator->second : nullptr;
 }
 
 std::optional<std::string> ScriptedEventProgram::summarizeEvent(uint16_t eventId) const

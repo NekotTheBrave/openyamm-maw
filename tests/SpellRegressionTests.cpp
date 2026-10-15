@@ -367,6 +367,37 @@ TEST_CASE("shared actor mind spell effects are rejected by mind immunity")
     CHECK_EQ(state.fearRemainingSeconds, 0.0f);
 }
 
+TEST_CASE("shared actor slow doubles recovery at every mastery")
+{
+    const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
+    OpenYAMM::Game::GameplayActorService service = {};
+    service.bindTables(&gameData.monsterTable, &gameData.spellTable);
+
+    const std::array<std::pair<OpenYAMM::Game::SkillMastery, float>, 3> masteries = {{
+        {OpenYAMM::Game::SkillMastery::Normal, 0.5f},
+        {OpenYAMM::Game::SkillMastery::Master, 0.25f},
+        {OpenYAMM::Game::SkillMastery::Grandmaster, 0.125f},
+    }};
+
+    for (const auto &[mastery, moveMultiplier] : masteries)
+    {
+        OpenYAMM::Game::GameplayActorSpellEffectState state = {};
+        const OpenYAMM::Game::GameplayActorService::SharedSpellEffectResult result =
+            service.tryApplySharedSpellEffect(
+                OpenYAMM::Game::spellIdValue(OpenYAMM::Game::SpellId::Slow),
+                10,
+                mastery,
+                false,
+                true,
+                0,
+                state);
+
+        REQUIRE(result.disposition == OpenYAMM::Game::GameplayActorService::SharedSpellDisposition::Applied);
+        CHECK_EQ(state.slowMoveMultiplier, moveMultiplier);
+        CHECK_EQ(service.effectiveRecoveryProgressMultiplier(state), doctest::Approx(0.5f));
+    }
+}
+
 TEST_CASE("party spell backend applies half recovery on real cast failure")
 {
     const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();

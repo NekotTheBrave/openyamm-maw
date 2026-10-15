@@ -1674,3 +1674,83 @@ TEST_CASE("temporary event bonuses survive save round trip and remain rest-clear
     CHECK_EQ(pRestoredMember->magicalBonuses.intellect, 0);
     CHECK_EQ(pRestoredMember->magicalBonuses.resistances.fire, 0);
 }
+
+TEST_CASE("inventory sort groups weapons before potions and repacks from the top left")
+{
+    REQUIRE_MESSAGE(
+        OpenYAMM::Tests::regressionGameDataLoaded(),
+        OpenYAMM::Tests::regressionGameDataFailure().c_str());
+
+    const OpenYAMM::Game::ItemTable &itemTable = OpenYAMM::Tests::regressionGameData().itemTable;
+    const auto findItemByEquipStat =
+        [&itemTable](const std::string &equipStat) -> const OpenYAMM::Game::ItemDefinition *
+        {
+            for (const OpenYAMM::Game::ItemDefinition &definition : itemTable.entries())
+            {
+                if (definition.itemId != 0 && definition.equipStat == equipStat)
+                {
+                    return &definition;
+                }
+            }
+
+            return nullptr;
+        };
+    const OpenYAMM::Game::ItemDefinition *pWeapon = findItemByEquipStat("Weapon");
+    const OpenYAMM::Game::ItemDefinition *pPotion = findItemByEquipStat("Bottle");
+    REQUIRE(pWeapon != nullptr);
+    REQUIRE(pPotion != nullptr);
+
+    OpenYAMM::Game::Party party = makeInventoryParty();
+    party.setItemTable(&itemTable);
+    OpenYAMM::Game::Character &member = *party.member(0);
+    REQUIRE(member.addInventoryItemAt(makeInventoryItem(pPotion->itemId, 1, 1), 0, 0));
+    REQUIRE(member.addInventoryItemAt(makeInventoryItem(pWeapon->itemId, 1, 4), 9, 3));
+
+    REQUIRE(party.sortMemberInventory(0));
+
+    REQUIRE_EQ(member.inventory.size(), 2u);
+    const OpenYAMM::Game::InventoryItem *pFirst = member.inventoryItemAt(0, 0);
+    REQUIRE(pFirst != nullptr);
+    CHECK_EQ(pFirst->objectDescriptionId, pWeapon->itemId);
+    const OpenYAMM::Game::InventoryItem *pPotionItem = member.inventoryItemAt(0, 4);
+    REQUIRE(pPotionItem != nullptr);
+    CHECK_EQ(pPotionItem->objectDescriptionId, pPotion->itemId);
+}
+
+TEST_CASE("inventory sort keeps a full inventory intact")
+{
+    OpenYAMM::Game::Party party = makeInventoryParty();
+    OpenYAMM::Game::Character &member = *party.member(0);
+    fillInventory(member, 109);
+
+    REQUIRE(party.sortMemberInventory(0));
+
+    CHECK_EQ(member.inventoryItemCount(), member.inventoryCapacity());
+    CHECK_EQ(member.usedInventoryCells(), member.inventoryCapacity());
+}
+
+TEST_CASE("inventory sort leaves items in place when they cannot be repacked")
+{
+    OpenYAMM::Game::Party party = makeInventoryParty();
+    OpenYAMM::Game::Character &member = *party.member(0);
+
+    // A full pinwheel layout that column-first packing in size order cannot reproduce.
+    REQUIRE(member.addInventoryItemAt(makeInventoryItem(100, 2, 2), 0, 0));
+    REQUIRE(member.addInventoryItemAt(makeInventoryItem(101, 12, 3), 2, 0));
+    REQUIRE(member.addInventoryItemAt(makeInventoryItem(102, 13, 6), 1, 3));
+    REQUIRE(member.addInventoryItemAt(makeInventoryItem(103, 1, 7), 0, 2));
+    REQUIRE(member.addInventoryItemAt(makeInventoryItem(104, 1, 1), 1, 2));
+    REQUIRE_EQ(member.usedInventoryCells(), member.inventoryCapacity());
+    const std::vector<OpenYAMM::Game::InventoryItem> before = member.inventory;
+
+    CHECK_FALSE(party.sortMemberInventory(0));
+
+    REQUIRE_EQ(member.inventory.size(), before.size());
+
+    for (size_t itemIndex = 0; itemIndex < before.size(); ++itemIndex)
+    {
+        CHECK_EQ(member.inventory[itemIndex].objectDescriptionId, before[itemIndex].objectDescriptionId);
+        CHECK_EQ(member.inventory[itemIndex].gridX, before[itemIndex].gridX);
+        CHECK_EQ(member.inventory[itemIndex].gridY, before[itemIndex].gridY);
+    }
+}

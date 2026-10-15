@@ -115,6 +115,8 @@ struct CharacterAttackProfile
     uint32_t rangedSkillLevel = 0;
     uint32_t rangedSkillMastery = 0;
     uint8_t rangedProjectileCount = 1;
+    // Non-zero fans the projectiles evenly across this horizontal arc instead of firing them side by side.
+    float rangedSpreadArcRadians = 0.0f;
     int wandSpellId = 0;
     int rangedSpellId = 0;
     float meleeRecoverySeconds = 1.0f;
@@ -128,6 +130,9 @@ struct CharacterAttackResult
     bool hit = false;
     bool resolvesOnImpact = false;
     int damage = 0;
+    // Range of `damage`; fanned projectiles each roll their own damage from it.
+    int minimumDamage = 0;
+    int maximumDamage = 0;
     int attackBonus = 0;
     int targetArmorClass = 0;
     float targetDistance = 0.0f;
@@ -135,6 +140,7 @@ struct CharacterAttackResult
     uint32_t skillLevel = 0;
     uint32_t skillMastery = 0;
     uint8_t projectileCount = 1;
+    float projectileSpreadArcRadians = 0.0f;
     int spellId = 0;
     CombatDamageType damageType = CombatDamageType::Physical;
     bool criticalDamage = false;
@@ -242,6 +248,9 @@ public:
         const ItemTable *pItemTable,
         CharacterAttackMode attackMode);
     static float actorTargetHeight(uint16_t actorHeight);
+    // Yaw offset of fan member `projectileIndex` when `projectileCount` projectiles spread evenly across
+    // `arcRadians`, centred on the aim direction.
+    static float projectileFanYawOffsetRadians(uint32_t projectileCount, uint32_t projectileIndex, float arcRadians);
     static bool characterRangedAttackHitsArmorClass(
         int targetArmorClass,
         int attackBonus,

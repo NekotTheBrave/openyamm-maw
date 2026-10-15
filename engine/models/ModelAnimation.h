@@ -40,11 +40,21 @@ ModelBounds modelExactPoseBounds(const ModelAsset &asset, const ModelPose &pose,
 
 void resetModelPose(const ModelAsset &asset, ModelPose &pose);
 void evaluateModelClip(const ModelAsset &asset, uint32_t clipIndex, float timeSeconds, ModelPose &pose);
-// Blend local TRS and morphs before evaluating the hierarchy. An empty mask covers every node.
+// evaluateModelClip without the local matrices: only the local transforms and morph weights, for poses that are blended
+// (blendModelPose without compose) before composeModelPose.
+void sampleModelClip(const ModelAsset &asset, uint32_t clipIndex, float timeSeconds, ModelPose &pose);
+// The local matrix of every node animated by translation, rotation and scale, from its local transform.
+void composeModelPose(const ModelAsset &asset, ModelPose &pose);
+// Blend local TRS and morphs before evaluating the hierarchy. An empty mask covers every node. compose: also update
+// the blended nodes' local matrices.
 void blendModelPose(const ModelAsset &asset, ModelPose &pose, const ModelPose &other, float amount,
-    const std::vector<float> &mask = {});
+    const std::vector<float> &mask = {}, bool compose = true);
 void evaluateModelHierarchy(const ModelAsset &asset, const ModelMatrix &rootMatrix, ModelPose &pose);
 void deformModelPose(const ModelAsset &asset, ModelPose &pose, bool deformSkins = true);
+// One vertex of a skinned node's primitive in the pose's space (world space for an instance's pose), for effects that
+// follow a deforming surface. Morph targets are ignored.
+std::array<float, 3> skinnedModelVertex(const ModelAsset &asset, const ModelPose &pose, size_t nodeIndex,
+    const ModelPrimitive &primitive, size_t vertexIndex);
 // A static copy of `asset` frozen in `pose` (hierarchy evaluated with an identity root): every mesh node's mesh and its
 // colour and shadow LOD chains are skinned (or moved by the node's matrix) and morphed into asset-root space, on
 // unparented identity nodes without skins, clips or morph targets. Materials, images and variants are copied, so

@@ -12,6 +12,7 @@ SAMPLERCUBE(s_modelEnvironment, 3);
 SAMPLER2D(s_modelEnvironmentBrdf, 4);
 SAMPLER2D(s_modelRegionMask, 8);
 SAMPLER2D(s_modelRegionRamp, 9);
+SAMPLER2D(s_modelBurn, 10);
 uniform vec4 u_modelEnvironment;
 uniform vec4 u_modelSurface;
 uniform vec4 u_modelPbr;
@@ -23,6 +24,10 @@ uniform vec4 u_modelPointColors[12];
 uniform vec4 u_modelFog[3];
 uniform vec4 u_modelCamera;
 uniform vec4 u_modelOutline;
+uniform vec4 u_modelEdge;
+// Burning creature (ModelBurn): [0] front, char, edge and fire widths in burn-map units; [1] emission colour (linear,
+// brightness included) and clock in seconds; [2].x pass: 0 none, 1 the burning surface, 2 the fire over its burnt part.
+uniform vec4 u_modelBurn[3];
 
 vec3 modelNormalize(vec3 value)
 {
@@ -56,7 +61,9 @@ vec3 modelBrdf(vec3 normal, vec3 view, vec3 light, vec3 base, float metallic, fl
     float k = (roughness + 1.0) * (roughness + 1.0) / 8.0;
     float geometry = (nl / max(nl * (1.0 - k) + k, 0.0001))
         * (nv / max(nv * (1.0 - k) + k, 0.0001));
-    vec3 fresnel = f0 + (1.0 - f0) * pow(1.0 - vh, 5.0);
+    // pow() of a negative base is undefined (NaN on some GPUs): with the light at the camera (the party light), vh
+    // rounds to just above 1 and scattered pixels turn black.
+    vec3 fresnel = f0 + (1.0 - f0) * pow(max(1.0 - vh, 0.0), 5.0);
     vec3 diffuse = (1.0 - fresnel) * (1.0 - metallic) * base / 3.14159265;
     vec3 specular = distribution * geometry * fresnel / max(4.0 * nl * nv, 0.0001) * specularScale;
     // Existing light intensities use unit diffuse irradiance, rather than radiance divided by pi.
@@ -73,6 +80,24 @@ float modelDither(vec2 pixel)
     return fine + wide * 0.25 + 0.03125;
 }
 
+// Smooth value noise in [0, 1], for the flicker of burning surfaces and their fire.
+float modelBurnHash(vec3 cell)
+{
+    return fract(sin(dot(cell, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+}
+
+float modelBurnNoise(vec3 position)
+{
+    vec3 cell = floor(position);
+    vec3 f = fract(position);
+    f = f * f * (3.0 - 2.0 * f);
+    float x00 = mix(modelBurnHash(cell), modelBurnHash(cell + vec3(1.0, 0.0, 0.0)), f.x);
+    float x10 = mix(modelBurnHash(cell + vec3(0.0, 1.0, 0.0)), modelBurnHash(cell + vec3(1.0, 1.0, 0.0)), f.x);
+    float x01 = mix(modelBurnHash(cell + vec3(0.0, 0.0, 1.0)), modelBurnHash(cell + vec3(1.0, 0.0, 1.0)), f.x);
+    float x11 = mix(modelBurnHash(cell + vec3(0.0, 1.0, 1.0)), modelBurnHash(cell + vec3(1.0, 1.0, 1.0)), f.x);
+    return mix(mix(x00, x10, f.y), mix(x01, x11, f.y), f.z);
+}
+
 float modelSmoothstep(float low, float high, float value)
 {
     float amount = clamp((value - low) / max(high - low, 1.0), 0.0, 1.0);
@@ -81,6 +106,35 @@ float modelSmoothstep(float low, float high, float value)
 
 void main()
 {
+    // Burn pass 2: fire where the surface has just burnt away (behind its glowing edge, for the fire width), rising
+    // through world-space noise and strongest along the silhouette, so the body briefly remains a shape of flame.
+    // Premultiplied over the scene in display space; fog fades it.
+    if (u_modelBurn[2].x > 1.5)
+    {
+        float burnt = u_modelBurn[0].x - texture2D(s_modelBurn, v_texcoord0).r - u_modelBurn[0].z;
+        if (burnt <= 0.0 || burnt >= u_modelBurn[0].w)
+        {
+            discard;
+        }
+        float life = 1.0 - burnt / u_modelBurn[0].w;
+        vec3 view = modelNormalize(u_modelCamera.xyz - v_worldPosition);
+        float silhouette = 1.0 - abs(dot(modelNormalize(v_worldNormal), view));
+        vec3 rising = v_worldPosition * vec3(0.06, 0.06, 0.025) - vec3(0.0, 0.0, u_modelBurn[1].w * 2.2);
+        float flame = modelBurnNoise(rising) * 0.65 + modelBurnNoise(rising * 2.3 + vec3_splat(7.1)) * 0.35;
+        float amount = life * (0.35 + 0.65 * silhouette * silhouette) * smoothstep(0.45, 0.85, flame + 0.2 * life);
+        float fireDistance = length(v_worldPosition - u_modelCamera.xyz);
+        float fireFog = u_modelFog[1].w > 0.5
+            ? clamp((fireDistance - u_modelFog[2].x) / max(u_modelFog[2].y - u_modelFog[2].x, 1.0), 0.0, 1.0)
+            : modelSmoothstep(u_modelFog[2].y, u_modelFog[2].z, fireDistance);
+        // The emission colour's hue at a level below white (additive layers and both faces add up), turning
+        // yellow in the hottest tongues.
+        float hue = max(max(u_modelBurn[1].r, u_modelBurn[1].g), max(u_modelBurn[1].b, 0.0001));
+        float level = clamp(amount * hue * 0.45, 0.0, 0.8);
+        vec3 fire = u_modelBurn[1].rgb / hue * level + vec3(0.0, 0.3, 0.06) * level * level;
+        float cover = clamp(level * 1.3, 0.0, 0.9) * (1.0 - fireFog);
+        gl_FragColor = vec4(modelEncodeSrgb(fire) * (1.0 - fireFog), cover);
+        return;
+    }
     // Base textures are sRGB; the sampler decodes RGB, while factors and alpha stay linear.
     // v_flowInfo.rgb: glTF vertex colour (canopy occlusion on foliage), white on creatures.
     vec4 color = texture2D(s_modelTexture, v_texcoord0) * u_modelMaterial[0] * vec4(v_flowInfo.rgb, 1.0);
@@ -106,6 +160,32 @@ void main()
         }
     }
 #endif
+    // Burn pass 1: the surface the front has passed beyond its glowing edge is gone; ahead of the front it chars, with
+    // cracks glowing through (burn map green), and the edge itself glows brightest where the hole begins.
+    float burnChar = 0.0;
+    vec3 burnGlow = vec3_splat(0.0);
+#if !MODEL_PREPASSED
+    if (u_modelBurn[2].x > 0.5)
+    {
+        vec2 burnTexel = texture2D(s_modelBurn, v_texcoord0).rg;
+        float past = u_modelBurn[0].x - burnTexel.r;
+        if (past > u_modelBurn[0].z)
+        {
+            discard;
+        }
+        float flicker = modelBurnNoise(v_worldPosition * 0.06 - vec3(0.0, 0.0, u_modelBurn[1].w * 3.0));
+        burnChar = smoothstep(-u_modelBurn[0].y, 0.0, past);
+        float edge = smoothstep(-u_modelBurn[0].z, u_modelBurn[0].z, past);
+        float cracks = burnChar * burnChar * smoothstep(0.5, 0.85, burnTexel.g + 0.25 * flicker);
+        burnGlow = u_modelBurn[1].rgb * (edge * edge * (0.7 + 0.6 * flicker) + 0.45 * cracks);
+    }
+#endif
+    if (u_modelOutline.w > 1.5 && u_modelOutline.w < 2.5)
+    {
+        // Creature depth prepass: depth and the alpha test above are all it needs.
+        gl_FragColor = vec4_splat(0.0);
+        return;
+    }
     if (dot(u_modelRegion[2], vec4_splat(1.0)) > 0.5)
     {
         // Colour variant of a shared skin: inside each region-mask channel the colour follows that region's ramp
@@ -120,13 +200,22 @@ void main()
         color.rgb = mix(color.rgb, texture2D(s_modelRegionRamp, vec2(rampU.z, 0.625)).rgb, regionMask.b);
         color.rgb = mix(color.rgb, texture2D(s_modelRegionRamp, vec2(rampU.w, 0.875)).rgb, regionMask.a);
     }
-    if (u_modelOutline.w > 0.5)
+    color.rgb *= 1.0 - 0.94 * burnChar;
+    // Creature contour shell (outline flag 3): the albedo darkened by u_modelOutline.x in the ambient light, then fogged.
+    // Unlit and without emission: early depth rejection is off with the alpha test, so this also runs for much of the
+    // shell the body hides.
+    bool contour = u_modelOutline.w > 2.5;
+    if (u_modelOutline.w > 0.5 && !contour)
     {
         gl_FragColor = vec4(u_modelOutline.rgb, 1.0);
         return;
     }
     vec3 shaded = color.rgb;
-    if (u_modelMaterial[1].z < 0.5)
+    if (contour)
+    {
+        shaded *= u_modelOutline.x * clamp(u_modelLighting[2].rgb * u_modelLighting[2].w * v_color0.rgb, 0.0, 1.0);
+    }
+    else if (u_modelMaterial[1].z < 0.5)
     {
         vec3 normal = modelNormalize(v_worldNormal);
         if (u_modelSurface.w >= 0.0)
@@ -139,12 +228,17 @@ void main()
             vec3 p2 = cross(dp2, normal);
             vec3 tangent = p2 * duv1.x + p1 * duv2.x;
             vec3 bitangent = p2 * duv1.y + p1 * duv2.y;
-            float inverseLength = inversesqrt(max(max(dot(tangent, tangent), dot(bitangent, bitangent)), 0.000001));
-            // z is rebuilt from x and y: cooked normal maps are two-channel (BC5, EAC RG).
+            // The frame is the texture gradient times the screen determinant, whose sign follows the backend's window
+            // y direction (up in OpenGL, down in Vulkan) and the facing: divide it out, so tangent points along +u
+            // and bitangent along +v (down the image) on every backend.
+            float inverseLength = inversesqrt(max(max(dot(tangent, tangent), dot(bitangent, bitangent)), 0.000001))
+                * (dot(dp1, p2) < 0.0 ? -1.0 : 1.0);
+            // z is rebuilt from x and y: cooked normal maps are two-channel (BC5, EAC RG). glTF convention: +x along
+            // +u, +y up the image (against +v). tools/normal_map_convention.py converts Meshy's +y-down maps.
             vec2 mappedXy = texture2D(s_modelNormal, v_texcoord0).xy * 2.0 - 1.0;
             vec3 mapped = vec3(mappedXy * u_modelSurface.w, sqrt(max(1.0 - dot(mappedXy, mappedXy), 0.0)));
             normal = modelNormalize(tangent * inverseLength * mapped.x
-                + bitangent * inverseLength * mapped.y + normal * mapped.z);
+                - bitangent * inverseLength * mapped.y + normal * mapped.z);
         }
         vec3 view = modelNormalize(u_modelCamera.xyz - v_worldPosition);
         if (u_modelMaterial[1].w > 0.5 && dot(normal, view) < 0.0)
@@ -156,7 +250,7 @@ void main()
         float roughness = clamp(surface.g * u_modelPbr.y, 0.045, 1.0);
         float nv = max(dot(normal, view), 0.0001);
         vec3 f0 = mix(vec3_splat(0.04), color.rgb, metallic);
-        vec3 fresnel = f0 + (max(vec3_splat(1.0 - roughness), f0) - f0) * pow(1.0 - nv, 5.0);
+        vec3 fresnel = f0 + (max(vec3_splat(1.0 - roughness), f0) - f0) * pow(max(1.0 - nv, 0.0), 5.0);
         // ponytail: upward probe fill uses a hemisphere; directional indirect probes if this loses needed contrast.
         // v_color0: per-placement ambient (rgb) and sun (a) scales; v_texcoord1: undirected point light.
         vec3 lightLevel = u_modelLighting[2].rgb * u_modelLighting[2].w * v_color0.rgb;
@@ -219,9 +313,17 @@ void main()
             // Above E = 1 the linear response is kept: creature albedos are tuned for it in lit rooms.
             shaded *= pow(clamp(lightLevel, 0.0, 1.0), vec3_splat(1.2));
         }
+        if (u_modelEdge.x > 0.0)
+        {
+            // Edge darkening (creatures): a soft contour like the sprites' dark rim. It follows the interpolated mesh
+            // normal, not the normal map, and the band is at least ~1.5 pixels wide so distant creatures keep it.
+            float facing = abs(dot(modelNormalize(v_worldNormal), view));
+            float band = max(0.55, 1.5 * fwidth(facing));
+            shaded *= 1.0 - u_modelEdge.x * (1.0 - smoothstep(0.0, band, facing));
+        }
     }
     // v_flowInfo.a scales the emission: a static material's pulse, 1 otherwise.
-    shaded += u_modelSurface.xyz * v_flowInfo.a;
+    shaded += contour ? vec3_splat(0.0) : u_modelSurface.xyz * v_flowInfo.a + burnGlow;
     // An SDR shoulder preserves sub-0.8 values and hue while compressing specular peaks smoothly.
     float peak = max(max(shaded.r, shaded.g), shaded.b);
     float compressed = 0.8 + 0.2 * (1.0 - exp(-max(peak - 0.8, 0.0) / 0.2));
@@ -237,5 +339,12 @@ void main()
             + (1.0 - u_modelFog[1].y) * modelSmoothstep(u_modelFog[2].y, u_modelFog[2].z, distance);
     fog = skyFogRatio(max(fog, u_modelFog[1].z), v_worldPosition, distance, u_modelFog[2].z);
     vec3 fogColor = skyFogDisplayColor(fog, u_modelFog[0].rgb, v_worldPosition);
-    gl_FragColor = vec4(mix(modelEncodeSrgb(shaded), fogColor, fog), color.a);
+    vec3 displayColor = modelEncodeSrgb(shaded);
+    // Creature hit flash (u_modelEdge.y, gameplay.melee_hit_flash): a brief mix towards warm white in display space,
+    // as on sprites; not on the contour shell.
+    if (u_modelEdge.y > 0.0 && !contour)
+    {
+        displayColor = mix(displayColor, vec3(1.0, 0.94, 0.86), u_modelEdge.y);
+    }
+    gl_FragColor = vec4(mix(displayColor, fogColor, fog), color.a);
 }

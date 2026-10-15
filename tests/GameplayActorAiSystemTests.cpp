@@ -9,6 +9,7 @@
 #include "game/tables/MonsterTable.h"
 #include "game/tables/SpellTable.h"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -570,7 +571,119 @@ TEST_CASE("shared actor AI returns to standing presentation when attack impact r
     CHECK(*update.state.attackCooldownSeconds > 0.0f);
 }
 
-TEST_CASE("shared actor AI doubles attack recovery while slowed")
+TEST_CASE("shared actor AI applies an attack at its sprite contact frame and attacks until the action ends")
+{
+    GameplayActorAiSystem system;
+    ActorAiFrameFacts frame = makeFrame();
+    ActorAiFacts actor = makeActor(12, 109);
+    actor.world.active = true;
+    actor.identity.hostilityType = 4;
+    actor.status.hostileToParty = true;
+    actor.status.hasDetectedParty = true;
+    actor.stats.aiType = GameplayActorAiType::Normal;
+    actor.stats.attack1Damage.diceRolls = 1;
+    actor.stats.attack1Damage.diceSides = 4;
+    actor.runtime.motionState = ActorAiMotionState::Attacking;
+    actor.runtime.animationState = ActorAiAnimationState::AttackMelee;
+    actor.runtime.meleeAttackAnimationSeconds = 0.75f;
+    actor.runtime.meleeAttackImpactSeconds = 0.5f;
+    actor.runtime.attackCooldownSeconds = 0.5f;
+    actor.runtime.queuedAttackAbility = GameplayActorAttackAbility::Attack1;
+    actor.target.currentKind = ActorAiTargetKind::Party;
+    actor.target.currentPosition = {132.0f, 200.0f, 64.0f};
+    actor.target.currentDistance = 96.0f;
+    actor.target.currentEdgeDistance = 0.0f;
+    actor.target.currentCanSense = true;
+    actor.target.partyCanSenseActor = true;
+    const auto step = [&](float actionSeconds, bool impactTriggered)
+    {
+        frame.activeActors = {actor};
+        frame.activeActors[0].runtime.actionSeconds = actionSeconds;
+        frame.activeActors[0].runtime.attackImpactTriggered = impactTriggered;
+        const OpenYAMM::Game::ActorAiFrameResult result = system.updateActors(frame);
+        REQUIRE_EQ(result.actorUpdates.size(), 1u);
+        return result.actorUpdates.front();
+    };
+
+    // Before the contact frame (0.5 s into the 0.75 s action) nothing applies.
+    const OpenYAMM::Game::ActorAiUpdate windup = step(0.3f, false);
+    CHECK_FALSE(windup.attackRequest.has_value());
+    CHECK_FALSE(windup.state.attackImpactTriggered.value_or(false));
+
+    // At the contact frame the blow applies and the actor keeps attacking.
+    const OpenYAMM::Game::ActorAiUpdate contact = step(0.25f + 1.0f / 256.0f, false);
+    CHECK(contact.attackRequest.has_value());
+    CHECK(contact.state.attackImpactTriggered.value_or(false));
+    REQUIRE(contact.state.motionState.has_value());
+    CHECK(*contact.state.motionState == ActorAiMotionState::Attacking);
+
+    const OpenYAMM::Game::ActorAiUpdate afterContact = step(0.1f, true);
+    CHECK_FALSE(afterContact.attackRequest.has_value());
+    REQUIRE(afterContact.state.motionState.has_value());
+    CHECK(*afterContact.state.motionState == ActorAiMotionState::Attacking);
+
+    // The native action ends standing, without a second blow.
+    const OpenYAMM::Game::ActorAiUpdate end = step(1.0f / 256.0f, true);
+    CHECK_FALSE(end.attackRequest.has_value());
+    REQUIRE(end.state.motionState.has_value());
+    CHECK(*end.state.motionState == ActorAiMotionState::Standing);
+}
+
+TEST_CASE("shared actor AI plays a delayed attack sound once the action clock passes the delay")
+{
+    GameplayActorAiSystem system;
+    ActorAiFrameFacts frame = makeFrame();
+    ActorAiFacts actor = makeActor(12, 109);
+    actor.world.active = true;
+    actor.identity.hostilityType = 4;
+    actor.status.hostileToParty = true;
+    actor.status.hasDetectedParty = true;
+    actor.stats.aiType = GameplayActorAiType::Normal;
+    actor.stats.attack1Damage.diceRolls = 1;
+    actor.stats.attack1Damage.diceSides = 4;
+    actor.runtime.meleeAttackAnimationSeconds = 0.75f;
+    actor.runtime.meleeAttackSoundDelaySeconds = 0.2f;
+    actor.movement.movementAllowed = true;
+    actor.movement.distanceToParty = 96.0f;
+    actor.target.currentKind = ActorAiTargetKind::Party;
+    actor.target.currentPosition = {132.0f, 200.0f, 64.0f};
+    actor.target.currentDistance = 96.0f;
+    actor.target.currentEdgeDistance = 0.0f;
+    actor.target.currentCanSense = true;
+    actor.target.partyCanSenseActor = true;
+    const auto attackSounds = [](const OpenYAMM::Game::ActorAiFrameResult &result)
+    {
+        return std::count_if(result.audioRequests.begin(), result.audioRequests.end(), [](const auto &request)
+        {
+            return request.kind == OpenYAMM::Game::ActorAiAudioRequestKind::Attack;
+        });
+    };
+
+    // Starting the attack does not play the delayed sound.
+    frame.activeActors = {actor};
+    const OpenYAMM::Game::ActorAiFrameResult start = system.updateActors(frame);
+    REQUIRE_EQ(start.actorUpdates.size(), 1u);
+    REQUIRE(start.actorUpdates[0].state.motionState.has_value());
+    REQUIRE(*start.actorUpdates[0].state.motionState == ActorAiMotionState::Attacking);
+    CHECK_EQ(attackSounds(start), 0);
+
+    actor.runtime.motionState = ActorAiMotionState::Attacking;
+    actor.runtime.animationState = ActorAiAnimationState::AttackMelee;
+    actor.runtime.queuedAttackAbility = GameplayActorAttackAbility::Attack1;
+    actor.runtime.attackCooldownSeconds = 1.0f;
+    const auto step = [&](float actionSeconds)
+    {
+        frame.activeActors = {actor};
+        frame.activeActors[0].runtime.actionSeconds = actionSeconds;
+        return attackSounds(system.updateActors(frame));
+    };
+    // 0.2 s into the 0.75 s action the action clock reads 0.55 s.
+    CHECK_EQ(step(0.6f), 0);
+    CHECK_EQ(step(0.55f + 1.0f / 256.0f), 1);
+    CHECK_EQ(step(0.5f), 0);
+}
+
+TEST_CASE("shared actor AI ages attack recovery at half speed while slowed")
 {
     GameplayActorAiSystem system;
     ActorAiFrameFacts frame = makeFrame();
@@ -580,11 +693,12 @@ TEST_CASE("shared actor AI doubles attack recovery while slowed")
     actor.status.hostileToParty = true;
     actor.status.hasDetectedParty = true;
     actor.status.spellEffects.slowRemainingSeconds = 10.0f;
+    actor.status.spellEffects.slowRecoveryMultiplier = 2.0f;
     actor.stats.aiType = GameplayActorAiType::Normal;
     actor.stats.moveSpeed = 200;
     actor.stats.attack1Damage.diceRolls = 1;
     actor.stats.attack1Damage.diceSides = 4;
-    actor.runtime.recoverySeconds = 0.8f;
+    actor.runtime.recoverySeconds = 2.0f;
     actor.runtime.meleeAttackAnimationSeconds = 1.0f;
     actor.movement.movementAllowed = true;
     actor.movement.effectiveMoveSpeed = 200.0f;
@@ -603,7 +717,98 @@ TEST_CASE("shared actor AI doubles attack recovery while slowed")
     REQUIRE_EQ(attackResult.actorUpdates.size(), 1u);
     const OpenYAMM::Game::ActorAiUpdate &attackUpdate = attackResult.actorUpdates.front();
     REQUIRE(attackUpdate.state.attackCooldownSeconds.has_value());
-    CHECK(*attackUpdate.state.attackCooldownSeconds > 1.25f);
+    const float startCooldownSeconds = *attackUpdate.state.attackCooldownSeconds;
+
+    // Slow is applied once, while the cooldown ages, not again when the attack starts.
+    CHECK_GE(startCooldownSeconds, 2.0f * 0.9f);
+    CHECK_LE(startCooldownSeconds, 2.0f * 1.2f);
+
+    actor.runtime.motionState = OpenYAMM::Game::ActorAiMotionState::Attacking;
+    actor.runtime.attackCooldownSeconds = startCooldownSeconds;
+    actor.runtime.actionSeconds = attackUpdate.state.actionSeconds.value_or(1.0f);
+    frame.activeActors = {actor};
+
+    const OpenYAMM::Game::ActorAiFrameResult agingResult = system.updateActors(frame);
+
+    REQUIRE_EQ(agingResult.actorUpdates.size(), 1u);
+    REQUIRE(agingResult.actorUpdates.front().state.attackCooldownSeconds.has_value());
+    CHECK_EQ(
+        *agingResult.actorUpdates.front().state.attackCooldownSeconds,
+        doctest::Approx(startCooldownSeconds - frame.fixedStepSeconds * 0.5f));
+}
+
+
+ActorAiFacts makeEngagedMeleeActor(float edgeDistanceToParty)
+{
+    ActorAiFacts actor = makeActor(11, 108);
+    actor.world.active = true;
+    actor.identity.hostilityType = 4;
+    actor.status.hostileToParty = true;
+    actor.status.hasDetectedParty = true;
+    actor.stats.aiType = GameplayActorAiType::Normal;
+    actor.stats.moveSpeed = 200;
+    actor.stats.attack1Damage.diceRolls = 1;
+    actor.stats.attack1Damage.diceSides = 4;
+    actor.runtime.recoverySeconds = 0.8f;
+    actor.runtime.meleeAttackAnimationSeconds = 1.0f;
+    actor.movement.movementAllowed = true;
+    actor.movement.effectiveMoveSpeed = 200.0f;
+    actor.movement.distanceToParty = edgeDistanceToParty + 96.0f;
+    actor.movement.edgeDistanceToParty = edgeDistanceToParty;
+    actor.target.currentKind = ActorAiTargetKind::Party;
+    actor.target.currentPosition = {132.0f, 200.0f + edgeDistanceToParty, 64.0f};
+    actor.target.currentDistance = edgeDistanceToParty + 96.0f;
+    actor.target.currentEdgeDistance = edgeDistanceToParty;
+    actor.target.currentCanSense = true;
+    actor.target.partyCanSenseActor = true;
+    return actor;
+}
+
+TEST_CASE("shared actor AI attacks in turn-based hold mode only with an action grant")
+{
+    GameplayActorAiSystem system;
+    ActorAiFrameFacts frame = makeFrame();
+    frame.turnBased.mode = OpenYAMM::Game::ActorTurnBasedMode::Hold;
+    frame.activeActors.push_back(makeEngagedMeleeActor(0.0f));
+
+    const OpenYAMM::Game::ActorAiFrameResult heldResult = system.updateActors(frame);
+    REQUIRE_EQ(heldResult.actorUpdates.size(), 1u);
+    const OpenYAMM::Game::ActorAiUpdate &heldUpdate = heldResult.actorUpdates.front();
+    CHECK_FALSE(heldUpdate.attackRequest.has_value());
+    CHECK(heldUpdate.state.motionState.value_or(ActorAiMotionState::Standing) != ActorAiMotionState::Attacking);
+    CHECK_FALSE(heldUpdate.movementIntent.applyMovement);
+
+    frame.turnBased.actionGrantActorIndices = {11};
+    const OpenYAMM::Game::ActorAiFrameResult grantedResult = system.updateActors(frame);
+    REQUIRE_EQ(grantedResult.actorUpdates.size(), 1u);
+    const OpenYAMM::Game::ActorAiUpdate &grantedUpdate = grantedResult.actorUpdates.front();
+    REQUIRE(grantedUpdate.state.motionState.has_value());
+    CHECK(*grantedUpdate.state.motionState == ActorAiMotionState::Attacking);
+}
+
+TEST_CASE("shared actor AI moves but never attacks in turn-based move-only mode")
+{
+    GameplayActorAiSystem system;
+    ActorAiFrameFacts frame = makeFrame();
+    frame.turnBased.mode = OpenYAMM::Game::ActorTurnBasedMode::MoveOnly;
+    frame.turnBased.actionGrantActorIndices = {};
+    frame.activeActors.push_back(makeEngagedMeleeActor(0.0f));
+
+    const OpenYAMM::Game::ActorAiFrameResult meleeResult = system.updateActors(frame);
+    REQUIRE_EQ(meleeResult.actorUpdates.size(), 1u);
+    CHECK(
+        meleeResult.actorUpdates.front().state.motionState.value_or(ActorAiMotionState::Standing)
+        != ActorAiMotionState::Attacking);
+
+    frame.activeActors = {makeEngagedMeleeActor(600.0f)};
+    const OpenYAMM::Game::ActorAiFrameResult pursuitResult = system.updateActors(frame);
+    REQUIRE_EQ(pursuitResult.actorUpdates.size(), 1u);
+    CHECK(pursuitResult.actorUpdates.front().movementIntent.applyMovement);
+
+    frame.turnBased.mode = OpenYAMM::Game::ActorTurnBasedMode::Hold;
+    const OpenYAMM::Game::ActorAiFrameResult heldResult = system.updateActors(frame);
+    REQUIRE_EQ(heldResult.actorUpdates.size(), 1u);
+    CHECK_FALSE(heldResult.actorUpdates.front().movementIntent.applyMovement);
 }
 
 TEST_CASE("shared actor AI pursues a remembered party target without attack line of sight")
@@ -1849,6 +2054,42 @@ TEST_CASE("shared actor AI advances dying actors until the final dead frame")
     CHECK(*update.state.motionState == ActorAiMotionState::Dead);
     REQUIRE(update.animation.animationState.has_value());
     CHECK(*update.animation.animationState == ActorAiAnimationState::Dead);
+}
+
+TEST_CASE("shared actor AI holds the animation clock during a hit's hitstop")
+{
+    GameplayActorAiSystem system;
+
+    for (const bool hitstopActive : {false, true})
+    {
+        CAPTURE(hitstopActive);
+        ActorAiFrameFacts frame = makeFrame();
+        ActorAiFacts actor = makeActor(5, 102);
+        actor.stats.currentHp = 0;
+        actor.runtime.motionState = ActorAiMotionState::Dying;
+        actor.runtime.animationState = ActorAiAnimationState::Dying;
+        actor.runtime.actionSeconds = 1.0f;
+        actor.runtime.animationTimeTicks = 10.0f;
+        actor.runtime.hitstopActive = hitstopActive;
+        frame.activeActors.push_back(actor);
+
+        const OpenYAMM::Game::ActorAiFrameResult result = system.updateActors(frame);
+
+        REQUIRE_EQ(result.actorUpdates.size(), 1u);
+        const OpenYAMM::Game::ActorAiUpdate &update = result.actorUpdates.front();
+        REQUIRE(update.animation.animationTimeTicks.has_value());
+        REQUIRE(update.state.actionSeconds.has_value());
+        CHECK(*update.state.actionSeconds < 1.0f);
+
+        if (hitstopActive)
+        {
+            CHECK(*update.animation.animationTimeTicks == doctest::Approx(10.0f));
+        }
+        else
+        {
+            CHECK(*update.animation.animationTimeTicks > 10.0f);
+        }
+    }
 }
 
 TEST_CASE("shared actor hit reaction gate blocks terminal and active attack states")

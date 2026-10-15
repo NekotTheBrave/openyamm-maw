@@ -2,7 +2,7 @@
 
 #include "engine/AssetFileSystem.h"
 #include "engine/BgfxContext.h"
-#include "engine/ImageAssetLoader.h"
+#include "engine/render/CookedTexture.h"
 #include "game/render/RuntimeShader.h"
 #include "game/render/TextureFiltering.h"
 
@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <iostream>
 #include <optional>
 
@@ -34,6 +35,19 @@ enum SkySampler : uint8_t
     StarsSampler = 5,
     MoonSampler = 6,
 };
+
+// A full-screen triangle. Behind the scene it lies on the far plane and passes the depth test only where nothing was
+// drawn (the cleared depth).
+std::array<float, 9> backgroundTriangle(bool behindScene)
+{
+    const float depth = behindScene ? 1.0f : 0.0f;
+    return {-1.0f, -1.0f, depth, 3.0f, -1.0f, depth, -1.0f, 3.0f, depth};
+}
+
+uint64_t backgroundState(bool behindScene)
+{
+    return BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | (behindScene ? BGFX_STATE_DEPTH_TEST_LEQUAL : 0);
+}
 
 std::array<float, 4> vec4(const SkyColor &color, float w)
 {
@@ -307,10 +321,22 @@ void SkyRenderer::prepareEnvironmentSource(const Engine::AssetFileSystem &assets
 {
     // A grey cumulus pattern: bright cloud over a slightly darker sky, coloured later by skyEnvironmentTint.
     constexpr uint16_t Size = 64;
-    const std::string path = std::string(SkyTextureDirectory) + "clouds_cumulus.png";
+    const std::string path = std::string(SkyTextureDirectory) + "clouds_cumulus.oytex";
     const std::optional<std::vector<uint8_t>> bytes = assets.readBinaryFile(path);
-    const std::optional<Engine::ImagePixelsBgra> image =
-        bytes ? Engine::decodeImagePixelsBgra(*bytes, path) : std::nullopt;
+    std::optional<Engine::CookedTexture> image;
+
+    try
+    {
+        if (bytes)
+        {
+            image = Engine::decodeCookedTexture(*bytes);
+        }
+    }
+    catch (const std::exception &exception)
+    {
+        std::cerr << "[AssetLoadWarning] kind=sky_texture path=" << path << ": " << exception.what() << '\n';
+    }
+
     m_environmentPixels.assign(size_t(Size) * Size * 4, 0);
     m_environmentSize = Size;
 
@@ -322,9 +348,13 @@ void SkyRenderer::prepareEnvironmentSource(const Engine::AssetFileSystem &assets
 
             if (image && image->width > 0 && image->height > 0)
             {
-                const size_t sourceX = size_t(column) * size_t(image->width) / Size;
-                const size_t sourceY = size_t(row) * size_t(image->height) / Size;
-                density = float(image->pixels[(sourceY * size_t(image->width) + sourceX) * 4 + 2]) / 255.0f;
+                // Only the 4x4 block holding each sample is decoded.
+                const int sourceX = int(size_t(column) * image->width / Size);
+                const int sourceY = int(size_t(row) * image->height / Size);
+                const int blockX = sourceX / 4 * 4;
+                const int blockY = sourceY / 4 * 4;
+                const std::vector<uint8_t> block = Engine::decodeCookedTextureRegionBgra(*image, blockX, blockY, 4, 4);
+                density = float(block[(size_t(sourceY - blockY) * 4 + size_t(sourceX - blockX)) * 4 + 2]) / 255.0f;
             }
 
             const uint8_t grey = uint8_t(std::lround(255.0f * (0.62f + 0.38f * std::clamp((density - 0.55f) * 3.0f,
@@ -349,7 +379,7 @@ void SkyRenderer::applyFogUniform(const SkyFrameState *pFrame, const SkySurround
     bgfx::setUniform(m_fogUniform, values.data(), SkyFogUniformVectors);
 }
 
-bgfx::TextureHandle SkyRenderer::texture(const std::string &name, bool mipmaps)
+bgfx::TextureHandle SkyRenderer::texture(const std::string &name, bool cloudLayer)
 {
     if (name.empty() || m_pAssets == nullptr)
     {
@@ -363,29 +393,22 @@ bgfx::TextureHandle SkyRenderer::texture(const std::string &name, bool mipmaps)
         return cached->second;
     }
 
+    // Cloud layers carry their mip chain; panoramas have one level, as they wrap around atan2 seams where mip
+    // selection would draw a visible line.
     bgfx::TextureHandle handle = BGFX_INVALID_HANDLE;
-    const std::string path = SkyTextureDirectory + name + ".png";
+    const std::string path = SkyTextureDirectory + name + ".oytex";
     const std::optional<std::vector<uint8_t>> bytes = m_pAssets->readBinaryFile(path);
-    const std::optional<Engine::ImagePixelsBgra> image =
-        bytes ? Engine::decodeImagePixelsBgra(*bytes, path) : std::nullopt;
 
-    if (image && image->width > 0 && image->height > 0)
+    try
     {
-        const uint32_t pixelBytes = static_cast<uint32_t>(image->pixels.size());
-
-        if (mipmaps)
+        if (bytes)
         {
-            handle = createBgraTexture2D(uint16_t(image->width), uint16_t(image->height), image->pixels.data(),
-                pixelBytes, TextureFilterProfile::Sky, BGFX_TEXTURE_NONE,
-                BgraTexturePixelPreparation::AlreadyPrepared);
+            handle = createCookedTexture2D(Engine::decodeCookedTexture(*bytes), TextureFilterProfile::Sky);
         }
-        else
-        {
-            // Panoramas wrap around atan2 seams, where mip selection would draw a visible line.
-            handle = bgfx::createTexture2D(uint16_t(image->width), uint16_t(image->height), false, 1,
-                bgraTextureUploadFormat(), BGFX_SAMPLER_V_CLAMP,
-                copyBgraTextureUploadMemory(image->pixels.data(), pixelBytes));
-        }
+    }
+    catch (const std::exception &exception)
+    {
+        std::cerr << "[AssetLoadWarning] kind=sky_texture path=" << path << ": " << exception.what() << '\n';
     }
 
     if (!bgfx::isValid(handle))
@@ -395,12 +418,35 @@ bgfx::TextureHandle SkyRenderer::texture(const std::string &name, bool mipmaps)
 
     m_textures.emplace(name, handle);
 
-    if (mipmaps && bgfx::isValid(handle))
+    if (cloudLayer && bgfx::isValid(handle))
     {
         m_cloudTextureNames.insert(name);
     }
 
     return handle;
+}
+
+bgfx::TextureHandle SkyRenderer::panorama(const std::string &name, bool visible)
+{
+    if (visible)
+    {
+        return texture(name, false);
+    }
+
+    // The night sky alone is 8 MB of GPU memory; it is needed from dusk to dawn.
+    const auto textureIt = m_textures.find(name);
+
+    if (textureIt != m_textures.end())
+    {
+        if (bgfx::isValid(textureIt->second))
+        {
+            bgfx::destroy(textureIt->second);
+        }
+
+        m_textures.erase(textureIt);
+    }
+
+    return BGFX_INVALID_HANDLE;
 }
 
 void SkyRenderer::releaseUnusedCloudTextures(const SkyFrameState &frame)
@@ -429,8 +475,8 @@ void SkyRenderer::releaseUnusedCloudTextures(const SkyFrameState &frame)
     }
 }
 
-void SkyRenderer::render(
-    uint16_t viewId, const float *pView, const float *pProjection, const SkySurroundings &surroundings)
+void SkyRenderer::render(uint16_t viewId, const float *pView, const float *pProjection,
+    const SkySurroundings &surroundings, bool behindScene)
 {
     const SkyFrameState &frame = m_state.frame();
 
@@ -487,11 +533,15 @@ void SkyRenderer::render(
             TextureFilterProfile::Sky);
     }
 
-    const bgfx::TextureHandle ring = texture(frame.horizonRing.texture, false);
-    const bgfx::TextureHandle stars = texture(frame.stars.texture, false);
-    const bgfx::TextureHandle moon = texture("moon", false);
-    bgfx::setTexture(RingSampler, m_samplers[RingSampler], bgfx::isValid(ring) ? ring : m_emptyTexture);
-    bgfx::setTexture(StarsSampler, m_samplers[StarsSampler], bgfx::isValid(stars) ? stars : m_emptyTexture);
+    // fs_sky skips each panorama at or below these weights.
+    constexpr float HiddenWeight = 0.001f;
+    const bgfx::TextureHandle ring = panorama(frame.horizonRing.texture, frame.horizonRing.opacity > HiddenWeight);
+    const bgfx::TextureHandle stars = panorama(frame.stars.texture, frame.scalar(SkyValue::Stars) > HiddenWeight);
+    const bgfx::TextureHandle moon = panorama("moon", frame.scalar(SkyValue::MoonVisibility) > HiddenWeight);
+    bgfx::setTexture(RingSampler, m_samplers[RingSampler], bgfx::isValid(ring) ? ring : m_emptyTexture,
+        BGFX_SAMPLER_V_CLAMP);
+    bgfx::setTexture(StarsSampler, m_samplers[StarsSampler], bgfx::isValid(stars) ? stars : m_emptyTexture,
+        BGFX_SAMPLER_V_CLAMP);
     bgfx::setTexture(MoonSampler, m_samplers[MoonSampler], bgfx::isValid(moon) ? moon : m_moonFallbackTexture,
         BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
 
@@ -503,15 +553,15 @@ void SkyRenderer::render(
     bgfx::TransientVertexBuffer vertices;
     bgfx::allocTransientVertexBuffer(&vertices, 3, m_vertexLayout);
     float *pVertices = reinterpret_cast<float *>(vertices.data);
-    const std::array<float, 9> triangle = {-1.0f, -1.0f, 0.0f, 3.0f, -1.0f, 0.0f, -1.0f, 3.0f, 0.0f};
+    const std::array<float, 9> triangle = backgroundTriangle(behindScene);
     std::copy(triangle.begin(), triangle.end(), pVertices);
     bgfx::setVertexBuffer(0, &vertices);
-    bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A);
+    bgfx::setState(backgroundState(behindScene));
     bgfx::submit(viewId, m_program);
 }
 
 void SkyRenderer::renderScaled(uint16_t viewId, uint16_t imageViewId, uint16_t width, uint16_t height, float scale,
-    const float *pView, const float *pProjection, const SkySurroundings &surroundings)
+    const float *pView, const float *pProjection, const SkySurroundings &surroundings, bool behindScene)
 {
     const uint16_t imageWidth = uint16_t(std::max(1.0f, std::round(float(width) * scale)));
     const uint16_t imageHeight = uint16_t(std::max(1.0f, std::round(float(height) * scale)));
@@ -519,7 +569,7 @@ void SkyRenderer::renderScaled(uint16_t viewId, uint16_t imageViewId, uint16_t w
     if (!bgfx::isValid(m_upscaleProgram) || !bgfx::isValid(m_imageSampler) || !bgfx::isValid(m_upscaleUniform)
         || scale >= 0.999f)
     {
-        render(viewId, pView, pProjection, surroundings);
+        render(viewId, pView, pProjection, surroundings, behindScene);
         return;
     }
 
@@ -538,7 +588,7 @@ void SkyRenderer::renderScaled(uint16_t viewId, uint16_t imageViewId, uint16_t w
 
     if (!bgfx::isValid(m_imageFrameBuffer) || bgfx::getAvailTransientVertexBuffer(3, m_vertexLayout) < 3)
     {
-        render(viewId, pView, pProjection, surroundings);
+        render(viewId, pView, pProjection, surroundings, behindScene);
         return;
     }
 
@@ -555,14 +605,14 @@ void SkyRenderer::renderScaled(uint16_t viewId, uint16_t imageViewId, uint16_t w
     }
 
     bgfx::allocTransientVertexBuffer(&vertices, 3, m_vertexLayout);
-    const std::array<float, 9> triangle = {-1.0f, -1.0f, 0.0f, 3.0f, -1.0f, 0.0f, -1.0f, 3.0f, 0.0f};
+    const std::array<float, 9> triangle = backgroundTriangle(behindScene);
     std::copy(triangle.begin(), triangle.end(), reinterpret_cast<float *>(vertices.data));
     const std::array<float, 4> upscale = {bgfx::getCaps()->originBottomLeft ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f};
     bgfx::setUniform(m_upscaleUniform, upscale.data());
     bgfx::setTexture(0, m_imageSampler, bgfx::getTexture(m_imageFrameBuffer),
         BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
     bgfx::setVertexBuffer(0, &vertices);
-    bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A);
+    bgfx::setState(backgroundState(behindScene));
     bgfx::submit(viewId, m_upscaleProgram);
 }
 }

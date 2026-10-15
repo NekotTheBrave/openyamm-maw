@@ -71,6 +71,8 @@ struct MonsterEntry
     int inspectYOffset = 0;
     int inspectAttackChance = 100;
     bool inspectFidgetWhenMoving = false;
+    // What melee blows strike (monster_descriptors.txt HitMaterial, a melee_hit_materials.txt name); empty is Flesh.
+    std::string hitMaterial;
 };
 
 class MonsterTable
@@ -219,6 +221,17 @@ public:
         std::string displayName;
     };
 
+    // What a melee weapon strikes on a monster (engine melee_hit_materials.txt, after Might and Magic IX's
+    // MATERIALS.txt): its impact sound for a glancing, normal and crushing blow (an empty path plays nothing), and the
+    // effect spawned at the contact point, which is blood or gore when the blood flag is set.
+    struct MeleeHitMaterial
+    {
+        std::string name;
+        std::array<std::string, 3> impactSoundPaths;
+        std::string contactEffectId;
+        bool blood = false;
+    };
+
     struct MonsterDeathDropEntry
     {
         int monsterId = 0;
@@ -237,12 +250,17 @@ public:
     bool loadDeathDropsFromRows(const std::vector<std::vector<std::string>> &rows);
     bool loadRelationsFromRows(const std::vector<std::vector<std::string>> &rows);
     bool loadUniqueNamesFromRows(const std::vector<std::vector<std::string>> &rows);
+    // After loadEntriesFromRows: fails when a monster names a material the table lacks.
+    bool loadMeleeHitMaterialsFromRows(const std::vector<std::vector<std::string>> &materialRows);
+    const MeleeHitMaterial *findMeleeHitMaterial(int16_t monsterId) const;
     const MonsterEntry *findByInternalName(const std::string &internalName) const;
     const MonsterEntry *findById(int16_t monsterId) const;
     const MonsterStatsEntry *findStatsById(int16_t monsterId) const;
     const std::vector<MonsterDeathDropEntry> &deathDropsForMonsterId(int16_t monsterId) const;
     const MonsterStatsEntry *findStatsByPictureName(const std::string &pictureName) const;
     const MonsterDisplayNameEntry *findDisplayEntryById(int id) const;
+    // The monster entry named by a display entry's picture (an actor's monster info id); resolved at load.
+    const MonsterEntry *findByDisplayEntryId(int id) const;
     std::optional<std::string> findDisplayNameByInternalName(const std::string &internalName) const;
     std::optional<std::string> getUniqueName(int32_t uniqueNameIndex) const;
     int getRelationToParty(int16_t monsterId) const;
@@ -254,11 +272,13 @@ public:
 
 private:
     static size_t relationIndexForMonsterId(int16_t monsterId);
+    void rebuildEntryIndexByDisplayId();
 
     std::vector<MonsterEntry> m_entries;
     std::unordered_map<std::string, int16_t> m_entryIndexByInternalName;
     std::vector<MonsterDisplayNameEntry> m_displayNames;
     std::vector<size_t> m_displayNameIndexById;
+    std::vector<int16_t> m_entryIndexByDisplayId;
     std::unordered_map<std::string, size_t> m_displayNameIndexByPictureName;
     std::vector<std::string> m_uniqueNames;
     std::unordered_map<int, MonsterStatsEntry> m_statsById;
@@ -266,5 +286,8 @@ private:
     std::unordered_map<std::string, int> m_statsIdByPictureName;
     std::vector<std::string> m_relationLabels;
     std::vector<std::vector<int>> m_relations;
+    std::vector<MeleeHitMaterial> m_meleeHitMaterials;
+    // Indexed like m_entries.
+    std::vector<size_t> m_meleeHitMaterialIndexByEntry;
 };
 }

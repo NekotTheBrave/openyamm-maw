@@ -1,5 +1,6 @@
 #include "game/gameplay/GameplayPartyOverlayInputController.h"
 
+#include "game/gameplay/GameplayAlchemyBenchInputController.h"
 #include "game/debug/GameplayDebugTrace.h"
 #include "game/tables/CharacterDollTable.h"
 #include "game/gameplay/GameMechanics.h"
@@ -1687,6 +1688,17 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
         clearPendingCharacterDismiss();
     }
 
+    if (!input.isScancodeHeld(SDL_SCANCODE_ESCAPE))
+    {
+        context.interactionState().alchemyBenchEscapeLatch = false;
+    }
+
+    if (context.characterScreenReadOnly().alchemyBench.active)
+    {
+        GameplayAlchemyBenchInputController::handleInput(context, input);
+        return;
+    }
+
     const CharacterDollTable *pCharacterDollTable = context.characterDollTable();
     const CharacterDollEntry *pActiveCharacterDollEntry =
         resolveCharacterDollEntry(pCharacterDollTable, pActiveCharacter);
@@ -1776,8 +1788,11 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
         }
     }
 
+    // The Escape that closed the alchemy bench keeps the screen open until it is released.
     const bool closePressed =
-        (pKeyboardState != nullptr && pKeyboardState[SDL_SCANCODE_ESCAPE])
+        (pKeyboardState != nullptr
+            && pKeyboardState[SDL_SCANCODE_ESCAPE]
+            && !context.interactionState().alchemyBenchEscapeLatch)
         || isScancodeNewlyPressed(context, input, SDL_SCANCODE_E);
     const bool isInventorySpellTargetMode =
         context.utilitySpellOverlayReadOnly().active
@@ -2077,6 +2092,31 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
                     {
                         return {GameplayCharacterPointerTargetType::DismissButton};
                     }
+                }
+            }
+
+            if (!context.isAdventurersInnCharacterSourceActive())
+            {
+                const GameplayCharacterPointerTarget alchemyTarget = resolveCharacterButtonTarget(
+                    "CharacterAlchemyButton",
+                    GameplayCharacterPointerTargetType::AlchemyButton);
+
+                if (alchemyTarget.type != GameplayCharacterPointerTargetType::None)
+                {
+                    return alchemyTarget;
+                }
+            }
+
+            if (!context.isAdventurersInnCharacterSourceActive()
+                && context.characterScreenReadOnly().page == GameplayUiController::CharacterPage::Inventory)
+            {
+                const GameplayCharacterPointerTarget sortTarget = resolveCharacterButtonTarget(
+                    "CharacterInventorySortButton",
+                    GameplayCharacterPointerTargetType::InventorySortButton);
+
+                if (sortTarget.type != GameplayCharacterPointerTargetType::None)
+                {
+                    return sortTarget;
                 }
             }
 
@@ -2773,6 +2813,37 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
                     {
                         context.setStatusBarEvent("Dismissal failed.");
                     }
+                }
+
+                return;
+            }
+
+            if (target.type == GameplayCharacterPointerTargetType::AlchemyButton)
+            {
+                if (context.heldInventoryItem().active)
+                {
+                    context.setStatusBarEvent("Put the item down first.");
+                    return;
+                }
+
+                // Every visit starts with empty slots; filters and the search stay as the player left them.
+                GameplayUiController::AlchemyBenchState &bench = context.characterScreen().alchemyBench;
+                bench.active = true;
+                bench.targetItemId = 0;
+                bench.heldItemId = 0;
+                bench.selectedResultItemId = 0;
+                bench.recipeSearchActive = false;
+                bench.clearBrewResult();
+                bench.newRecipeResultIds.clear();
+                context.characterScreen().dollJewelryOverlayOpen = false;
+                return;
+            }
+
+            if (target.type == GameplayCharacterPointerTargetType::InventorySortButton && pParty != nullptr)
+            {
+                if (!pParty->sortMemberInventory(selectedPartyMemberIndex))
+                {
+                    context.setStatusBarEvent("Not enough room to sort.");
                 }
 
                 return;

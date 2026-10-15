@@ -344,7 +344,7 @@ void renderContextAction(GameplayScreenRuntime &context, int width, int height)
 void renderPassTurnButton(GameplayScreenRuntime &context, int width, int height)
 {
     const std::optional<GameplayResolvedHudLayoutElement> buttonRect =
-        context.resolveMobilePassTurnButton(width, height);
+        context.resolvePassTurnButton(width, height);
 
     if (!buttonRect)
     {
@@ -361,10 +361,12 @@ void renderPassTurnButton(GameplayScreenRuntime &context, int width, int height)
     labelLayout.textColorAbgr = pressed ? GameplayUiSkin::Gold : GameplayUiSkin::Ivory;
     labelLayout.textAlignX = UiLayoutManager::TextAlignX::Center;
     labelLayout.textAlignY = UiLayoutManager::TextAlignY::Middle;
-    labelLayout.textScale = 0.4166667f;
-    const std::string label =
-        context.turnBasedCombatRuntime().stage() == TurnBasedCombatStage::Movement ? "End Movement" : "Pass Turn";
-    renderCenteredContextActionLabelLines(context, labelLayout, *buttonRect, {label});
+    labelLayout.textScale = 0.3333333f;
+    const std::vector<std::string> labelLines =
+        context.turnBasedCombatRuntime().stage() == TurnBasedCombatStage::Movement
+            ? std::vector<std::string>{"End", "Move"}
+            : std::vector<std::string>{"Pass"};
+    renderCenteredContextActionLabelLines(context, labelLayout, *buttonRect, labelLines);
 }
 
 } // namespace

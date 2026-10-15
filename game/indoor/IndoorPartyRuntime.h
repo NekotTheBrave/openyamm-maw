@@ -5,6 +5,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace OpenYAMM::Game
 {
@@ -35,7 +36,7 @@ public:
         float desiredVelocityX,
         float desiredVelocityY,
         bool jumpRequested,
-        bool running,
+        bool runningMovement,
         float deltaSeconds,
         bool turnBasedMovementStep = false,
         bool turnBasedPhysicsStep = false);
@@ -46,6 +47,9 @@ public:
     void invalidateRuntimeGeometryCache();
 
     const IndoorMoveState &movementState() const;
+    // Moves out the floor faces stood on during movement steps since the last call, in order, so pressure plates
+    // see every face crossed instead of only the frame's final one.
+    void takeSteppedFloorFaces(std::vector<size_t> &faces);
     const Party &party() const;
     Party &party();
     const std::string &movementStatusText() const;
@@ -82,5 +86,6 @@ private:
     float m_pendingJumpLift = 0.0f;
     float m_burningDamageTimerSeconds = 0.0f;
     std::string m_movementStatusText;
+    std::vector<size_t> m_steppedFloorFaces;
 };
 }

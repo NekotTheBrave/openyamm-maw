@@ -94,6 +94,7 @@ std::vector<std::pair<size_t, uint32_t>> matrixTargetColumnsFromRows(
 bool PotionNoteTable::loadFromRows(const std::vector<std::vector<std::string>> &rows)
 {
     m_autonoteIds.clear();
+    m_entries.clear();
 
     const std::vector<std::pair<size_t, uint32_t>> targetColumns = matrixTargetColumnsFromRows(rows);
 
@@ -163,9 +164,9 @@ bool PotionNoteTable::loadFromRows(const std::vector<std::vector<std::string>> &
                 return false;
             }
 
-            if (autonoteId != 0)
+            if (autonoteId != 0 && m_autonoteIds.insert_or_assign(key(rowItemId, targetItemId), autonoteId).second)
             {
-                m_autonoteIds[key(rowItemId, targetItemId)] = autonoteId;
+                m_entries.push_back({rowItemId, targetItemId, autonoteId});
             }
         }
     }
@@ -185,6 +186,11 @@ std::optional<uint32_t> PotionNoteTable::autonoteIdForMix(uint32_t targetItemId,
 size_t PotionNoteTable::entryCount() const
 {
     return m_autonoteIds.size();
+}
+
+const std::vector<PotionNoteTable::Entry> &PotionNoteTable::entries() const
+{
+    return m_entries;
 }
 
 uint64_t PotionNoteTable::key(uint32_t rowItemId, uint32_t columnItemId)

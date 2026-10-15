@@ -80,8 +80,10 @@ struct TerrainDecorationPlacement
 
 std::optional<TerrainDecorationConfig> loadTerrainDecorationConfig(
     const Engine::AssetFileSystem &assets, const OutdoorMapData &map, std::string &error);
-TerrainDecorationPlacement scatterTerrainDecorations(
-    const OutdoorMapData &map, const std::array<std::string, 256> &textures, const TerrainDecorationConfig &config);
+// terrainSmoothing: the materials terrain's smoothing (0 = native triangles), so plants stand on the drawn ground.
+TerrainDecorationPlacement scatterTerrainDecorations(const OutdoorMapData &map,
+    const std::array<std::string, 256> &textures, const TerrainDecorationConfig &config,
+    float terrainSmoothing = 0.0f);
 
 // Tight card outline of one tuft texture (alpha, row-major, width x height): a convex polygon of
 // TerrainDecorationCutoutVertices texture coordinates in order (u right, v down; the last vertex repeats when fewer

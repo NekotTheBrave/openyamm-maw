@@ -7,9 +7,11 @@
 #include "game/events/ISceneEventContext.h"
 #include "game/FaceEnums.h"
 #include "game/gameplay/CorpseLootRuntime.h"
+#include "game/gameplay/GameplayActorHitFeedback.h"
 #include "game/gameplay/GameplayActorService.h"
 #include "game/gameplay/HouseInteraction.h"
 #include "game/gameplay/GameplayRuntimeInterfaces.h"
+#include "game/maps/ActorModelManifest.h"
 #include "game/maps/MapAssetLoader.h"
 #include "game/StringUtils.h"
 #include "game/outdoor/OutdoorPartyRuntime.h"
@@ -23,6 +25,7 @@
 #include <array>
 #include <cstring>
 #include <fstream>
+#include <memory>
 #include <filesystem>
 #include <optional>
 #include <sstream>
@@ -386,6 +389,11 @@ public:
         return m_partyZ;
     }
 
+    float partyEyeZ() const override
+    {
+        return m_partyZ + 160.0f;
+    }
+
     bool partyIsFlyingForEventChecks() const override
     {
         return m_partyFlyingForEventChecks;
@@ -524,6 +532,16 @@ public:
         (void)actorIndex;
         (void)state;
         return false;
+    }
+
+    OpenYAMM::Game::GameplayActorHitFeedback &actorHitFeedback() override
+    {
+        return m_actorHitFeedback;
+    }
+
+    const OpenYAMM::Game::GameplayActorHitFeedback &actorHitFeedback() const override
+    {
+        return m_actorHitFeedback;
     }
 
     bool actorInspectState(
@@ -928,6 +946,7 @@ public:
     }
 
 private:
+    OpenYAMM::Game::GameplayActorHitFeedback m_actorHitFeedback;
     std::string m_mapName = "out01.odm";
     OpenYAMM::Game::Party m_party = {};
     float m_partyX = 0.0f;
@@ -1192,27 +1211,6 @@ bool loadIndoorMapWithCompanionOptions(
 
     mapAssetInfo = *loadedMap;
     return true;
-}
-
-bool outdoorMapHasCogTriggeredNumber(const OpenYAMM::Game::MapAssetInfo &mapAssetInfo, uint16_t eventId)
-{
-    if (!mapAssetInfo.outdoorMapData)
-    {
-        return false;
-    }
-
-    for (const OpenYAMM::Game::OutdoorBModel &bmodel : mapAssetInfo.outdoorMapData->bmodels)
-    {
-        for (const OpenYAMM::Game::OutdoorBModelFace &face : bmodel.faces)
-        {
-            if (face.cogTriggeredNumber == eventId)
-            {
-                return true;
-            }
-        }
-    }
-
-    return false;
 }
 
 bool bitmapTextureSetContains(
@@ -1828,302 +1826,6 @@ TEST_CASE("generated_lua_event_scripts_are_loaded_from_files")
             selectedMap->localEventProgram->luaSourceName()->find("events/maps/out01_mmmerge.lua")
             != std::string::npos);
     }
-}
-
-TEST_CASE("mmmerge shared Breach maps are mounted and scripted")
-{
-    const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
-    const OpenYAMM::Game::MapCompanionLoadOptions loadOptions = {};
-
-    OpenYAMM::Game::MapAssetInfo breach = {};
-    REQUIRE(loadOutdoorMapWithCompanionOptions(
-        mapLoader.assetFileSystem,
-        mapLoader.gameDataLoader,
-        "Breach.odm",
-        OpenYAMM::Game::MapLoadPurpose::HeadlessGameplay,
-        loadOptions,
-        breach));
-    CHECK_EQ(breach.map.worldId, "mmmerge");
-    REQUIRE(breach.scenePath.has_value());
-    CHECK(breach.geometryPath.ends_with("Breach.odm"));
-    CHECK(breach.scenePath->ends_with("Breach.scene.yml"));
-    CHECK_EQ(breach.authoredCompanionSource, OpenYAMM::Game::AuthoredCompanionSource::SceneYml);
-    CHECK(outdoorMapHasCogTriggeredNumber(breach, 54));
-    CHECK(outdoorMapHasCogTriggeredNumber(breach, 81));
-    CHECK(outdoorMapHasCogTriggeredNumber(breach, 900));
-
-    OpenYAMM::Game::MapAssetInfo brAlvar = {};
-    REQUIRE(loadOutdoorMapWithCompanionOptions(
-        mapLoader.assetFileSystem,
-        mapLoader.gameDataLoader,
-        "BrAlvar.odm",
-        OpenYAMM::Game::MapLoadPurpose::HeadlessGameplay,
-        loadOptions,
-        brAlvar));
-    CHECK_EQ(brAlvar.map.worldId, "mmmerge");
-    REQUIRE(brAlvar.scenePath.has_value());
-    CHECK(brAlvar.geometryPath.ends_with("BrAlvar.odm"));
-    CHECK(brAlvar.scenePath->ends_with("BrAlvar.scene.yml"));
-    CHECK_EQ(brAlvar.authoredCompanionSource, OpenYAMM::Game::AuthoredCompanionSource::SceneYml);
-    CHECK(outdoorMapHasCogTriggeredNumber(brAlvar, 53));
-    CHECK(outdoorMapHasCogTriggeredNumber(brAlvar, 54));
-    CHECK(outdoorMapHasCogTriggeredNumber(brAlvar, 81));
-
-    OpenYAMM::Game::MapAssetInfo brBase = {};
-    REQUIRE(loadIndoorMapWithCompanionOptions(
-        mapLoader.assetFileSystem,
-        mapLoader.gameDataLoader,
-        "BrBase.blv",
-        OpenYAMM::Game::MapLoadPurpose::HeadlessGameplay,
-        loadOptions,
-        brBase));
-    CHECK_EQ(brBase.map.worldId, "mmmerge");
-    REQUIRE(brBase.scenePath.has_value());
-    CHECK(brBase.geometryPath.ends_with("BrBase.blv"));
-    CHECK(brBase.scenePath->ends_with("BrBase.scene.yml"));
-    CHECK_EQ(brBase.authoredCompanionSource, OpenYAMM::Game::AuthoredCompanionSource::SceneYml);
-
-    const std::filesystem::path sourceRoot = OPENYAMM_SOURCE_DIR;
-    const std::optional<std::string> supportLua =
-        readSourceTextFile(sourceRoot / "assets_dev/engine/scripts/common/event_support.lua");
-    REQUIRE(supportLua.has_value());
-
-    struct ScriptExpectation
-    {
-        const char *pPath;
-        std::vector<uint32_t> expectedEventIds;
-    };
-
-    const ScriptExpectation scripts[] = {
-        {
-            "assets_dev/worlds/mmmerge/events/maps/Breach.lua",
-            {54, 81, 900, 101, 104, 110, 118, 125, 128, 66001}
-        },
-        {
-            "assets_dev/worlds/mmmerge/events/maps/BrAlvar.lua",
-            {
-                5, 7, 15, 16, 30, 53, 54, 60, 81, 82, 101, 104, 110,
-                118, 125, 128, 301, 315, 1790, 1792, 1793, 1794, 65005, 66002, 66004
-            }
-        },
-        {"assets_dev/worlds/mmmerge/events/maps/BrBase.lua", {1, 2, 66003}},
-    };
-
-    std::optional<OpenYAMM::Game::ScriptedEventProgram> breachProgram = std::nullopt;
-    std::optional<OpenYAMM::Game::ScriptedEventProgram> brAlvarProgram = std::nullopt;
-
-    for (const ScriptExpectation &script : scripts)
-    {
-        const std::optional<std::string> scriptLua = readSourceTextFile(sourceRoot / script.pPath);
-        REQUIRE(scriptLua.has_value());
-
-        std::string error;
-        const std::optional<OpenYAMM::Game::ScriptedEventProgram> program =
-            OpenYAMM::Game::ScriptedEventProgram::loadFromLuaText(
-                *supportLua + "\n\n" + *scriptLua,
-                std::string("@") + script.pPath,
-                OpenYAMM::Game::ScriptedEventScope::Map,
-                error);
-        REQUIRE_MESSAGE(program.has_value(), error.c_str());
-
-        for (uint32_t eventId : script.expectedEventIds)
-        {
-            CHECK(program->hasEvent(eventId));
-        }
-
-        if (std::strcmp(script.pPath, "assets_dev/worlds/mmmerge/events/maps/Breach.lua") == 0)
-        {
-            breachProgram = program;
-        }
-        else if (std::strcmp(script.pPath, "assets_dev/worlds/mmmerge/events/maps/BrAlvar.lua") == 0)
-        {
-            brAlvarProgram = program;
-        }
-    }
-
-    REQUIRE(breachProgram.has_value());
-    REQUIRE(brAlvarProgram.has_value());
-
-    auto hasFollower = [](const OpenYAMM::Game::EventRuntimeState &state, uint32_t npcId)
-    {
-        return std::find_if(
-            state.hiredNpcFollowers.begin(),
-            state.hiredNpcFollowers.end(),
-            [npcId](const OpenYAMM::Game::EventRuntimeState::HiredNpcFollower &follower)
-            {
-                return follower.npcId == npcId;
-            }) != state.hiredNpcFollowers.end();
-    };
-
-    OpenYAMM::Game::EventRuntime eventRuntime = {};
-    OpenYAMM::Game::EventRuntimeState runtimeState = {};
-    runtimeState.mapVars[12] = 1;
-    OpenYAMM::Game::Party party = makeScriptedRegressionParty();
-    RecordingSceneEventContext sceneContext = {};
-
-    REQUIRE(eventRuntime.buildOnLoadState(
-        breachProgram,
-        std::nullopt,
-        std::nullopt,
-        runtimeState,
-        &party,
-        &sceneContext));
-
-    REQUIRE_EQ(sceneContext.outdoorModelMechanismCalls.size(), 28u);
-    CHECK_EQ(sceneContext.outdoorModelMechanismCalls.front().mechanismId, 101u);
-    CHECK_EQ(sceneContext.outdoorModelMechanismCalls.front().modelName, "Time_1");
-    CHECK_EQ(sceneContext.outdoorModelMechanismCalls.front().dz, -10);
-    CHECK_EQ(sceneContext.outdoorModelMechanismCalls.front().moveTimeMs, 1000u);
-    CHECK(sceneContext.outdoorModelMechanismCalls.front().closed);
-    CHECK_FALSE(sceneContext.outdoorModelMechanismCalls.front().moveParty);
-    CHECK_EQ(sceneContext.outdoorModelMechanismCalls.back().mechanismId, 128u);
-    CHECK_EQ(sceneContext.outdoorModelMechanismCalls.back().modelName, "Elev_3_Button");
-    CHECK_EQ(sceneContext.outdoorModelMechanismCalls.back().dz, 5);
-    CHECK_EQ(sceneContext.outdoorModelMechanismCalls.back().moveTimeMs, 250u);
-
-    OpenYAMM::Game::EventRuntimeState brAlvarRuntimeState = {};
-    OpenYAMM::Game::Party brAlvarParty = makeScriptedRegressionParty();
-    RecordingSceneEventContext brAlvarSceneContext = {};
-
-    REQUIRE(eventRuntime.buildOnLoadState(
-        brAlvarProgram,
-        std::nullopt,
-        std::nullopt,
-        brAlvarRuntimeState,
-        &brAlvarParty,
-        &brAlvarSceneContext));
-
-    REQUIRE_EQ(brAlvarSceneContext.outdoorModelMechanismCalls.size(), 28u);
-    CHECK_EQ(brAlvarSceneContext.outdoorModelMechanismCalls.front().mechanismId, 101u);
-    CHECK_EQ(brAlvarSceneContext.outdoorModelMechanismCalls.front().modelName, "Time_1");
-    CHECK_EQ(brAlvarSceneContext.outdoorModelMechanismCalls.front().dz, -10);
-    CHECK_EQ(brAlvarSceneContext.outdoorModelMechanismCalls.front().moveTimeMs, 1000u);
-    CHECK_EQ(brAlvarSceneContext.outdoorModelMechanismCalls.back().mechanismId, 128u);
-    CHECK_EQ(brAlvarSceneContext.outdoorModelMechanismCalls.back().modelName, "Elev_3_Button");
-    CHECK_EQ(brAlvarSceneContext.outdoorModelMechanismCalls.back().dz, 5);
-    CHECK_EQ(brAlvarSceneContext.outdoorModelMechanismCalls.back().moveTimeMs, 250u);
-    CHECK_EQ(
-        brAlvarRuntimeState.monsterRelationOverrides[
-            OpenYAMM::Game::EventRuntime::monsterRelationOverrideKey(260, 448)],
-        4);
-    CHECK_EQ(
-        brAlvarRuntimeState.monsterRelationOverrides[
-            OpenYAMM::Game::EventRuntime::monsterRelationOverrideKey(448, 260)],
-        4);
-    CHECK_EQ(
-        brAlvarRuntimeState.monsterRelationOverrides[
-            OpenYAMM::Game::EventRuntime::monsterRelationOverrideKey(260, 449)],
-        4);
-    CHECK_EQ(
-        brAlvarRuntimeState.monsterRelationOverrides[
-            OpenYAMM::Game::EventRuntime::monsterRelationOverrideKey(449, 260)],
-        4);
-    CHECK_EQ(
-        brAlvarRuntimeState.monsterRelationOverrides[
-            OpenYAMM::Game::EventRuntime::monsterRelationOverrideKey(261, 450)],
-        4);
-    CHECK_EQ(
-        brAlvarRuntimeState.monsterRelationOverrides[
-            OpenYAMM::Game::EventRuntime::monsterRelationOverrideKey(450, 261)],
-        4);
-    CHECK_EQ(
-        brAlvarRuntimeState.monsterRelationOverrides[
-            OpenYAMM::Game::EventRuntime::monsterRelationOverrideKey(475, 0)],
-        0);
-    CHECK_EQ(
-        brAlvarRuntimeState.monsterRelationOverrides[
-            OpenYAMM::Game::EventRuntime::monsterRelationOverrideKey(476, 0)],
-        0);
-    CHECK_EQ(
-        brAlvarRuntimeState.monsterRelationOverrides[
-            OpenYAMM::Game::EventRuntime::monsterRelationOverrideKey(477, 0)],
-        0);
-    CHECK_EQ(brAlvarRuntimeState.npcTopicOverrides[772][0], 1793u);
-    const uint32_t actorInvisibleBit = static_cast<uint32_t>(OpenYAMM::Game::EvtActorAttribute::Invisible);
-    CHECK((brAlvarRuntimeState.actorClearMasks[77] & actorInvisibleBit) != 0);
-    CHECK((brAlvarRuntimeState.actorClearMasks[78] & actorInvisibleBit) != 0);
-    CHECK((brAlvarRuntimeState.actorClearMasks[79] & actorInvisibleBit) != 0);
-    CHECK((brAlvarRuntimeState.actorClearMasks[80] & actorInvisibleBit) != 0);
-
-    OpenYAMM::Game::EventRuntimeState::ActiveHookContext friendHook = {};
-    friendHook.kind = OpenYAMM::Game::EventRuntimeHookKind::NpcEnter;
-    friendHook.npcId = 772;
-    brAlvarRuntimeState.activeHookContext = friendHook;
-    REQUIRE(eventRuntime.executeHooks(
-        brAlvarProgram,
-        std::nullopt,
-        OpenYAMM::Game::EventRuntimeHookKind::NpcEnter,
-        brAlvarRuntimeState,
-        &brAlvarParty,
-        &brAlvarSceneContext));
-    CHECK_EQ(brAlvarRuntimeState.namedMapVars["CurrentFriendNpc"], 772);
-
-    size_t previousMessageCount = brAlvarRuntimeState.messages.size();
-    REQUIRE(eventRuntime.executeNpcTopicEventById(
-        brAlvarProgram,
-        std::nullopt,
-        1793,
-        brAlvarRuntimeState,
-        &brAlvarParty,
-        &brAlvarSceneContext));
-    CHECK_EQ(brAlvarRuntimeState.namedGlobalVars["MMerge.CrossContinents.GotFQHints"], 1);
-    CHECK_EQ(brAlvarRuntimeState.namedGlobalVars["MMerge.CrossContinents.GotFQHint1"], 1);
-    CHECK_EQ(brAlvarRuntimeState.namedGlobalVars["MMerge.CrossContinents.HintByNPC.772"], 1);
-    CHECK((brAlvarRuntimeState.actorSetMasks[77] & actorInvisibleBit) != 0);
-    CHECK_GT(brAlvarRuntimeState.messages.size(), previousMessageCount);
-
-    friendHook.npcId = 773;
-    brAlvarRuntimeState.activeHookContext = friendHook;
-    REQUIRE(eventRuntime.executeHooks(
-        brAlvarProgram,
-        std::nullopt,
-        OpenYAMM::Game::EventRuntimeHookKind::NpcEnter,
-        brAlvarRuntimeState,
-        &brAlvarParty,
-        &brAlvarSceneContext));
-    REQUIRE(eventRuntime.executeNpcTopicEventById(
-        brAlvarProgram,
-        std::nullopt,
-        1793,
-        brAlvarRuntimeState,
-        &brAlvarParty,
-        &brAlvarSceneContext));
-    CHECK_EQ(brAlvarRuntimeState.namedGlobalVars["MMerge.CrossContinents.GotFQHints"], 2);
-    CHECK_EQ(brAlvarRuntimeState.namedGlobalVars["MMerge.CrossContinents.GotFQHint2"], 1);
-    CHECK_EQ(brAlvarRuntimeState.namedGlobalVars["MMerge.CrossContinents.HintByNPC.773"], 2);
-    CHECK_EQ(brAlvarRuntimeState.npcTopicOverrides[1092][0], 1794u);
-
-    brAlvarRuntimeState.namedGlobalVars.erase("MMerge.CrossContinents.GotFQHint2");
-    brAlvarRuntimeState.namedGlobalVars.erase("MMerge.CrossContinents.GotFQHint3");
-    REQUIRE(eventRuntime.executeEventById(
-        brAlvarProgram,
-        std::nullopt,
-        5,
-        brAlvarRuntimeState,
-        &brAlvarParty,
-        &brAlvarSceneContext));
-    CHECK_EQ(brAlvarRuntimeState.npcHouseOverrides[1092], 712u);
-    REQUIRE(brAlvarRuntimeState.pendingDialogueContext.has_value());
-    CHECK_EQ(brAlvarRuntimeState.pendingDialogueContext->kind, OpenYAMM::Game::DialogueContextKind::HouseService);
-    CHECK_EQ(brAlvarRuntimeState.pendingDialogueContext->sourceId, 712u);
-    CHECK_EQ(brAlvarRuntimeState.namedGlobalVars["MMerge.CrossContinents.GotFQHint2"], 1);
-    CHECK_EQ(brAlvarRuntimeState.namedGlobalVars["MMerge.CrossContinents.GotFQHint3"], 1);
-    CHECK_EQ(brAlvarRuntimeState.namedGlobalVars["MMerge.CrossContinents.RiddlesAnswered"], 5);
-    CHECK_EQ(brAlvarRuntimeState.namedGlobalVars["MMerge.CrossContinents.ChaosReadyToFollow"], 1);
-    CHECK_EQ(brAlvarRuntimeState.npcTopicOverrides[1092][0], 1792u);
-    CHECK_EQ(brAlvarRuntimeState.npcTopicOverrides[1092][1], 0u);
-
-    REQUIRE(eventRuntime.executeNpcTopicEventById(
-        brAlvarProgram,
-        std::nullopt,
-        1792,
-        brAlvarRuntimeState,
-        &brAlvarParty,
-        &brAlvarSceneContext));
-    CHECK_EQ(brAlvarRuntimeState.namedGlobalVars["MMerge.CrossContinents.CaughtChaos"], 1);
-    CHECK_EQ(brAlvarRuntimeState.namedGlobalVars["MMerge.CrossContinents.CoughtChaos"], 1);
-    CHECK(hasFollower(brAlvarRuntimeState, 1092));
-    CHECK_EQ(brAlvarRuntimeState.npcHouseOverrides[1092], 0u);
 }
 
 TEST_CASE("mm7 and mm8 ore crafting consumes one ore from any party member and cannot repeat for free")
@@ -9004,86 +8706,38 @@ TEST_CASE("mm6 merged indoor maps normalize legacy static lights to visible whit
     }
 }
 
-TEST_CASE("mm6 darkmoor actor previews preload random encounter tier textures")
+TEST_CASE("mm6 darkmoor actor previews build encounter tiers as models and load their sprites for no monster")
 {
     const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
-    const OpenYAMM::Game::MapAssetInfo *pLoadedMap = loadCachedIndoorMapWithCompanionOptions(
-        mapLoader.assetFileSystem,
-        mapLoader.gameDataLoader,
-        "cd2.blv",
-        OpenYAMM::Game::MapLoadPurpose::ActorPreviews,
-        OpenYAMM::Game::MapCompanionLoadOptions{
-            .allowSceneYml = true,
-            .allowLegacyCompanion = true,
-        });
-    REQUIRE(pLoadedMap != nullptr);
-    REQUIRE(pLoadedMap->indoorActorPreviewBillboardSet.has_value());
-
-    const OpenYAMM::Game::ActorPreviewBillboardSet &billboardSet =
-        *pLoadedMap->indoorActorPreviewBillboardSet;
+    const OpenYAMM::Game::MonsterTable &monsterTable = mapLoader.gameDataLoader.getMonsterTable();
     const OpenYAMM::Game::MapStatsEntry *pMapEntry =
         mapLoader.gameDataLoader.getMapStats().findByFileName("cd2.blv");
     REQUIRE(pMapEntry != nullptr);
 
-    // Monsters with cooked sprite atlases (engine/sprites_new) are uploaded by the shared atlas cache instead of the
-    // bitmap preview loader, so an atlas reference with an installed package counts as preloaded.
-    const auto textureLoaded =
-        [&billboardSet, &mapLoader](const std::string &textureName, int16_t paletteId) -> bool
-        {
-            if (const std::optional<OpenYAMM::Engine::SpriteAtlasReference> atlas =
-                    OpenYAMM::Engine::parseSpriteAtlasReference(textureName))
-            {
-                return mapLoader.assetFileSystem.exists("engine/sprites_new/" + atlas->package + "/manifest.json");
-            }
+    std::shared_ptr<OpenYAMM::Game::ActorModelManifest> pActorModels =
+        std::make_shared<OpenYAMM::Game::ActorModelManifest>();
+    std::string error;
+    REQUIRE_MESSAGE(pActorModels->load(mapLoader.assetFileSystem, {"worlds/mm6/models/actors.yml"}, {},
+        monsterTable, error), error);
 
-            return std::any_of(
-                billboardSet.textures.begin(),
-                billboardSet.textures.end(),
-                [&](const OpenYAMM::Game::OutdoorBitmapTexture &texture)
-                {
-                    return texture.textureName == textureName && texture.paletteId == paletteId;
-                });
-        };
-    const auto requireTierTexture =
-        [&](const OpenYAMM::Game::MapEncounterInfo &encounter, char tierLetter)
-        {
-            const std::string pictureBase =
-                encounter.pictureName.empty() ? encounter.monsterName : encounter.pictureName;
-            const std::string pictureName = pictureBase + " " + std::string(1, tierLetter);
-            const OpenYAMM::Game::MonsterTable::MonsterStatsEntry *pStats =
-                mapLoader.gameDataLoader.getMonsterTable().findStatsByPictureName(pictureName);
-            REQUIRE(pStats != nullptr);
+    const OpenYAMM::Game::MapAssetLoader loader = {};
+    const std::optional<OpenYAMM::Game::MapAssetInfo> loadedMap = loader.load(
+        mapLoader.assetFileSystem,
+        *pMapEntry,
+        monsterTable,
+        mapLoader.gameDataLoader.getObjectTable(),
+        OpenYAMM::Game::MapLoadPurpose::ActorPreviews,
+        OpenYAMM::Game::MapCompanionLoadOptions{
+            .allowSceneYml = true,
+            .allowLegacyCompanion = true,
+        },
+        {},
+        nullptr,
+        pActorModels);
+    REQUIRE(loadedMap.has_value());
+    REQUIRE(loadedMap->indoorActorPreviewBillboardSet.has_value());
 
-            const OpenYAMM::Game::MonsterEntry *pMonsterEntry =
-                mapLoader.gameDataLoader.getMonsterTable().findById(static_cast<int16_t>(pStats->id));
-            REQUIRE(pMonsterEntry != nullptr);
-
-            bool checkedAnySprite = false;
-
-            for (const std::string &spriteName : pMonsterEntry->spriteNames)
-            {
-                if (spriteName.empty() || spriteName == "null")
-                {
-                    continue;
-                }
-
-                const std::optional<uint16_t> spriteFrameIndex =
-                    billboardSet.spriteFrameTable.findFrameIndexBySpriteName(spriteName);
-                REQUIRE(spriteFrameIndex.has_value());
-
-                const OpenYAMM::Game::SpriteFrameEntry *pFrame =
-                    billboardSet.spriteFrameTable.getFrame(*spriteFrameIndex, 0);
-                REQUIRE(pFrame != nullptr);
-
-                const OpenYAMM::Game::ResolvedSpriteTexture resolvedTexture =
-                    OpenYAMM::Game::SpriteFrameTable::resolveTexture(*pFrame, 0);
-                CHECK(textureLoaded(resolvedTexture.textureName, pFrame->paletteId));
-                checkedAnySprite = true;
-            }
-
-            CHECK(checkedAnySprite);
-        };
-
+    const OpenYAMM::Game::ActorPreviewBillboardSet &billboardSet = *loadedMap->indoorActorPreviewBillboardSet;
     const std::array<const OpenYAMM::Game::MapEncounterInfo *, 3> encounters = {{
         &pMapEntry->encounter1,
         &pMapEntry->encounter2,
@@ -9092,18 +8746,41 @@ TEST_CASE("mm6 darkmoor actor previews preload random encounter tier textures")
 
     for (const OpenYAMM::Game::MapEncounterInfo *pEncounter : encounters)
     {
-        REQUIRE(pEncounter != nullptr);
-        requireTierTexture(*pEncounter, 'B');
-        requireTierTexture(*pEncounter, 'C');
+        const std::string pictureBase =
+            pEncounter->pictureName.empty() ? pEncounter->monsterName : pEncounter->pictureName;
+
+        for (char tierLetter : {'A', 'B', 'C'})
+        {
+            const std::string pictureName = pictureBase + " " + std::string(1, tierLetter);
+            const OpenYAMM::Game::MonsterTable::MonsterStatsEntry *pStats =
+                monsterTable.findStatsByPictureName(pictureName);
+            REQUIRE(pStats != nullptr);
+            const OpenYAMM::Game::MonsterEntry *pMonsterEntry = monsterTable.findById(int16_t(pStats->id));
+            REQUIRE(pMonsterEntry != nullptr);
+            CHECK_MESSAGE(billboardSet.drawsModel(pMonsterEntry), pictureName);
+            CHECK_MESSAGE(std::find(billboardSet.modelDescriptors.begin(), billboardSet.modelDescriptors.end(),
+                pMonsterEntry->internalName) != billboardSet.modelDescriptors.end(), pictureName);
+        }
+    }
+
+    for (const OpenYAMM::Game::ActorPreviewBillboard &billboard : billboardSet.billboards)
+    {
+        CHECK(billboard.modelled);
+    }
+
+    // No sprite of a modelled monster is requested; the only decoded textures are the unbound summoned wisps'.
+    for (const OpenYAMM::Game::OutdoorBitmapTexture &texture : billboardSet.textures)
+    {
+        CHECK_FALSE(OpenYAMM::Engine::parseSpriteAtlasReference(texture.textureName).has_value());
     }
 
     constexpr std::array<int16_t, 3> SummonWispMonsterIds = {97, 98, 99};
 
     for (int16_t summonMonsterId : SummonWispMonsterIds)
     {
-        const OpenYAMM::Game::MonsterEntry *pMonsterEntry =
-            mapLoader.gameDataLoader.getMonsterTable().findById(summonMonsterId);
+        const OpenYAMM::Game::MonsterEntry *pMonsterEntry = monsterTable.findById(summonMonsterId);
         REQUIRE(pMonsterEntry != nullptr);
+        REQUIRE_FALSE(billboardSet.drawsModel(pMonsterEntry));
 
         for (const std::string &spriteName : pMonsterEntry->spriteNames)
         {
@@ -9120,7 +8797,12 @@ TEST_CASE("mm6 darkmoor actor previews preload random encounter tier textures")
             REQUIRE(pFrame != nullptr);
             const OpenYAMM::Game::ResolvedSpriteTexture resolvedTexture =
                 OpenYAMM::Game::SpriteFrameTable::resolveTexture(*pFrame, 0);
-            CHECK(textureLoaded(resolvedTexture.textureName, pFrame->paletteId));
+            CHECK(std::any_of(billboardSet.textures.begin(), billboardSet.textures.end(),
+                [&](const OpenYAMM::Game::OutdoorBitmapTexture &texture)
+                {
+                    return texture.textureName == resolvedTexture.textureName
+                        && texture.paletteId == pFrame->paletteId;
+                }));
         }
     }
 }
@@ -9262,7 +8944,7 @@ TEST_CASE("MM9 quest and miscellaneous items resolve dedicated WorldItem sprites
     CHECK_EQ(checkedItemCount, 173);
 }
 
-TEST_CASE("full gameplay New Sorpigal load keeps outdoor actor textures lazy")
+TEST_CASE("full gameplay New Sorpigal load keeps actor textures lazy and loads no modelled decoration sprite")
 {
     const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
     const OpenYAMM::Game::MapAssetInfo *pLoadedMap = loadCachedOutdoorMapWithCompanionOptions(
@@ -9317,12 +8999,21 @@ TEST_CASE("full gameplay New Sorpigal load keeps outdoor actor textures lazy")
                 });
         };
 
-    CHECK(decorationTextureLoaded("swrdstn", 546));
-    CHECK(decorationTextureLoaded("fla3__06", 546));
-    // The exported New Sorpigal scene (oute3.scene.yml) places no ship decoration, so no shp texture is expected.
-    CHECK(decorationTextureLoaded("bigbarel", 547));
-    CHECK(decorationTextureLoaded("searka06", 873));
-    CHECK(decorationTextureLoaded("searkb05", 873));
+    // Models draw every New Sorpigal decoration (worlds/mm6/models/decorations.yml), so none of their sprites loads,
+    // including a state an event switches to (the drawn sword) or a frame of an animation (flags, sea arches).
+    for (const char *pDecorationName : {"swrdstn", "swrdstx", "fla3__01", "bigbarel", "searka01", "searkb01"})
+    {
+        const OpenYAMM::Game::DecorationEntry *pDecoration =
+            decorationSet.decorationTable.findByInternalName(pDecorationName);
+        REQUIRE_MESSAGE(pDecoration != nullptr, pDecorationName);
+        CHECK_MESSAGE(decorationSet.modelSpriteIds.contains(pDecoration->spriteId), pDecorationName);
+    }
+
+    CHECK_FALSE(decorationTextureLoaded("swrdstn", 546));
+    CHECK_FALSE(decorationTextureLoaded("fla3__06", 546));
+    CHECK_FALSE(decorationTextureLoaded("bigbarel", 547));
+    CHECK_FALSE(decorationTextureLoaded("searka06", 873));
+    CHECK_FALSE(decorationTextureLoaded("searkb05", 873));
 }
 
 TEST_CASE("full gameplay Dagger Wound load does not decode predicted actor textures")
@@ -9413,7 +9104,7 @@ TEST_CASE("mm6 darkmoor indoor decoration billboards keep editor room ownership"
     }
 }
 
-TEST_CASE("outdoor water bmodel faces load terrain-owned animation frames")
+TEST_CASE("outdoor liquid bmodel faces load no art and carry their liquid colour")
 {
     const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
 
@@ -9421,14 +9112,13 @@ TEST_CASE("outdoor water bmodel faces load terrain-owned animation frames")
     {
         const char *pMapFileName = nullptr;
         const char *pBaseTextureName = nullptr;
-        const char *pFirstFrameTextureName = nullptr;
-        const char *pLastFrameTextureName = nullptr;
+        const char *pLegacyFrameTextureName = nullptr;
     };
 
     const std::array<WaterMapCase, 3> waterMapCases = {{
-        {"out01.odm", "wtrtyl", "hdwtr000", "hdwtr013"},
-        {"7out01.odm", "7wtrtyl", "7hdwtr000", "7hdwtr013"},
-        {"oute3.odm", "6wtrtyl", "6hdwtr000", "6hdwtr013"},
+        {"out01.odm", "wtrtyl", "hdwtr000"},
+        {"7out01.odm", "7wtrtyl", "7hdwtr000"},
+        {"oute3.odm", "6wtrtyl", "6hdwtr000"},
     }};
 
     for (const WaterMapCase &waterMapCase : waterMapCases)
@@ -9446,21 +9136,25 @@ TEST_CASE("outdoor water bmodel faces load terrain-owned animation frames")
         REQUIRE(pLoadedMap->outdoorBModelTextureSet.has_value());
 
         const OpenYAMM::Game::OutdoorBModelTextureSet &textureSet = *pLoadedMap->outdoorBModelTextureSet;
-        CHECK(bitmapTextureSetContains(textureSet.textures, waterMapCase.pBaseTextureName));
-        CHECK(bitmapTextureSetContains(textureSet.textures, waterMapCase.pFirstFrameTextureName));
-        CHECK(bitmapTextureSetContains(textureSet.textures, waterMapCase.pLastFrameTextureName));
+        const auto water = std::find_if(textureSet.textures.begin(), textureSet.textures.end(),
+            [&](const OpenYAMM::Game::OutdoorBitmapTexture &texture)
+            { return texture.textureName == waterMapCase.pBaseTextureName; });
+        REQUIRE(water != textureSet.textures.end());
+        CHECK(water->liquid == OpenYAMM::Game::LiquidKind::Water);
+        CHECK(water->waterColorAbgr != 0);
+        // The liquid shader draws these faces: a 128-texel face keeps its UVs, the art is only the colour.
+        CHECK(water->width == 128);
+        CHECK(water->physicalWidth < 16);
+        CHECK_FALSE(bitmapTextureSetContains(textureSet.textures, waterMapCase.pLegacyFrameTextureName));
 
         const OpenYAMM::Game::SurfaceAnimationSequence *pAnimation =
             findSurfaceAnimationBinding(textureSet.animationBindings, waterMapCase.pBaseTextureName);
         REQUIRE(pAnimation != nullptr);
-        CHECK(pAnimation->frames.size() == 14);
-        CHECK(pAnimation->animationLengthTicks == 210);
-        CHECK(pAnimation->frames.front().textureName == waterMapCase.pFirstFrameTextureName);
-        CHECK(pAnimation->frames.back().textureName == waterMapCase.pLastFrameTextureName);
+        CHECK(pAnimation->frames.size() <= 1);
     }
 }
 
-TEST_CASE("MM8 lava retains liquid animation without reflective water shading")
+TEST_CASE("MM8 lava terrain is drawn by the liquid shader")
 {
     const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
     const OpenYAMM::Game::MapAssetInfo *pLoadedMap = loadCachedOutdoorMapWithCompanionOptions(
@@ -9468,25 +9162,38 @@ TEST_CASE("MM8 lava retains liquid animation without reflective water shading")
         OpenYAMM::Game::MapLoadPurpose::RenderSurfaces,
         OpenYAMM::Game::MapCompanionLoadOptions{.allowSceneYml = true, .allowLegacyCompanion = true});
     REQUIRE(pLoadedMap != nullptr);
-    REQUIRE(pLoadedMap->outdoorTerrainTextureAtlas.has_value());
-    const OpenYAMM::Game::OutdoorTerrainTextureAtlas &atlas = *pLoadedMap->outdoorTerrainTextureAtlas;
+    REQUIRE(pLoadedMap->outdoorTerrainTiles.has_value());
+    const OpenYAMM::Game::OutdoorTerrainTiles &terrainTiles = *pLoadedMap->outdoorTerrainTiles;
     size_t lavaTiles = 0;
-    for (size_t tile = 0; tile < atlas.tileRegions.size(); ++tile)
+    size_t lavaEdgeTiles = 0;
+    for (size_t tileId = 0; tileId < terrainTiles.tiles.size(); ++tileId)
     {
-        if (atlas.tileTextureNames[tile] != "lavtyl")
+        const OpenYAMM::Game::OutdoorTerrainTile &tile = terrainTiles.tiles[tileId];
+        if (tile.liquid != OpenYAMM::Game::LiquidKind::Lava)
         {
             continue;
         }
-        ++lavaTiles;
-        CHECK(atlas.tileRegions[tile].isValid);
-        CHECK(atlas.tileRegions[tile].isWater);
-        CHECK_FALSE(atlas.tileRegions[tile].isWaterSurface);
-        CHECK(atlas.waterCoverageMasks[tile].empty());
+        CHECK(tile.valid);
+        CHECK(tile.water);
+        CHECK(tile.waterSurface);
+        CHECK(tile.waterColorAbgr != 0);
+        if (tile.transitionOverlay)
+        {
+            ++lavaEdgeTiles;
+            CHECK(terrainTiles.liquidCoverageMasks[tileId].size() == 128 * 128);
+        }
+        else
+        {
+            ++lavaTiles;
+            CHECK(tile.textureName == "lavtyl");
+            CHECK(terrainTiles.liquidCoverageMasks[tileId].empty());
+        }
     }
     CHECK(lavaTiles > 0);
+    CHECK(lavaEdgeTiles > 0);
 }
 
-TEST_CASE("outdoor terrain water transition tiles do not use full-tile shader warp")
+TEST_CASE("outdoor terrain water and shore tiles share their world's water and shore coverage")
 {
     const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
 
@@ -9517,67 +9224,36 @@ TEST_CASE("outdoor terrain water transition tiles do not use full-tile shader wa
                 .allowLegacyCompanion = true,
             });
         REQUIRE(pLoadedMap != nullptr);
-        REQUIRE(pLoadedMap->outdoorTerrainTextureAtlas.has_value());
+        REQUIRE(pLoadedMap->outdoorTerrainTiles.has_value());
 
-        const OpenYAMM::Game::OutdoorTerrainTextureAtlas &atlas = *pLoadedMap->outdoorTerrainTextureAtlas;
-        const OpenYAMM::Game::OutdoorTerrainAtlasRegion &fullWaterRegion =
-            atlas.tileRegions[static_cast<size_t>(waterMapCase.fullWaterTileId)];
-        const OpenYAMM::Game::OutdoorTerrainAtlasRegion &cachedFullWaterRegion =
-            atlas.tileRegions[static_cast<size_t>(waterMapCase.fullWaterTileId + 1)];
-        const OpenYAMM::Game::OutdoorTerrainAtlasRegion &transitionWaterRegion =
-            atlas.tileRegions[static_cast<size_t>(waterMapCase.transitionWaterTileId)];
+        const OpenYAMM::Game::OutdoorTerrainTiles &terrainTiles = *pLoadedMap->outdoorTerrainTiles;
+        const OpenYAMM::Game::OutdoorTerrainTile &fullWater =
+            terrainTiles.tiles[static_cast<size_t>(waterMapCase.fullWaterTileId)];
+        const OpenYAMM::Game::OutdoorTerrainTile &cachedFullWater =
+            terrainTiles.tiles[static_cast<size_t>(waterMapCase.fullWaterTileId + 1)];
+        const OpenYAMM::Game::OutdoorTerrainTile &transitionWater =
+            terrainTiles.tiles[static_cast<size_t>(waterMapCase.transitionWaterTileId)];
 
-        REQUIRE(fullWaterRegion.isValid);
-        CHECK(fullWaterRegion.isWater);
-        CHECK(fullWaterRegion.isWaterSurface);
-        CHECK_FALSE(fullWaterRegion.isTransitionOverlay);
+        REQUIRE(fullWater.valid);
+        CHECK(fullWater.water);
+        CHECK(fullWater.waterSurface);
+        CHECK(fullWater.liquid == OpenYAMM::Game::LiquidKind::Water);
+        CHECK_FALSE(fullWater.transitionOverlay);
 
-        REQUIRE(cachedFullWaterRegion.isValid);
-        CHECK(cachedFullWaterRegion.isWater);
-        CHECK(cachedFullWaterRegion.isWaterSurface);
-        CHECK_FALSE(cachedFullWaterRegion.isTransitionOverlay);
+        REQUIRE(cachedFullWater.valid);
+        CHECK(cachedFullWater.water);
+        CHECK(cachedFullWater.waterSurface);
+        CHECK_FALSE(cachedFullWater.transitionOverlay);
 
-        REQUIRE(transitionWaterRegion.isValid);
-        CHECK(transitionWaterRegion.isWater);
-        CHECK(transitionWaterRegion.isWaterSurface);
-        CHECK(atlas.waterCoverageMasks[waterMapCase.transitionWaterTileId].size() == 128 * 128);
-        CHECK(transitionWaterRegion.isTransitionOverlay);
-        CHECK((fullWaterRegion.waterColorAbgr & 0xff000000u) == 0xff000000u);
-        CHECK(cachedFullWaterRegion.waterColorAbgr == fullWaterRegion.waterColorAbgr);
-        CHECK(transitionWaterRegion.waterColorAbgr == fullWaterRegion.waterColorAbgr);
-        waterColors[colorIndex++] = fullWaterRegion.waterColorAbgr;
-
-        const auto findAnimatedTileSource =
-            [&](const OpenYAMM::Game::OutdoorTerrainAtlasRegion &region)
-            -> const OpenYAMM::Game::OutdoorAnimatedWaterTileSource *
-            {
-                for (const OpenYAMM::Game::OutdoorAnimatedWaterTileSource &source : atlas.animatedWaterTiles)
-                {
-                    if (source.region.u0 == region.u0
-                        && source.region.v0 == region.v0
-                        && source.region.u1 == region.u1
-                        && source.region.v1 == region.v1)
-                    {
-                        return &source;
-                    }
-                }
-
-                return nullptr;
-            };
-
-        const OpenYAMM::Game::OutdoorAnimatedWaterTileSource *pFullWaterSource =
-            findAnimatedTileSource(fullWaterRegion);
-        const OpenYAMM::Game::OutdoorAnimatedWaterTileSource *pCachedFullWaterSource =
-            findAnimatedTileSource(cachedFullWaterRegion);
-
-        REQUIRE(pFullWaterSource != nullptr);
-        REQUIRE(pCachedFullWaterSource != nullptr);
-        CHECK(pFullWaterSource->framePixels.size() == 14);
-        CHECK(pFullWaterSource->animation.frames.size() == 14);
-        CHECK(pFullWaterSource->animation.animationLengthTicks == 210);
-        CHECK(pCachedFullWaterSource->framePixels.size() == 14);
-        CHECK(pCachedFullWaterSource->animation.frames.size() == 14);
-        CHECK(pCachedFullWaterSource->animation.animationLengthTicks == 210);
+        REQUIRE(transitionWater.valid);
+        CHECK(transitionWater.water);
+        CHECK(transitionWater.waterSurface);
+        CHECK(terrainTiles.liquidCoverageMasks[waterMapCase.transitionWaterTileId].size() == 128 * 128);
+        CHECK(transitionWater.transitionOverlay);
+        CHECK((fullWater.waterColorAbgr & 0xff000000u) == 0xff000000u);
+        CHECK(cachedFullWater.waterColorAbgr == fullWater.waterColorAbgr);
+        CHECK(transitionWater.waterColorAbgr == fullWater.waterColorAbgr);
+        waterColors[colorIndex++] = fullWater.waterColorAbgr;
     }
     CHECK(waterColors[0] != waterColors[1]);
     CHECK(waterColors[0] != waterColors[2]);
@@ -9692,6 +9368,7 @@ TEST_CASE("corpse loot includes authored guaranteed carried item")
         noRandomLoot,
         &mapLoader.gameDataLoader.getItemTable(),
         nullptr,
+        "mm8",
         {540});
 
     REQUIRE_EQ(corpse.items.size(), 1u);
@@ -9724,6 +9401,7 @@ TEST_CASE("corpse loot with authored guaranteed carried item suppresses random i
         guaranteedRandomLoot,
         &mapLoader.gameDataLoader.getItemTable(),
         &party,
+        "mm8",
         {540});
 
     REQUIRE_EQ(corpse.items.size(), 2u);

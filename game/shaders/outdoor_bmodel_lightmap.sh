@@ -67,11 +67,12 @@ vec3 getFxLighting(vec3 worldPosition)
     vec3 lighting = vec3(u_fxLightParams.y, u_fxLightParams.y, u_fxLightParams.y);
 #endif
 
+    // The active lights come first: stop at the count.
     for (int i = 0; i < 8; ++i)
     {
         if (float(i) >= u_fxLightParams.x)
         {
-            continue;
+            break;
         }
 
         vec3 toLight = u_fxLightPositions[i].xyz - worldPosition;

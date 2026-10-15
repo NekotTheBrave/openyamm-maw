@@ -59,7 +59,8 @@ public:
         float y,
         float z,
         bool centerVertically,
-        bool freezeAnimation);
+        bool freezeAnimation,
+        size_t targetActorIndex = static_cast<size_t>(-1));
     void triggerPortraitEventFxWithoutSpeech(
         GameplayScreenRuntime &runtime,
         size_t memberIndex,
@@ -68,9 +69,19 @@ public:
     void triggerGameplayScreenOverlay(const PartySpellCastResult::ScreenOverlayRequest &request);
     void advanceGameplayScreenOverlay(float deltaSeconds);
     void renderGameplayScreenOverlay(GameplayScreenRuntime &runtime, int width, int height) const;
-    void queueMeleeHitBloodEffect(
+    // Spawns a named effect on a surface point with its local +Z along the outward normal (melee contact blood,
+    // sparks, chips).
+    void queueSurfaceEffect(
+        const std::string &effectId,
         const std::array<float, 3> &contactPosition,
-        const std::array<float, 3> &outwardNormal);
+        const std::array<float, 3> &outwardNormal,
+        float scale);
+    // Spawns a named effect from the library on the next world FX update.
+    void queueWorldEffect(
+        const std::string &effectId,
+        const std::array<float, 3> &position,
+        const std::array<float, 4> &rotation,
+        float scale);
     void consumePendingEventFxRequests(GameplayScreenRuntime &runtime) const;
     void consumePendingWorldFxRequests(
         EventRuntimeState *pEventRuntimeState,
@@ -78,6 +89,7 @@ public:
         Engine::AssetFileSystem &assetFileSystem);
     const std::vector<GameplayProjectilePresentationState> &activeProjectilePresentationStates() const;
     const std::vector<GameplayProjectileImpactPresentationState> &activeProjectileImpactPresentationStates() const;
+    const std::vector<GameplayProjectileEndPresentationState> &endedProjectilePresentationStates() const;
 
 private:
     struct PendingWorldEffect
@@ -100,6 +112,7 @@ private:
     GameplayScreenOverlayState m_gameplayScreenOverlayState;
     std::vector<GameplayProjectilePresentationState> m_activeProjectilePresentationStates;
     std::vector<GameplayProjectileImpactPresentationState> m_activeProjectileImpactPresentationStates;
+    std::vector<GameplayProjectileEndPresentationState> m_endedProjectilePresentationStates;
     std::vector<PendingWorldEffect> m_pendingWorldEffects;
     uint32_t m_nextWorldEffectSeed = 1;
 };

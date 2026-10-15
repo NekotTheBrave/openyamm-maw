@@ -148,21 +148,6 @@ bool itemMatchesLootKind(const ItemDefinition &item, MonsterTable::LootItemKind 
     return false;
 }
 
-std::string foundGoldStatusText(int goldAmount)
-{
-    return "You found " + std::to_string(std::max(0, goldAmount)) + " gold!";
-}
-
-int followerAdjustedGoldAmount(int goldAmount, const EventRuntimeState *pEventRuntimeState)
-{
-    if (pEventRuntimeState == nullptr || goldAmount <= 0)
-    {
-        return std::max(0, goldAmount);
-    }
-
-    return static_cast<int>(hiredNpcGoldAfterBonusAndFees(static_cast<uint32_t>(goldAmount), *pEventRuntimeState));
-}
-
 std::string foundItemStatusText(int goldAmount, const std::string &itemName)
 {
     const std::string resolvedItemName = itemName.empty() ? "item" : itemName;
@@ -285,6 +270,7 @@ GameplayCorpseViewState buildMonsterCorpseView(
     const MonsterTable::LootPrototype &loot,
     const ItemTable *pItemTable,
     Party *pParty,
+    const std::string &worldId,
     const std::vector<uint32_t> &guaranteedItemIds)
 {
     GameplayCorpseViewState view = {};
@@ -336,7 +322,11 @@ GameplayCorpseViewState buildMonsterCorpseView(
                 *pItemTable,
                 *pStandardItemEnchantTable,
                 *pSpecialItemEnchantTable,
-                ItemGenerationRequest{loot.itemLevel, ItemGenerationMode::MonsterLoot},
+                ItemGenerationRequest{
+                    .treasureLevel = loot.itemLevel,
+                    .mode = ItemGenerationMode::MonsterLoot,
+                    .worldId = worldId,
+                },
                 pParty,
                 rng,
                 [kind = loot.itemKind](const ItemDefinition &entry)
@@ -426,16 +416,15 @@ GameplayCorpseAutoLootResult autoLootActiveCorpseView(
                 break;
             }
 
-            const int goldAmount = followerAdjustedGoldAmount(
-                static_cast<int>(removedItem.goldAmount),
-                worldRuntime.eventRuntimeState());
-            party.addGold(goldAmount);
-            result.goldAmount += goldAmount;
-            result.lootedAny = result.lootedAny || goldAmount > 0;
+            const FoundGold foundGold = resolveFoundGold(removedItem.goldAmount, worldRuntime.eventRuntimeState());
+            party.addGold(static_cast<int>(foundGold.partyAmount));
+            result.goldAmount += static_cast<int>(foundGold.amount);
+            result.followerGoldShare += static_cast<int>(foundGold.followerShare);
+            result.lootedAny = result.lootedAny || foundGold.amount > 0;
             GAMEPLAY_DEBUG_TRACE(
                 "gold_received destination=party source=corpse"
                 " corpse_index=" + std::to_string(pCorpseView->sourceIndex)
-                + " amount=" + std::to_string(goldAmount));
+                + " amount=" + std::to_string(foundGold.partyAmount));
             continue;
         }
 
@@ -513,7 +502,10 @@ GameplayCorpseAutoLootResult autoLootActiveCorpseView(
     }
     else if (result.goldAmount > 0)
     {
-        result.statusText = foundGoldStatusText(result.goldAmount);
+        FoundGold foundGold = {};
+        foundGold.amount = static_cast<uint32_t>(result.goldAmount);
+        foundGold.followerShare = static_cast<uint32_t>(result.followerGoldShare);
+        result.statusText = foundGoldStatusText(foundGold);
     }
     else if (result.blockedByInventory)
     {

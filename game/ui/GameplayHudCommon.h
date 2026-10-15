@@ -2,6 +2,7 @@
 
 #include "engine/AssetFileSystem.h"
 #include "engine/FontAsset.h"
+#include "engine/render/CookedTexture.h"
 #include "game/render/TextureFiltering.h"
 #include "game/ui/GameplayOverlayTypes.h"
 #include "game/ui/UiLayoutManager.h"
@@ -12,6 +13,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -54,8 +56,21 @@ struct GameplayHudTextureData
     int physicalWidth = 0;
     int physicalHeight = 0;
     Engine::AssetScaleTier assetScaleTier = Engine::AssetScaleTier::X1;
-    std::vector<uint8_t> bgraPixels;
+    // Read through GameplayHudCommon::hudTexturePixels: cooked art leaves it empty until a CPU use decodes it.
+    mutable std::vector<uint8_t> bgraPixels;
     bgfx::TextureHandle textureHandle = BGFX_INVALID_HANDLE;
+    // Cooked art (tools/cook_ui_textures.py) is padded to whole 4x4 blocks: draws scale UVs by these.
+    float uScale = 1.0f;
+    float vScale = 1.0f;
+    // The cooked texture and this texture's block-aligned cell in it. A face set atlas stays in memory (portrait
+    // tints read its frames); a single image is read again from cookedPath on its first CPU use.
+    std::shared_ptr<const Engine::CookedTexture> cookedSource;
+    std::string cookedPath;
+    const Engine::AssetFileSystem *pCookedAssetFileSystem = nullptr;
+    int cookedCellX = 0;
+    int cookedCellY = 0;
+    int cookedCellWidth = 0;
+    int cookedCellHeight = 0;
 };
 
 using GameplayHudFontGlyphMetricsData = Engine::FontGlyphMetrics;
@@ -64,15 +79,12 @@ struct GameplayHudFontData : Engine::FontAtlas
 {
     bool smooth = false;
     std::string fontName;
+    // 0: the face's layout size; otherwise the display height an independent outline face was rasterized at.
+    int rasterPixelHeight = 0;
     bgfx::TextureHandle mainTextureHandle = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle shadowTextureHandle = BGFX_INVALID_HANDLE;
-};
-
-struct GameplayHudFontColorTextureData
-{
-    std::string fontName;
-    uint32_t colorAbgr = 0xffffffffu;
-    bgfx::TextureHandle textureHandle = BGFX_INVALID_HANDLE;
+    // The main atlas with white glyphs, tinted at draw time; the main atlas itself when its glyphs are white.
+    bgfx::TextureHandle tintTextureHandle = BGFX_INVALID_HANDLE;
 };
 
 enum class GameplayHudTextureColorMode
@@ -103,6 +115,28 @@ struct GameplayUiViewportRect
     float height = 0.0f;
 };
 
+// The font atlases the gameplay HUD and the menus draw with. Each face, and each raster height of an independent
+// outline face, is rasterized, mip-filtered and uploaded once (several at a time on the load workers) and kept for the
+// rest of the run: fonts are engine assets, the same for every map and world. Its handles stay valid until release().
+class SharedFontCache
+{
+public:
+    struct Request
+    {
+        std::string fontName;
+        // 0: the face's layout size; otherwise the display height to rasterize an independent outline face at.
+        int pixelHeight = 0;
+    };
+
+    // Loads the requested faces that are not cached yet. A face that fails is reported once and not retried.
+    static void ensure(const Engine::AssetFileSystem &assetFileSystem, const std::vector<Request> &requests);
+    static const GameplayHudFontData *find(const std::string &fontName, int pixelHeight = 0);
+    // Drops the extra raster heights; menus request the ones a new window size needs again.
+    static void releaseRasterSizes();
+    // At shutdown, with destroyGpu false once the bgfx context is gone.
+    static void release(bool destroyGpu);
+};
+
 class GameplayHudCommon
 {
 public:
@@ -120,12 +154,12 @@ public:
         float,
         float,
         float,
-        TextureFilterProfile)>;
+        TextureFilterProfile,
+        uint32_t)>;
     using FindHudFontFn = std::function<const GameplayHudFontData *(const std::string &)>;
-    using EnsureHudFontColorFn = std::function<bgfx::TextureHandle(const GameplayHudFontData &, uint32_t)>;
     using RenderHudFontLayerFn = std::function<void(
         const GameplayHudFontData &,
-        bgfx::TextureHandle,
+        const GameplayHudFontLayer &,
         const std::string &,
         float,
         float,
@@ -218,6 +252,22 @@ public:
         std::vector<GameplayHudTextureData> &textures,
         std::unordered_map<std::string, size_t> &textureIndexByName,
         GameplayHudBitmapTransparencyMode transparencyMode = GameplayHudBitmapTransparencyMode::HudColorKey);
+    // The texture's BGRA pixels at its physical size; cooked art decodes its blocks on the first call.
+    static const std::vector<uint8_t> &hudTexturePixels(const GameplayHudTextureData &texture);
+    // The cooked portrait set holding a frame (all its frames load at once), and a cooked single image. False when the
+    // art has no cooked file in the active scale tier; throws on a corrupt or mismatched cooked file.
+    static bool loadCookedFaceSet(
+        const Engine::AssetFileSystem &assetFileSystem,
+        GameplayAssetLoadCache &cache,
+        const std::string &normalizedName,
+        std::vector<GameplayHudTextureData> &textures,
+        std::unordered_map<std::string, size_t> &textureIndexByName);
+    static bool loadCookedHudImage(
+        const Engine::AssetFileSystem &assetFileSystem,
+        GameplayAssetLoadCache &cache,
+        const std::string &textureName,
+        std::vector<GameplayHudTextureData> &textures,
+        std::unordered_map<std::string, size_t> &textureIndexByName);
     static std::optional<GameplayHudTextureHandle> ensureDynamicHudTexture(
         const std::string &textureName,
         int width,
@@ -228,12 +278,16 @@ public:
     static const GameplayHudFontData *findHudFont(
         const std::vector<GameplayHudFontData> &fonts,
         const std::string &fontName);
+    // Adds the shared font (SharedFontCache) to fonts: a view of its handles, which the cache owns.
     static bool loadHudFont(
         const Engine::AssetFileSystem *pAssetFileSystem,
-        GameplayAssetLoadCache &cache,
         const std::string &fontName,
-        std::vector<GameplayHudFontData> &fonts,
-        const Engine::FontSettings &settings = {});
+        std::vector<GameplayHudFontData> &fonts);
+    // loadHudFont for several fonts, the missing ones loaded together; false when any failed.
+    static bool loadHudFonts(
+        const Engine::AssetFileSystem *pAssetFileSystem,
+        const std::vector<std::string> &fontNames,
+        std::vector<GameplayHudFontData> &fonts);
     static bool tryGetOpaqueHudTextureBounds(
         const GameplayHudTextureData &texture,
         Engine::AssetScaleTier assetScaleTier,
@@ -251,10 +305,8 @@ public:
         const GameplayHudTextureData &texture,
         uint32_t colorAbgr,
         std::vector<GameplayHudTextureColorTextureData> &colorTextures);
-    static bgfx::TextureHandle ensureHudFontMainTextureColor(
-        const GameplayHudFontData &font,
-        uint32_t colorAbgr,
-        std::vector<GameplayHudFontColorTextureData> &colorTextures);
+    // The font's main layer drawn in colorAbgr; white keeps the atlas's own colours.
+    static GameplayHudFontLayer hudFontMainLayer(const GameplayHudFontData &font, uint32_t colorAbgr);
     static float measureHudTextWidth(const GameplayHudFontData &font, const std::string &text);
     static std::string clampHudTextToWidth(const GameplayHudFontData &font, const std::string &text, float maxWidth);
     static std::vector<std::string> wrapHudTextToWidth(
@@ -263,7 +315,7 @@ public:
         float maxWidth);
     static void renderHudFontLayer(
         const GameplayHudFontData &font,
-        bgfx::TextureHandle textureHandle,
+        const GameplayHudFontLayer &layer,
         const std::string &text,
         float textX,
         float textY,
@@ -274,7 +326,6 @@ public:
         const GameplayResolvedHudLayoutElement &resolved,
         const std::string &label,
         const FindHudFontFn &findHudFont,
-        const EnsureHudFontColorFn &ensureHudFontColor,
         const RenderHudFontLayerFn &renderHudFontLayer);
 };
 } // namespace OpenYAMM::Game

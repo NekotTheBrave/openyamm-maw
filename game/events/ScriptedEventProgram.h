@@ -28,6 +28,13 @@ public:
         bool hidden = false;
     };
 
+    // An effect the event's hover name shows once the party has the autonote that records it.
+    struct LearnedEffect
+    {
+        uint32_t autonoteId = 0;
+        std::string effect;
+    };
+
     static std::optional<ScriptedEventProgram> loadFromLuaText(
         const std::string &luaSourceText,
         const std::string &luaSourceName,
@@ -53,6 +60,7 @@ public:
     bool isHintOnlyEvent(uint16_t eventId) const;
     std::optional<std::string> getHint(uint16_t eventId) const;
     std::optional<std::string> summarizeEvent(uint16_t eventId) const;
+    const LearnedEffect *learnedEffect(uint16_t eventId) const;
     std::vector<uint32_t> getOpenedChestIds(uint16_t eventId) const;
     std::optional<ContextActionMetadata> getContextActionMetadata(uint16_t eventId) const;
 
@@ -75,6 +83,7 @@ private:
     std::vector<uint16_t> m_monsterDamageHookEventIds;
     std::unordered_map<uint16_t, std::string> m_hints;
     std::unordered_map<uint16_t, std::string> m_summaries;
+    std::unordered_map<uint16_t, LearnedEffect> m_learnedEffects;
     std::unordered_map<uint16_t, std::vector<uint32_t>> m_openedChestIdsByEventId;
     std::unordered_map<uint16_t, ContextActionMetadata> m_contextActionsByEventId;
     std::vector<std::string> m_textureNames;

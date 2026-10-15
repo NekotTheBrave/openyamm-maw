@@ -154,8 +154,14 @@ std::optional<InventoryItem> ItemGenerator::generateRandomInventoryItem(
     const ItemGenerationRequest &request,
     Party *pParty,
     std::mt19937 &rng,
-    const std::function<bool(const ItemDefinition &)> &filter)
+    const std::function<bool(const ItemDefinition &)> &callerFilter)
 {
+    const std::function<bool(const ItemDefinition &)> filter =
+        [&request, &callerFilter](const ItemDefinition &entry)
+        {
+            return entry.availableInWorld(request.worldId) && (!callerFilter || callerFilter(entry));
+        };
+
     if (request.rareItemsOnly)
     {
         if (!shouldTryGenerateRareItem(request))

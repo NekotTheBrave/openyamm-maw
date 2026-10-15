@@ -28,11 +28,15 @@ public:
     BgfxContext(const BgfxContext &) = delete;
     BgfxContext &operator=(const BgfxContext &) = delete;
 
-    bool initialize(SDL_Window *pWindow, int windowWidth, int windowHeight, bool verticalSync);
+    bool initialize(SDL_Window *pWindow, int windowWidth, int windowHeight, bool verticalSync, uint8_t maxAnisotropy);
     void resize(SDL_Window *pWindow, int windowWidth, int windowHeight) const;
     void setVerticalSync(bool enabled)
     {
         m_verticalSync = enabled;
+    }
+    void setMaxAnisotropy(uint8_t level)
+    {
+        m_maxAnisotropy = level;
     }
     void shutdown();
 
@@ -48,6 +52,7 @@ private:
 
     bool m_isInitialized;
     bool m_verticalSync;
+    uint8_t m_maxAnisotropy;
     bgfx::RendererType::Enum m_rendererType;
     std::unique_ptr<Callback> m_pCallback;
 };

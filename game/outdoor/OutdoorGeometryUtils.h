@@ -95,6 +95,10 @@ OutdoorBModel transformOutdoorBModel(
     float fraction);
 float sampleOutdoorTerrainHeight(const OutdoorMapData &outdoorMapData, float x, float y);
 float sampleOutdoorRenderedTerrainHeight(const OutdoorMapData &outdoorMapData, float x, float y);
+// Terrain heights at fractional grid coordinates: the native triangles, and the materials-style smoothed surface
+// (bicubic through every native vertex, departing at most a few dozen units from the native triangles).
+float outdoorNativeTerrainHeight(const OutdoorMapData &map, float gridX, float gridY);
+float outdoorSmoothedTerrainHeight(const OutdoorMapData &map, float gridX, float gridY, float smoothing);
 bx::Vec3 sampleOutdoorRenderedTerrainNormal(const OutdoorMapData &outdoorMapData, float x, float y);
 float sampleOutdoorTerrainNormalZ(const OutdoorMapData &outdoorMapData, float x, float y);
 bool outdoorTerrainSlopeTooHigh(const OutdoorMapData &outdoorMapData, float x, float y);

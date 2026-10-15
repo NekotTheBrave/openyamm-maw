@@ -899,6 +899,19 @@ bool indoorDoorCarriesPartySupport(const MapDeltaDoor &door)
     return door.directionZ != 0;
 }
 
+bool mechanismDoorContainsFace(const MapDeltaDoor &door, size_t faceIndex)
+{
+    for (uint16_t doorFaceId : door.faceIds)
+    {
+        if (static_cast<size_t>(doorFaceId) == faceIndex)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void applyIndoorMechanismDoorToVertices(
     const MapDeltaDoor &door,
     float distance,

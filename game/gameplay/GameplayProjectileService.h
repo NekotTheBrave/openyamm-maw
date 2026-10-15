@@ -89,6 +89,8 @@ public:
         uint16_t objectSpriteFrameIndex = 0;
         uint16_t sourceObjectFlags = 0;
         int sourceSpellId = 0;
+        // Presentation only (per-monster impact visuals); not saved, so a loaded impact shows the recipe's own.
+        int16_t sourceMonsterId = 0;
         std::string objectName;
         std::string objectSpriteName;
         std::string sourceObjectName;
@@ -400,6 +402,25 @@ public:
         ProjectileAreaImpact impact;
     };
 
+    // A sphere that stops projectiles crossing into it from outside (an actor behaviour's ward). Projectiles that
+    // start inside, such as the owner's own, pass.
+    struct ProjectileWardFacts
+    {
+        size_t ownerActorIndex = static_cast<size_t>(-1);
+        uint32_t ownerActorId = 0;
+        GameplayWorldPoint center;
+        float radius = 0.0f;
+        std::string wardId;
+    };
+
+    struct ProjectileWardBlock
+    {
+        size_t ownerActorIndex = static_cast<size_t>(-1);
+        uint32_t ownerActorId = 0;
+        std::string wardId;
+        GameplayWorldPoint point;
+    };
+
     struct ProjectileFrameFacts
     {
         float deltaSeconds = 0.0f;
@@ -420,6 +441,7 @@ public:
         int nonPartyProjectileDamage = 0;
 
         std::vector<ProjectileAreaImpactActorFacts> areaActors;
+        const std::vector<ProjectileWardFacts> *pWards = nullptr;
     };
 
     struct ProjectileFrameResult
@@ -438,6 +460,9 @@ public:
         std::optional<ProjectileAudioRequest> audioRequest;
         std::optional<GameplayWorldPoint> deathBlossomFalloutPoint;
         std::vector<ProjectileSpawnRequest> spawnedProjectiles;
+        std::optional<ProjectileWardBlock> wardBlock;
+        // Where a projectile that hit something ends: the hit point, not its last stepped position.
+        std::optional<GameplayWorldPoint> endPoint;
     };
 
     struct ProjectileActorRelationFacts
@@ -588,6 +613,11 @@ public:
     ProjectileFrameResult updateProjectileFrame(
         ProjectileState &projectile,
         const ProjectileFrameFacts &facts) const;
+    static std::optional<ProjectileWardBlock> findProjectileWardBlock(
+        const ProjectileState &projectile,
+        const ProjectileMotionSegment &motion,
+        const std::vector<ProjectileWardFacts> &wards,
+        float maximumSegmentFraction);
     void applyProjectileMotionEnd(
         ProjectileState &projectile,
         const ProjectileMotionSegment &motionSegment) const;
@@ -642,6 +672,7 @@ public:
         float x,
         float y,
         float z);
+    // targetActorIndex: the actor the spell struck, so an enhanced impact can follow it.
     ProjectileImpactSpawnResult spawnImmediateSpellImpactVisual(
         const ProjectileImpactVisualDefinition &definition,
         int sourceSpellId,
@@ -651,7 +682,8 @@ public:
         float y,
         float z,
         bool centerVertically,
-        bool freezeAnimation);
+        bool freezeAnimation,
+        size_t targetActorIndex = static_cast<size_t>(-1));
     std::optional<ProjectileAudioRequest> buildProjectileReleaseAudioRequest(
         const ProjectileState &projectile,
         float x,
@@ -676,7 +708,9 @@ public:
     ProjectileDirectActorImpact buildProjectileDirectActorImpact(
         const ProjectileState &projectile,
         const ProjectileDirectActorImpactInput &input) const;
-    void expireProjectile(ProjectileState &projectile) const;
+    void expireProjectile(
+        ProjectileState &projectile,
+        const std::optional<GameplayWorldPoint> &endPoint = std::nullopt);
     bool isProjectileSourceFriendlyToActor(
         const ProjectileState &projectile,
         const ProjectileActorRelationFacts &facts) const;
@@ -707,6 +741,8 @@ public:
     void collectProjectilePresentationState(
         std::vector<GameplayProjectilePresentationState> &projectiles,
         std::vector<GameplayProjectileImpactPresentationState> &impacts) const;
+    // Projectiles that ended since the last call, with their final positions.
+    std::vector<GameplayProjectileEndPresentationState> takeEndedProjectiles();
 
     static int16_t waterSplashObjectId();
 
@@ -724,5 +760,6 @@ private:
     uint32_t m_nextFireSpikeTrapId = 1;
     std::vector<ProjectileState> m_projectiles;
     std::vector<ProjectileImpactState> m_projectileImpacts;
+    std::vector<GameplayProjectileEndPresentationState> m_endedProjectiles;
 };
 }

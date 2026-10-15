@@ -24,6 +24,15 @@ struct HiredNpcFollowerView
     std::string profession;
 };
 
+// Gold the party finds in the world, chests or corpses: follower find bonuses apply, then hired followers
+// take their share.
+struct FoundGold
+{
+    uint32_t amount = 0;
+    uint32_t followerShare = 0;
+    uint32_t partyAmount = 0;
+};
+
 std::vector<HiredNpcFollowerView> buildHiredNpcFollowerViews(
     const EventRuntimeState &eventRuntimeState,
     const NpcDialogTable &npcDialogTable,
@@ -37,8 +46,6 @@ std::vector<HiredNpcFollowerView> buildHiredNpcFollowerViews(
     const MergedNpcProfessionTable &npcProfessionTable
 );
 
-uint32_t totalHiredNpcFollowerFeePercent(const EventRuntimeState &eventRuntimeState);
-uint32_t hiredNpcFollowerGoldShare(uint32_t goldAmount, const EventRuntimeState &eventRuntimeState);
 bool hiredNpcHasProfession(std::span<const HiredNpcFollower> followers, uint32_t professionId);
 int hiredNpcTransportDayReduction(const EventRuntimeState &eventRuntimeState, bool stable);
 int hiredNpcCrossMapDayReduction(const EventRuntimeState &eventRuntimeState);
@@ -48,7 +55,7 @@ int hiredNpcCampingFoodCost(int baseCost, const EventRuntimeState &eventRuntimeS
 int hiredNpcSkillBonus(std::span<const HiredNpcFollower> followers, const std::string &skillName);
 int hiredNpcPrimaryStatBonus(std::span<const HiredNpcFollower> followers, const std::string &statName);
 int hiredNpcResistanceBonus(std::span<const HiredNpcFollower> followers, const std::string &resistanceName);
-uint32_t hiredNpcGoldFindBonusPercent(const EventRuntimeState &eventRuntimeState);
-uint32_t hiredNpcGoldAfterBonusAndFees(uint32_t goldAmount, const EventRuntimeState &eventRuntimeState);
+FoundGold resolveFoundGold(uint32_t goldAmount, const EventRuntimeState *pEventRuntimeState);
+std::string foundGoldStatusText(const FoundGold &foundGold);
 bool hiredNpcCanRepairItemKind(std::span<const HiredNpcFollower> followers, const std::string &equipStat);
 }

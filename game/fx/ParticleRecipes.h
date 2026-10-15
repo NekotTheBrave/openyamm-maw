@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -43,6 +44,7 @@ enum class ProjectileRecipe
     Sharpmetal,
     DragonBreath,
     DarkFireBolt,
+    MindBlast,
     ToxicCloud,
     MonsterAirBolt,
     MonsterEarthBolt,
@@ -53,6 +55,18 @@ enum class ProjectileRecipe
     MonsterSpiritBolt,
     MonsterLightBolt,
     MonsterDarkBolt,
+    Arrow,
+    FireArrow,
+    // Spells the classic style draws with their native sprites or not at all; the recipes only let the enhanced
+    // style bind them (see projectileRecipeIsBindingOnly).
+    DeadlySwarm,
+    MassDistortion,
+    SpiritLash,
+    PrismaticLight,
+    SoulDrinker,
+    Lifedrain,
+    ShrinkingRay,
+    Armageddon,
     GenericParticleTrail,
     GenericFireTrail,
     GenericLineTrail,
@@ -152,6 +166,9 @@ float projectileRecipeGlowRadius(ProjectileRecipe recipe);
 float projectileRecipeAnchorOffset(ProjectileRecipe recipe, uint16_t radius, uint16_t height);
 float projectileRecipeBackOffset(ProjectileRecipe recipe, uint16_t radius);
 bool projectileRecipeUsesDedicatedImpactFx(ProjectileRecipe recipe);
+// Arrows and the spells listed after them in ProjectileRecipe have recipes only so the enhanced style can bind effects:
+// they have no classic impact burst or impact light.
+bool projectileRecipeIsBindingOnly(ProjectileRecipe recipe);
 bool projectileRecipeShowsImpactBillboard(ProjectileRecipe recipe);
 
 void spawnProjectileTrailParticles(
@@ -200,6 +217,12 @@ void spawnBuffSparkles(
 
 void spawnActorDisintegrationParticles(ParticleSystem &particleSystem, uint32_t seed,
     float x, float y, float z, float actorHeight, float elapsedSeconds, float durationSeconds);
+
+// One tongue of flame rising from a point of a burning creature's surface (actors.yml death_effect: burn), with an
+// occasional ember or wisp of smoke. size: the flame's width in world units. tint: the flame's RGB (flame_color);
+// without one the fire is orange.
+void spawnActorBurnFlame(ParticleSystem &particleSystem, uint32_t seed, float x, float y, float z, float size,
+    const std::optional<std::array<uint8_t, 3>> &tint = std::nullopt);
 
 void spawnActorDebuffParticles(
     ParticleSystem &particleSystem,

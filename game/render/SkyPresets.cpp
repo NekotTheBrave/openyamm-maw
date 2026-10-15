@@ -734,6 +734,17 @@ std::string SkyPresetLibrary::presetForSkyName(const std::string &skyTextureName
     return aliasIt != m_aliases.end() ? aliasIt->second : std::string();
 }
 
+std::vector<std::string> SkyPresetLibrary::skyNames() const
+{
+    std::vector<std::string> names;
+    names.reserve(m_aliases.size());
+    for (const auto &[name, preset] : m_aliases)
+    {
+        names.push_back(name);
+    }
+    return names;
+}
+
 std::string SkyPresetLibrary::presetForWeatherState(int state, int stateCount) const
 {
     if (m_weatherLadder.empty() || state < 0)

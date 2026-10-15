@@ -48,5 +48,6 @@ SearchableLootPropResult searchLootProp(
     const StandardItemEnchantTable &standardItemEnchantTable,
     const SpecialItemEnchantTable &specialItemEnchantTable,
     Party &party,
+    const std::string &worldId,
     std::mt19937 &rng);
 }

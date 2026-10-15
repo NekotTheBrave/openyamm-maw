@@ -1,6 +1,8 @@
 #pragma once
 
+#include "game/gameplay/ActorBehaviorRuntime.h"
 #include "game/gameplay/ActorInspectPreviewAnimation.h"
+#include "game/gameplay/GameplayActorHitFeedback.h"
 
 #include "game/events/ISceneEventContext.h"
 #include "game/events/EventRuntime.h"
@@ -564,6 +566,7 @@ public:
         std::vector<uint8_t> partiallyRevealedCells;
         std::vector<uint32_t> faceAttributes;
         std::vector<std::string> searchedLootPropSourceIds;
+        ActorBehaviorRuntime::Snapshot actorBehaviors;
         bool hasOutdoorRuntimeSaveParityFields = false;
     };
 
@@ -603,6 +606,10 @@ public:
     void setPartyCollisionDimensions(float radius, float height);
     void bindInteractionView(OutdoorGameView *pView);
     void bindGlobalEventProgram(const std::optional<ScriptedEventProgram> *pGlobalEventProgram);
+    void bindActorBehaviorCatalog(const ActorBehaviorCatalog *pCatalog);
+    ActorBehaviorRuntime *actorBehaviorRuntime() override;
+    const ActorBehaviorRuntime *actorBehaviorRuntime() const override;
+    bool setMapActorBehavior(size_t actorIndex, const std::string &behaviorId) override;
 
     struct MonsterKilledEvent
     {
@@ -658,6 +665,14 @@ public:
     bool isChestOpened(uint32_t chestId) const;
     size_t mapActorCount() const override;
     bool actorRuntimeState(size_t actorIndex, GameplayRuntimeActorState &state) const override;
+    GameplayActorHitFeedback &actorHitFeedback() override
+    {
+        return m_actorHitFeedback;
+    }
+    const GameplayActorHitFeedback &actorHitFeedback() const override
+    {
+        return m_actorHitFeedback;
+    }
     std::optional<uint32_t> corpseLootValue(size_t actorIndex) const override;
     bool setMapActorPosition(size_t actorIndex, float x, float y, float z) override;
     bool isMapActorHostile(size_t actorIndex) const override;
@@ -901,6 +916,7 @@ public:
     float partyX() const override;
     float partyY() const override;
     float partyFootZ() const override;
+    float partyEyeZ() const override;
     float partyEngagementRange() const override;
     float gameplayCameraYawRadians() const override;
     float gameplayCameraPitchRadians() const override;
@@ -922,6 +938,11 @@ public:
     size_t turnBasedPendingWorldActionCount() const override;
     bool turnBasedActorActionInProgress() const override;
     void stopTurnBasedActorMovement() override;
+    void setTurnBasedActorMode(ActorTurnBasedMode mode) override;
+    void grantTurnBasedActorAction(size_t actorIndex) override;
+    bool turnBasedActorActionGrantPending() const override;
+    int turnBasedActorRecoveryTicks(size_t actorIndex) const override;
+    void setActorAttackCooldownSeconds(size_t actorIndex, float seconds) override;
     void updateWorld(float deltaSeconds) override;
     void renderWorld(
         int width,
@@ -1017,6 +1038,10 @@ public:
         float y,
         float z
     ) override;
+    bool debugFireActorProjectile(
+        size_t actorIndex,
+        GameplayActorAttackAbility ability,
+        const GameplayWorldPoint &target) override;
     bool summonHostileMonsterById(
         int16_t monsterId,
         uint32_t count,
@@ -1193,6 +1218,10 @@ private:
         SkillMastery skillMastery = SkillMastery::None,
         const std::string &projectileTokenOverride = std::string()
     );
+    // The world point a model actor launches its missile or spell from (its actors.yml release point); empty for
+    // sprite actors and models without one, which launch from the body (mapActorBodyLaunchPoint).
+    std::optional<std::array<float, 3>> mapActorModelLaunchPoint(const MapActorState &actor, bool spell) const;
+    static std::array<float, 3> mapActorBodyLaunchPoint(const MapActorState &actor);
     bool castSpellFromMapActor(
         const MapActorState &actor,
         const MonsterTable::MonsterStatsEntry &stats,
@@ -1345,7 +1374,8 @@ private:
         float y,
         float z,
         bool centerVertically = false,
-        bool preferImpactObject = true);
+        bool preferImpactObject = true,
+        size_t targetActorIndex = static_cast<size_t>(-1));
     bool spawnWaterSplashImpact(float x, float y, float z);
     void addBloodSplat(uint32_t sourceActorId, float x, float y, float z, float radius);
     void bakeBloodSplatGeometry(BloodSplatState &splat) const;
@@ -1378,7 +1408,8 @@ private:
         float y,
         float z,
         bool centerVertically,
-        bool freezeAnimation);
+        bool freezeAnimation,
+        size_t targetActorIndex);
 
     int m_mapId = 0;
     int m_mapTreasureLevel = 0;
@@ -1441,6 +1472,8 @@ private:
     GameplayActorService *m_pGameplayActorService = nullptr;
     GameplayProjectileService *m_pGameplayProjectileService = nullptr;
     GameplayProjectileService m_fallbackGameplayProjectileService;
+    ActorBehaviorRuntime m_actorBehaviors;
+    GameplayActorHitFeedback m_actorHitFeedback;
     GameplayCombatController *m_pGameplayCombatController = nullptr;
     GameplayFxService *m_pGameplayFxService = nullptr;
     const std::optional<ScriptedEventProgram> *m_pGlobalEventProgram = nullptr;
@@ -1493,6 +1526,7 @@ private:
     float m_immolationTickAccumulatorGameMinutes = 0.0f;
     uint32_t m_immolationTickSequence = 0;
     bool m_actorAiUpdateQueued = false;
+    ActorTurnBasedFrameFacts m_turnBasedActorFacts = {};
     float m_queuedActorAiDeltaSeconds = 0.0f;
     float m_queuedActorAiPartyX = 0.0f;
     float m_queuedActorAiPartyY = 0.0f;
@@ -1625,6 +1659,7 @@ private:
     int weatherDayIndexForMinutes(float gameMinutes) const;
     void resetDailySpellCounters();
     void updateArmageddon(float deltaSeconds, float partyX, float partyY, float partyZ);
+    void spawnArmageddonStrikes(float elapsedBefore, float elapsedAfter, float partyX, float partyY, float partyZ);
     void resolveArmageddonDetonation(float partyX, float partyY, float partyZ);
     void refreshAtmosphereState();
 };

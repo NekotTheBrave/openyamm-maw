@@ -1,6 +1,8 @@
 #pragma once
 
+#include "game/gameplay/ActorBehaviorRuntime.h"
 #include "game/gameplay/ActorInspectPreviewAnimation.h"
+#include "game/gameplay/GameplayActorHitFeedback.h"
 
 #include "game/FaceEnums.h"
 #include "game/events/EventRuntime.h"
@@ -9,6 +11,7 @@
 #include "game/gameplay/GameplayBolsterRuntime.h"
 #include "game/gameplay/GameplayProjectileService.h"
 #include "game/gameplay/GameplayRuntimeInterfaces.h"
+#include "game/gameplay/InteractiveDecorationRules.h"
 #include "game/gameplay/SearchableLootPropRuntime.h"
 #include "game/ui/GameplayOverlayTypes.h"
 #include "game/indoor/IndoorMovementController.h"
@@ -123,12 +126,9 @@ public:
         int8_t crowdSideSign = 0;
         bool attackImpactTriggered = false;
         bool suppressLowHealthFlee = false;
-        mutable bool bolsterCacheValid = false;
-        mutable bool bolsterCacheEnabled = false;
-        mutable int16_t bolsterCacheMonsterId = 0;
-        mutable int bolsterCachePartyLevel = 0;
-        mutable uint32_t bolsterCacheMapId = 0;
-        mutable GameplayMonsterBolsterResult bolsterCache = {};
+        // The monster's stats as bolstered for this map, resolved once when the state is built (map load, spawn or
+        // save restore); empty without monster stats.
+        std::optional<GameplayMonsterBolsterResult> bolster;
     };
 
 
@@ -200,6 +200,7 @@ public:
         float actorUpdateAccumulatorSeconds = 0.0f;
         GameplayProjectileService::Snapshot projectileState;
         std::vector<std::string> searchedLootPropSourceIds;
+        ActorBehaviorRuntime::Snapshot actorBehaviors;
     };
 
     IndoorWorldRuntime() = default;
@@ -210,6 +211,10 @@ public:
         const EventRuntime *pEventRuntime,
         const std::optional<ScriptedEventProgram> *pLocalEventProgram,
         const std::optional<ScriptedEventProgram> *pGlobalEventProgram);
+    void bindActorBehaviorCatalog(const ActorBehaviorCatalog *pCatalog);
+    ActorBehaviorRuntime *actorBehaviorRuntime() override;
+    const ActorBehaviorRuntime *actorBehaviorRuntime() const override;
+    bool setMapActorBehavior(size_t actorIndex, const std::string &behaviorId) override;
     bool executeFaceTriggeredEvent(
         size_t faceIndex,
         FaceAttribute triggerAttribute,
@@ -300,6 +305,7 @@ public:
     float partyX() const override;
     float partyY() const override;
     float partyFootZ() const override;
+    float partyEyeZ() const override;
     float partyEngagementRange() const override;
     GameplayWorldPoint chooseBountyHuntSpawnPoint(uint32_t seed) const override;
     float gameplayCameraYawRadians() const override;
@@ -318,6 +324,11 @@ public:
     void updateTurnBasedPausedActorAnimations(float deltaSeconds) override;
     size_t turnBasedPendingWorldActionCount() const override;
     bool turnBasedActorActionInProgress() const override;
+    void setTurnBasedActorMode(ActorTurnBasedMode mode) override;
+    void grantTurnBasedActorAction(size_t actorIndex) override;
+    bool turnBasedActorActionGrantPending() const override;
+    int turnBasedActorRecoveryTicks(size_t actorIndex) const override;
+    void setActorAttackCooldownSeconds(size_t actorIndex, float seconds) override;
     void updateWorld(float deltaSeconds) override;
     void renderWorld(
         int width,
@@ -361,6 +372,14 @@ public:
         std::vector<GameplayProjectilePresentationState> &projectiles,
         std::vector<GameplayProjectileImpactPresentationState> &impacts) const;
     bool actorRuntimeState(size_t actorIndex, GameplayRuntimeActorState &state) const override;
+    GameplayActorHitFeedback &actorHitFeedback() override
+    {
+        return m_actorHitFeedback;
+    }
+    const GameplayActorHitFeedback &actorHitFeedback() const override
+    {
+        return m_actorHitFeedback;
+    }
     std::optional<uint32_t> corpseLootValue(size_t actorIndex) const override;
     bool tryStealFromActor(size_t actorIndex, uint32_t successRoll, uint32_t caughtRoll) override;
     bool actorInspectState(
@@ -422,6 +441,10 @@ public:
         float x,
         float y,
         float z) override;
+    bool debugFireActorProjectile(
+        size_t actorIndex,
+        GameplayActorAttackAbility ability,
+        const GameplayWorldPoint &target) override;
     bool summonHostileMonsterById(
         int16_t monsterId,
         uint32_t count,
@@ -573,6 +596,7 @@ public:
     std::vector<IndoorCylinderCollision> spriteObjectMovementColliders() const;
 
 private:
+    std::string mapWorldId() const;
     bool summonEventPayload(
         uint32_t payloadId,
         bool payloadIsObjectId,
@@ -653,6 +677,7 @@ private:
     void materializeInitialMonsterSpawns();
     void syncMapActorAiStates();
     RuntimeGeometryCache &runtimeGeometryCache() const;
+    void carryRestingObjectsOnMovedFloors(const std::vector<std::pair<const MapDeltaDoor *, float>> &floorMoves);
     std::shared_ptr<const PathMap> indoorPathMap() const;
     bool indoorActorPathfindingEnabled() const;
     bool logIndoorPathfindingEnabled() const;
@@ -734,10 +759,7 @@ private:
         IndoorFaceGeometryCache &geometryCache,
         const std::vector<uint8_t> &spellEffectOverrideMask
     ) const;
-    const GameplayMonsterBolsterResult &resolvedActorBolster(
-        const MapActorAiState &aiState,
-        const MonsterTable::MonsterStatsEntry &stats,
-        const MonsterEntry *pMonsterEntry) const;
+    std::optional<GameplayMonsterBolsterResult> resolveActorBolster(const MapDeltaActor &actor) const;
     bool indoorActorCanApplyPartyMeleeImpact(size_t actorIndex) const;
     void materializeSemanticWorldItems();
     void synchronizeSemanticWorldItemVisibility();
@@ -794,7 +816,8 @@ private:
         const GameplayWorldPoint &point,
         uint32_t spellId,
         bool centerVertically = false,
-        bool preferImpactObject = true);
+        bool preferImpactObject = true,
+        size_t targetActorIndex = static_cast<size_t>(-1));
     void spawnImmediateSpellImpactVisual(size_t actorIndex, uint32_t spellId);
     void updateIndoorJournalRevealIfNeeded();
     void setMapActorHostilityFromEvent(size_t actorIndex, bool hostileToParty);
@@ -817,6 +840,7 @@ private:
     const SpriteFrameTable *m_pProjectileSpriteFrameTable = nullptr;
     const IndoorMapData *m_pIndoorMapData = nullptr;
     const DecorationBillboardSet *m_pIndoorDecorationBillboardSet = nullptr;
+    std::vector<IndoorDecorationClearRule> m_decorationClearRules;
     bool m_bolsterMonstersEnabled = false;
     Party *m_pParty = nullptr;
     IndoorPartyRuntime *m_pPartyRuntime = nullptr;
@@ -842,6 +866,9 @@ private:
     bool m_corpseLootPending = false;
     std::optional<CorpseViewState> m_activeCorpseView;
     std::vector<MapActorAiState> m_mapActorAiStates;
+    ActorTurnBasedFrameFacts m_turnBasedActorFacts = {};
+    ActorBehaviorRuntime m_actorBehaviors;
+    GameplayActorHitFeedback m_actorHitFeedback;
     std::vector<size_t> m_actorCorpsePhysicsActorIndices;
     mutable ActorInspectPreviewAnimation m_actorInspectPreviewAnimation = {};
     std::vector<uint8_t> m_activatedIndoorSectorMask;

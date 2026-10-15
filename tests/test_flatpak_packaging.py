@@ -87,7 +87,7 @@ while [ ! -f "$OPENYAMM_TEST_RELEASE" ]; do sleep 0.02; done
             path.touch()
         for name in ('cmake', 'engine', 'game', 'packaging/icons', 'packaging/licenses',
                      'assets_dev/engine', 'assets_dev/worlds/mm6', 'assets_dev/worlds/mm7',
-                     'assets_dev/worlds/mm8', 'assets_dev/worlds/mmmerge'):
+                     'assets_dev/worlds/mm8'):
             (self.root / name).mkdir(parents=True, exist_ok=True)
         process = subprocess.Popen(['bash', str(self.wrapper), '--jobs=1', '--no-install'],
                                    env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

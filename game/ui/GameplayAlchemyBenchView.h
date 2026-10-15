@@ -1,0 +1,98 @@
+#pragma once
+
+#include "game/items/AlchemyBenchRuntime.h"
+#include "game/ui/GameplayOverlayTypes.h"
+
+#include <cstddef>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace OpenYAMM::Game
+{
+class GameplayScreenRuntime;
+
+enum class GameplayAlchemyBenchRowKind : uint8_t
+{
+    Header,
+    Entry,
+    Undiscovered
+};
+
+struct GameplayAlchemyBenchRow
+{
+    GameplayAlchemyBenchRowKind kind = GameplayAlchemyBenchRowKind::Entry;
+    size_t entryIndex = 0;
+    std::string text;
+    float offsetY = 0;
+    float height = 0;
+};
+
+// What the bench shows this frame, shared by its renderer and its input.
+struct GameplayAlchemyBenchModel
+{
+    AlchemistInfo alchemist;
+    std::string alchemistName;
+    std::vector<AlchemyIngredient> ingredients;
+    std::vector<size_t> visibleIngredients;
+    AlchemyBook book;
+    std::vector<GameplayAlchemyBenchRow> rows;
+    float rowsHeight = 0;
+    AlchemyPreview preview;
+    std::optional<size_t> selectedEntryIndex;
+    uint32_t mixAllCount = 0;
+    // Potions each book entry can brew when missing ingredients are brewed first.
+    std::vector<uint32_t> chainCounts;
+    // The selected recipe needs ingredients brewed first; chain is the plan for one potion.
+    bool chainMode = false;
+    std::optional<AlchemyChainPlan> chain;
+};
+
+struct GameplayAlchemyBenchRowRect
+{
+    size_t rowIndex = 0;
+    GameplayResolvedHudLayoutElement rect;
+};
+
+struct GameplayAlchemyBenchCellRect
+{
+    size_t ingredientIndex = 0;
+    GameplayResolvedHudLayoutElement rect;
+};
+
+namespace GameplayAlchemyBenchView
+{
+constexpr float RecipeRowHeight = 17.0f;
+constexpr float RecipeHeaderHeight = 10.0f;
+constexpr float RecipeListPadding = 3.0f;
+constexpr float IngredientCellWidth = 44.0f;
+constexpr float IngredientCellHeight = 56.0f;
+constexpr float IngredientCellGap = 3.0f;
+constexpr float IngredientGridPadding = 3.0f;
+
+std::optional<AlchemyBenchTables> tables(const GameplayScreenRuntime &context);
+// Not const: the bench state caches the book's chain counts.
+std::optional<GameplayAlchemyBenchModel> buildModel(GameplayScreenRuntime &context);
+AlchemyChainPlan planChain(
+    const GameplayScreenRuntime &context,
+    const GameplayAlchemyBenchModel &model,
+    uint32_t resultItemId,
+    uint32_t maxBrews);
+std::string masteryName(uint8_t mastery);
+bool mixEnabled(const GameplayAlchemyBenchModel &model);
+
+float maximumRecipeScroll(const GameplayAlchemyBenchModel &model, const GameplayResolvedHudLayoutElement &list);
+std::vector<GameplayAlchemyBenchRowRect> visibleRows(
+    const GameplayAlchemyBenchModel &model,
+    const GameplayResolvedHudLayoutElement &list,
+    float scrollOffset);
+
+size_t ingredientColumns(const GameplayResolvedHudLayoutElement &grid);
+size_t ingredientVisibleRows(const GameplayResolvedHudLayoutElement &grid);
+size_t maximumIngredientScrollRow(const GameplayAlchemyBenchModel &model, const GameplayResolvedHudLayoutElement &grid);
+std::vector<GameplayAlchemyBenchCellRect> visibleCells(
+    const GameplayAlchemyBenchModel &model,
+    const GameplayResolvedHudLayoutElement &grid,
+    size_t scrollRow);
+}
+}

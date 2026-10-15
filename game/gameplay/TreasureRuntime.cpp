@@ -79,6 +79,7 @@ std::optional<GameplayTreasureSpawnResult> generateTreasureSpawnItem(
     const StandardItemEnchantTable &standardItemEnchantTable,
     const SpecialItemEnchantTable &specialItemEnchantTable,
     Party *pParty,
+    const std::string &worldId,
     const std::function<bool(const ItemDefinition &)> &filter)
 {
     const int treasureLevel = std::clamp(spawnTreasureLevel, RandomTreasureMinLevel, RandomTreasureMaxLevel);
@@ -110,6 +111,7 @@ std::optional<GameplayTreasureSpawnResult> generateTreasureSpawnItem(
         ItemGenerationRequest request = {};
         request.treasureLevel = std::min(resolvedTreasureLevel, SpawnableItemTreasureLevels);
         request.mode = ItemGenerationMode::ChestLoot;
+        request.worldId = worldId;
         const std::optional<InventoryItem> generatedItem =
             ItemGenerator::generateRandomInventoryItem(
                 itemTable,
@@ -134,6 +136,7 @@ std::optional<GameplayTreasureSpawnResult> generateTreasureSpawnItem(
     request.mode = ItemGenerationMode::ChestLoot;
     request.allowRareItems = true;
     request.rareItemsOnly = true;
+    request.worldId = worldId;
     const std::optional<InventoryItem> generatedItem =
         ItemGenerator::generateRandomInventoryItem(
             itemTable,

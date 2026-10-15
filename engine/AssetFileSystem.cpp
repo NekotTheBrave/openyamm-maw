@@ -97,14 +97,12 @@ constexpr const char *VideosDirectoryName = "videos";
 constexpr const char *MapsDirectoryName = "maps";
 constexpr const char *EventsDirectoryName = "events";
 constexpr const char *TexturesDirectoryName = "textures";
-constexpr const char *TerrainDirectoryName = "terrain";
 constexpr const char *SpritesDirectoryName = "sprites";
-constexpr const char *TerrainTextureFallbackDirectoryName = "terrain_textures";
 constexpr const char *SkyTextureDirectoryName = "sky_textures";
 constexpr const char *LegacyDirectoryName = "_legacy";
 constexpr const char *SingleAssetPackageName = "assets.zip";
 constexpr const char *EngineAssetPackageName = "engine.zip";
-constexpr std::array<const char *, 4> KnownWorldPackageIds = {"mm6", "mm7", "mm8", "mmmerge"};
+constexpr std::array<const char *, 3> KnownWorldPackageIds = {"mm6", "mm7", "mm8"};
 
 struct TieredAssetDirectory
 {
@@ -112,20 +110,12 @@ struct TieredAssetDirectory
     AssetScaleCategory category;
 };
 
-constexpr std::array<TieredAssetDirectory, 13> TieredAssetDirectories = {
+constexpr std::array<TieredAssetDirectory, 5> TieredAssetDirectories = {
     TieredAssetDirectory{"Data/bitmaps", AssetScaleCategory::Textures},
-    TieredAssetDirectory{"Data/terrain", AssetScaleCategory::Terrain},
-    TieredAssetDirectory{"Data/sprites", AssetScaleCategory::Sprites},
     TieredAssetDirectory{"Data/icons", AssetScaleCategory::Icons},
-    TieredAssetDirectory{"Data/ui", AssetScaleCategory::Ui},
     TieredAssetDirectory{"bitmaps", AssetScaleCategory::Textures},
     TieredAssetDirectory{"textures", AssetScaleCategory::Textures},
-    TieredAssetDirectory{"terrain", AssetScaleCategory::Terrain},
-    TieredAssetDirectory{"sprites", AssetScaleCategory::Sprites},
-    TieredAssetDirectory{"icons", AssetScaleCategory::Icons},
-    TieredAssetDirectory{"ui", AssetScaleCategory::Ui},
-    TieredAssetDirectory{"effects", AssetScaleCategory::Effects},
-    TieredAssetDirectory{"fonts", AssetScaleCategory::Fonts}
+    TieredAssetDirectory{"icons", AssetScaleCategory::Icons}
 };
 
 struct VirtualPathAlias
@@ -140,13 +130,12 @@ struct MergedRootFile
     std::filesystem::path filePath;
 };
 
-constexpr std::array<VirtualPathAlias, 35> PackagePathAliases = {
+constexpr std::array<VirtualPathAlias, 31> PackagePathAliases = {
     VirtualPathAlias{"engine/audio", "audio"},
     VirtualPathAlias{"engine/data_tables/english", "data_tables/english"},
     VirtualPathAlias{"engine/data_tables", "data_tables"},
     VirtualPathAlias{"engine/events", "events"},
     VirtualPathAlias{"engine/fonts/english_text", "fonts/english_text"},
-    VirtualPathAlias{"engine/fonts/icons", "fonts/icons"},
     VirtualPathAlias{"engine/fonts", "fonts"},
     VirtualPathAlias{"engine/icons", "icons"},
     VirtualPathAlias{"engine/music", "music"},
@@ -154,7 +143,6 @@ constexpr std::array<VirtualPathAlias, 35> PackagePathAliases = {
     VirtualPathAlias{"engine/rendering", "rendering"},
     VirtualPathAlias{"engine/scripts", "scripts"},
     VirtualPathAlias{"engine/sprites", "sprites"},
-    VirtualPathAlias{"engine/terrain", "terrain"},
     VirtualPathAlias{"engine/textures", "textures"},
     VirtualPathAlias{"Data/data_tables/english", "data_tables/english"},
     VirtualPathAlias{"Data/data_tables", "data_tables"},
@@ -168,10 +156,8 @@ constexpr std::array<VirtualPathAlias, 35> PackagePathAliases = {
     VirtualPathAlias{"Data/EnglishT", "data_tables/english"},
     VirtualPathAlias{"Data/EnglishT", "fonts/english_text"},
     VirtualPathAlias{"Data/icons", "icons"},
-    VirtualPathAlias{"Data/icons", "fonts/icons"},
     VirtualPathAlias{"Data/bitmaps", "textures"},
     VirtualPathAlias{"Data/bitmaps", "effects"},
-    VirtualPathAlias{"Data/terrain", "terrain"},
     VirtualPathAlias{"Data/sprites", "sprites"},
     VirtualPathAlias{"Data/sprites", "effects"},
     VirtualPathAlias{"Videos", "videos"},
@@ -428,6 +414,9 @@ struct AssetFileSystem::LookupCache
     std::mutex mutex;
     std::unordered_map<std::string, std::unordered_map<std::string, Name>> directories;
     std::unordered_map<std::string, std::optional<std::string>> files;
+    // enumerate() results by virtual directory: a mounted directory lists through every mount and alias, which
+    // costs milliseconds for the large merged ones (icons, bitmaps, sprites).
+    std::unordered_map<std::string, std::vector<std::string>> listings;
 };
 
 std::optional<std::string> AssetFileSystem::findCaseInsensitiveVirtualPath(const std::string &virtualPath) const
@@ -496,6 +485,7 @@ void AssetFileSystem::refreshLookupCache() const
     std::lock_guard lock(m_pLookupCache->mutex);
     m_pLookupCache->directories.clear();
     m_pLookupCache->files.clear();
+    m_pLookupCache->listings.clear();
     ++m_contentGeneration;
 }
 
@@ -555,6 +545,10 @@ bool AssetFileSystem::initialize(
         std::cerr << "PHYSFS_init failed: " << PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()) << '\n';
         return false;
     }
+
+    // Asset trees contain no symbolic links. With links disallowed PhysFS would lstat every entry of a directory it
+    // lists, only to filter them out: about 7 microseconds an entry, 0.25 s for the large merged directories.
+    PHYSFS_permitSymbolicLinks(1);
 
     m_isInitialized = true;
     m_basePath = basePath;
@@ -1132,17 +1126,11 @@ bool AssetFileSystem::mountMergedWorldMapRuntimeRoots(
     return mountMergedWorldPackageRoots(assetRoot, activeWorldId, MapsDirectoryName)
         && mountMergedWorldPackageRoots(assetRoot, activeWorldId, EventsDirectoryName)
         && mountMergedWorldPackageRoots(assetRoot, activeWorldId, TexturesDirectoryName)
-        && mountMergedWorldPackageRoots(assetRoot, activeWorldId, TerrainDirectoryName)
         && mountMergedWorldScaledPackageRoots(
             assetRoot,
             activeWorldId,
             TexturesDirectoryName,
             assetScaleTierForCategory(m_assetScaleProfile, AssetScaleCategory::Textures))
-        && mountMergedWorldScaledPackageRoots(
-            assetRoot,
-            activeWorldId,
-            TerrainDirectoryName,
-            assetScaleTierForCategory(m_assetScaleProfile, AssetScaleCategory::Terrain))
         && mountMergedWorldPackageRoots(assetRoot, activeWorldId, LegacyDirectoryName);
 }
 
@@ -1246,6 +1234,15 @@ std::vector<std::string> AssetFileSystem::enumerate(const std::string &virtualPa
         return entries;
     }
 
+    {
+        std::lock_guard lock(m_pLookupCache->mutex);
+        const auto listing = m_pLookupCache->listings.find(virtualPath);
+        if (listing != m_pLookupCache->listings.end())
+        {
+            return listing->second;
+        }
+    }
+
     const std::vector<std::string> resolvedPaths = resolveVirtualPathCandidates(virtualPath);
 
     for (const std::string &resolvedPath : resolvedPaths)
@@ -1268,6 +1265,8 @@ std::vector<std::string> AssetFileSystem::enumerate(const std::string &virtualPa
     }
 
     std::sort(entries.begin(), entries.end());
+    std::lock_guard lock(m_pLookupCache->mutex);
+    m_pLookupCache->listings.try_emplace(virtualPath, entries);
     return entries;
 }
 
@@ -1506,10 +1505,8 @@ bool AssetFileSystem::validateTierDirectories(const std::filesystem::path &asset
         const char *pLegacyDirectoryName;
     };
 
-    constexpr std::array<RequiredTieredDirectory, 4> RequiredTieredDirectories = {
+    constexpr std::array<RequiredTieredDirectory, 2> RequiredTieredDirectories = {
         RequiredTieredDirectory{AssetScaleCategory::Textures, "textures", "Data/bitmaps"},
-        RequiredTieredDirectory{AssetScaleCategory::Terrain, "terrain", "Data/terrain"},
-        RequiredTieredDirectory{AssetScaleCategory::Sprites, "sprites", "Data/sprites"},
         RequiredTieredDirectory{AssetScaleCategory::Icons, "icons", "Data/icons"}
     };
 
@@ -1551,10 +1548,8 @@ bool AssetFileSystem::validateTierDirectoriesInMountedPackages() const
         const char *pLegacyDirectoryName;
     };
 
-    constexpr std::array<RequiredTieredDirectory, 4> RequiredTieredDirectories = {
+    constexpr std::array<RequiredTieredDirectory, 2> RequiredTieredDirectories = {
         RequiredTieredDirectory{AssetScaleCategory::Textures, "textures", "Data/bitmaps"},
-        RequiredTieredDirectory{AssetScaleCategory::Terrain, "terrain", "Data/terrain"},
-        RequiredTieredDirectory{AssetScaleCategory::Sprites, "sprites", "Data/sprites"},
         RequiredTieredDirectory{AssetScaleCategory::Icons, "icons", "Data/icons"}
     };
 
@@ -1902,12 +1897,6 @@ AssetScaleCategory AssetFileSystem::assetScaleCategoryForVirtualPath(const std::
         }
     }
 
-    if (virtualPath == TerrainTextureFallbackDirectoryName
-        || virtualPath.starts_with(std::string(TerrainTextureFallbackDirectoryName) + "/"))
-    {
-        return AssetScaleCategory::Terrain;
-    }
-
     if (virtualPath == SkyTextureDirectoryName
         || virtualPath.starts_with(std::string(SkyTextureDirectoryName) + "/"))
     {
@@ -1936,18 +1925,6 @@ AssetScaleCategory AssetFileSystem::assetScaleCategoryForVirtualPath(const std::
 
 std::string AssetFileSystem::baseTieredVirtualPath(const std::string &virtualPath)
 {
-    if (virtualPath == TerrainTextureFallbackDirectoryName
-        || virtualPath.starts_with(std::string(TerrainTextureFallbackDirectoryName) + "/"))
-    {
-        if (virtualPath == TerrainTextureFallbackDirectoryName)
-        {
-            return TexturesDirectoryName;
-        }
-
-        return std::string(TexturesDirectoryName)
-            + virtualPath.substr(std::string(TerrainTextureFallbackDirectoryName).size());
-    }
-
     if (virtualPath == SkyTextureDirectoryName
         || virtualPath.starts_with(std::string(SkyTextureDirectoryName) + "/"))
     {
@@ -1979,18 +1956,6 @@ std::string AssetFileSystem::remapTieredVirtualPath(
                 + remapTieredVirtualPath(virtualPath.substr(separator + 1), assetScaleProfile);
         }
     }
-    if (virtualPath == TerrainTextureFallbackDirectoryName
-        || virtualPath.starts_with(std::string(TerrainTextureFallbackDirectoryName) + "/"))
-    {
-        if (virtualPath == TerrainTextureFallbackDirectoryName)
-        {
-            return TexturesDirectoryName;
-        }
-
-        return std::string(TexturesDirectoryName)
-            + virtualPath.substr(std::string(TerrainTextureFallbackDirectoryName).size());
-    }
-
     if (virtualPath == SkyTextureDirectoryName
         || virtualPath.starts_with(std::string(SkyTextureDirectoryName) + "/"))
     {

@@ -98,7 +98,8 @@ private:
         const bx::Vec3 &up,
         float u0,
         float u1,
-        uint32_t lightContributionAbgr);
+        uint32_t lightContributionAbgr,
+        float hitFlash = 0.0f);
     static void writeLitBillboardVertices(
         OutdoorGameView::LitBillboardVertex *pVertices,
         const bx::Vec3 &center,
@@ -106,7 +107,8 @@ private:
         const bx::Vec3 &up,
         float u0,
         float u1,
-        uint32_t lightContributionAbgr);
+        uint32_t lightContributionAbgr,
+        float hitFlash = 0.0f);
     static uint32_t computeBillboardLightContributionAbgr(
         OutdoorGameView &view,
         float x,

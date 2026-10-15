@@ -33,6 +33,8 @@ public:
     int run() const;
     void setConfiguration(const ApplicationConfig &config);
     bool applyDisplaySettings(WindowMode mode, int width, int height, bool verticalSync, std::string &error);
+    // Anisotropic filtering limit of every anisotropic sampler; applies immediately while running.
+    void setMaxAnisotropy(uint8_t level);
 
   private:
     bool initializeAssetFileSystem(AssetFileSystem &assetFileSystem) const;

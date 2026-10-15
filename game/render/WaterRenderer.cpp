@@ -27,7 +27,8 @@ bgfx::VertexLayout waterVertexLayout()
         .add(bgfx::Attrib::Normal, 3, bgfx::AttribType::Float)
         .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
         .add(bgfx::Attrib::TexCoord1, 2, bgfx::AttribType::Float)
-        .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true).end();
+        .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true)
+        .add(bgfx::Attrib::TexCoord2, 1, bgfx::AttribType::Float).end();
     return layout;
 }
 }
@@ -39,19 +40,27 @@ bool WaterRenderer::initialize(const Engine::AssetFileSystem &assets, std::vecto
     {
         return true;
     }
-    constexpr const char *pPath = "engine/rendering/water/water_nm.png";
-    const std::optional<std::vector<uint8_t>> bytes = assets.readBinaryFile(pPath);
-    const std::optional<Engine::ImagePixelsBgra> image = bytes
-        ? Engine::decodeImagePixelsBgra(*bytes, pPath) : std::nullopt;
-    if (!image)
+    const auto loadImage = [&assets](const char *pPath) -> std::optional<Engine::ImagePixelsBgra>
     {
-        std::cerr << "Cannot load water normal texture: " << pPath << '\n';
+        const std::optional<std::vector<uint8_t>> bytes = assets.readBinaryFile(pPath);
+        std::optional<Engine::ImagePixelsBgra> image = bytes
+            ? Engine::decodeImagePixelsBgra(*bytes, pPath) : std::nullopt;
+        if (!image)
+        {
+            std::cerr << "Cannot load liquid texture: " << pPath << '\n';
+        }
+        return image;
+    };
+    const std::optional<Engine::ImagePixelsBgra> image = loadImage("engine/liquids/water_nm.png");
+    const std::optional<Engine::ImagePixelsBgra> lavaPattern = loadImage("engine/liquids/lava_pattern.png");
+    if (!image || !lavaPattern)
+    {
         return false;
     }
     m_indoor = indoor;
     if (!indoor)
     {
-        const std::optional<std::string> sprites = assets.readTextFile("engine/rendering/water/sprites.yml");
+        const std::optional<std::string> sprites = assets.readTextFile("engine/liquids/sprites.yml");
         if (!sprites)
         {
             std::cerr << "Cannot load water sprite regions.\n";
@@ -71,6 +80,10 @@ bool WaterRenderer::initialize(const Engine::AssetFileSystem &assets, std::vecto
     m_normalTexture = bgfx::createTexture2D(uint16_t(image->width), uint16_t(image->height), true, 1,
         bgraTextureUploadFormat(), BGFX_SAMPLER_NONE);
     updateBgraTextureArrayLayer(m_normalTexture, 0, uint16_t(image->width), uint16_t(image->height), image->pixels);
+    m_lavaPatternTexture = bgfx::createTexture2D(uint16_t(lavaPattern->width), uint16_t(lavaPattern->height), true, 1,
+        bgraTextureUploadFormat(), BGFX_SAMPLER_NONE);
+    updateBgraTextureArrayLayer(m_lavaPatternTexture, 0, uint16_t(lavaPattern->width), uint16_t(lavaPattern->height),
+        lavaPattern->pixels);
     const uint32_t empty = 0xff000000;
     m_emptyReflection = bgfx::createTexture2D(1, 1, false, 1, bgfx::TextureFormat::RGBA8,
         BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP, bgfx::copy(&empty, sizeof(empty)));
@@ -96,8 +109,12 @@ bool WaterRenderer::initialize(const Engine::AssetFileSystem &assets, std::vecto
         bgfx::copy(coverage.data(), uint32_t(coverage.size())));
     m_coverageSampler = bgfx::createUniform("s_texWaterCoverage", bgfx::UniformType::Sampler);
     m_normalSampler = bgfx::createUniform("s_waterNormal", bgfx::UniformType::Sampler);
+    m_liquidPatternSampler = bgfx::createUniform("s_liquidPattern", bgfx::UniformType::Sampler);
     m_spriteSampler = bgfx::createUniform("s_waterSprite", bgfx::UniformType::Sampler);
     m_reflectionSampler = bgfx::createUniform("s_waterReflection", bgfx::UniformType::Sampler);
+    m_seabedSampler = bgfx::createUniform("s_waterSeabed", bgfx::UniformType::Sampler);
+    m_seabedUniform = bgfx::createUniform("u_waterSeabed", bgfx::UniformType::Vec4);
+    m_seabedDepthUniform = bgfx::createUniform("u_waterSeabedDepth", bgfx::UniformType::Vec4);
     m_params = bgfx::createUniform("u_waterParams", bgfx::UniformType::Vec4);
     m_rain = bgfx::createUniform("u_waterRain", bgfx::UniformType::Vec4);
     m_sunDirection = bgfx::createUniform("u_waterSunDirection", bgfx::UniformType::Vec4);
@@ -128,11 +145,11 @@ bool WaterRenderer::initialize(const Engine::AssetFileSystem &assets, std::vecto
 
 bool WaterRenderer::updateGeometry(std::vector<WaterSurfaceGeometry> geometry, bool buildings)
 {
-    for (const Surface &surface : m_surfaces)
+    for (Surface &surface : m_surfaces)
     {
-        if (surface.building == buildings && bgfx::isValid(surface.buffer))
+        if (surface.building == buildings)
         {
-            bgfx::destroy(surface.buffer);
+            destroySurface(surface, true);
         }
     }
     std::erase_if(m_surfaces, [buildings](const Surface &surface) { return surface.building == buildings; });
@@ -148,6 +165,7 @@ bool WaterRenderer::updateGeometry(std::vector<WaterSurfaceGeometry> geometry, b
         surface.building = buildings;
         surface.height = source.height;
         surface.planar = source.planar;
+        surface.liquid = source.liquid;
         surface.sectorId = source.sectorId;
         surface.backSectorId = source.backSectorId;
         surface.vertexCount = uint32_t(source.vertices.size());
@@ -162,7 +180,8 @@ bool WaterRenderer::updateGeometry(std::vector<WaterSurfaceGeometry> geometry, b
 
 bool WaterRenderer::isReady() const
 {
-    return bgfx::isValid(m_program) && bgfx::isValid(m_normalTexture)
+    return bgfx::isValid(m_program) && bgfx::isValid(m_normalTexture) && bgfx::isValid(m_lavaPatternTexture)
+        && bgfx::isValid(m_liquidPatternSampler)
         && bgfx::isValid(m_coverageTexture) && bgfx::isValid(m_coverageSampler)
         && bgfx::isValid(m_emptyReflection) && bgfx::isValid(m_normalSampler) && bgfx::isValid(m_spriteSampler)
         && bgfx::isValid(m_reflectionSampler)
@@ -229,6 +248,21 @@ void WaterRenderer::prepare(const ViewFrustum &frustum, const bx::Vec3 &camera, 
     m_reflectionCount = 0;
     for (Surface &surface : m_surfaces)
     {
+        // A surface not drawn last frame (outside the view) has no current answer: it counts as visible.
+        if (!surface.queried)
+        {
+            surface.occluded = false;
+        }
+        else if (bgfx::isValid(surface.occlusionQuery))
+        {
+            int32_t pixels = 0;
+            const bgfx::OcclusionQueryResult::Enum result = bgfx::getResult(surface.occlusionQuery, &pixels);
+            if (result != bgfx::OcclusionQueryResult::NoResult)
+            {
+                surface.occluded = result == bgfx::OcclusionQueryResult::Invisible;
+            }
+        }
+        surface.queried = false;
         surface.visible = false;
         surface.reflection = -1;
         surface.distanceSquared = std::numeric_limits<float>::max();
@@ -264,7 +298,8 @@ void WaterRenderer::prepare(const ViewFrustum &frustum, const bx::Vec3 &camera, 
         Surface *pNearest = nullptr;
         for (Surface &surface : m_surfaces)
         {
-            if (surface.visible && surface.planar && surface.reflection < 0 && camera.z > surface.height
+            if (surface.visible && surface.planar && liquidReflects(surface.liquid) && surface.reflection < 0
+                && camera.z > surface.height
                 && (pNearest == nullptr || surface.distanceSquared < pNearest->distanceSquared))
             {
                 pNearest = &surface;
@@ -322,13 +357,21 @@ void WaterRenderer::prepare(const ViewFrustum &frustum, const bx::Vec3 &camera, 
         }
         for (Surface &surface : m_surfaces)
         {
-            if (surface.visible && surface.planar && surface.height == target.height
+            if (surface.visible && surface.planar && liquidReflects(surface.liquid)
+                && surface.height == target.height
                 && (reflectionSectorId >= 0 || surface.sectorId == target.sectorId))
             {
                 surface.reflection = int(index);
             }
         }
         ++m_reflectionCount;
+        const bool hidden = std::none_of(m_surfaces.begin(), m_surfaces.end(), [index](const Surface &surface)
+            { return surface.reflection == int(index) && !surface.occluded; });
+        if (hidden && m_reflectionUpdates[index].holds(target.height, captureSize))
+        {
+            target.update = false;
+            continue;
+        }
         target.update = m_reflectionUpdates[index].prepare(captureViewProjection, target.height, captureSize,
             seconds, visualRevision, buildings, viewCovered, billboards);
         if (!target.update)
@@ -365,6 +408,13 @@ std::span<const WaterRenderer::Reflection> WaterRenderer::reflections() const
     return {m_reflections.data(), m_reflectionCount};
 }
 
+void WaterRenderer::setSeabed(bgfx::TextureHandle heights, const std::array<float, 4> &mapping, float opaqueDepth)
+{
+    m_seabedTexture = heights;
+    m_seabedMapping = bgfx::isValid(heights) ? mapping : std::array<float, 4>{};
+    m_seabedDepth = {std::max(opaqueDepth, 1.0f), 0.0f, 0.0f, 0.0f};
+}
+
 void WaterRenderer::bindCoverage(uint8_t stage) const
 {
     if (bgfx::isValid(m_coverageTexture))
@@ -380,7 +430,7 @@ void WaterRenderer::render(uint16_t viewId, float seconds,
 {
     prepareRippleResources(pRipples);
     const std::array<float, 4> timedSunDirection = {sunDirection[0], sunDirection[1], sunDirection[2], seconds};
-    for (const Surface &surface : m_surfaces)
+    for (Surface &surface : m_surfaces)
     {
         if (pReflection != nullptr)
         {
@@ -401,7 +451,7 @@ void WaterRenderer::render(uint16_t viewId, float seconds,
         bgfx::setUniform(m_sunDirection, timedSunDirection.data());
         bgfx::setUniform(m_sunColor, sunColor.data());
         bgfx::setUniform(m_skyColor, skyColor.data());
-        submitSurface(surface, viewId, seconds, rainIntensity, pRipples);
+        submitSurface(surface, viewId, seconds, rainIntensity, pRipples, pReflection == nullptr);
     }
 }
 
@@ -411,7 +461,7 @@ void WaterRenderer::renderIndoor(uint16_t viewId, float seconds, const IndoorLig
 {
     prepareRippleResources(pRipples);
     const std::array<float, 4> eye = {camera.x, camera.y, camera.z, 0.0f};
-    for (const Surface &surface : m_surfaces)
+    for (Surface &surface : m_surfaces)
     {
         if (pReflection != nullptr)
         {
@@ -435,7 +485,7 @@ void WaterRenderer::renderIndoor(uint16_t viewId, float seconds, const IndoorLig
         bgfx::setUniform(m_indoorLightPositions, lights.positions.data(), 12);
         bgfx::setUniform(m_indoorLightColors, lights.colors.data(), 12);
         bgfx::setUniform(m_indoorLightParams, lights.params.data());
-        submitSurface(surface, viewId, seconds, 0.0f, pRipples);
+        submitSurface(surface, viewId, seconds, 0.0f, pRipples, pReflection == nullptr);
     }
 }
 
@@ -501,8 +551,8 @@ void WaterRenderer::prepareRippleResources(const WaterRippleRuntime *pRipples)
     }
 }
 
-void WaterRenderer::submitSurface(const Surface &surface, uint16_t viewId, float seconds, float rainIntensity,
-    const WaterRippleRuntime *pRipples)
+void WaterRenderer::submitSurface(Surface &surface, uint16_t viewId, float seconds, float rainIntensity,
+    const WaterRippleRuntime *pRipples, bool mainView)
 {
     const bool reflected = surface.reflection >= 0;
     // Every wave speed is an integer multiple of 1/1000; wrapping here keeps phase continuous.
@@ -522,25 +572,57 @@ void WaterRenderer::submitSurface(const Surface &surface, uint16_t viewId, float
     bgfx::setTexture(2, m_reflectionSampler, reflected
         ? m_reflections[size_t(surface.reflection)].texture : m_emptyReflection);
     bindCoverage(3);
+    bgfx::setTexture(4, m_seabedSampler, bgfx::isValid(m_seabedTexture) ? m_seabedTexture : m_emptyReflection,
+        BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
+    bgfx::setUniform(m_seabedUniform, m_seabedMapping.data());
+    bgfx::setUniform(m_seabedDepthUniform, m_seabedDepth.data());
+    bgfx::setTexture(5, m_liquidPatternSampler, m_lavaPatternTexture);
     bgfx::setVertexBuffer(0, surface.buffer, 0, surface.vertexCount);
     bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
         | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_ALPHA);
     WaterRippleDrawSet ripples;
-    if (surface.planar && pRipples != nullptr && pRipples->enabled() && !pRipples->ripples().empty())
+    // Movement ripples belong to water.
+    if (surface.planar && surface.liquid == LiquidKind::Water && pRipples != nullptr && pRipples->enabled()
+        && !pRipples->ripples().empty())
     {
         ripples = pRipples->select(m_camera, surface.height, surface.patches, surface.sectorId, surface.backSectorId);
     }
+    if (mainView && !bgfx::isValid(surface.occlusionQuery)
+        && (bgfx::getCaps()->supported & BGFX_CAPS_OCCLUSION_QUERY) != 0)
+    {
+        surface.occlusionQuery = bgfx::createOcclusionQuery();
+    }
+    const bool query = mainView && bgfx::isValid(surface.occlusionQuery);
+    surface.queried = surface.queried || query;
+    const bgfx::ProgramHandle program = ripples.count != 0 ? m_rippleProgram : m_program;
     if (ripples.count != 0)
     {
         const std::array<float, 4> params = {float(ripples.count), 0.0f, 0.0f, 0.0f};
         bgfx::setUniform(m_rippleRings, ripples.rings.data(), MaxDrawWaterRipples);
         bgfx::setUniform(m_rippleParams, params.data());
-        bgfx::submit(viewId, m_rippleProgram);
+    }
+    if (query)
+    {
+        bgfx::submit(viewId, program, surface.occlusionQuery);
     }
     else
     {
-        bgfx::submit(viewId, m_program);
+        bgfx::submit(viewId, program);
     }
+}
+
+void WaterRenderer::destroySurface(Surface &surface, bool rendererAvailable)
+{
+    if (rendererAvailable && bgfx::isValid(surface.buffer))
+    {
+        bgfx::destroy(surface.buffer);
+    }
+    if (rendererAvailable && bgfx::isValid(surface.occlusionQuery))
+    {
+        bgfx::destroy(surface.occlusionQuery);
+    }
+    surface.buffer = BGFX_INVALID_HANDLE;
+    surface.occlusionQuery = BGFX_INVALID_HANDLE;
 }
 
 void WaterRenderer::shutdown()
@@ -549,10 +631,7 @@ void WaterRenderer::shutdown()
     const bool rendererAvailable = Engine::BgfxContext::isBgfxInitialized();
     for (Surface &surface : m_surfaces)
     {
-        if (rendererAvailable && bgfx::isValid(surface.buffer))
-        {
-            bgfx::destroy(surface.buffer);
-        }
+        destroySurface(surface, rendererAvailable);
     }
     m_surfaces.clear();
     for (Reflection &target : m_reflections)
@@ -579,7 +658,8 @@ void WaterRenderer::shutdown()
         }
         m_program = BGFX_INVALID_HANDLE;
     }
-    for (bgfx::TextureHandle *pTexture : {&m_normalTexture, &m_emptyReflection, &m_coverageTexture})
+    for (bgfx::TextureHandle *pTexture : {&m_normalTexture, &m_lavaPatternTexture, &m_emptyReflection,
+        &m_coverageTexture})
     {
         if (bgfx::isValid(*pTexture))
         {
@@ -590,8 +670,13 @@ void WaterRenderer::shutdown()
             *pTexture = BGFX_INVALID_HANDLE;
         }
     }
-    for (bgfx::UniformHandle *pUniform : {&m_normalSampler, &m_spriteSampler, &m_reflectionSampler,
-        &m_coverageSampler, &m_params, &m_rain, &m_sunDirection, &m_sunColor, &m_skyColor, &m_reflectionMatrix,
+    m_seabedTexture = BGFX_INVALID_HANDLE;
+    m_seabedMapping = {};
+    m_seabedDepth = {};
+    for (bgfx::UniformHandle *pUniform : {&m_normalSampler, &m_liquidPatternSampler, &m_spriteSampler,
+        &m_reflectionSampler,
+        &m_coverageSampler, &m_seabedSampler, &m_seabedUniform, &m_seabedDepthUniform, &m_params, &m_rain,
+        &m_sunDirection, &m_sunColor, &m_skyColor, &m_reflectionMatrix,
         &m_cameraPosition, &m_indoorLightPositions, &m_indoorLightColors, &m_indoorLightParams,
         &m_rippleRings, &m_rippleParams})
     {

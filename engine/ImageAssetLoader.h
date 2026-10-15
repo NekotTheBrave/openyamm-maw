@@ -60,6 +60,16 @@ std::optional<std::string> findImageAssetPath(
     AssetPathLookupCache &assetPathByKey
 );
 
+// findImageAssetPath with a cooked texture (.oytex) preferred over the images in each scale tier: world surface
+// textures, whose cooked files sit beside their sources (tools/cook_surface_textures.py).
+std::optional<std::string> findCookedOrImageAssetPath(
+    const AssetFileSystem &assetFileSystem,
+    const std::string &directoryPath,
+    const std::string &textureName,
+    DirectoryAssetPathCache &directoryAssetPathsByPath,
+    AssetPathLookupCache &assetPathByKey
+);
+
 std::optional<ImagePixelsBgra> decodeImagePixelsBgra(
     const std::vector<uint8_t> &imageBytes,
     std::string_view virtualPath,

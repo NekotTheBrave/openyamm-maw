@@ -310,3 +310,35 @@ TEST_CASE("version 66 timer migration converts its remaining duration exactly on
     REQUIRE_EQ(reconciledAgain.size(), 1u);
     CHECK_EQ(reconciledAgain[0].nextAlarmGameMinutes, doctest::Approx(112.5));
 }
+
+TEST_CASE("native repeating timer drops missed intervals instead of firing every frame")
+{
+    OpenYAMM::Game::ScriptedEventTimerState state = {};
+    state.definition.scope = OpenYAMM::Game::ScriptedEventScope::Map;
+    state.definition.origin = OpenYAMM::Game::ScriptedEventTimerOrigin::Native;
+    state.definition.eventId = 210;
+    state.definition.repeating = true;
+    state.definition.intervalGameMinutes = 5.0;
+    state.nextAlarmGameMinutes = 10.0;
+
+    std::vector<OpenYAMM::Game::ScriptedEventTimerState> states = {state};
+    int executionCount = 0;
+    const auto execute =
+        [&executionCount](const OpenYAMM::Game::ScriptedEventTimerDefinition &)
+        {
+            ++executionCount;
+            return true;
+        };
+
+    // Eight hours of rest leave 96 intervals behind the clock.
+    CHECK(OpenYAMM::Game::updateScriptedEventTimers(states, 490.0, execute));
+    CHECK_EQ(executionCount, 1);
+    CHECK_EQ(states[0].nextAlarmGameMinutes, doctest::Approx(495.0));
+
+    CHECK_FALSE(OpenYAMM::Game::updateScriptedEventTimers(states, 490.1, execute));
+    CHECK_EQ(executionCount, 1);
+
+    CHECK(OpenYAMM::Game::updateScriptedEventTimers(states, 495.5, execute));
+    CHECK_EQ(executionCount, 2);
+    CHECK_EQ(states[0].nextAlarmGameMinutes, doctest::Approx(500.0));
+}

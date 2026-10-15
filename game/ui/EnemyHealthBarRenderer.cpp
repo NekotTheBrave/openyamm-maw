@@ -11,11 +11,6 @@ void EnemyHealthBarRenderer::preload(const GameplayScreenRuntime &context)
 {
     GameplayUiRuntime &ui = context.gameplayUiRuntime();
     ui.ensureHudTextureLoaded("obsidian_enemy_health_frame");
-    const std::optional<GameplayHudFontHandle> font = ui.findHudFont(GameplayUiSkin::CombatFontName);
-    if (font)
-    {
-        ui.ensureHudFontMainTextureColor(*font, GameplayUiSkin::Gold);
-    }
 }
 
 void EnemyHealthBarRenderer::render(const GameplayScreenRuntime &context, size_t actorIndex,
@@ -71,7 +66,7 @@ void EnemyHealthBarRenderer::render(const GameplayScreenRuntime &context, size_t
         quadCount = 0;
     };
     const auto quad = [&](bgfx::TextureHandle texture, float x, float y, float w, float h,
-                          float u0 = 0, float v0 = 0, float u1 = 1, float v1 = 1)
+                          float u0 = 0, float v0 = 0, float u1 = 1, float v1 = 1, uint32_t tintAbgr = 0xffffffffu)
     {
         if (bgfx::isValid(texture) && w > 0 && h > 0)
         {
@@ -89,6 +84,7 @@ void EnemyHealthBarRenderer::render(const GameplayScreenRuntime &context, size_t
             q.v0 = v0;
             q.u1 = u1;
             q.v1 = v1;
+            q.tintAbgr = tintAbgr;
             quads[quadCount++] = q;
         }
     };
@@ -170,9 +166,10 @@ void EnemyHealthBarRenderer::render(const GameplayScreenRuntime &context, size_t
                 const float textX = -ui.measureHudTextWidth(*font, label) * fontScale * 0.5f;
                 const float textY = -barHeight * 0.5f - pFont->fontHeight * fontScale - 1.5f * textScale;
                 const auto addGlyph = [&](bgfx::TextureHandle texture, float x, float y, float w, float h,
-                                          float u0, float v0, float u1, float v1, TextureFilterProfile)
+                                          float u0, float v0, float u1, float v1, TextureFilterProfile,
+                                          uint32_t tintAbgr)
                 {
-                    quad(texture, x, y, w, h, u0, v0, u1, v1);
+                    quad(texture, x, y, w, h, u0, v0, u1, v1, tintAbgr);
                 };
                 // A thin dark outline keeps the compact gold caption readable against sky and scenery.
                 const bgfx::TextureHandle outline = font->shadowTextureHandle;
@@ -184,8 +181,9 @@ void EnemyHealthBarRenderer::render(const GameplayScreenRuntime &context, size_t
                     GameplayHudCommon::renderHudFontLayer(*pFont, outline, label,
                         textX + offset.x, textY + offset.y, fontScale, addGlyph);
                 }
-                const bgfx::TextureHandle gold = ui.ensureHudFontMainTextureColor(*font, GameplayUiSkin::Gold);
-                GameplayHudCommon::renderHudFontLayer(*pFont, gold, label, textX, textY, fontScale, addGlyph);
+                GameplayHudCommon::renderHudFontLayer(*pFont,
+                    GameplayHudCommon::hudFontMainLayer(*pFont, GameplayUiSkin::Gold), label, textX, textY,
+                    fontScale, addGlyph);
             }
         }
     }

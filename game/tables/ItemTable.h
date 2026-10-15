@@ -96,6 +96,8 @@ struct ItemDefinition
     int equipY = 0;
     std::string notes;
     std::vector<std::string> contentFlags;
+    // Worlds whose maps generate this item at random and stock it (content flags "World:<id>"); empty: all.
+    std::vector<std::string> worldIds;
     uint8_t normalizedTier = 0;
     std::string useAction;
     std::string useTarget;
@@ -119,6 +121,7 @@ struct ItemDefinition
     std::string balanceProfile;
 
     bool hasContentFlag(const std::string &flag) const;
+    bool availableInWorld(const std::string &worldId) const;
 };
 
 class ItemTable
@@ -136,6 +139,8 @@ public:
     const ItemDefinition *get(uint32_t itemId) const;
     const ItemDefinition *resolvePackageSourceItemId(const std::string &packageId, uint32_t sourceItemId) const;
     const ItemDefinition *findBySpriteIndex(uint16_t spriteIndex) const;
+    // The first spellbook teaching the spell that the world may generate (its own MM6/MM7/MM8 book design).
+    std::optional<uint32_t> spellbookItemIdForSpell(uint32_t spellId, const std::string &worldId) const;
     const std::vector<ItemDefinition> &entries() const;
     const std::vector<ItemSetBonusDefinition> &setBonuses() const;
 

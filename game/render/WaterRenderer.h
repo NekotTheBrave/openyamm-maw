@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/render/LiquidKind.h"
 #include "game/render/WaterMath.h"
 #include "game/fx/WaterRippleRuntime.h"
 #include "game/render/WaterReflectionUpdate.h"
@@ -32,6 +33,8 @@ struct WaterVertex
     float layer;
     float shoreline;
     uint32_t colorAbgr;
+    // liquidShaderValue: 0 water, 1 tar, 2 lava.
+    float liquid = 0.0f;
 };
 
 struct WaterSurfaceGeometry
@@ -41,6 +44,7 @@ struct WaterSurfaceGeometry
     std::vector<std::array<bx::Vec3, 2>> patches;
     float height = 0.0f;
     bool planar = true;
+    LiquidKind liquid = LiquidKind::Water;
     int16_t sectorId = -1;
     int16_t backSectorId = -1;
 };
@@ -76,6 +80,10 @@ public:
         std::span<const uint8_t> visibleSectors = {}, int16_t reflectionSectorId = -1, bool billboards = false);
     std::span<const Reflection> reflections() const;
     void bindCoverage(uint8_t stage) const;
+    // Rendered terrain heights for shore water (shoreline 2 vertices): opacity and foam follow the depth to the
+    // seabed. mapping: world-to-texture (west x, north y, scale, offset); an invalid texture disables it. The water
+    // turns opaque at opaqueDepth over the seabed.
+    void setSeabed(bgfx::TextureHandle heights, const std::array<float, 4> &mapping, float opaqueDepth);
     void render(uint16_t viewId, float seconds,
         const std::array<float, 4> &sunDirection, const std::array<float, 4> &sunColor,
         const std::array<float, 4> &skyColor, float rainIntensity, const WaterRippleRuntime *pRipples = nullptr,
@@ -101,17 +109,24 @@ private:
         float height = 0.0f;
         float distanceSquared = 0.0f;
         bool planar = true;
+        LiquidKind liquid = LiquidKind::Water;
         bool visible = false;
         bool building = false;
         int reflection = -1;
         int16_t sectorId = -1;
         int16_t backSectorId = -1;
+        // Occlusion query on the surface's main-view draw: a reflection whose water is entirely hidden behind
+        // geometry keeps its last capture instead of rendering. Unknown or pending results count as visible.
+        bgfx::OcclusionQueryHandle occlusionQuery = BGFX_INVALID_HANDLE;
+        bool queried = false;
+        bool occluded = false;
     };
 
     bool resizeReflection(size_t index, uint16_t size);
     void prepareRippleResources(const WaterRippleRuntime *pRipples);
-    void submitSurface(const Surface &surface, uint16_t viewId, float seconds, float rainIntensity,
-        const WaterRippleRuntime *pRipples);
+    void submitSurface(Surface &surface, uint16_t viewId, float seconds, float rainIntensity,
+        const WaterRippleRuntime *pRipples, bool mainView);
+    void destroySurface(Surface &surface, bool rendererAvailable);
     std::vector<Surface> m_surfaces;
     std::array<Reflection, MaxWaterReflections> m_reflections;
     std::array<uint16_t, MaxWaterReflections> m_reflectionSizes = {};
@@ -123,12 +138,21 @@ private:
     bgfx::UniformHandle m_rippleParams = BGFX_INVALID_HANDLE;
     bx::Vec3 m_camera = {0.0f, 0.0f, 0.0f};
     bgfx::TextureHandle m_normalTexture = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle m_lavaPatternTexture = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_liquidPatternSampler = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle m_emptyReflection = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle m_coverageTexture = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_coverageSampler = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_normalSampler = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_spriteSampler = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_reflectionSampler = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_seabedSampler = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_seabedUniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_seabedDepthUniform = BGFX_INVALID_HANDLE;
+    // Not owned: the terrain's seabed heights while the materials terrain provides them.
+    bgfx::TextureHandle m_seabedTexture = BGFX_INVALID_HANDLE;
+    std::array<float, 4> m_seabedMapping = {};
+    std::array<float, 4> m_seabedDepth = {};
     bgfx::UniformHandle m_params = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_rain = BGFX_INVALID_HANDLE;
     std::array<float, 4> m_rainRings = {};

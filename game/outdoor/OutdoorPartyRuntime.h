@@ -45,6 +45,7 @@ public:
     float partyX() const;
     float partyY() const;
     float partyFootZ() const;
+    float partyEyeZ() const;
     void setParty(const Party &party);
     Snapshot snapshot() const;
     void restoreSnapshot(const Snapshot &snapshot);
@@ -57,6 +58,8 @@ public:
     void setDebugFlyingOverride(bool active);
     void setMovementSpeedMultiplier(float multiplier);
     void setBodyDimensions(float radius, float height, float maxStepHeight = 128.0f);
+    // Camera height over the feet (world.yml partyMovement.eyeHeight; the MM6-MM8 default otherwise).
+    void setEyeHeight(float eyeHeight);
     void setCollisionTraceEnabled(bool enabled, const std::string &mapName);
     void syncSpellMovementStatesFromPartyBuffs();
     void requestJump(std::optional<float> verticalVelocity = std::nullopt, float lift = 1.0f);
@@ -64,6 +67,7 @@ public:
 
 private:
     OutdoorMovementDriver m_movementDriver;
+    float m_eyeHeight = 176.0f;
     Party m_party;
     std::string m_movementStatusText;
     bool m_debugFlyingOverride = false;

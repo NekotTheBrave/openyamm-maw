@@ -467,7 +467,7 @@ TEST_CASE("sky repository presets load and alias every selectable sky name")
         REQUIRE_FALSE(pPreset->clouds.empty());
         CHECK(pPreset->clouds.front().color);
         CHECK(std::filesystem::exists(std::filesystem::path(OPENYAMM_SOURCE_DIR)
-            / ("assets_dev/engine/rendering/sky/" + pPreset->clouds.front().texture + ".png")));
+            / ("assets_dev/engine/rendering/sky/" + pPreset->clouds.front().texture + ".oytex")));
     }
 
     // Dagger Wound's volcanic sky stays red at noon.

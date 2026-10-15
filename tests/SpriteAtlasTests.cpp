@@ -4,7 +4,6 @@
 #include "game/render/SpriteAtlasMipmaps.h"
 #include "engine/ImageAssetLoader.h"
 #include "game/render/SpriteAtlasCache.h"
-#include "game/tables/SpriteTables.h"
 
 #include "tools/SpriteAtlasEncode.h"
 
@@ -129,71 +128,23 @@ TEST_CASE("sprite atlas cropped billboard maintains native pivot when mirrored a
     CHECK(normal.z == mirror.z);
 }
 
-TEST_CASE("sprite atlas reviewed goblin package retains native poses and palettes on shared pages")
+TEST_CASE("sprite atlas cooked fixture package keeps its frames, shared pages and palette variants")
 {
-    std::ifstream input(std::string(OPENYAMM_SOURCE_DIR) + "/assets_dev/engine/sprites_new/mm6_gob/manifest.json");
+    // A retired MM6 family kept as a cooked fixture (the shipped MM6 monsters are 3D models).
+    std::ifstream input(
+        std::string(OPENYAMM_SOURCE_DIR) + "/tests/fixtures/sprite_atlas/desktop/mm6_aie1/manifest.json");
     REQUIRE(input.good());
     std::stringstream text;
     text << input.rdbuf();
     std::string error;
     const auto atlas = OpenYAMM::Engine::SpriteAtlas::parse(text.str(), error);
     REQUIRE_MESSAGE(atlas, error);
-    CHECK(atlas->frames.size() == 59);
-    CHECK(atlas->pages.size() == 4);
+    CHECK(atlas->frames.size() == 24);
+    CHECK(atlas->pages.size() == 2);
     CHECK(atlas->variants.size() == 3);
-    CHECK(atlas->logicalCanvas == std::array<int, 2>{355, 289});
+    CHECK(atlas->logicalCanvas == std::array<int, 2>{254, 256});
+    CHECK(atlas->logicalPivot == std::array<float, 2>{127.0f, 256});
     CHECK(atlas->pixelsPerLogicalPixel == 2);
-    CHECK(atlas->maskChannels == 2);
-    CHECK(atlas->variants.at(745).chroma[3] == 0);
-    CHECK(atlas->variants.at(746).chroma[3] == 3);
-    CHECK(atlas->variants.at(747).chroma[3] == 3);
-}
-
-TEST_CASE("sprite atlas MM6 Titan variants resolve every animation frame and view")
-{
-    const std::string root = OPENYAMM_SOURCE_DIR;
-    std::ifstream input(root + "/assets_dev/engine/sprites_new/mm6_ttn1/manifest.json");
-    REQUIRE(input.good());
-    std::stringstream text;
-    text << input.rdbuf();
-    std::string error;
-    const std::optional<OpenYAMM::Engine::SpriteAtlas> atlas = OpenYAMM::Engine::SpriteAtlas::parse(text.str(), error);
-    REQUIRE_MESSAGE(atlas, error);
-    input.close();
-    input.open(root + "/assets_dev/engine/rendering/sprite_frame_data_common.yml");
-    REQUIRE(input.good());
-    std::stringstream tableText;
-    tableText << input.rdbuf();
-    OpenYAMM::Game::SpriteFrameTable frames;
-    REQUIRE_MESSAGE(frames.loadFromYaml(tableText.str(), error), error);
-    const std::array<std::pair<std::string, int>, 7> actions = {{
-        {"sta", 1}, {"waa", 6}, {"ata0", 6}, {"wia0", 6}, {"dea0", 5}, {"def0", 1}, {"fia", 5}}};
-    for (int rank = 1; rank <= 3; ++rank)
-    {
-        for (const auto &[action, count] : actions)
-        {
-            const std::string group = "ttn" + std::to_string(rank) + action;
-            const std::optional<uint16_t> first = frames.findFrameIndexBySpriteName(group);
-            REQUIRE_MESSAGE(first, group);
-            for (int step = 0; step < count; ++step)
-            {
-                const OpenYAMM::Game::SpriteFrameEntry *pFrame = frames.getFrame(uint16_t(*first + step), 0);
-                REQUIRE(pFrame);
-                CHECK_EQ(pFrame->paletteId, 827 + rank);
-                CHECK(atlas->variants.contains(pFrame->paletteId));
-                for (int view = 0; view < 8; ++view)
-                {
-                    const std::string name =
-                        OpenYAMM::Game::SpriteFrameTable::resolveTexture(*pFrame, view).textureName;
-                    const std::optional<OpenYAMM::Engine::SpriteAtlasReference> reference =
-                        OpenYAMM::Engine::parseSpriteAtlasReference(name);
-                    REQUIRE_MESSAGE(reference, name);
-                    CHECK_EQ(reference->package, "mm6_ttn1");
-                    CHECK_MESSAGE(atlas->frames.contains(reference->frame), name);
-                }
-            }
-        }
-    }
 }
 
 TEST_CASE("sprite atlas grayscale mask decode retains coverage in BGRA red")
@@ -258,24 +209,6 @@ TEST_CASE("sprite atlas palette lookups validate dimensions and retain exact bas
     }
 }
 
-TEST_CASE("sprite atlas mage package preserves variable crops and three shared palette variants")
-{
-    std::ifstream input(std::string(OPENYAMM_SOURCE_DIR) + "/assets_dev/engine/sprites_new/mm6_pmn2/manifest.json");
-    REQUIRE(input.good());
-    std::stringstream text;
-    text << input.rdbuf();
-    std::string error;
-    const auto atlas = OpenYAMM::Engine::SpriteAtlas::parse(text.str(), error);
-    REQUIRE_MESSAGE(atlas, error);
-    CHECK(atlas->frames.size() == 59);
-    CHECK(atlas->pages.size() == 4);
-    CHECK(atlas->logicalCanvas == std::array<int, 2>{331, 272});
-    CHECK(atlas->logicalPivot == std::array<float, 2>{165.5f, 272});
-    CHECK(atlas->variants.at(801).chroma[3] == 2);
-    CHECK(atlas->variants.at(802).chroma[3] == 0);
-    CHECK(atlas->variants.at(803).chroma[3] == 2);
-}
-
 TEST_CASE("sprite atlas two-region recoloring retains separate ramps and rejects incomplete variants")
 {
     std::string fixture = Fixture;
@@ -321,29 +254,6 @@ TEST_CASE("sprite atlas RGB masks decode red and green independently of opacity"
     const auto decoded = OpenYAMM::Engine::decodeImagePixelsBgra(png, "mask.png");
     REQUIRE(decoded);
     CHECK(decoded->pixels == std::vector<uint8_t>{0, 0, 255, 255, 0, 255, 0, 255, 0, 128, 64, 255});
-}
-
-TEST_CASE("sprite atlas guard package supports four material ramps on shared pages")
-{
-    std::ifstream input(std::string(OPENYAMM_SOURCE_DIR)
-        + "/assets_dev/engine/sprites_new/mm6_gua/manifest.json");
-    REQUIRE(input.good());
-    std::stringstream text;
-    text << input.rdbuf();
-    std::string error;
-    const auto atlas = OpenYAMM::Engine::SpriteAtlas::parse(text.str(), error);
-    REQUIRE_MESSAGE(atlas, error);
-    CHECK(atlas->maskChannels == 4);
-    CHECK(atlas->frames.size() == 59);
-    CHECK(atlas->pages.size() == 3);
-    CHECK(atlas->variants.size() == 3);
-    CHECK(atlas->logicalCanvas == std::array<int, 2>{350, 296});
-    CHECK(atlas->logicalPivot == std::array<float, 2>{175, 296});
-    CHECK(atlas->variants.at(748).chroma[3] == 0);
-    CHECK(atlas->variants.at(749).chroma[3] == 4);
-    CHECK(atlas->variants.at(750).chroma[3] == 4);
-    CHECK(atlas->variants.at(749).thirdChroma[0] > 0);
-    CHECK(atlas->variants.at(750).fourthChroma[0] > 0);
 }
 
 TEST_CASE("sprite atlas four-region model requires four valid independent ramps")

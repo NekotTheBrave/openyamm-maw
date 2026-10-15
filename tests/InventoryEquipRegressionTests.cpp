@@ -13,6 +13,7 @@
 #include "tests/RegressionGameData.h"
 
 #include <filesystem>
+#include <random>
 
 namespace
 {
@@ -732,6 +733,45 @@ TEST_CASE("wetsuit equip rules require empty equipment except blasters")
     CHECK_EQ(party.lastStatus(), "cannot equip");
 }
 
+TEST_CASE("blaster shotgun fans seven half-strength bolts with slower recovery than the blaster rifle")
+{
+    const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
+    const OpenYAMM::Game::ItemDefinition *pBlasterRifle = gameData.itemTable.get(1667);
+    const OpenYAMM::Game::ItemDefinition *pBlasterShotgun = gameData.itemTable.get(2201);
+    REQUIRE(pBlasterRifle != nullptr);
+    REQUIRE(pBlasterShotgun != nullptr);
+    CHECK(pBlasterShotgun->hasContentFlag("ScatterBlaster"));
+
+    OpenYAMM::Game::Character character = {};
+    character.skills["Blaster"] = {"Blaster", 1, OpenYAMM::Game::SkillMastery::Normal};
+    character.equipment.mainHand = pBlasterRifle->itemId;
+    const OpenYAMM::Game::CharacterAttackProfile rifle =
+        OpenYAMM::Game::GameMechanics::buildCharacterAttackProfile(character, &gameData.itemTable, nullptr);
+    character.equipment.mainHand = pBlasterShotgun->itemId;
+    const OpenYAMM::Game::CharacterAttackProfile shotgun =
+        OpenYAMM::Game::GameMechanics::buildCharacterAttackProfile(character, &gameData.itemTable, nullptr);
+
+    REQUIRE(rifle.hasBlaster);
+    REQUIRE(shotgun.hasBlaster);
+    CHECK_EQ(rifle.rangedProjectileCount, 1);
+    CHECK_EQ(rifle.rangedSpreadArcRadians, 0.0f);
+    CHECK_EQ(shotgun.rangedProjectileCount, 7);
+    CHECK(shotgun.rangedSpreadArcRadians > 0.0f);
+    CHECK_EQ(shotgun.rangedMinDamage + shotgun.rangedMaxDamage,
+        doctest::Approx((rifle.rangedMinDamage + rifle.rangedMaxDamage) / 2.0).epsilon(0.05));
+    CHECK(shotgun.rangedRecoverySeconds > rifle.rangedRecoverySeconds);
+}
+
+TEST_CASE("projectile fans spread evenly across the arc around the aim")
+{
+    using OpenYAMM::Game::GameMechanics;
+    CHECK_EQ(GameMechanics::projectileFanYawOffsetRadians(1, 0, 1.2f), 0.0f);
+    CHECK_EQ(GameMechanics::projectileFanYawOffsetRadians(7, 0, 1.2f), doctest::Approx(-0.6f));
+    CHECK_EQ(GameMechanics::projectileFanYawOffsetRadians(7, 3, 1.2f), doctest::Approx(0.0f));
+    CHECK_EQ(GameMechanics::projectileFanYawOffsetRadians(7, 6, 1.2f), doctest::Approx(0.6f));
+    CHECK_EQ(GameMechanics::projectileFanYawOffsetRadians(7, 1, 1.2f), doctest::Approx(-0.4f));
+}
+
 TEST_CASE("party rejects a race restricted artifact for the wrong member")
 {
     const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
@@ -1050,6 +1090,42 @@ TEST_CASE("weapon elemental damage keeps its resistance type")
     CHECK_EQ(damage.total(), 12);
 }
 
+TEST_CASE("Hades adds poison damage without turning the whole hit into body damage")
+{
+    const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
+    OpenYAMM::Game::Character character = {};
+    character.equipment.mainHand = 2035;
+
+    const OpenYAMM::Game::ElementalDamageBonuses damage =
+        OpenYAMM::Game::ItemEnchantRuntime::characterAttackElementalDamageBonuses(
+            character,
+            OpenYAMM::Game::CharacterAttackMode::Melee,
+            &gameData.itemTable,
+            &gameData.specialItemEnchantTable);
+    CHECK_EQ(damage.body, 20);
+    CHECK_EQ(damage.total(), 20);
+
+    // Against a body-immune dragon (physical and fire 90) a 500 point blow keeps its physical part: only the body
+    // component is lost. Before the fix the whole blow was body damage and dealt nothing.
+    OpenYAMM::Game::MonsterDamageResistances dragon = {};
+    dragon.fire = 90;
+    dragon.physical = 90;
+    dragon.body = 200;
+    int total = 0;
+    for (uint32_t seed = 1; seed <= 64; ++seed)
+    {
+        std::mt19937 rng(seed);
+        total += OpenYAMM::Game::GameMechanics::resolveMonsterIncomingWeaponDamage(
+            500,
+            OpenYAMM::Game::CombatDamageType::Physical,
+            damage,
+            dragon,
+            0,
+            rng);
+    }
+    CHECK(total / 64 > 100);
+}
+
 TEST_CASE("merged MM7 artifacts and relics apply their MMerge passive effects")
 {
     const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
@@ -1154,7 +1230,8 @@ TEST_CASE("merged MM6 artifacts and relics apply their MMerge passive effects")
         CHECK_EQ(pCharacter->itemSkillBonuses["DisarmTraps"], 10);
         CHECK_EQ(pCharacter->weaponEnchantmentDamageBonus, 20);
         CHECK_EQ(pCharacter->healthRegenPerSecond, doctest::Approx(-1.0f));
-        CHECK(pCharacter->equippedItemEffectFlags.contains("PoisonWeaponDamage"));
+        // The +20 is a separate body component (rareItemElementalDamageBonuses); the sword's own hit stays physical.
+        CHECK_FALSE(pCharacter->equippedItemEffectFlags.contains("PoisonWeaponDamage"));
 
         pCharacter->health = 20;
         party.updateRecovery(2.0f);

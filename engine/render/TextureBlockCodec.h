@@ -20,7 +20,9 @@ enum class TextureBlockCodec : uint64_t
     EacR = 5,
     EacRg = 6,
     Bc1 = 7,
-    Etc2Rgb = 8
+    Etc2Rgb = 8,
+    // 4x4 blocks of 16 bytes (8 bits per texel), LDR: the android profile of colour textures.
+    Astc4x4 = 9
 };
 
 // Throws for an unknown codec id.

@@ -407,7 +407,8 @@ int EngineApplication::run() const
     int drawableHeight = 0;
     SDL_GetWindowSizeInPixels(pWindow.get(), &drawableWidth, &drawableHeight);
 
-    if (!bgfxContext.initialize(pWindow.get(), drawableWidth, drawableHeight, m_config.verticalSync))
+    if (!bgfxContext.initialize(
+            pWindow.get(), drawableWidth, drawableHeight, m_config.verticalSync, m_config.maxAnisotropy))
     {
         invokeShutdownCallback(m_shutdownCallback);
         return 1;
@@ -424,12 +425,10 @@ int EngineApplication::run() const
     const AssetScaleProfile &assetScaleProfile = m_config.assetScaleProfile;
     std::cout << "Asset scale: default=" << assetScaleTierToString(m_config.assetScaleTier)
               << " texture=" << assetScaleTierToString(assetScaleProfile.textures)
-              << " terrain=" << assetScaleTierToString(assetScaleProfile.terrain)
               << " sky=" << assetScaleTierToString(assetScaleProfile.sky)
-              << " sprites=" << assetScaleTierToString(assetScaleProfile.sprites)
               << " decorations=" << assetScaleTierToString(assetScaleProfile.decorations)
               << " icons=" << assetScaleTierToString(assetScaleTierForCategory(assetScaleProfile, AssetScaleCategory::Icons))
-              << " ui=" << assetScaleTierToString(assetScaleProfile.ui) << '\n';
+              << '\n';
     std::cout << "Window mode: " << windowModeName(m_config.windowMode) << '\n';
     std::cout << "Window requested: " << m_config.windowWidth << "x" << m_config.windowHeight << '\n';
     std::cout << "Window drawable: " << drawableWidth << "x" << drawableHeight << '\n';
@@ -814,6 +813,19 @@ bool EngineApplication::applyDisplaySettings(WindowMode mode, int width, int hei
     m_pRunningContext->setVerticalSync(verticalSync);
     m_pRunningContext->resize(m_pRunningWindow, pixelWidth, pixelHeight);
     return true;
+}
+
+void EngineApplication::setMaxAnisotropy(uint8_t level)
+{
+    m_config.maxAnisotropy = level;
+    if (m_pRunningWindow == nullptr || m_pRunningContext == nullptr)
+    {
+        return;
+    }
+    int pixelWidth = 0, pixelHeight = 0;
+    SDL_GetWindowSizeInPixels(m_pRunningWindow, &pixelWidth, &pixelHeight);
+    m_pRunningContext->setMaxAnisotropy(level);
+    m_pRunningContext->resize(m_pRunningWindow, pixelWidth, pixelHeight);
 }
 
 void EngineApplication::setConfiguration(const ApplicationConfig &config)

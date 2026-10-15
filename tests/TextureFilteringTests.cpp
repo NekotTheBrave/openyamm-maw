@@ -213,13 +213,6 @@ TEST_CASE("Billboard opacity masks read atlas crops with row stride and partial 
 TEST_CASE("Map render source cleanup releases decoded pixels while preserving texture metadata")
 {
     MapAssetInfo mapAssetInfo = {};
-    mapAssetInfo.outdoorTerrainTextureAtlas.emplace();
-    mapAssetInfo.outdoorTerrainTextureAtlas->pixels.resize(3, 1);
-    mapAssetInfo.outdoorTerrainTextureAtlas->animatedWaterTiles.push_back({});
-    mapAssetInfo.outdoorTerrainTextureAtlas->animatedWaterTiles[0].framePixels = {
-        std::vector<uint8_t>(2, 1),
-        std::vector<uint8_t>(4, 1),
-    };
     mapAssetInfo.outdoorBModelTextureSet.emplace();
     mapAssetInfo.outdoorBModelTextureSet->textures.push_back(textureWithBytes(5));
     mapAssetInfo.outdoorDecorationBillboardSet.emplace();
@@ -237,7 +230,7 @@ TEST_CASE("Map render source cleanup releases decoded pixels while preserving te
     mapAssetInfo.indoorTextureSet.emplace();
     mapAssetInfo.indoorTextureSet->textures.push_back(textureWithBytes(29));
 
-    CHECK_EQ(mapRenderSourcePixelBytes(mapAssetInfo), 133);
+    CHECK_EQ(mapRenderSourcePixelBytes(mapAssetInfo), 124);
 
     clearMapRenderSourcePixels(mapAssetInfo);
 
@@ -245,7 +238,6 @@ TEST_CASE("Map render source cleanup releases decoded pixels while preserving te
     REQUIRE(mapAssetInfo.outdoorBModelTextureSet);
     REQUIRE_EQ(mapAssetInfo.outdoorBModelTextureSet->textures.size(), 1);
     CHECK_EQ(mapAssetInfo.outdoorBModelTextureSet->textures[0].textureName, "texture");
-    CHECK(mapAssetInfo.outdoorTerrainTextureAtlas->animatedWaterTiles[0].framePixels.empty());
 }
 
 TEST_CASE("Cutout mip coverage keeps sparse grass visible without coloring transparent borders")

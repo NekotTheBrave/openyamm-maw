@@ -15,6 +15,19 @@
 
 namespace OpenYAMM::Engine
 {
+// Frames produced while they play (long music tracks), instead of a decoded clip held in memory: interleaved stereo
+// float frames at the output rate. The mixer reads them on the main thread, so a source decodes ahead on its own
+// thread and read() never waits.
+class AudioStreamSource
+{
+public:
+    virtual ~AudioStreamSource() = default;
+    // Fills up to frameCount frames and returns how many it wrote; the mixer plays silence for the rest.
+    virtual uint32_t read(float *pSamples, uint32_t frameCount) = 0;
+    // No frame will come any more (a decoding error, or the end of a source that does not loop).
+    virtual bool finished() const = 0;
+};
+
 class AudioSystem
 {
 public:
@@ -60,6 +73,8 @@ public:
     bool releaseClip(const std::string &virtualPath);
     CacheStats cacheStats() const;
     uint64_t playClip(const std::string &virtualPath, const PlaybackOptions &options);
+    // The source supplies the looping, so loop and pitch are ignored; the other options apply as for a clip.
+    uint64_t playStream(std::shared_ptr<AudioStreamSource> pSource, const PlaybackOptions &options);
     void stopClip(uint64_t instanceId);
     void pauseClip(uint64_t instanceId);
     void resumeClip(uint64_t instanceId);
@@ -82,6 +97,7 @@ private:
     {
         uint64_t instanceId = 0;
         std::shared_ptr<AudioClip> pClip;
+        std::shared_ptr<AudioStreamSource> pStream;
         double frameOffset = 0.0;
         float volume = 1.0f;
         bool positional = false;
@@ -118,5 +134,6 @@ private:
     std::unordered_map<std::string, std::shared_ptr<AudioClip>> m_clipCache;
     std::unordered_set<std::string> m_playbackCacheMissWarningPaths;
     std::vector<PlayingInstance> m_playingInstances;
+    std::vector<float> m_streamSamples;
 };
 }

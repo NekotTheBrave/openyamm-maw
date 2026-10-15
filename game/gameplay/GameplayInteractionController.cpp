@@ -10,6 +10,7 @@
 #include "game/gameplay/NpcFollowerRuntime.h"
 #include "game/gameplay/TurnBasedCombatRuntime.h"
 #include "game/debug/GameplayDebugTrace.h"
+#include "game/events/ScriptedEventProgram.h"
 #include "game/items/ItemRuntime.h"
 #include "game/party/SpellIds.h"
 #include "game/tables/ItemTable.h"
@@ -38,6 +39,31 @@ constexpr uint32_t ArrowProjectileObjectId = 545;
 constexpr uint32_t ThrowingDaggerProjectileObjectId = 307;
 constexpr uint32_t ThrowingAxeProjectileObjectId = 309;
 constexpr uint32_t BlasterProjectileObjectId = 555;
+
+// "Orange Barrel (+2 Intellect)": the effect of the hovered event once the party has the autonote recording it.
+void appendLearnedEventEffect(
+    GameplayHoverStatusPayload &payload,
+    const IGameplayWorldRuntime &worldRuntime,
+    const GameplayScreenRuntime *pScreenRuntime)
+{
+    const std::optional<GameplayEventTargetHit> &eventTarget = payload.worldHit.eventTarget;
+    const std::optional<ScriptedEventProgram> *pGlobalEventProgram = worldRuntime.globalEventProgram();
+
+    if (pScreenRuntime == nullptr || !eventTarget || eventTarget->nameEventId == 0
+        || !payload.eventTargetStatusText || payload.eventTargetStatusText->empty()
+        || pGlobalEventProgram == nullptr || !*pGlobalEventProgram)
+    {
+        return;
+    }
+
+    const ScriptedEventProgram::LearnedEffect *pEffect =
+        (*pGlobalEventProgram)->learnedEffect(eventTarget->nameEventId);
+
+    if (pEffect != nullptr && pScreenRuntime->isAutonoteUnlocked(pEffect->autonoteId))
+    {
+        *payload.eventTargetStatusText += " (" + pEffect->effect + ")";
+    }
+}
 
 #if defined(__ANDROID__)
 bool usesMobileGroundTargetConfirm(uint32_t spellId)
@@ -456,21 +482,6 @@ std::string formatFoundItemStatusText(const std::string &itemName)
     return "You found an item (" + resolvedItemName + ")!";
 }
 
-std::string formatFoundGoldStatusText(int goldAmount)
-{
-    return "You found " + std::to_string(std::max(0, goldAmount)) + " gold!";
-}
-
-int followerAdjustedGoldAmount(int goldAmount, const EventRuntimeState *pEventRuntimeState)
-{
-    if (pEventRuntimeState == nullptr || goldAmount <= 0)
-    {
-        return std::max(0, goldAmount);
-    }
-
-    return static_cast<int>(hiredNpcGoldAfterBonusAndFees(static_cast<uint32_t>(goldAmount), *pEventRuntimeState));
-}
-
 std::string heldItemDisplayName(const GameplayScreenRuntime &runtime)
 {
     const GameplayUiController::HeldInventoryItemState &heldItem = runtime.heldInventoryItem();
@@ -645,16 +656,15 @@ bool tryActivateWorldItem(
 
     if (pickupDecision.destination == GameplayWorldItemPickupDestination::Gold)
     {
-        const int goldAmount = followerAdjustedGoldAmount(
-            pickupDecision.goldAmount,
+        const FoundGold foundGold = resolveFoundGold(
+            static_cast<uint32_t>(std::max(0, pickupDecision.goldAmount)),
             worldRuntime.eventRuntimeState());
-        pParty->addGold(goldAmount);
+        pParty->addGold(static_cast<int>(foundGold.partyAmount));
         pParty->requestSound(SoundId::Gold);
-        const std::string statusText = formatFoundGoldStatusText(goldAmount);
-        runtime.setStatusBarEvent(statusText);
+        runtime.setStatusBarEvent(foundGoldStatusText(foundGold));
         recordWorldItemActivationResult(
             worldRuntime,
-            "picked up " + std::to_string(goldAmount) + " gold");
+            "picked up " + std::to_string(foundGold.partyAmount) + " gold");
         return true;
     }
 
@@ -1058,6 +1068,7 @@ GameplayInteractionController::HoverStateResult GameplayInteractionController::u
         payload = pWorldRuntime->readCachedWorldHover();
     }
 
+    appendLearnedEventEffect(payload, *pWorldRuntime, input.pScreenRuntime);
     const std::optional<std::string> statusText = resolveHoverStatusText(payload);
     result.hitKind = payload.worldHit.kind;
     result.worldHit = payload.worldHit;
@@ -1466,6 +1477,7 @@ GameplayInteractionController::updateWorldInteractionFrame(
         pendingSpellHoverInput.allowHover = !hoveredPortraitMemberIndex && worldReady;
         pendingSpellHoverInput.currentTickNanoseconds = currentTickNanoseconds;
         pendingSpellHoverInput.refreshIntervalNanoseconds = HoverInspectRefreshNanoseconds;
+        pendingSpellHoverInput.pScreenRuntime = &runtime;
         pendingSpellHoverInput.hoverRequest =
             GameplayWorldHoverRequest{
                 .probeKind = GameplayWorldHoverProbeKind::PendingSpell,
@@ -1746,6 +1758,7 @@ GameplayInteractionController::updateWorldInteractionFrame(
     standardHoverInput.allowHover = inspectModeActive && worldReady;
     standardHoverInput.currentTickNanoseconds = currentTickNanoseconds;
     standardHoverInput.refreshIntervalNanoseconds = HoverInspectRefreshNanoseconds;
+    standardHoverInput.pScreenRuntime = &runtime;
     standardHoverInput.hoverRequest =
         GameplayWorldHoverRequest{
             .probeKind = GameplayWorldHoverProbeKind::Standard,

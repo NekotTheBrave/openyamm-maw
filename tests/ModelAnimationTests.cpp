@@ -84,7 +84,10 @@ TEST_CASE("ModelAnimation blends local poses, interrupts transitions and masks a
     // Interrupt halfway through: the visible intermediate pose is the new source, so there is no pop.
     REQUIRE(instances.sampleBlended(handle, 0, 0, {}, 0, .1f));
     CHECK(instances.pose(handle, false)->localTransforms[0].translation[0] == doctest::Approx(2));
-    REQUIRE(instances.sampleBlended(handle, 0, 0, {}, .05f, .1f));
+    // Eased: a quarter of the way the pose has moved 0.15625 of the distance (smoothstep), half way exactly half.
+    REQUIRE(instances.sampleBlended(handle, 0, 0, {}, .025f, .1f));
+    CHECK(instances.pose(handle, false)->localTransforms[0].translation[0] == doctest::Approx(1.6875));
+    REQUIRE(instances.sampleBlended(handle, 0, 0, {}, .025f, .1f));
     CHECK(instances.pose(handle, false)->localTransforms[0].translation[0] == doctest::Approx(1));
     REQUIRE(instances.sampleBlended(handle, 0, 0, {}, .05f, .1f));
     CHECK(instances.pose(handle, false)->localTransforms[0].translation[0] == doctest::Approx(0));
@@ -667,6 +670,7 @@ TEST_CASE("ModelAnimation checked-in fixture covers rendering and animation cont
     CHECK_EQ(loaded.asset->materials[1].alphaMode, ModelAlphaMode::Blend);
     CHECK(loaded.asset->materials[1].doubleSided);
     CHECK(loaded.asset->materials[1].unlit);
+    CHECK_EQ(loaded.asset->materials[0].edgeDarkening, 0.0f);   // unskinned: no creature edge darkening
     REQUIRE_EQ(loaded.asset->images.size(), 1);
     CHECK_EQ(loaded.asset->clips.size(), 2);
     CHECK(loaded.asset->findNode("animated_attachment").has_value());
@@ -693,6 +697,58 @@ TEST_CASE("ModelAnimation checked-in fixture covers rendering and animation cont
     CHECK_EQ(masked.asset->materials[0].metallic, 0.0f);
     CHECK_EQ(masked.asset->materials[0].roughness, 0.25f);
     CHECK(masked.asset->materials[1].unlit);
+}
+
+TEST_CASE("ModelAnimation burnt corpse picking follows visible attachments and invalidates cached bounds")
+{
+    using namespace OpenYAMM::Engine;
+    std::shared_ptr<ModelAsset> asset = makeAnimatedAsset();
+    asset->nodes[1].meshIndex = 0;
+    ModelPrimitive primitive;
+    primitive.vertices = {{{-10, -10, -10}}, {{10, 10, 10}}};
+    ModelMesh mesh;
+    mesh.primitives.push_back(primitive);
+    asset->meshes.push_back(mesh);
+    ModelAnimationChannel visibility;
+    visibility.nodeIndex = 0;
+    visibility.target = ModelAnimationTarget::Scale;
+    visibility.interpolation = ModelAnimationInterpolation::Step;
+    visibility.times = {0, 1};
+    visibility.values = {{1, 1, 1, 0}, {0, 0, 0, 0}};
+    asset->clips[0].channels.push_back(visibility);
+    std::shared_ptr<ModelAsset> remains = std::make_shared<ModelAsset>();
+    remains->staticBounds = {{-1, -2, 0}, {1, 2, 1}, true};
+
+    ModelInstanceSystem instances;
+    const ModelInstanceHandle handle = instances.create(asset);
+    ModelTransform placement;
+    placement.translation = {10, 20, 30};
+    REQUIRE(instances.sample(handle, 0, .5f, placement));
+    REQUIRE(instances.pickingBounds(handle)->valid);
+    CHECK(instances.pickingBounds(handle)->min[0] == doctest::Approx(0));
+    ModelBurn burn;
+    burn.front = 5;
+    REQUIRE(instances.setBurn(handle, &burn));
+    CHECK_FALSE(instances.pickingBounds(handle)->valid);
+    REQUIRE(instances.setAttachments(handle, {{remains, 0, 0}}));
+    const ModelBounds *pBounds = instances.pickingBounds(handle);
+    REQUIRE(pBounds->valid);
+    CHECK(pBounds->min[0] == doctest::Approx(9));
+    CHECK(pBounds->max[0] == doctest::Approx(13));
+    CHECK(pBounds->min[1] == doctest::Approx(19));
+    CHECK(pBounds->max[1] == doctest::Approx(21));
+    CHECK(pBounds->min[2] == doctest::Approx(30));
+    CHECK(pBounds->max[2] == doctest::Approx(31));
+    REQUIRE(instances.setAttachments(handle, {}));
+    CHECK_FALSE(instances.pickingBounds(handle)->valid);
+    REQUIRE(instances.setAttachments(handle, {{remains, 0, 0}}));
+    REQUIRE(instances.pickingBounds(handle)->valid);
+    REQUIRE(instances.sample(handle, 0, 1, placement));
+    CHECK_FALSE(instances.pickingBounds(handle)->valid);
+    REQUIRE(instances.setBurn(handle, nullptr));
+    REQUIRE(instances.pickingBounds(handle)->valid);
+    CHECK(instances.pickingBounds(handle)->min[0] == doctest::Approx(0));
+    CHECK(instances.pickingBounds(handle)->max[2] == doctest::Approx(40));
 }
 
 TEST_CASE("ModelAnimation skinning applies inverse bind, all influences, morphs and root placement")
@@ -947,10 +1003,13 @@ TEST_CASE("ModelAnimation demon LOD meshes share the rig and retain posed bounds
             indices += primitive.indices.size();
             CHECK(primitive.influences.size() == primitive.vertices.size());
         }
-        CHECK(indices / 3 == triangles[level]);
+        // The shadow mesh keeps the authored triangles; the colour mesh may add reversed copies of the triangles whose
+        // back can be seen (tools/model_backface_split.py, at most a quarter of a primitive).
         const ModelMesh &shadow = asset.meshes[mesh.shadowMeshes[level]];
         REQUIRE(shadow.primitives.size() == 1);
-        CHECK(shadow.primitives[0].indices.size() == indices);
+        CHECK(shadow.primitives[0].indices.size() / 3 == triangles[level]);
+        CHECK(indices / 3 >= triangles[level]);
+        CHECK(indices / 3 <= triangles[level] + triangles[level] / 4);
         ModelAsset lower = asset;
         lower.nodes[nodeIndex].meshIndex = int(meshIndex);
         for (uint32_t clip = 0; clip < asset.clips.size(); ++clip)
@@ -1074,6 +1133,45 @@ TEST_CASE("ModelAnimation loader reads colour region masks and ramps and rejects
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("ModelAnimation loader reads the cooked burn order per vertex")
+{
+    using namespace OpenYAMM::Engine;
+    const std::filesystem::path root = makeTemporaryRoot();
+    std::string json = fixtureGltf();
+    // A float view over the texture coordinates (0, 0, 1) stands in for the cook's normalized byte stream.
+    const size_t attributes = json.find("\"TEXCOORD_0\": 2");
+    REQUIRE(attributes != std::string::npos);
+    json.insert(attributes, "\"_BURN_ORDER\": 7, ");
+    const std::string lastAccessor = "{\"bufferView\": 6, \"componentType\": 5126, \"count\": 2, \"type\": \"VEC3\"}";
+    const size_t accessors = json.find(lastAccessor);
+    REQUIRE(accessors != std::string::npos);
+    const std::string burnOrder =
+        ",\n    {\"bufferView\": 2, \"componentType\": 5126, \"count\": COUNT, \"type\": \"SCALAR\"}";
+    std::string valid = json;
+    valid.insert(accessors + lastAccessor.size(), std::string(burnOrder).replace(burnOrder.find("COUNT"), 5, "3"));
+    writeFile(root / "assets_dev/engine/models/fixture.bin", fixtureBuffer());
+    writeFile(root / "assets_dev/engine/models/fixture.gltf", valid);
+    AssetFileSystem assets;
+    REQUIRE(assets.initialize(root, root / "assets_dev", AssetScaleTier::X1));
+    const ModelLoadResult loaded = GltfModelLoader().load(assets, "engine/models/fixture.gltf");
+    REQUIRE_MESSAGE(loaded, loaded.error);
+    const ModelPrimitive &primitive = loaded.asset->meshes[0].primitives[0];
+    REQUIRE_EQ(primitive.burnOrder.size(), primitive.vertices.size());
+    CHECK_EQ(primitive.burnOrder[0], doctest::Approx(0.0f));
+    CHECK_EQ(primitive.burnOrder[1], doctest::Approx(0.0f));
+    CHECK_EQ(primitive.burnOrder[2], doctest::Approx(1.0f));
+
+    // One scalar per vertex, or the model is rejected (here the VEC2 texture coordinates).
+    std::string mismatched = json;
+    mismatched.replace(mismatched.find("\"_BURN_ORDER\": 7"), 16, "\"_BURN_ORDER\": 2");
+    writeFile(root / "assets_dev/engine/models/fixture.gltf", mismatched);
+    const ModelLoadResult rejected = GltfModelLoader().load(assets, "engine/models/fixture.gltf");
+    CHECK_FALSE(rejected);
+    CHECK_MESSAGE(rejected.error.find("_BURN_ORDER") != std::string::npos, rejected.error);
+    assets.shutdown();
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("ModelAnimation loader reads vertex colours and static decoration material extras")
 {
     using namespace OpenYAMM::Engine;
@@ -1088,7 +1186,7 @@ TEST_CASE("ModelAnimation loader reads vertex colours and static decoration mate
     json.insert(material,
         "\"extras\": {\"openyamm_wind\": 0.12, \"openyamm_translucency\": 0.35, \"openyamm_billboard\": true, "
         "\"openyamm_specular\": 0.1, \"openyamm_uv_scroll\": [0.25, -1.5], \"openyamm_flipbook\": [4, 2, 12], "
-        "\"openyamm_flutter\": 0.1}, ");
+        "\"openyamm_flutter\": 0.1, \"openyamm_edge_darkening\": 0.25}, ");
     writeFile(root / "assets_dev/engine/models/fixture.bin", fixtureBuffer());
     writeFile(root / "assets_dev/engine/models/fixture.gltf", json);
     AssetFileSystem assets;
@@ -1116,6 +1214,7 @@ TEST_CASE("ModelAnimation loader reads vertex colours and static decoration mate
     CHECK_EQ(extras.flipbook[1], doctest::Approx(2.0f));
     CHECK_EQ(extras.flipbook[2], doctest::Approx(12.0f));
     CHECK_EQ(extras.flutter, doctest::Approx(0.1f));
+    CHECK_EQ(extras.edgeDarkening, doctest::Approx(0.25f));
     CHECK_EQ(loaded.asset->materials[0].specular, doctest::Approx(0.1f));
     CHECK(extras.billboard);
 
@@ -1155,6 +1254,15 @@ TEST_CASE("ModelAnimation bakes a frozen skinned pose into a static asset that m
     deformModelPose(asset, pose);
     REQUIRE(baked->skins.empty());
     REQUIRE(baked->clips.empty());
+    // Creature materials default to edge darkening, and the corpse stand-in keeps it.
+    CHECK(std::any_of(asset.materials.begin(), asset.materials.end(), [](const ModelMaterial &material)
+    {
+        return material.edgeDarkening == DefaultCreatureEdgeDarkening;
+    }));
+    for (size_t index = 0; index < asset.materials.size(); ++index)
+    {
+        CHECK_EQ(baked->materials[index].edgeDarkening, asset.materials[index].edgeDarkening);
+    }
     CHECK(baked->staticBounds.valid);
     CHECK_EQ(baked->materialVariants, asset.materialVariants);
     size_t compared = 0;

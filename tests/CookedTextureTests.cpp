@@ -1,6 +1,7 @@
 #include "doctest/doctest.h"
 
 #include "engine/AssetFileSystem.h"
+#include "engine/ImageAssetLoader.h"
 #include "engine/models/GltfModelLoader.h"
 #include "engine/render/CookedTexture.h"
 #include "tools/TextureBlockEncode.h"
@@ -147,6 +148,7 @@ Engine::CookedTexture sampleTexture()
     texture.height = 4;
     texture.levels = Engine::cookedTextureFullChainLevels(8, 4);
     texture.sourceHash = 0x1234;
+    texture.statistics = Engine::CookedTextureStatistics{Engine::CookedTextureAlphaUse::Cutout, {256, 512, 65280}};
     texture.blocks.resize(Engine::cookedTextureBlockBytes(texture.codec, 8, 4, texture.levels));
     for (size_t i = 0; i < texture.blocks.size(); ++i)
     {
@@ -183,6 +185,9 @@ TEST_CASE("Cooked textures round trip and reject damaged or incompatible files")
     CHECK_EQ(decoded.alphaCutoff, 128);
     CHECK_EQ(decoded.levels, 4);
     CHECK_EQ(decoded.sourceHash, 0x1234);
+    REQUIRE(decoded.statistics.has_value());
+    CHECK(decoded.statistics->alphaUse == Engine::CookedTextureAlphaUse::Cutout);
+    CHECK(decoded.statistics->meanBgr256 == std::array<uint16_t, 3>{256, 512, 65280});
     CHECK(decoded.blocks == texture.blocks);
 
     std::vector<uint8_t> truncated = bytes;
@@ -198,10 +203,142 @@ TEST_CASE("Cooked textures round trip and reject damaged or incompatible files")
     semantic[24] = 9;
     CHECK_THROWS(Engine::decodeCookedTexture(semantic));
 
+    std::vector<uint8_t> alphaUse = bytes;
+    alphaUse[96] = 7;
+    CHECK_THROWS(Engine::decodeCookedTexture(alphaUse));
+    Engine::CookedTexture noStatistics = texture;
+    noStatistics.statistics.reset();
+    CHECK_THROWS(Engine::encodeCookedTexture(noStatistics));
+
     Engine::CookedTexture partialChain = texture;
     partialChain.levels = 2;
     partialChain.blocks.resize(Engine::cookedTextureBlockBytes(partialChain.codec, 8, 4, 2));
     CHECK_THROWS(Engine::encodeCookedTexture(partialChain));
+}
+
+TEST_CASE("Cooked textures record their content size and cut out block-aligned regions")
+{
+    Engine::CookedTexture texture;
+    texture.codec = TextureBlockCodec::Bc7;
+    texture.width = 8;
+    texture.height = 8;
+    texture.contentWidth = 6;
+    texture.contentHeight = 7;
+    texture.statistics = Engine::CookedTextureStatistics{};
+    // Four 16-byte BC7 blocks, each filled with its block index.
+    for (uint8_t block = 0; block < 4; ++block)
+    {
+        texture.blocks.insert(texture.blocks.end(), 16, block);
+    }
+    const Engine::CookedTexture decoded = Engine::decodeCookedTexture(Engine::encodeCookedTexture(texture));
+    CHECK_EQ(decoded.contentWidth, 6);
+    CHECK_EQ(decoded.contentHeight, 7);
+    const std::vector<uint8_t> lowerRight = Engine::cookedTextureRegionBlocks(decoded, 4, 4, 4, 4);
+    CHECK(lowerRight == std::vector<uint8_t>(16, 3));
+    const std::vector<uint8_t> rightColumn = Engine::cookedTextureRegionBlocks(decoded, 4, 0, 4, 8);
+    REQUIRE_EQ(rightColumn.size(), 32);
+    CHECK_EQ(rightColumn[0], 1);
+    CHECK_EQ(rightColumn[16], 3);
+    CHECK_THROWS(Engine::cookedTextureRegionBlocks(decoded, 2, 0, 4, 4));
+    CHECK_THROWS(Engine::cookedTextureRegionBlocks(decoded, 4, 4, 8, 4));
+    Engine::CookedTexture oversizedContent = texture;
+    oversizedContent.contentWidth = 9;
+    CHECK_THROWS(Engine::encodeCookedTexture(oversizedContent));
+}
+
+TEST_CASE("Cooked texture regions decode back to BGRA on the CPU")
+{
+    // Two 4x4 blocks side by side: opaque red, then transparent green (RGBA input to the encoder).
+    std::vector<uint8_t> rgba;
+    for (int y = 0; y < 4; ++y)
+    {
+        for (int x = 0; x < 8; ++x)
+        {
+            const std::array<uint8_t, 4> texel = x < 4 ? std::array<uint8_t, 4>{200, 20, 10, 255}
+                                                       : std::array<uint8_t, 4>{10, 180, 30, 0};
+            rgba.insert(rgba.end(), texel.begin(), texel.end());
+        }
+    }
+    Engine::CookedTexture texture;
+    texture.codec = TextureBlockCodec::Bc7;
+    texture.width = 8;
+    texture.height = 4;
+    texture.blocks = Tools::encodeTextureBlocks(rgba, 8, 4, TextureBlockCodec::Bc7, {});
+    const std::vector<uint8_t> right = Engine::decodeCookedTextureRegionBgra(texture, 4, 0, 4, 4);
+    REQUIRE_EQ(right.size(), 4 * 4 * 4);
+    CHECK(std::abs(int(right[0]) - 30) <= 2);   // blue
+    CHECK(std::abs(int(right[1]) - 180) <= 2);  // green
+    CHECK(std::abs(int(right[2]) - 10) <= 2);   // red
+    CHECK(right[3] == 0);
+    const std::vector<uint8_t> left = Engine::decodeCookedTextureRegionBgra(texture, 0, 0, 4, 4);
+    CHECK(std::abs(int(left[2]) - 200) <= 2);
+    CHECK(left[3] >= 250);
+}
+
+TEST_CASE("Cooked textures need the current version and a zstd frame checksum")
+{
+    const std::vector<uint8_t> current = Engine::encodeCookedTexture(sampleTexture());
+    std::vector<uint8_t> version2 = current;
+    version2[8] = 2;
+    CHECK_THROWS(Engine::decodeCookedTexture(version2));
+
+    // Clearing the frame's Content_Checksum_flag (descriptor bit 2) leaves a payload nothing verifies.
+    std::vector<uint8_t> unchecked = current;
+    unchecked[Engine::CookedTextureHeaderBytes + 4] &= uint8_t(~0x04);
+    CHECK_THROWS(Engine::decodeCookedTexture(unchecked));
+
+    // A flipped block byte fails the checksum while decompressing.
+    Engine::CookedTexture texture = sampleTexture();
+    std::vector<uint8_t> damaged = Engine::encodeCookedTexture(texture);
+    damaged[damaged.size() - 6] ^= 0x01;
+    CHECK_THROWS(Engine::decodeCookedTexture(damaged));
+}
+
+TEST_CASE("World surface lookup prefers the cooked file within each scale tier")
+{
+    const std::filesystem::path root = temporaryRoot();
+    const std::filesystem::path textures = root / "assets_dev/worlds/mm6";
+    const std::vector<uint8_t> placeholder = {1};
+    writeBytes(textures / "textures/wall.bmp", placeholder);
+    writeBytes(textures / "textures/wall.oytex", placeholder);
+    writeBytes(textures / "textures_x2/wall.png", placeholder);
+    writeBytes(textures / "textures/door.bmp", placeholder);
+    writeBytes(textures / "textures_x2/door.png", placeholder);
+    writeBytes(textures / "textures_x2/door.oytex", placeholder);
+    const auto lookup = [&](Engine::AssetScaleTier tier, const std::string &name)
+    {
+        Engine::AssetFileSystem assets;
+        Engine::AssetScaleProfile profile;
+        profile.textures = tier;
+        REQUIRE(assets.initialize(root, root / "assets_dev", Engine::AssetScaleTier::X1, profile, "mm6"));
+        Engine::DirectoryAssetPathCache directories;
+        Engine::AssetPathLookupCache paths;
+        const std::optional<std::string> path =
+            Engine::findCookedOrImageAssetPath(assets, "Data/bitmaps", name, directories, paths);
+        assets.shutdown();
+        REQUIRE(path);
+        return std::filesystem::path(*path).parent_path().filename().string() + "/"
+            + std::filesystem::path(*path).filename().string();
+    };
+    CHECK_EQ(lookup(Engine::AssetScaleTier::X1, "wall"), "textures/wall.oytex");
+    // A source in the active tier wins over a cooked file of another tier (a tex.py review stage's new x2 art).
+    CHECK_EQ(lookup(Engine::AssetScaleTier::X2, "wall"), "textures_x2/wall.png");
+    CHECK_EQ(lookup(Engine::AssetScaleTier::X2, "door"), "textures_x2/door.oytex");
+    CHECK_EQ(lookup(Engine::AssetScaleTier::X1, "door"), "textures/door.bmp");
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("Cooked texture statistics record alpha use and the mean colour")
+{
+    // BGRA: an opaque texel, a keyed texel, then a partly transparent one.
+    const std::vector<uint8_t> cutout = {10, 20, 30, 255, 30, 40, 50, 0};
+    const Engine::CookedTextureStatistics statistics = Engine::measureCookedTextureStatistics(cutout);
+    CHECK(statistics.alphaUse == Engine::CookedTextureAlphaUse::Cutout);
+    CHECK(statistics.meanBgr256 == std::array<uint16_t, 3>{20 * 256, 30 * 256, 40 * 256});
+    const std::vector<uint8_t> partial = {0, 0, 0, 0, 255, 255, 255, 128};
+    CHECK(Engine::measureCookedTextureStatistics(partial).alphaUse == Engine::CookedTextureAlphaUse::Partial);
+    const std::vector<uint8_t> opaque = {1, 2, 3, 255};
+    CHECK(Engine::measureCookedTextureStatistics(opaque).alphaUse == Engine::CookedTextureAlphaUse::Opaque);
 }
 
 TEST_CASE("Texture block encoders reproduce gradients and solid colours in every codec")
@@ -282,7 +419,9 @@ TEST_CASE("glTF loader reads cooked textures by URI and rejects unknown image by
         REQUIRE_MESSAGE(loaded, loaded.error);
         REQUIRE_EQ(loaded.asset->images.size(), 1);
         CHECK(loaded.asset->images[0].cooked);
-        CHECK(Engine::hasCookedTextureSignature(loaded.asset->images[0].bytes));
+        // The texture stays in its file until the renderer uploads it.
+        CHECK(loaded.asset->images[0].bytes.empty());
+        CHECK_EQ(loaded.asset->images[0].pFileSystem, &assets);
 
         writeBytes(models / "textures/colour.oytex", std::vector<uint8_t>{1, 2, 3, 4, 5, 6, 7, 8, 9});
         const Engine::ModelLoadResult rejected = Engine::GltfModelLoader().load(assets, "engine/models/cooked.gltf");

@@ -2,8 +2,8 @@
 
 #include "game/FaceEnums.h"
 #include "game/render/BillboardGeometry.h"
+#include "game/render/LiquidKind.h"
 #include "game/render/WaterRenderer.h"
-#include "game/tables/SurfaceMaterialTable.h"
 
 #include <algorithm>
 #include <cmath>
@@ -60,12 +60,15 @@ parseSpriteWaterStrips(const std::string &yaml)
     return materials;
 }
 
-inline bool isWaterSurface(uint32_t attributes, SurfaceMaterialSemantic semantic)
+// The liquid a face draws as: its texture's liquid (liquids.yml). Other Fluid faces keep their texture and the
+// original fluid wobble; the flag also marks rippling floors and murals that are not water.
+inline LiquidKind faceLiquidKind(uint32_t attributes, LiquidKind textureLiquid)
 {
-    return !hasFaceAttribute(attributes, FaceAttribute::Lava)
-        && !hasFaceAttribute(attributes, FaceAttribute::IndoorSky)
-        && semantic != SurfaceMaterialSemantic::Lava
-        && (hasFaceAttribute(attributes, FaceAttribute::Fluid) || semantic == SurfaceMaterialSemantic::Water);
+    if (hasFaceAttribute(attributes, FaceAttribute::IndoorSky))
+    {
+        return LiquidKind::None;
+    }
+    return textureLiquid;
 }
 
 inline std::array<float, 2> waterFaceFlow(const std::array<bx::Vec3, 3> &positions,
@@ -126,7 +129,8 @@ inline std::vector<WaterVertex> buildSpriteWaterGeometry(const BillboardQuad &qu
     return vertices;
 }
 
-// Partition horizontal levels so a waterfall or a stepped pool cannot acquire an incorrect planar reflection.
+// Partition horizontal levels so a waterfall or a stepped pool cannot acquire an incorrect planar reflection, and
+// liquids so each draws as its own kind.
 inline std::vector<WaterSurfaceGeometry> buildWaterFaceGeometry(std::span<const WaterVertex> vertices,
     int16_t sectorId, int16_t backSectorId)
 {
@@ -144,14 +148,19 @@ inline std::vector<WaterSurfaceGeometry> buildWaterFaceGeometry(std::span<const 
         }
         const bool planar = normal.z > 0.0f && std::abs(a.z - b.z) < 0.01f && std::abs(a.z - c.z) < 0.01f;
         const float height = a.z;
+        const LiquidKind liquid = liquidFromShaderValue(a.liquid);
         std::vector<WaterSurfaceGeometry>::iterator found = std::find_if(geometry.begin(), geometry.end(),
             [&](const WaterSurfaceGeometry &surface)
-            { return surface.planar == planar && (!planar || std::abs(surface.height - height) < 0.01f); });
+            {
+                return surface.planar == planar && surface.liquid == liquid
+                    && (!planar || std::abs(surface.height - height) < 0.01f);
+            });
         if (found == geometry.end())
         {
             WaterSurfaceGeometry surface;
             surface.height = height;
             surface.planar = planar;
+            surface.liquid = liquid;
             surface.sectorId = sectorId;
             surface.backSectorId = backSectorId;
             surface.patches.push_back({bx::Vec3{a.x, a.y, a.z}, bx::Vec3{a.x, a.y, a.z}});

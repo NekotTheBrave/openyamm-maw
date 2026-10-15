@@ -10,7 +10,9 @@
 #include "game/gameplay/ActorInspectPreviewAnimation.h"
 
 #include <array>
+#include <cctype>
 #include <filesystem>
+#include <set>
 
 namespace
 {
@@ -117,6 +119,12 @@ TEST_CASE("MM6 merged monster data defines biological blood defaults")
     {
         CAPTURE(monsterId);
         const OpenYAMM::Game::MonsterTable::MonsterStatsEntry *pStats = table.findStatsById(monsterId);
+        if (monsterId >= 649 && monsterId <= 651)
+        {
+            // The Cactus (only placed in MMerge's removed BrAlvar map) is not part of the game.
+            CHECK(pStats == nullptr);
+            continue;
+        }
         REQUIRE(pStats != nullptr);
         const bool bloodlessMaterial =
             (monsterId >= 523 && monsterId <= 534)
@@ -480,4 +488,121 @@ sprites:
     CHECK(preview.frameTimeTicks(frame) == 15);
     preview.displayTimeTicks = 32;
     CHECK(preview.frameTimeTicks(frame) == 0);
+}
+
+TEST_CASE("melee hit materials resolve each monster's HitMaterial and default to flesh")
+{
+    const auto descriptorRow = [](int id, const std::string &name, const std::string &material)
+    {
+        std::vector<std::string> row(23);
+        row[0] = std::to_string(id);
+        row[1] = name;
+        row[22] = material;
+        return row;
+    };
+    OpenYAMM::Game::MonsterTable table = {};
+    REQUIRE(table.loadEntriesFromRows({
+        descriptorRow(1, "Skeleton B", "Bone"),
+        descriptorRow(2, "KnightPlate A", "armorplate"),
+        descriptorRow(3, "Rat C", ""),
+    }));
+
+    const std::vector<std::vector<std::string>> materialRows = {
+        {"#", "Material", "Glancing", "Normal", "Crushing", "ContactEffect", "Blood"},
+        {"1", "Flesh", "flesh_g.wav", "flesh_n.wav", "flesh_c.wav", "blood", "1"},
+        {"2", "Bone", "bone_g.wav", "bone_n.wav", "bone_c.wav", "bone_dust", "0"},
+        {"3", "ArmorPlate", "plate_g.wav", "plate_n.wav", "plate_c.wav", "sparks", "0"},
+    };
+    REQUIRE(table.loadMeleeHitMaterialsFromRows(materialRows));
+
+    const OpenYAMM::Game::MonsterTable::MeleeHitMaterial *pSkeleton = table.findMeleeHitMaterial(1);
+    const OpenYAMM::Game::MonsterTable::MeleeHitMaterial *pKnight = table.findMeleeHitMaterial(2);
+    const OpenYAMM::Game::MonsterTable::MeleeHitMaterial *pRat = table.findMeleeHitMaterial(3);
+    const OpenYAMM::Game::MonsterTable::MeleeHitMaterial *pUnknown = table.findMeleeHitMaterial(99);
+    REQUIRE(pSkeleton != nullptr);
+    REQUIRE(pKnight != nullptr);
+    REQUIRE(pRat != nullptr);
+    REQUIRE(pUnknown != nullptr);
+    CHECK_EQ(pSkeleton->name, "Bone");
+    CHECK_EQ(pSkeleton->impactSoundPaths[2], "bone_c.wav");
+    CHECK_EQ(pSkeleton->contactEffectId, "bone_dust");
+    CHECK_FALSE(pSkeleton->blood);
+    CHECK_EQ(pKnight->name, "ArmorPlate");
+    CHECK_EQ(pRat->name, "Flesh");
+    CHECK(pRat->blood);
+    CHECK_EQ(pUnknown->name, "Flesh");
+
+    // A monster naming a material the table lacks fails the load, as does a table without Flesh.
+    REQUIRE(table.loadEntriesFromRows({descriptorRow(1, "Skeleton B", "Ivory")}));
+    CHECK_FALSE(table.loadMeleeHitMaterialsFromRows(materialRows));
+    CHECK_FALSE(table.loadMeleeHitMaterialsFromRows({{"1", "Bone", "", "", ""}}));
+}
+
+TEST_CASE("engine melee hit materials name existing sounds and classify every monster")
+{
+    const std::filesystem::path sourceRoot = OPENYAMM_SOURCE_DIR;
+    OpenYAMM::Engine::AssetFileSystem assetFileSystem;
+    REQUIRE(assetFileSystem.initialize(
+        sourceRoot,
+        sourceRoot / "assets_dev",
+        OpenYAMM::Engine::AssetScaleTier::X1));
+
+    const auto readRows = [&assetFileSystem](const std::string &path)
+    {
+        const std::optional<std::string> text = assetFileSystem.readTextFile(path);
+        REQUIRE(text.has_value());
+        const std::optional<OpenYAMM::Engine::TextTable> parsed =
+            OpenYAMM::Engine::TextTable::parseTabSeparated(*text);
+        REQUIRE(parsed.has_value());
+        std::vector<std::vector<std::string>> rows;
+        for (size_t rowIndex = 0; rowIndex < parsed->getRowCount(); ++rowIndex)
+        {
+            rows.push_back(parsed->getRow(rowIndex));
+        }
+        return rows;
+    };
+
+    const std::vector<std::vector<std::string>> descriptorRows =
+        readRows("engine/data_tables/monster_descriptors.txt");
+    const std::vector<std::vector<std::string>> materialRows =
+        readRows("engine/data_tables/melee_hit_materials.txt");
+    OpenYAMM::Game::MonsterTable table;
+    REQUIRE(table.loadEntriesFromRows(descriptorRows));
+    REQUIRE(table.loadDisplayNamesFromRows(readRows("engine/data_tables/monster_data.txt")));
+    REQUIRE(table.loadMeleeHitMaterialsFromRows(materialRows));
+
+    // Every monster row names its material explicitly.
+    for (const std::vector<std::string> &row : descriptorRows)
+    {
+        if (row.size() < 2 || row[0].empty() || !std::isdigit(static_cast<unsigned char>(row[0][0])))
+        {
+            continue;
+        }
+        CAPTURE(row[1]);
+        REQUIRE(row.size() > 22);
+        CHECK_FALSE(row[22].empty());
+    }
+
+    for (const std::vector<std::string> &row : materialRows)
+    {
+        if (row.size() < 2 || row[0].empty() || row[0][0] == '#')
+        {
+            continue;
+        }
+        for (size_t column = 2; column < std::min<size_t>(row.size(), 5); ++column)
+        {
+            if (!row[column].empty())
+            {
+                CAPTURE(row[column]);
+                CHECK(assetFileSystem.exists(row[column]));
+            }
+        }
+    }
+
+    // Skeleton Warrior A, Ruby Dragon (Crystal Dragon C) and Goblin A.
+    REQUIRE(table.findMeleeHitMaterial(397) != nullptr);
+    CHECK_EQ(table.findMeleeHitMaterial(397)->name, "Bone");
+    CHECK_EQ(table.findMeleeHitMaterial(114)->name, "Glass");
+    CHECK_EQ(table.findMeleeHitMaterial(271)->name, "Flesh");
+    CHECK(table.findMeleeHitMaterial(271)->blood);
 }

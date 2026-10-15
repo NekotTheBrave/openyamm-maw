@@ -2554,11 +2554,6 @@ PartySpellCastResult PartySpellSystem::castSpell(
             + (targetPoint.y - sourceY) * (targetPoint.y - sourceY));
         const float baseTargetZ = targetPoint.z;
         const float spreadArcRadians = Pi / 3.0f;
-        const float spreadStartRadians = rule->multiProjectileCount > 1 ? -spreadArcRadians * 0.5f : 0.0f;
-        const float spreadStepRadians =
-            rule->multiProjectileCount > 1
-                ? spreadArcRadians / static_cast<float>(rule->multiProjectileCount - 1)
-                : 0.0f;
         const SpellSourcePoint projectileSource = offsetPartyProjectileSourceForMember(
             request,
             SpellSourcePoint{.x = sourceX, .y = sourceY, .z = sourceZ},
@@ -2567,8 +2562,10 @@ PartySpellCastResult PartySpellSystem::castSpell(
 
         for (uint32_t projectileIndex = 0; projectileIndex < rule->multiProjectileCount; ++projectileIndex)
         {
-            const float yawRadians =
-                targetAngleRadians + spreadStartRadians + spreadStepRadians * static_cast<float>(projectileIndex);
+            const float yawRadians = targetAngleRadians + GameMechanics::projectileFanYawOffsetRadians(
+                rule->multiProjectileCount,
+                projectileIndex,
+                spreadArcRadians);
             GameplayPartySpellProjectileRequest worldRequest = {};
             worldRequest.casterMemberIndex = static_cast<uint32_t>(request.casterMemberIndex);
             worldRequest.spellId = request.spellId;

@@ -2,6 +2,7 @@
 
 #include "engine/AssetFileSystem.h"
 #include "engine/FontAsset.h"
+#include "game/ui/GameplayHudCommon.h"
 #include "game/ui/IScreen.h"
 
 #include <bgfx/bgfx.h>
@@ -69,7 +70,6 @@ public:
     ~MenuScreenBase() override;
 
     static void shutdownSharedResources();
-    void setFontSettings(const Engine::FontSettings &settings);
 
     void renderFrame(
         int width,
@@ -170,13 +170,8 @@ protected:
 
     using FontGlyphMetrics = Engine::FontGlyphMetrics;
 
-    struct FontHandle : Engine::FontAtlas
-    {
-        std::string normalizedFontName;
-        int rasterPixelHeight = 0;
-        bgfx::TextureHandle mainTextureHandle = BGFX_INVALID_HANDLE;
-        bgfx::TextureHandle shadowTextureHandle = BGFX_INVALID_HANDLE;
-    };
+    // Fonts are shared with the gameplay HUD (SharedFontCache).
+    using FontHandle = GameplayHudFontData;
 
     virtual void drawScreen(float deltaSeconds) = 0;
 
@@ -184,8 +179,6 @@ protected:
     void destroyRendererResources();
     const TextureHandle *findTexture(const std::string &textureName) const;
     const TextureHandle *ensureTexture(const std::string &textureName);
-    Engine::FontSettings m_fontSettings;
-    std::string fontCacheKey(const std::string &fontName, int pixelHeight) const;
     const FontHandle *findFont(const std::string &fontName, int pixelHeight) const;
     const FontHandle *ensureFont(const std::string &fontName, int pixelHeight = 0);
     const FontHandle *ensureTextFont(const std::string &fontName, float &scale);
@@ -196,7 +189,9 @@ protected:
         int height,
         const std::vector<uint8_t> &pixelsBgra);
     std::optional<std::string> resolveTexturePath(const std::string &textureName);
-    std::optional<std::string> resolveFontPath(const std::string &fontName);
+    // Releases the shared textures when the mounted assets changed since they were loaded.
+    void releaseTexturesIfAssetsChanged();
+    static void releaseSharedTextures();
 
     const Engine::AssetFileSystem *m_pAssetFileSystem = nullptr;
     const GameplayInputFrame *m_pInputFrame = nullptr;
@@ -220,13 +215,11 @@ protected:
     uint32_t m_drawTint = 0xffffffffu;
     static std::vector<TextureHandle> s_textureHandles;
     static std::vector<DynamicTextureHandle> s_dynamicTextureHandles;
-    static std::vector<FontHandle> s_fontHandles;
     static std::unordered_map<std::string, size_t> s_textureIndexByName;
-    static std::unordered_map<std::string, size_t> s_fontIndexByName;
     static int s_fontFrameWidth;
     static int s_fontFrameHeight;
     static std::unordered_map<std::string, std::unordered_map<std::string, std::string>> s_directoryEntriesByPath;
     static std::unordered_map<std::string, std::optional<std::string>> s_resolvedTexturePaths;
-    static std::unordered_map<std::string, std::optional<std::string>> s_resolvedFontPaths;
+    static uint64_t s_assetContentGeneration;
 };
 }

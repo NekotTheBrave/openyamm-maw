@@ -1,10 +1,13 @@
 #pragma once
 
 #include "engine/AssetFileSystem.h"
+#include "engine/ImageAssetLoader.h"
+#include "engine/render/CookedTexture.h"
 #include "game/events/ScriptedEventProgram.h"
 #include "game/events/EventRuntime.h"
 #include "game/maps/MapDeltaData.h"
 #include "game/maps/MapItemSourceData.h"
+#include "game/maps/OutdoorTerrainTiles.h"
 #include "game/indoor/IndoorMapData.h"
 #include "game/tables/MapStats.h"
 #include "game/tables/MonsterTable.h"
@@ -13,57 +16,27 @@
 #include "game/outdoor/OutdoorMapData.h"
 #include "game/outdoor/OutdoorWeatherProfile.h"
 #include "game/tables/SurfaceAnimation.h"
-#include "game/tables/SurfaceMaterialTable.h"
+#include "game/tables/LiquidTable.h"
 #include "game/tables/SpriteTables.h"
 #include "game/tables/TextureFrameTable.h"
 
 #include <algorithm>
+#include <future>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 namespace OpenYAMM::Game
 {
-struct OutdoorTerrainAtlasRegion
-{
-    float u0 = 0.0f;
-    float v0 = 0.0f;
-    float u1 = 0.0f;
-    float v1 = 0.0f;
-    bool isValid = false;
-    bool isWater = false;
-    // Some native lava tiles also carry the Water flag; keep their legacy animation without water shading.
-    bool isWaterSurface = false;
-    bool isTransitionOverlay = false;
-    uint32_t waterColorAbgr = 0;
-};
-
-struct OutdoorAnimatedWaterTileSource
-{
-    OutdoorTerrainAtlasRegion region;
-    std::vector<std::vector<uint8_t>> framePixels;
-    SurfaceAnimationSequence animation;
-    size_t currentFrameIndex = 0;
-};
-
-struct OutdoorTerrainTextureAtlas
-{
-    int width = 0;
-    int height = 0;
-    int tileSize = 0;
-    int tilePadding = 0;
-    std::vector<uint8_t> pixels;
-    std::array<OutdoorTerrainAtlasRegion, 256> tileRegions = {};
-    std::array<std::string, 256> tileTextureNames = {};
-    std::vector<OutdoorAnimatedWaterTileSource> animatedWaterTiles;
-    std::array<std::vector<uint8_t>, 256> waterCoverageMasks;
-};
+class ActorModelManifest;
 
 struct OutdoorBitmapTexture
 {
@@ -76,9 +49,14 @@ struct OutdoorBitmapTexture
     bool hasTransparentPixels = false;
     bool hasPartialAlphaPixels = false;
     bool pixelsPreparedForUpload = false;
-    SurfaceMaterialSemantic surfaceSemantic = SurfaceMaterialSemantic::GenericAnimated;
+    // A liquids.yml texture: no art, the liquid shader draws its faces.
+    LiquidKind liquid = LiquidKind::None;
+    // ABGR tint of faces drawn by the liquid shader: the liquid's colour, or for a Fluid face of an ordinary texture
+    // the texture's mean colour (those faces draw as water). 0: not drawn as a liquid.
     uint32_t waterColorAbgr = 0;
     std::vector<uint8_t> pixels;
+    // A cooked world surface texture (GPU blocks with its mip chain) replaces pixels; see loadCookedSurfaceTexture.
+    std::shared_ptr<const Engine::CookedTexture> cookedTexture;
     // Explicit source identity for map-local art that overrides a shared sprite name.
     std::string resourceIdentity;
 };
@@ -118,6 +96,8 @@ struct DecorationBillboardSet
     SpriteFrameTable spriteFrameTable;
     std::vector<OutdoorBitmapTexture> textures;
     std::vector<DecorationBillboard> billboards;
+    // Sprites a 3D model draws on this map (DecorationModelSet bindings): their textures are never loaded.
+    std::unordered_set<uint16_t> modelSpriteIds;
 };
 
 enum class ActorPreviewSource
@@ -146,15 +126,27 @@ struct ActorPreviewBillboard
     int32_t uniqueNameIndex = 0;
     bool useStaticFrame = false;
     bool isFriendly = false;
+    // An actor model draws this monster.
+    bool modelled = false;
     ActorPreviewSource source = ActorPreviewSource::Spawn;
     std::string actorName;
 };
 
 struct ActorPreviewBillboardSet
 {
+    // True when an actor model draws this monster: none of its sprites is loaded.
+    bool drawsModel(const MonsterEntry *pMonster) const;
+    // The same by monster id: renderers never fall back to the sprite of such a monster, even before its model exists.
+    bool drawsModel(int16_t monsterId) const;
+
     SpriteFrameTable spriteFrameTable;
     std::vector<OutdoorBitmapTexture> textures;
     std::vector<ActorPreviewBillboard> billboards;
+    // Null while actor models are off.
+    std::shared_ptr<const ActorModelManifest> actorModels;
+    // Bound monsters the map shows when it loads or can summon (placed actors, spawns, every tier of its encounter
+    // slots): their models are built under the loading screen instead of on first sight.
+    std::vector<std::string> modelDescriptors;
     size_t mapDeltaActorCount = 0;
     size_t spawnActorCount = 0;
     size_t texturedActorCount = 0;
@@ -249,7 +241,7 @@ struct MapAssetInfo
     std::optional<EventRuntimeState> eventRuntimeState;
     std::optional<std::vector<uint8_t>> outdoorLandMask;
     std::optional<std::vector<uint32_t>> outdoorTileColors;
-    std::optional<OutdoorTerrainTextureAtlas> outdoorTerrainTextureAtlas;
+    std::optional<OutdoorTerrainTiles> outdoorTerrainTiles;
     std::optional<OutdoorBModelTextureSet> outdoorBModelTextureSet;
     std::optional<OutdoorDecorationCollisionSet> outdoorDecorationCollisionSet;
     std::optional<OutdoorActorCollisionSet> outdoorActorCollisionSet;
@@ -265,6 +257,16 @@ struct MapAssetInfo
 
 size_t mapRenderSourcePixelBytes(const MapAssetInfo &mapAssetInfo);
 void clearMapRenderSourcePixels(MapAssetInfo &mapAssetInfo);
+// A world surface texture (Data/bitmaps) whose best match in the active scale tier is its cooked file
+// (tools/cook_surface_textures.py): GPU blocks with the runtime's mip chain and the source's statistics, so nothing is
+// decoded, keyed or filtered at load. Empty when the best match is a source image. Throws on a corrupt cooked file
+// or one cooked for another use; it is never replaced by its source.
+std::optional<OutdoorBitmapTexture> loadCookedSurfaceTexture(
+    const Engine::AssetFileSystem &assetFileSystem,
+    const std::string &textureName,
+    Engine::DirectoryAssetPathCache &directoryAssetPathsByPath,
+    Engine::AssetPathLookupCache &assetPathByKey,
+    Engine::BinaryAssetCache *pBinaryFilesByPath);
 bool ensureMonsterSpriteFramesLoaded(
     const Engine::AssetFileSystem &assetFileSystem,
     const MonsterTable &monsterTable,
@@ -295,8 +297,10 @@ struct MapAssetLoadSharedCache
 #endif
     std::optional<std::vector<std::vector<std::string>>> decorationRows;
     std::optional<TextureFrameTable> textureFrameTable;
-    std::optional<SurfaceMaterialTable> surfaceMaterialTable;
+    std::optional<LiquidTable> liquidTable;
     std::optional<SpriteFrameTable> commonSpriteFrameTable;
+    // The common table's parse on a load worker, started when a load begins without the table (MapAssetLoader::load).
+    std::shared_future<std::optional<SpriteFrameTable>> commonSpriteFrameTableLoading;
     std::optional<std::vector<std::string>> monsterSpriteFrameFamilyEntries;
     std::unordered_map<std::string, std::optional<std::string>> monsterSpriteFrameFamilyTextByRoot;
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> bitmapDirectoryAssetPathsByPath;
@@ -372,7 +376,8 @@ public:
         MapLoadPurpose purpose = MapLoadPurpose::Full,
         const MapCompanionLoadOptions &companionLoadOptions = {},
         const MapLoadProgressPump &progressPump = {},
-        MapAssetLoadSharedCache *pSharedCache = nullptr
+        MapAssetLoadSharedCache *pSharedCache = nullptr,
+        std::shared_ptr<const ActorModelManifest> pActorModels = {}
     ) const;
 
 private:

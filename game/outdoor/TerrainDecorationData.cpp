@@ -331,8 +331,8 @@ std::optional<TerrainDecorationConfig> loadTerrainDecorationConfig(
     }
 }
 
-TerrainDecorationPlacement scatterTerrainDecorations(
-    const OutdoorMapData &map, const std::array<std::string, 256> &textures, const TerrainDecorationConfig &config)
+TerrainDecorationPlacement scatterTerrainDecorations(const OutdoorMapData &map,
+    const std::array<std::string, 256> &textures, const TerrainDecorationConfig &config, float terrainSmoothing)
 {
     TerrainDecorationPlacement result;
     constexpr int width = OutdoorMapData::TerrainWidth;
@@ -456,7 +456,9 @@ TerrainDecorationPlacement scatterTerrainDecorations(
                         const float v = randomUnit(state);
                         const float px = outdoorGridCornerWorldX(x) + u * 512.0f;
                         const float py = outdoorGridCornerWorldY(y) - v * 512.0f;
-                        const float z = sampleOutdoorRenderedTerrainHeight(map, px, py);
+                        const float z = terrainSmoothing > 0.0f
+                            ? outdoorSmoothedTerrainHeight(map, float(x) + u, float(y) + v, terrainSmoothing)
+                            : sampleOutdoorRenderedTerrainHeight(map, px, py);
                         const float scale = 0.7f + 0.6f * randomUnit(state);
                         const float yaw = randomUnit(state) * 6.2831853f;
                         const float shade = 0.9f + 0.15f * randomUnit(state);

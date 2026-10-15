@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstring>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -53,7 +54,7 @@ constexpr uint32_t ProjectileFxBloodRed = 0xff0000f0u;
 constexpr uint32_t ProjectileFxRed = 0xff0000ffu;
 constexpr uint32_t ProjectileFxWhite = 0xffffffffu;
 
-constexpr std::array<std::string_view, 43> ProjectileRecipeNames = {
+constexpr std::array<std::string_view, 54> ProjectileRecipeNames = {
     "none",
     "fire_bolt",
     "fireball",
@@ -84,6 +85,7 @@ constexpr std::array<std::string_view, 43> ProjectileRecipeNames = {
     "sharpmetal",
     "dragon_breath",
     "dark_fire_bolt",
+    "mind_blast",
     "toxic_cloud",
     "monster_air_bolt",
     "monster_earth_bolt",
@@ -94,6 +96,16 @@ constexpr std::array<std::string_view, 43> ProjectileRecipeNames = {
     "monster_spirit_bolt",
     "monster_light_bolt",
     "monster_dark_bolt",
+    "arrow",
+    "fire_arrow",
+    "deadly_swarm",
+    "mass_distortion",
+    "spirit_lash",
+    "prismatic_light",
+    "souldrinker",
+    "lifedrain",
+    "shrinking_ray",
+    "armageddon",
     "generic_particle_trail",
     "generic_fire_trail",
     "generic_line_trail",
@@ -224,6 +236,16 @@ bool containsToken(const std::string &value, const char *pToken)
 bool equalsToken(const std::string &value, const char *pToken)
 {
     return toLowerCopy(value) == pToken;
+}
+
+// A sprite name is the token itself or the token with a letter suffix ("spell57c"): "spell10" is Inferno's sprite,
+// not MM8's "spell100" breath weapon.
+bool spriteNameIs(const std::string &spriteName, const char *pToken)
+{
+    const std::string name = toLowerCopy(spriteName);
+    const size_t tokenLength = std::strlen(pToken);
+    return name.compare(0, tokenLength, pToken) == 0
+        && (name.size() == tokenLength || std::isdigit(static_cast<unsigned char>(name[tokenLength])) == 0);
 }
 
 uint32_t transparentColor(uint32_t colorAbgr)
@@ -703,74 +725,85 @@ ProjectileRecipe classifyProjectileRecipe(
         {
             return ProjectileRecipe::MonsterDarkBolt;
         }
+
+        // Arrows have no classic trail or impact effects; the recipes only let the enhanced style bind them.
+        if (equalsToken(objectName, "arrow") || equalsToken(spriteName, "arrow"))
+        {
+            return ProjectileRecipe::Arrow;
+        }
+
+        if (equalsToken(objectName, "firearrow") || equalsToken(spriteName, "frarw"))
+        {
+            return ProjectileRecipe::FireArrow;
+        }
     }
 
     if (spellId == 2
         || containsToken(objectName, "fire bolt")
-        || containsToken(spriteName, "fire02"))
+        || spriteNameIs(spriteName, "fire02"))
     {
         return ProjectileRecipe::FireBolt;
     }
 
     if (spellId == 7
         || containsToken(objectName, "fire spike")
-        || containsToken(spriteName, "spell07"))
+        || spriteNameIs(spriteName, "spell07"))
     {
         return ProjectileRecipe::FireSpike;
     }
 
     if (spellId == 6
         || containsToken(objectName, "fireball")
-        || containsToken(spriteName, "fire04"))
+        || spriteNameIs(spriteName, "fire04"))
     {
         return ProjectileRecipe::Fireball;
     }
 
     if (spellId == 8
         || containsToken(objectName, "immolation")
-        || containsToken(spriteName, "spell08"))
+        || spriteNameIs(spriteName, "spell08"))
     {
         return ProjectileRecipe::Immolation;
     }
 
     if (spellId == 9
         || containsToken(objectName, "meteor shower")
-        || containsToken(spriteName, "spell09"))
+        || spriteNameIs(spriteName, "spell09"))
     {
         return ProjectileRecipe::MeteorShower;
     }
 
     if (spellId == 10
         || containsToken(objectName, "inferno")
-        || containsToken(spriteName, "spell10"))
+        || spriteNameIs(spriteName, "spell10"))
     {
         return ProjectileRecipe::Inferno;
     }
 
     if (spellId == 11
         || containsToken(objectName, "incinerate")
-        || containsToken(spriteName, "spell11"))
+        || spriteNameIs(spriteName, "spell11"))
     {
         return ProjectileRecipe::Incinerate;
     }
 
     if (spellId == 22
         || containsToken(objectName, "starburst")
-        || containsToken(spriteName, "spell22"))
+        || spriteNameIs(spriteName, "spell22"))
     {
         return ProjectileRecipe::Starburst;
     }
 
     if (spellId == 20
         || containsToken(objectName, "implosion")
-        || containsToken(spriteName, "spell57c"))
+        || spriteNameIs(spriteName, "spell57c"))
     {
         return ProjectileRecipe::Implosion;
     }
 
     if (spellId == 15
         || containsToken(objectName, "sparks")
-        || containsToken(spriteName, "spell02"))
+        || spriteNameIs(spriteName, "spell02"))
     {
         return ProjectileRecipe::Sparks;
     }
@@ -783,7 +816,7 @@ ProjectileRecipe classifyProjectileRecipe(
 
     if (spellId == 18
         || containsToken(objectName, "lightning bolt")
-        || containsToken(spriteName, "spell18"))
+        || spriteNameIs(spriteName, "spell18"))
     {
         return ProjectileRecipe::LightningBolt;
     }
@@ -792,7 +825,7 @@ ProjectileRecipe classifyProjectileRecipe(
         || spellId == 32
         || containsToken(objectName, "ice bolt")
         || containsToken(objectName, "ice blast")
-        || containsToken(spriteName, "spell26"))
+        || spriteNameIs(spriteName, "spell26"))
     {
         if (spellId == 32 && containsToken(objectName, "shard"))
         {
@@ -816,7 +849,7 @@ ProjectileRecipe classifyProjectileRecipe(
 
     if (spellId == 87
         || containsToken(objectName, "sunray")
-        || containsToken(spriteName, "spell87"))
+        || spriteNameIs(spriteName, "spell87"))
     {
         return ProjectileRecipe::Sunray;
     }
@@ -826,19 +859,19 @@ ProjectileRecipe classifyProjectileRecipe(
         || containsToken(objectName, "mind blast")
         || containsToken(objectName, "psychic shock"))
     {
-        return ProjectileRecipe::DarkFireBolt;
+        return ProjectileRecipe::MindBlast;
     }
 
     if (spellId == 34
         || containsToken(objectName, "stun")
-        || containsToken(spriteName, "spell34"))
+        || spriteNameIs(spriteName, "spell34"))
     {
         return ProjectileRecipe::Stun;
     }
 
     if (spellId == 39
         || containsToken(objectName, "blades")
-        || containsToken(spriteName, "spell39"))
+        || spriteNameIs(spriteName, "spell39"))
     {
         return ProjectileRecipe::Blades;
     }
@@ -857,48 +890,50 @@ ProjectileRecipe classifyProjectileRecipe(
 
     if (spellId == 70
         || containsToken(objectName, "harm")
-        || containsToken(spriteName, "spell70"))
+        || spriteNameIs(spriteName, "spell70"))
     {
         return ProjectileRecipe::Harm;
     }
 
     if (spellId == 76
         || containsToken(objectName, "flying fist")
-        || containsToken(spriteName, "spell76"))
+        || spriteNameIs(spriteName, "spell76"))
     {
         return ProjectileRecipe::FlyingFist;
     }
 
     if (spellId == 78
         || containsToken(objectName, "light bolt")
-        || containsToken(spriteName, "sp78b"))
+        || spriteNameIs(spriteName, "sp78b"))
     {
         return ProjectileRecipe::LightBolt;
     }
 
     if (spellId == 79
         || containsToken(objectName, "destroy undead")
-        || containsToken(spriteName, "spell79"))
+        || spriteNameIs(spriteName, "spell79"))
     {
         return ProjectileRecipe::DestroyUndead;
     }
 
+    // Flame Blast (MM8 dragon breath) flies and explodes like Dragon Breath.
     if (spellId == 97
+        || spellId == 123
         || containsToken(objectName, "dragon breath")
-        || containsToken(spriteName, "spell97"))
+        || spriteNameIs(spriteName, "spell97"))
     {
         return ProjectileRecipe::DragonBreath;
     }
 
     if (containsToken(objectName, "darkfire bolt")
-        || containsToken(spriteName, "spell99"))
+        || spriteNameIs(spriteName, "spell99"))
     {
         return ProjectileRecipe::DarkFireBolt;
     }
 
     if (spellId == 90
         || containsToken(objectName, "toxic cloud")
-        || containsToken(spriteName, "spell90"))
+        || spriteNameIs(spriteName, "spell90"))
     {
         return ProjectileRecipe::ToxicCloud;
     }
@@ -907,9 +942,55 @@ ProjectileRecipe classifyProjectileRecipe(
         || containsToken(objectName, "shrap metal")
         || containsToken(objectName, "shrapmetal")
         || containsToken(objectName, "sharpmetal")
-        || containsToken(spriteName, "spell93"))
+        || spriteNameIs(spriteName, "spell93"))
     {
         return ProjectileRecipe::Sharpmetal;
+    }
+
+    if (spellId == 37
+        || containsToken(objectName, "deadly swarm")
+        || spriteNameIs(spriteName, "spell37"))
+    {
+        return ProjectileRecipe::DeadlySwarm;
+    }
+
+    if (spellId == 44 || containsToken(objectName, "mass distortion"))
+    {
+        return ProjectileRecipe::MassDistortion;
+    }
+
+    if (spellId == 52 || containsToken(objectName, "spirit lash"))
+    {
+        return ProjectileRecipe::SpiritLash;
+    }
+
+    if (spellId == 84
+        || containsToken(objectName, "prismatic light")
+        || spriteNameIs(spriteName, "spell84"))
+    {
+        return ProjectileRecipe::PrismaticLight;
+    }
+
+    if (spellId == 99 || containsToken(objectName, "souldrinker"))
+    {
+        return ProjectileRecipe::SoulDrinker;
+    }
+
+    if (spellId == 111 || containsToken(objectName, "lifedrain"))
+    {
+        return ProjectileRecipe::Lifedrain;
+    }
+
+    if (spellId == 92
+        || containsToken(objectName, "shrinking ray")
+        || spriteNameIs(spriteName, "spell92"))
+    {
+        return ProjectileRecipe::ShrinkingRay;
+    }
+
+    if (spellId == 98 || containsToken(objectName, "armageddon"))
+    {
+        return ProjectileRecipe::Armageddon;
     }
 
     if ((objectFlags & ObjectDescTrailFire) != 0)
@@ -1293,6 +1374,7 @@ const ProjectileFxRecipe &projectileFxRecipe(ProjectileRecipe recipe)
     case ProjectileRecipe::Blaster:
     case ProjectileRecipe::DragonBreath:
     case ProjectileRecipe::DarkFireBolt:
+    case ProjectileRecipe::MindBlast:
     case ProjectileRecipe::ToxicCloud:
     case ProjectileRecipe::GenericParticleTrail:
     case ProjectileRecipe::GenericFireTrail:
@@ -1362,6 +1444,7 @@ uint32_t projectileRecipeColorAbgr(ProjectileRecipe recipe)
     case ProjectileRecipe::MonsterDarkBolt:
         return ProjectileFxMediumGrey;
     case ProjectileRecipe::DarkFireBolt:
+    case ProjectileRecipe::MindBlast:
         return makeAbgr(180, 96, 255, 220);
     case ProjectileRecipe::GenericLineTrail:
         return makeAbgr(220, 220, 220, 200);
@@ -1427,6 +1510,7 @@ float projectileRecipeGlowRadius(ProjectileRecipe recipe)
         return 176.0f;
     case ProjectileRecipe::IceBolt:
     case ProjectileRecipe::DarkFireBolt:
+    case ProjectileRecipe::MindBlast:
     case ProjectileRecipe::ToxicCloud:
         return 152.0f;
     case ProjectileRecipe::FireBolt:
@@ -1478,6 +1562,7 @@ float projectileRecipeAnchorOffset(ProjectileRecipe recipe, uint16_t radius, uin
     case ProjectileRecipe::Sparks:
     case ProjectileRecipe::LightningBolt:
     case ProjectileRecipe::DarkFireBolt:
+    case ProjectileRecipe::MindBlast:
     case ProjectileRecipe::FireBolt:
     case ProjectileRecipe::MonsterAirBolt:
     case ProjectileRecipe::MonsterEarthBolt:
@@ -1533,6 +1618,7 @@ float projectileRecipeBackOffset(ProjectileRecipe recipe, uint16_t radius)
     case ProjectileRecipe::LightBolt:
     case ProjectileRecipe::Sunray:
     case ProjectileRecipe::DarkFireBolt:
+    case ProjectileRecipe::MindBlast:
     case ProjectileRecipe::GenericFireTrail:
     case ProjectileRecipe::GenericParticleTrail:
     case ProjectileRecipe::GenericLineTrail:
@@ -1542,8 +1628,18 @@ float projectileRecipeBackOffset(ProjectileRecipe recipe, uint16_t radius)
     }
 }
 
+bool projectileRecipeIsBindingOnly(ProjectileRecipe recipe)
+{
+    return recipe >= ProjectileRecipe::Arrow && recipe <= ProjectileRecipe::Armageddon;
+}
+
 bool projectileRecipeUsesDedicatedImpactFx(ProjectileRecipe recipe)
 {
+    if (projectileRecipeIsBindingOnly(recipe))
+    {
+        return false;
+    }
+
     const ProjectileFxRecipe &fxRecipe = projectileFxRecipe(recipe);
     const ProjectileFxPrimitive impactPrimitive = fxRecipe.impactPrimitive;
 
@@ -1947,7 +2043,10 @@ void spawnProjectileTrailParticles(
 {
     const SpellId spellId = spellIdFromValue(static_cast<uint32_t>(context.spellId));
 
-    if (recipe == ProjectileRecipe::Blaster || recipe == ProjectileRecipe::Sparks)
+    if (recipe == ProjectileRecipe::Blaster
+        || recipe == ProjectileRecipe::Sparks
+        || recipe == ProjectileRecipe::Arrow
+        || recipe == ProjectileRecipe::FireArrow)
     {
         return;
     }
@@ -2045,6 +2144,7 @@ void spawnProjectileTrailParticles(
         || recipe == ProjectileRecipe::MeteorShower
         || recipe == ProjectileRecipe::DragonBreath
         || recipe == ProjectileRecipe::DarkFireBolt
+        || recipe == ProjectileRecipe::MindBlast
         || (context.objectFlags & ObjectDescTrailFire) != 0)
     {
         const bool isFireBoltTrail = recipe == ProjectileRecipe::FireBolt;
@@ -2101,7 +2201,8 @@ void spawnProjectileTrailParticles(
 
         LayerRecipe smokeLayer = {};
         smokeLayer.startColorAbgr =
-            recipe == ProjectileRecipe::DarkFireBolt ? makeAbgr(112, 72, 144, 96)
+            recipe == ProjectileRecipe::DarkFireBolt || recipe == ProjectileRecipe::MindBlast
+                ? makeAbgr(112, 72, 144, 96)
                 : (isFireBoltTrail ? makeAbgr(112, 52, 44, 76) : makeAbgr(84, 84, 84, 88));
         smokeLayer.endColorAbgr = makeAbgr(84, 84, 84, 0);
         smokeLayer.count =
@@ -2508,6 +2609,7 @@ void spawnImpactParticles(ParticleSystem &particleSystem, const ImpactSpawnConte
         || recipe == ProjectileRecipe::Cannonball
         || recipe == ProjectileRecipe::DragonBreath
         || recipe == ProjectileRecipe::DarkFireBolt
+        || recipe == ProjectileRecipe::MindBlast
         || recipe == ProjectileRecipe::GenericFireTrail
         || (recipe == ProjectileRecipe::None
             && (containsToken(context.objectName, "fire")
@@ -2518,7 +2620,8 @@ void spawnImpactParticles(ParticleSystem &particleSystem, const ImpactSpawnConte
         recipe == ProjectileRecipe::Fireball
         || recipe == ProjectileRecipe::MeteorShower
         || recipe == ProjectileRecipe::DragonBreath
-        || recipe == ProjectileRecipe::DarkFireBolt;
+        || recipe == ProjectileRecipe::DarkFireBolt
+        || recipe == ProjectileRecipe::MindBlast;
     const bool isLightning =
         recipe == ProjectileRecipe::Sparks
         || recipe == ProjectileRecipe::LightningBolt
@@ -3115,6 +3218,99 @@ void spawnActorDisintegrationParticles(ParticleSystem &particleSystem, uint32_t 
         {
             break;
         }
+    }
+}
+
+void spawnActorBurnFlame(ParticleSystem &particleSystem, uint32_t seed, float x, float y, float z, float size,
+    const std::optional<std::array<uint8_t, 3>> &tint)
+{
+    if (size <= 0.0f)
+    {
+        return;
+    }
+    uint32_t flameStart = makeAbgr(255, 120, 34, 96);
+    uint32_t flameEnd = makeAbgr(190, 40, 12, 0);
+    uint32_t emberStart = makeAbgr(255, 196, 96, 255);
+    uint32_t emberEnd = makeAbgr(255, 90, 24, 0);
+    if (tint)
+    {
+        // The tint's flame darkens as it fades; its embers are lifted toward white.
+        const auto shade = [&](float gain, float lift, uint8_t alpha)
+        {
+            const auto channel = [&](uint8_t value)
+            {
+                return uint8_t(std::min(255.0f, float(value) * gain + (255.0f - float(value)) * lift));
+            };
+            return makeAbgr(channel((*tint)[0]), channel((*tint)[1]), channel((*tint)[2]), alpha);
+        };
+        flameStart = shade(1.0f, 0.0f, 96);
+        flameEnd = shade(0.6f, 0.0f, 0);
+        emberStart = shade(1.0f, 0.45f, 255);
+        emberEnd = shade(0.9f, 0.0f, 0);
+    }
+    const uint32_t hash = seed * 2654435761u + 1013904223u;
+    const float angle = hashToUnit(hash) * TwoPi;
+    const float drift = size * (0.2f + 0.5f * hashToUnit(hash >> 7));
+    FxParticleState flame;
+    flame.x = x;
+    flame.y = y;
+    flame.z = z;
+    flame.velocityX = std::cos(angle) * drift;
+    flame.velocityY = std::sin(angle) * drift;
+    flame.velocityZ = size * (2.2f + 1.6f * hashToUnit(hash >> 11));
+    flame.size = size * (0.75f + 0.5f * hashToUnit(hash >> 15));
+    flame.endSize = flame.size * 0.35f;
+    flame.drag = 1.5f;
+    flame.rotationRadians = hashToUnit(hash >> 3) * TwoPi;
+    flame.angularVelocityRadians = (hashToUnit(hash >> 19) - 0.5f) * 3.0f;
+    flame.lifetimeSeconds = 0.32f + 0.26f * hashToUnit(hash >> 23);
+    flame.fadeInSeconds = 0.04f;
+    flame.fadeOutStartSeconds = flame.lifetimeSeconds * 0.45f;
+    // Additive and dense along the burning band: low alpha keeps overlapping tongues orange instead of white.
+    flame.startColorAbgr = flameStart;
+    flame.endColorAbgr = flameEnd;
+    flame.motion = FxParticleMotion::VelocityTrail;
+    flame.blendMode = FxParticleBlendMode::Additive;
+    flame.material = FxParticleMaterial::SoftBlob;
+    flame.tag = FxParticleTag::Impact;
+    if (!particleSystem.addParticle(flame))
+    {
+        return;
+    }
+    const uint32_t extra = (hash >> 27) & 7u;
+    if (extra < 3)
+    {
+        FxParticleState ember = flame;
+        ember.velocityX *= 2.5f;
+        ember.velocityY *= 2.5f;
+        ember.velocityZ *= 1.6f;
+        ember.size = std::max(3.0f, size * 0.14f);
+        ember.endSize = ember.size * 0.5f;
+        ember.drag = 0.6f;
+        ember.lifetimeSeconds = 0.7f + 0.5f * hashToUnit(hash >> 5);
+        ember.fadeOutStartSeconds = ember.lifetimeSeconds * 0.5f;
+        ember.startColorAbgr = emberStart;
+        ember.endColorAbgr = emberEnd;
+        ember.motion = FxParticleMotion::Drift;
+        ember.material = FxParticleMaterial::Ember;
+        particleSystem.addParticle(ember);
+    }
+    else if (extra == 3)
+    {
+        FxParticleState smoke = flame;
+        smoke.z += size * 0.6f;
+        smoke.velocityZ *= 0.6f;
+        smoke.size = size * 1.1f;
+        smoke.endSize = size * 2.2f;
+        smoke.lifetimeSeconds = 1.1f;
+        smoke.fadeInSeconds = 0.25f;
+        smoke.fadeOutStartSeconds = 0.5f;
+        smoke.startColorAbgr = makeAbgr(40, 34, 30, 110);
+        smoke.endColorAbgr = makeAbgr(30, 28, 26, 0);
+        smoke.motion = FxParticleMotion::Drift;
+        smoke.blendMode = FxParticleBlendMode::Alpha;
+        smoke.material = FxParticleMaterial::Smoke;
+        particleSystem.addParticle(smoke);
     }
 }
 

@@ -11,15 +11,6 @@ namespace OpenYAMM::Engine
 {
 class AssetFileSystem;
 
-struct FontSettings
-{
-    bool preferTtf = false;
-    std::vector<std::string> ttfFonts = {"arrus"};
-
-    bool usesTrueType(const std::string &fontName) const;
-    bool operator==(const FontSettings &) const = default;
-};
-
 struct FontGlyphMetrics
 {
     int leftSpacing = 0;
@@ -62,13 +53,13 @@ struct FontAtlasImage
     std::vector<uint8_t> shadowPixels;
 };
 
-// A selected TTF requires fonts/truetype/<name>.yml and its font file in the mounted assets.
-// The original FNT supplies layout metrics. Invalid selected replacements return an explicit error.
+// A legacy face: its outlines come from fonts/truetype/<name>.yml and the font file it names, while the original FNT
+// supplies the layout metrics and the reserved symbol glyphs (CP1252 bytes without a character). A missing or invalid
+// replacement returns an explicit error.
 std::optional<FontAtlasImage> loadFontAtlas(
     const AssetFileSystem &assetFileSystem,
     const std::vector<uint8_t> &bitmapBytes,
     const std::string &fontName,
-    const FontSettings &settings,
     std::string &error);
 
 // Independent outline faces use their own advances, without requiring a legacy

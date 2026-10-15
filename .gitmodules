@@ -1,0 +1,4 @@
+[submodule "assets_source"]
+	path = assets_source
+	url = git@github.com:pjasicek/openyamm-source-assets.git
+	shallow = true

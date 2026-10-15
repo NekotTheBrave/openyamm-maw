@@ -1,6 +1,7 @@
 #include "engine/models/ModelInstance.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <utility>
 
@@ -56,6 +57,8 @@ ModelInstanceHandle ModelInstanceSystem::create(
     slot.active = true;
     slot.visible = true;
     slot.outlineColorAbgr = 0;
+    slot.hitFlash = 0.0f;
+    slot.burn.reset();
     slot.materialVariant = 0;
     slot.nodeMarkersVisible = false;
     slot.attachments.clear();
@@ -72,6 +75,7 @@ ModelInstanceHandle ModelInstanceSystem::create(
     slot.layerPose = {};
     slot.transitionElapsed = 0.0f;
     slot.transitionDuration = 0.0f;
+    slot.transitionShown = 0.0f;
     slot.rootTransform = rootTransform;
     slot.asset = std::move(asset);
     slot.deformationBounds.reset();
@@ -99,6 +103,7 @@ bool ModelInstanceSystem::destroy(ModelInstanceHandle handle)
     {
         return false;
     }
+    standInChanged(*pSlot);
     pSlot->active = false;
     pSlot->asset.reset();
     pSlot->attachments.clear();
@@ -121,6 +126,7 @@ bool ModelInstanceSystem::destroy(ModelInstanceHandle handle)
 
 void ModelInstanceSystem::clear()
 {
+    m_standInRevision = nextStandInRevision();
     for (uint32_t index = 0; index < m_slots.size(); ++index)
     {
         Slot &slot = m_slots[index];
@@ -166,6 +172,7 @@ bool ModelInstanceSystem::setTransform(ModelInstanceHandle handle, const ModelTr
     {
         pSlot->rootTransform = transform;
         evaluate(*pSlot, false);
+        standInChanged(*pSlot);
     }
     return true;
 }
@@ -177,7 +184,11 @@ bool ModelInstanceSystem::setVisible(ModelInstanceHandle handle, bool visible)
     {
         return false;
     }
-    pSlot->visible = visible;
+    if (pSlot->visible != visible)
+    {
+        pSlot->visible = visible;
+        standInChanged(*pSlot);
+    }
     return true;
 }
 
@@ -199,7 +210,11 @@ bool ModelInstanceSystem::setMaterialVariant(ModelInstanceHandle handle, uint32_
     {
         return false;
     }
-    pSlot->materialVariant = variant;
+    if (pSlot->materialVariant != variant)
+    {
+        pSlot->materialVariant = variant;
+        standInChanged(*pSlot);
+    }
     return true;
 }
 
@@ -216,7 +231,58 @@ bool ModelInstanceSystem::setOutlineColor(ModelInstanceHandle handle, uint32_t c
     {
         return false;
     }
-    pSlot->outlineColorAbgr = colorAbgr;
+    if (pSlot->outlineColorAbgr != colorAbgr)
+    {
+        pSlot->outlineColorAbgr = colorAbgr;
+        standInChanged(*pSlot);
+    }
+    return true;
+}
+
+bool ModelInstanceSystem::setHitFlash(ModelInstanceHandle handle, float amount)
+{
+    Slot *pSlot = find(handle);
+    if (pSlot == nullptr)
+    {
+        return false;
+    }
+    pSlot->hitFlash = std::clamp(amount, 0.0f, 1.0f);
+    return true;
+}
+
+bool ModelInstanceSystem::setBurn(ModelInstanceHandle handle, const ModelBurn *pBurn)
+{
+    Slot *pSlot = find(handle);
+    if (pSlot == nullptr)
+    {
+        return false;
+    }
+    const bool wasConsumed = pSlot->burn && modelBurnConsumed(*pSlot->burn);
+    pSlot->burn = pBurn != nullptr ? std::optional<ModelBurn>(*pBurn) : std::nullopt;
+    if (wasConsumed != (pSlot->burn && modelBurnConsumed(*pSlot->burn)))
+    {
+        pSlot->pickingBoundsRevision = UINT64_MAX;
+    }
+    return true;
+}
+
+bool ModelInstanceSystem::setNodeRotations(ModelInstanceHandle handle, std::vector<ModelNodeRotation> rotations)
+{
+    Slot *pSlot = find(handle);
+    if (pSlot == nullptr || std::any_of(rotations.begin(), rotations.end(), [&](const ModelNodeRotation &rotation)
+        {
+            return rotation.nodeIndex >= pSlot->asset->nodes.size()
+                || !std::all_of(rotation.rotation.begin(), rotation.rotation.end(),
+                    [](float value) { return std::isfinite(value); });
+        }))
+    {
+        return false;
+    }
+    if (pSlot->nodeRotations != rotations)
+    {
+        pSlot->nodeRotations = std::move(rotations);
+        evaluate(*pSlot, false);
+    }
     return true;
 }
 
@@ -235,6 +301,7 @@ bool ModelInstanceSystem::setAttachments(ModelInstanceHandle handle, std::vector
         }
     }
     pSlot->attachments = std::move(attachments);
+    pSlot->pickingBoundsRevision = UINT64_MAX;
     return true;
 }
 
@@ -252,7 +319,13 @@ bool ModelInstanceSystem::setStaticStandIn(ModelInstanceHandle handle, std::shar
     {
         return false;
     }
-    pSlot->staticStandIn = std::move(asset);
+    if (pSlot->staticStandIn != asset)
+    {
+        // Counts the stand-in that goes as well as the one that comes.
+        standInChanged(*pSlot);
+        pSlot->staticStandIn = std::move(asset);
+        standInChanged(*pSlot);
+    }
     return true;
 }
 
@@ -270,7 +343,12 @@ bool ModelInstanceSystem::setCoverage(ModelInstanceHandle handle, float coverage
     {
         return false;
     }
-    pSlot->coverage = std::clamp(coverage, 0.0f, 1.0f);
+    const float clamped = std::clamp(coverage, 0.0f, 1.0f);
+    if (pSlot->coverage != clamped)
+    {
+        pSlot->coverage = clamped;
+        standInChanged(*pSlot);
+    }
     return true;
 }
 
@@ -290,6 +368,18 @@ uint32_t ModelInstanceSystem::outlineColor(ModelInstanceHandle handle) const
 {
     const Slot *pSlot = find(handle);
     return pSlot != nullptr ? pSlot->outlineColorAbgr : 0;
+}
+
+float ModelInstanceSystem::hitFlash(ModelInstanceHandle handle) const
+{
+    const Slot *pSlot = find(handle);
+    return pSlot != nullptr ? pSlot->hitFlash : 0.0f;
+}
+
+const ModelBurn *ModelInstanceSystem::burn(ModelInstanceHandle handle) const
+{
+    const Slot *pSlot = find(handle);
+    return pSlot != nullptr && pSlot->burn ? &*pSlot->burn : nullptr;
 }
 
 bool ModelInstanceSystem::play(ModelInstanceHandle handle, const std::string &clipName, ModelPlaybackMode mode)
@@ -406,7 +496,7 @@ bool ModelInstanceSystem::sample(ModelInstanceHandle handle, uint32_t clipIndex,
 
 bool ModelInstanceSystem::sampleBlended(ModelInstanceHandle handle, uint32_t clipIndex, float timeSeconds,
     const ModelTransform &transform, float deltaSeconds, float transitionSeconds,
-    const ModelAnimationLayer &layer, bool restart)
+    const ModelAnimationLayer &layer, bool restart, float blendStepSeconds)
 {
     Slot *pSlot = find(handle);
     if (pSlot == nullptr || clipIndex >= pSlot->asset->clips.size() || !std::isfinite(timeSeconds) || timeSeconds < 0
@@ -438,6 +528,7 @@ bool ModelInstanceSystem::sampleBlended(ModelInstanceHandle handle, uint32_t cli
         pSlot->transitionPose.morphWeights = pSlot->pose.morphWeights;
         pSlot->transitionDuration = transitionSeconds;
         pSlot->transitionElapsed = 0.0f;
+        pSlot->transitionShown = 0.0f;
     }
     const bool blending = pSlot->transitionDuration > 0.0f;
     pSlot->transitionElapsed += deltaSeconds;
@@ -445,14 +536,23 @@ bool ModelInstanceSystem::sampleBlended(ModelInstanceHandle handle, uint32_t cli
     {
         pSlot->transitionDuration = 0.0f;
     }
+    const float shown = blendStepSeconds > 0.0f
+        ? std::floor(pSlot->transitionElapsed / blendStepSeconds) * blendStepSeconds : pSlot->transitionElapsed;
+    // A blend's end always shows; between steps the pose is unchanged.
+    const bool blendStepped = pSlot->transitionDuration <= 0.0f || shown != pSlot->transitionShown;
+    pSlot->transitionShown = shown;
     pSlot->layer = layer;
     pSlot->clipIndex = clipIndex;
     pSlot->clipSelected = true;
     pSlot->playing = false;
-    pSlot->rootTransform = transform;
+    if (pSlot->rootTransform != transform)
+    {
+        pSlot->rootTransform = transform;
+        standInChanged(*pSlot);
+    }
     pSlot->timeSeconds = clampedTime;
     // A blend only moves while time advances: a paused world (inspect, console, dialogue) keeps its pose and palette.
-    const bool blendMoved = blending && deltaSeconds > 0.0f;
+    const bool blendMoved = blending && deltaSeconds > 0.0f && blendStepped;
     if (changed || blendMoved)
     {
         evaluate(*pSlot, localChanged || blendMoved);
@@ -572,7 +672,30 @@ const ModelBounds *ModelInstanceSystem::pickingBounds(ModelInstanceHandle handle
     evaluateMatrices(*pSlot);
     if (pSlot->pickingBoundsRevision != pSlot->pose.matrixRevision)
     {
-        pSlot->pickingBounds = modelExactPoseBounds(*pSlot->asset, pSlot->pose, true);
+        if (pSlot->burn && modelBurnConsumed(*pSlot->burn))
+        {
+            pSlot->pickingBounds = {};
+            for (const ModelAttachment &attachment : pSlot->attachments)
+            {
+                const ModelMatrix &matrix = pSlot->pose.globalMatrices[attachment.nodeIndex];
+                const ModelBounds &bounds = attachment.asset->staticBounds;
+                if (!bounds.valid || !modelMatrixVisible(matrix))
+                {
+                    continue;
+                }
+                for (int corner = 0; corner < 8; ++corner)
+                {
+                    expandBounds(pSlot->pickingBounds, matrix, {
+                        (corner & 1) ? bounds.max[0] : bounds.min[0],
+                        (corner & 2) ? bounds.max[1] : bounds.min[1],
+                        (corner & 4) ? bounds.max[2] : bounds.min[2]});
+                }
+            }
+        }
+        else
+        {
+            pSlot->pickingBounds = modelExactPoseBounds(*pSlot->asset, pSlot->pose, true);
+        }
         pSlot->pickingBoundsRevision = pSlot->pose.matrixRevision;
     }
     return &pSlot->pickingBounds;
@@ -595,10 +718,28 @@ const ModelBounds *ModelInstanceSystem::motionBounds(ModelInstanceHandle handle)
     return pSlot != nullptr ? &pSlot->motionBounds : nullptr;
 }
 
+const ModelDeformationBounds *ModelInstanceSystem::deformationBounds(ModelInstanceHandle handle) const
+{
+    const Slot *pSlot = find(handle);
+    return pSlot != nullptr ? pSlot->deformationBounds.get() : nullptr;
+}
+
 float ModelInstanceSystem::playbackTime(ModelInstanceHandle handle) const
 {
     const Slot *pSlot = find(handle);
     return pSlot != nullptr ? pSlot->timeSeconds : 0.0f;
+}
+
+uint32_t ModelInstanceSystem::sampledClip(ModelInstanceHandle handle) const
+{
+    const Slot *pSlot = find(handle);
+    return pSlot != nullptr && pSlot->clipSelected ? pSlot->clipIndex : std::numeric_limits<uint32_t>::max();
+}
+
+const ModelAnimationLayer *ModelInstanceSystem::sampledLayer(ModelInstanceHandle handle) const
+{
+    const Slot *pSlot = find(handle);
+    return pSlot != nullptr ? &pSlot->layer : nullptr;
 }
 
 bool ModelInstanceSystem::isPlaying(ModelInstanceHandle handle) const
@@ -676,6 +817,20 @@ void ModelInstanceSystem::evaluate(Slot &slot, bool localPoseChanged)
     slot.boundsDirty = true;
 }
 
+void ModelInstanceSystem::standInChanged(const Slot &slot)
+{
+    if (slot.staticStandIn != nullptr)
+    {
+        m_standInRevision = nextStandInRevision();
+    }
+}
+
+uint64_t ModelInstanceSystem::nextStandInRevision()
+{
+    static std::atomic<uint64_t> next = 1;
+    return next++;
+}
+
 void ModelInstanceSystem::evaluateMatrices(const Slot &slot) const
 {
     if (!slot.matricesDirty)
@@ -684,17 +839,21 @@ void ModelInstanceSystem::evaluateMatrices(const Slot &slot) const
     }
     if (slot.localPoseDirty && slot.clipSelected && !slot.asset->clips.empty())
     {
-        evaluateModelClip(*slot.asset, slot.clipIndex, slot.timeSeconds, slot.pose);
+        // Local matrices are composed once, after the blends (the layer pose needs none).
+        sampleModelClip(*slot.asset, slot.clipIndex, slot.timeSeconds, slot.pose);
         if (slot.layer.weight > 0.0f)
         {
-            evaluateModelClip(*slot.asset, slot.layer.clipIndex, slot.layer.timeSeconds, slot.layerPose);
-            blendModelPose(*slot.asset, slot.pose, slot.layerPose, slot.layer.weight, *slot.layer.mask);
+            sampleModelClip(*slot.asset, slot.layer.clipIndex, slot.layer.timeSeconds, slot.layerPose);
+            blendModelPose(*slot.asset, slot.pose, slot.layerPose, slot.layer.weight, *slot.layer.mask, false);
         }
         if (slot.transitionDuration > 0.0f)
         {
+            // Eased in and out, so the body neither jerks into the blend nor stops dead at its end.
+            const float progress = std::clamp(slot.transitionShown / slot.transitionDuration, 0.0f, 1.0f);
             blendModelPose(*slot.asset, slot.pose, slot.transitionPose,
-                1.0f - slot.transitionElapsed / slot.transitionDuration);
+                1.0f - progress * progress * (3.0f - 2.0f * progress), {}, false);
         }
+        composeModelPose(*slot.asset, slot.pose);
     }
     else if (slot.localPoseDirty)
     {
@@ -702,6 +861,27 @@ void ModelInstanceSystem::evaluateMatrices(const Slot &slot) const
     }
     slot.localPoseDirty = false;
     evaluateModelHierarchy(*slot.asset, composeModelTransform(slot.rootTransform), slot.pose);
+    for (const ModelNodeRotation &rotation : slot.nodeRotations)
+    {
+        // Rotate about the node's world pivot: global' = T(p) R T(-p) global, for the node and its descendants.
+        const ModelMatrix &pivot = slot.pose.globalMatrices[rotation.nodeIndex];
+        ModelTransform turn;
+        turn.translation = {pivot[12], pivot[13], pivot[14]};
+        turn.rotation = rotation.rotation;
+        ModelTransform back;
+        back.translation = {-pivot[12], -pivot[13], -pivot[14]};
+        const ModelMatrix about = multiplyModelMatrices(composeModelTransform(turn), composeModelTransform(back));
+        slot.rotatedNodes.assign(slot.asset->nodes.size(), 0);
+        for (uint32_t nodeIndex : slot.asset->hierarchyOrder)
+        {
+            const int parentIndex = slot.asset->nodes[nodeIndex].parentIndex;
+            if (nodeIndex == rotation.nodeIndex || (parentIndex >= 0 && slot.rotatedNodes[parentIndex] != 0))
+            {
+                slot.rotatedNodes[nodeIndex] = 1;
+                slot.pose.globalMatrices[nodeIndex] = multiplyModelMatrices(about, slot.pose.globalMatrices[nodeIndex]);
+            }
+        }
+    }
     ++slot.pose.matrixRevision;
     // Nonnegative, normalized skin weights keep each vertex inside the union of its joint bounds.
     slot.cullingBounds = modelPoseBounds(*slot.asset, slot.pose, *slot.deformationBounds);

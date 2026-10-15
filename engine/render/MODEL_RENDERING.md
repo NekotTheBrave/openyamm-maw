@@ -17,7 +17,9 @@ Shaders: `game/shaders/vs_model*.sc`, `fs_model.sc`, `model_skin.sh`, `model_sta
 | Colour LODs | Base mesh `extras.openyamm_lods`: up to 3 coarser mesh indices, coarsest last, decreasing triangles. Shadow-only chains go in `openyamm_shadow_lods` (up to 4). Static models get these from `tools/link_static_model_lods.py`; creatures from `tools/build_actor_lods.py`. |
 | Colour variants (tiers) | `KHR_materials_variants`. Tiers share one skin: a region mask (`extras.openyamm_region_mask`, up to four RGBA channels) and per-tier `openyamm_region_ramps` (16 linear stops over a luminance range per region), written by `level_generation/creatures/claude_shared/region_variants.py`. `actors.yml` picks a tier with `skin:`. |
 | Specular | `extras.openyamm_specular` (0..1; 0 skips sky reflection and specular lobes). `extras.openyamm_specular_mask: true` multiplies it per texel by the metallic-roughness texture's red channel, which glTF leaves unused. It lets a matte head and glossy armour share one material. |
+| Normal maps | glTF convention: +x along +u, +y up the image (against +v), tangent space from screen derivatives (no TANGENT attribute needed; the frame's sign is divided out, so OpenGL and Vulkan agree). Meshy's retexture returns +y-down maps: `tools/normal_map_convention.py` measures each map (slope integrability) and inverts green, run by `tools/prepare_actor_glb.py` and `tools/link_static_model_lods.py`; `--check` audits installed GLBs. |
 | Static decoration extras | `openyamm_wind`, `openyamm_billboard`, `openyamm_translucency`, `openyamm_uv_scroll`, `openyamm_flipbook`, `openyamm_flutter`; COLOR_0 multiplies the base colour (`engine/models/ModelAsset.h` documents each). |
+| Creature texture scroll | `openyamm_uv_scroll` also scrolls creature (skinned) materials: `u_modelScroll` in `vs_model` and `vs_model_skinned_instanced`, wrapped to one texture period, on the clock `render()` is given. The air elemental (`mm6_aie1`) spins its wind with it, so the spin stays continuous across clip changes. A blended creature primitive keeps its authored triangle order, which is its draw order. |
 | Sockets | Empty nodes named `Socket_*` (palms, eyes, staff head) that FX attach to; `actors.yml` names them. |
 | Held items | Not part of the creature: a separate unskinned GLB in the space of the bone that carries it (section 3). |
 
@@ -53,6 +55,14 @@ per creature, which is what instancing (section 4) batches.
 - `WorldFxSystem` binds actors to models from `actors.yml`. One binding per monster descriptor. An attachment
   without its own `skin:` uses the carrier's skin when the item has a variant of that name (split items do), so a
   tier's item matches its body; a different weapon per tier or boss is just a different `attachments` model.
+- **When actor models load.** Preloaded, not on first sight: building a binding costs about 20–100 ms per model
+  (GLB parse and cooked texture upload; 2026-10-15, 88 MM6 actor GLBs, median 29 ms), and a first-sight load would
+  stall combat for that long. `MapAssetLoader` lists the map's model descriptors (`ActorPreviewBillboardSet::
+  modelDescriptors`: placed and saved actors, spawn points, and every tier of all three encounter slots, which event
+  scripts may summon). `GameApplication::prepareGameplayRendering` builds them and creates their instances
+  (`syncActorModels`) before its render passes, so both the load and the GPU upload happen under the loading screen.
+  Monsters outside that list still load on first sight: summoned wisps (rare, by choice), actor-behaviour `summon()`
+  ids, and arena fighters.
 - **Static stand-ins (corpses).** `ModelInstanceSystem::setStaticStandIn(handle, asset)` replaces an instance's own
   skinned draws with a static asset placed at its root transform; the instance keeps its pose, bounds, picking and
   attachments. `WorldFxSystem` sets it when an actor is dead, its death clip has finished and its Dead clip is held
@@ -77,6 +87,15 @@ per creature, which is what instancing (section 4) batches.
   saves on the first actor update after loading. Once the body is gone, hover outlines and picking go through the
   satchel; a sunk empty corpse reports empty bounds and is not picked. Corpses seen already at rest (a loaded map)
   show their satchels at once. `corpses=keep` leaves the bodies as before.
+- **Inspect portrait.** The actor inspect popup shows a modelled actor's model instead of its sprite
+  (`game/render/ActorModelPreview`). `WorldFxSystem::syncInspectPortrait` keeps a hidden copy of the actor's model
+  (same skin and attachments) at the origin, which no world, shadow or reflection pass draws. On the popup's clock it
+  plays the sprite preview's demonstration: fidget, then standing, then a fidget or an attack by the monster's inspect
+  attack chance. Its camera is framed once from the per-joint boxes of the demonstrated poses (a swung weapon may reach
+  past the edge). `ModelRenderer::renderPortrait` draws that one instance at LOD 0 into a small offscreen target
+  (`ActorPortraitView`, ordered before the HUD view), without sun shadows, hover outlines or a change of the world's sky
+  environment and LOD state. The copy is released on the first frame after the popup closes; actors without a model
+  keep their sprite.
 
 ```yaml
 - descriptor: Necromancer A                # monster table name
@@ -87,13 +106,101 @@ per creature, which is what instancing (section 4) batches.
     - model: worlds/mm6/models/mm6_pmn2_artifact_staff.glb
       node: Staff
   animation:
-    cast_color: [176, 70, 255]             # cast charge colour instead of the spell element's
-    cast_focus_socket: Socket_Staff_Head   # second charge glow at the item
-    ranged_hand_effects: {Dark: openyamm:fx/creature_dark_staff}
-    ranged_hand_sockets: [Socket_Staff_Head]
-    # also: cast, run, stride_length, upper_body_root, sockets, eye_color, glow scales
+    sockets:                               # named points: a node, or a node plus an offset in its space
+      staff_head: Socket_Staff_Head
+      palm_left: Socket_Palm_Left
+      tip: {node: Staff, offset: [0, 0.82, 0]}
+    events:                                # optional action markers and charge sockets, see below
+      attack_ranged:
+        impact: 0.75
+        glow: [staff_head]                 # the element charges here; the missile leaves here
+        effects: {Dark: openyamm:fx/creature_dark_staff}   # named effect instead of the glow, per element
+      cast: {impact: 0.75, glow: [staff_head], color: [176, 70, 255]}   # colour instead of the projectile's
+      attack_melee: {impact: 0.70}
+    look: {nodes: [neck, Head], max_yaw_degrees: 60, max_pitch_degrees: 35}   # optional head turn, see below
+    # also: cast, run, stride_length, upper_body_root, eye_color (sockets eye_left/eye_right)
   clips: {standing: …, walking: …, attack_melee: …, attack_ranged: …, hit: …, dying: …, dead: …, fidget: …}
 ```
+
+**Action timing (`animation.events`).** Gameplay timing never follows a model: an attack or cast lasts the native
+sprite action, and the game applies it (the melee hit lands, the missile or spell is released) when the sprite's
+authored contact frame appears (`engine/rendering/sprite_attack_timing.yml`), or when the whole sprite animation has
+played for a sprite without one, as MM8 does (`re_mm8/ACTOR_ATTACK_TIMING.md`). The monster table's recovery runs from
+the action's start, exactly as for the sprite. A model clip may keep its own, longer timing (a mocap or library clip at
+its intended speed): its event `impact` is the clip time of the moment the game acts (the blow lands, the staff or bow
+releases). `WorldFxSystem` fits the clip's wind-up `[0, impact]` to the native time until that moment, so that frame
+plays exactly when the game acts (`GameplayRuntimeActorState::attackImpactLeadSeconds` is the action time still to
+run). The rest of the clip plays at its own speed: through the rest of the action (whole body), then as
+follow-through: the whole body while the actor stands, the upper body over the gait while it walks (needs
+`upper_body_root`). A hit, death, script or the next attack cuts it with the usual blend. Author the wind-up close to
+that native time (stretching beyond about ±20 % shows) and keep the follow-through within the monster's recovery
+(MM6 cleric: 0.75 s action, 1.33-1.5 s recovery). Without a marker, a clip runs on the action clock and is cut when
+the action ends. The contact frames and markers are picked in `level_generation/creatures/timing_review/`.
+
+**Charge and release sockets (ranged attack and cast events).** `glow` lists one to four sockets where the
+projectile's charge forms while the action winds up: both palms, a staff head, an eye or a mouth. It goes out with a
+burst of sparks when the action releases. `release` is where the missile or spell leaves, indoors and outdoors
+(`WorldFxSystem::actorLaunchPoint`). Without it, the projectile leaves the single glow socket, or the middle of
+several (between the palms). Sprite actors, models without either key, and points found away from the body keep the
+body origin. The charge colour comes from the projectile the action releases:
+- a spell's recipe;
+- a missile token through `monster_projectiles.txt` and its object (an Energy robot's blaster);
+- with the enhanced projectile style, the flight light of that monster's projectile binding.
+
+`color` overrides it, and `glow_scale` sizes the glow. A physical missile (arrow, rock) charges only when it has a
+`color`. On a ranged attack, `effects` maps a missile element to a named effect drawn at the glow sockets instead of the
+glow. The sockets are placed in `level_generation/creatures/timing_review/`. Regressions:
+`mm6_cleric_actor_marked_attack_fits_the_action_and_follows_through`,
+`mm6_cleric_actor_ranged_attack_launches_from_staff_head`.
+
+**Fidget and death past the native length.** The AI ends a fidget (Bored) after the native sprite length; a longer
+fidget clip then plays to its end while the actor stands, through the same follow-through path (presentation only:
+the AI's timing is unchanged). Walking, an attack, a hit, death or a script cuts it with the usual blend. A fidget
+mapped to the Standing or Walking loop just continues that loop. A death clip longer than the native death likewise
+finishes before the Dead clip is held. Hit clips are still cut at the native length. Regression:
+`mm6_skeleton_actor_fidget_clip_plays_past_the_native_fidget`.
+
+**Back-face culling of hidden triangles** (a geometry pass of the model cook: `tools/cook_model_geometry.py`, ray tests in
+`tools/CookModelGeometry.cpp`). Creature exports (Meshy and similar) mark every material double-sided, so the GPU
+rasterizes and shades every back face that draws before the surface covering it. The cook casts 64 rays from just
+behind each triangle of an opaque double-sided primitive over its back hemisphere (up to 89° from the reversed normal:
+thin tubes along a membrane show their backs at grazing angles). A triangle whose rays all hit an opaque surface of the
+same mesh cannot show its back to any outside viewer in the bind pose. The primitive then draws with a single-sided
+copy of its material (and of every KHR_materials_variants tier material), and each triangle whose back can be seen
+(capes, wings, skirts, open sleeves and necks) gets a reversed copy on duplicated vertices with negated normals, as
+two-sided cloth is usually modelled. Each primitive stays one draw in its slot. A primitive where more than a quarter
+of the triangles show their back keeps its double-sided material (cheaper than the copies; the demon's sheet-like LOD
+meshes). Alpha-tested and blended primitives and the dedicated shadow meshes are unchanged. Over 40 MM6 creatures:
+about 90 % of the checked triangles single-sided, +5 % triangles. Corridor of swordsmen (`saves/save40.oysav`): main
+view about 505 → 440 µs, creature CPU unchanged (a first layout with a separate double-sided primitive doubled the
+draws and cost about 40 µs of main thread); outdoor reference poses unchanged. Blender renders from nine directions
+match the originals within edge noise (a forced single-sided material opened up to 3,300 pixels: bat wings, robes and
+skirts seen from below). About 8 s per creature in the first (Blender) version of the pass.
+Until the switch to cooked models, `tools/install_model.py` applies the same pass to the uncooked runtime copy in
+`assets_dev` (`tools/model_backface_split.py`, marked `asset.extras.openyamm_backface_split`; 0.25 s per creature);
+the sources in `assets_source` stay unprocessed, and the cook applies the pass itself (ASSET_COOKING_PLAN.md §12).
+
+**Vertex cache order** (`GltfModelLoader`). Every loaded triangle primitive except blended materials is reordered
+for the GPU's post-transform vertex cache (`meshopt_optimizeVertexCacheFifo`, meshoptimizer from bgfx's `3rdparty`).
+Over all models the vertex shader ran about 1.46 times per vertex, now about 1.03; in the corridor below the main view
+went 606 → ~540 µs. Reordering every model in the game takes about 70 ms on the desktop (a map loads a fraction). Blended materials keep their authored triangle order, which is also their draw order. Cooked models are ordered by the cook
+(`asset.extras.openyamm_cooked.geometry.vertex_cache`) and skip it at load.
+
+**Animation rate** (`WorldFxSystem::syncActorModels`). Each actor samples its clips at most 240 times a second,
+60 beyond 750 units, 15 beyond 1500 and 8 (the native sprite rate) beyond 3000, each on its own phase (with
+`video.model_lods`). Transition blends advance in the same steps (`ModelInstanceSystem::sampleBlended`,
+`blendStepSeconds`). Root motion stays per frame and only recomposes the joint hierarchy. Pose evaluation was about
+30 % of the main thread with the swordsman crowd at ~1000 FPS, mostly from fights starting about 240 transitions a
+second; it is now about 12 %. Local matrices are composed once, after the layer and transition blends.
+
+**Head look (`animation.look`).** The listed nodes, root to tip (neck, head), turn toward the party's eyes
+(`IGameplayWorldRuntime::partyEyeZ`: the indoor camera eye or the outdoor world's `partyMovement.eyeHeight`) over every
+clip except death, scripts and the corpse. The turn is relative to the body's facing, seen from the last node's rest
+height above the feet, clamped to the limits, shared equally between the nodes and eased in and out over about
+0.2 s. It fades back to the clip's own head when the party is more than 20° outside the yaw limit (behind the actor)
+or beyond 2048 units. It is decided and applied at most 30 times a second per actor (15 beyond the 1500-unit
+animation LOD distance), each actor on its own phase, and costs nothing while the head rests. `ModelInstanceSystem::setNodeRotations` applies such post-clip world rotations about each node's pivot to
+its subtree, so attachments and sockets follow. Regression: `mm6_cleric_actor_head_turns_toward_the_party`.
 
 ## 4. How `ModelRenderer` draws
 
@@ -112,6 +219,46 @@ scale and key light. Batches are per primitive, material and winding. Each insta
 (rgb), sun visibility, and its palette row. One draw covers every creature on the same LOD of the same model and
 tier. Point-lit creatures (most indoors), outlined ones, morphing ones (the demon's face) and blended materials keep
 their own draws through `submit()`. That path is the reference: `render instancing off` must look identical.
+
+**Creature depth prepass** (`ModelRenderer::render`, `OpaquePass`). Opaque creature draws (instanced and single) at
+colour LOD 0 first write only depth, then shade with an equal-depth test and no depth write, so each pixel is lit
+once. Smaller creatures draw in one pass: their second pass over the geometry cost more than it saved (including
+LOD 1 cost about 35 µs in the corridor below; all levels cost up to 29 µs outdoors). Creature
+materials are double-sided and creatures overlap each other, and their lighting is the costly part: in a corridor of
+about 30 swordsmen and their 3D guards (`saves/save40.oysav`, MM6 `6d12.blv`) the main view takes 578 instead of
+775 µs of GPU. Forcing single-sided culling saved about as much, but would open thin cloth. With the prepass, point
+lights' specular costs nothing measurable. The depth pass sets outline flag 2: `vs_model.sc` keeps the surface in
+place (1 is the hover outline shell, which is pushed out) and `fs_model.sc` returns right after the alpha test. Both
+passes run the same programs, so their depths match exactly. Every skinned draw's palette rows are allocated before
+either pass is submitted: a palette growth between the passes would leave the shaded pass reading rows never written
+to the new texture. Water reflections draw in one pass.
+
+**Creature contour** (`drawsContour`, `submitContour`). Every opaque material with edge darkening (creature skins)
+draws an inverted hull right after its body, in both the instanced and the single paths: back faces only, pushed out
+along the screen-space normal by `CreatureContourPixels` (1.5 per 1080 view rows, at least one pixel) and written with
+depth, so only the rim past the silhouette and along limbs crossing the body survive. Its colour is the albedo times
+`CreatureContourDarkness` (0.25) of the ambient light, fogged, unlit and without emission (outline flag 3 in
+`fs_model.sc`). It repeats the body's vertex work (skinning) and costs little fill. Reflection passes, attachments and
+static stand-ins draw none. Off by default: `[video] creature_outlines=true` in `settings.ini` (or
+`render creature_outlines on`) turns it on.
+
+**Burning creatures** (`ModelBurn`, `ModelInstanceSystem::setBurn`, `bindBurn`; actors.yml `death_effect: burn`).
+Each skinned material carries a linear burn map (`extras.openyamm_burn_map`, made by
+`level_generation/creatures/claude_shared/burn_maps.py`): red orders the surface (0 burns first), green drives glowing
+cracks. The cook bakes the red channel at each vertex into a `_BURN_ORDER` vertex attribute
+(`tools/cook_model_geometry.py`), which `WorldFxSystem::buildActorBurnSurface` reads to place the flames on the CPU;
+the burn map itself cooks like any other texture (BC5 desktop, EAC RG android) and only the shaders sample it. A
+burning model must therefore be cooked; an uncooked one fails its binding. One front per instance sweeps that order. In `fs_model.sc` texels within the char width ahead of the front
+darken towards black with glowing cracks, a narrow edge glows brightest where the hole begins, and texels past the edge
+are discarded; `fs_model_shadow.sc` discards the same texels. A second pass of the same skinned draw
+(`submitBurnFire`, burn pass 2) shades only the freshly burnt texels, for the fire width behind the edge, as rising
+world-space noise strongest at the silhouette, premultiplied over the scene without depth writes and with both faces:
+the body briefly remains a shape of fire. A burning draw keeps its own draw (no instancing, no depth prepass, no
+contour), casts from its colour meshes (a merged shadow mesh has one material and so one burn map), and stops drawing
+and releases its palette rows once the front passes `1 + edge + fire`. `u_modelBurn` is set on every draw because
+uniforms persist between draws. The emission colour is linear: fire orange is about `[1.0, 0.18, 0.02]`.
+After the burn completes, picking uses only visible attachment bounds (for example, Wyrm charred remains),
+or the loot satchel when present; the vanished body is no longer pickable.
 
 **Attachments** become static placements (`collectAttachments`): one `ModelStaticGroup` per item model and
 variant, with each placement at its carrier's node matrix. A placement takes the carrier's colour LOD level, its
@@ -219,8 +366,8 @@ reflected sprites they replace follow the same setting; actors with models are s
 per placement at the game's placement matrix, invisible to the camera and to bounces, in the sun terms only (like
 the sprite cards). Decorations without a model keep their sprite cards. The models and `decorations.yml` are
 recorded as bake dependencies. Changing a decoration model or its binding makes the bakes of the maps that use it
-stale. The game still loads them and notes them in `assets_dev/STALE_LIGHTING_BAKES.txt`. Re-bake what
-`tools/lighting/stale_bakes.py` lists before a release (`tools/lighting/baked_outdoors/README.md`).
+stale; the game loads them without checking. Re-bake what `tools/lighting/stale_bakes.py` lists before a release
+(`tools/lighting/baked_outdoors/README.md`).
 - The casters skip blended and camera-facing (`openyamm_billboard`) faces, as the runtime shadows do: a flame card
   has no fixed shadow, and in Blender a flipbook card would cast its whole atlas (`casts_shadow` in the bake).
 
@@ -240,6 +387,13 @@ indoor maps have no bake. A binding without `maps` applies to every map of its k
 - `still: true` records that a natively animated sprite is drawn by a still model. The regression
   `mm6_decoration_models_keep_native_animation` fails for an animated sprite whose model has no flipbook, uv scroll,
   flutter, wind, pulse or swing.
+
+**State overlays.** `worlds/<world>/models/decoration_overlays.yml` (shared by indoor and outdoor maps) gives a bound
+decoration one more model per interactive decoration state (the decor var a barrel or cauldron event steps through),
+`null` for none. The overlay is authored in the decoration model's asset space and drawn in its own group with the
+decoration's placement matrix. It is never picked or outlined, and it hides with the decoration. It lives apart from
+`decorations.yml` so that adding one leaves the outdoor bakes current (overlays cast no baked shadow). The MM6 stat
+barrels use it for their liquids: `mm6_deco_barrel_liquid_<colour>.glb` for states 1–7, removed once drunk.
 
 **Drawing.** `IndoorRenderer` loads the set beside the decoration billboards and draws it with `renderStatic`
 before the creatures. Each frame, `updateDecorationModels`:

@@ -10,6 +10,7 @@ namespace OpenYAMM::Game
 class Party;
 struct GameplayInputFrame;
 class IGameplayWorldRuntime;
+enum class ActorTurnBasedMode : uint8_t;
 
 enum class TurnBasedCombatStage : uint8_t
 {
@@ -43,18 +44,20 @@ public:
     bool hasPendingActions() const;
     bool playerActionReady(const Party &party) const;
     bool shouldUpdateActorAi(const Party *pParty) const;
+    ActorTurnBasedMode actorMode() const;
     bool frontQueueCharacter(size_t &memberIndex) const;
     const std::vector<QueueEntry> &queue() const;
 
     bool begin(Party &party, const IGameplayWorldRuntime *pWorldRuntime);
-    void end(Party *pParty, bool preserveRecovery = true);
+    void end(Party *pParty, IGameplayWorldRuntime *pWorldRuntime, bool preserveRecovery = true);
     void reset();
 
     bool canToggleOff(const Party &party) const;
-    bool toggle(Party &party, const IGameplayWorldRuntime *pWorldRuntime);
+    bool toggle(Party &party, IGameplayWorldRuntime *pWorldRuntime);
     bool update(Party *pParty, IGameplayWorldRuntime *pWorldRuntime, float deltaSeconds);
 
-    bool noteMovementInput(GameplayInputFrame &input);
+    // Movement-stage input spends the movement budget by walking time (one point per 1/128 s held).
+    bool noteMovementInput(GameplayInputFrame &input, float deltaSeconds);
     float movementDeltaSecondsForFrame(float fallbackDeltaSeconds) const;
     float consumePendingGameTimeAdvanceMinutes();
     void clearMovementInput(GameplayInputFrame &input) const;
@@ -75,16 +78,20 @@ private:
     static constexpr size_t MaximumTrackedMembers = 5;
 
     void rebuildInitialQueue(Party &party, const IGameplayWorldRuntime *pWorldRuntime);
+    void addArrivedCombatants(const Party &party, const IGameplayWorldRuntime *pWorldRuntime);
+    void removeInvalidActorEntries(const IGameplayWorldRuntime *pWorldRuntime);
     std::optional<size_t> readyCharacterQueueIndex(const Party *pParty) const;
     bool readyActorQueued() const;
     void sortQueue(Party *pParty);
     void selectFrontCharacter(Party *pParty);
     void removeInvalidEntries(const Party &party);
-    void advanceAttackQueue(Party *pParty, bool resolveReadyActors);
+    void advanceAttackQueue(Party *pParty);
+    void beginReadyActorActions(Party *pParty, IGameplayWorldRuntime *pWorldRuntime);
+    void updateAttackStage(Party *pParty, IGameplayWorldRuntime *pWorldRuntime, float deltaSeconds);
     void enterWaitStage();
-    void enterAttackStage(Party *pParty);
+    void enterAttackStage(Party *pParty, IGameplayWorldRuntime *pWorldRuntime);
     void enterMovementStage();
-    bool consumeMovementActionPoint();
+    float spendMovementBudget(float deltaSeconds);
     void clearMovementLatches();
 
     bool m_active = false;
@@ -92,13 +99,16 @@ private:
     std::vector<QueueEntry> m_queue;
     int m_turnInitiative = 100;
     float m_aiTurnTimerTicks = 0.0f;
-    int m_movementActionPoints = 0;
+    float m_movementActionPoints = 0.0f;
     int m_pendingActions = 0;
     uint32_t m_turnCount = 0;
     float m_actorActionTimerTicks = 0.0f;
     bool m_movementFinished = false;
     bool m_movementStepThisFrame = false;
+    float m_movementStepSeconds = 0.0f;
     bool m_waitingForActorActionResolution = false;
+    // Attack stage: granted actors are taking their queued action; the queue waits for them.
+    bool m_resolvingActorActions = false;
     float m_pendingGameTimeAdvanceMinutes = 0.0f;
     bool m_forwardLatch = false;
     bool m_backwardLatch = false;

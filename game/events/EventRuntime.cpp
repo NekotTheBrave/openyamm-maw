@@ -359,6 +359,7 @@ std::optional<InventoryItem> createGrantedEventItem(
     request.treasureLevel = std::clamp(static_cast<int>(treasureLevel), 1, 6);
     request.mode = ItemGenerationMode::Generic;
     request.allowRareItems = true;
+    request.worldId = runtimeState.mapWorldId;
 
     std::mt19937 rng(nextEventRandom(
         eventId,
@@ -5023,6 +5024,22 @@ int luaSetMapActorPosition(lua_State *pLuaState)
     return 1;
 }
 
+// evt.SetActorBehavior(actorIndex, behaviorId): attaches an actor behaviour script (engine/behaviors) to a placed
+// actor; safe to call from on-load events, which re-run on every load.
+int luaSetActorBehavior(lua_State *pLuaState)
+{
+    LuaExecutionContext *pExecutionContext = executionContextFromLua(pLuaState);
+    ISceneEventContext *pSceneEventContext = pExecutionContext != nullptr
+        ? pExecutionContext->pSceneEventContext
+        : nullptr;
+    const size_t actorIndex = static_cast<size_t>(std::max<lua_Integer>(0, luaL_checkinteger(pLuaState, 1)));
+    const std::string behaviorId = luaL_checkstring(pLuaState, 2);
+    lua_pushboolean(
+        pLuaState,
+        pSceneEventContext != nullptr && pSceneEventContext->setMapActorBehavior(actorIndex, behaviorId));
+    return 1;
+}
+
 int luaIsMapActorHostile(lua_State *pLuaState)
 {
     const LuaExecutionContext *pExecutionContext = executionContextFromLua(pLuaState);
@@ -8288,6 +8305,7 @@ void registerEventBindings(LuaSessionCache &session)
     registerLuaFunction(pLuaState, "GetPartyPosition", luaGetPartyPosition);
     registerLuaFunction(pLuaState, "GetEnemyDetectorState", luaGetEnemyDetectorState);
     registerLuaFunction(pLuaState, "SetMapActorPosition", luaSetMapActorPosition);
+    registerLuaFunction(pLuaState, "SetActorBehavior", luaSetActorBehavior);
     registerLuaFunction(pLuaState, "IsMapActorHostile", luaIsMapActorHostile);
     registerLuaFunction(pLuaState, "IsMapActorWithinPartyDistance", luaIsMapActorWithinPartyDistance);
     registerLuaFunction(pLuaState, "GetCurrentScreen", luaGetCurrentScreen);

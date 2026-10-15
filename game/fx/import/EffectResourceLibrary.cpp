@@ -58,10 +58,11 @@ bool loadSprite(
     const YAML::Node logicalWidthNode = root["logicalWidth"];
     const YAML::Node logicalHeightNode = root["logicalHeight"];
     const YAML::Node framesNode = root["frames"];
+    const YAML::Node atlasNode = root["atlas"];
     if (!framesPerSecondNode || !framesPerSecondNode.IsScalar() ||
         !logicalWidthNode || !logicalWidthNode.IsScalar() ||
         !logicalHeightNode || !logicalHeightNode.IsScalar() ||
-        !framesNode || !framesNode.IsSequence())
+        (atlasNode ? !atlasNode.IsScalar() || framesNode : !framesNode || !framesNode.IsSequence()))
     {
         error = "effect sprite has invalid frame metadata: " + resourceId;
         return false;
@@ -69,8 +70,37 @@ bool loadSprite(
     sprite.framesPerSecond = framesPerSecondNode.as<uint32_t>();
     sprite.logicalWidth = logicalWidthNode.as<uint32_t>();
     sprite.logicalHeight = logicalHeightNode.as<uint32_t>();
-    if (sprite.framesPerSecond == 0 || sprite.logicalWidth == 0 || sprite.logicalHeight == 0 ||
-        framesNode.size() == 0)
+    if (sprite.framesPerSecond == 0 || sprite.logicalWidth == 0 || sprite.logicalHeight == 0)
+    {
+        error = "effect sprite has no playable frames: " + resourceId;
+        return false;
+    }
+    if (atlasNode)
+    {
+        const auto readCount = [&root](const char *pName)
+        {
+            const YAML::Node node = root[pName];
+            return node && node.IsScalar() ? node.as<uint32_t>() : 0u;
+        };
+        sprite.atlasColumns = readCount("atlasColumns");
+        sprite.frameCount = readCount("frameCount");
+        sprite.frameWidth = readCount("frameWidth");
+        sprite.frameHeight = readCount("frameHeight");
+        const auto atlasIterator = assetPaths.find(atlasNode.as<std::string>());
+        if (sprite.atlasColumns == 0 || sprite.frameCount == 0 || sprite.frameWidth == 0 || sprite.frameHeight == 0)
+        {
+            error = "cooked effect sprite needs atlasColumns, frameCount, frameWidth and frameHeight: " + resourceId;
+            return false;
+        }
+        if (atlasIterator == assetPaths.end() || !assetFileSystem.exists(atlasIterator->second))
+        {
+            error = "cooked effect sprite atlas was not found (run tools/cook_effect_textures.py): " + resourceId;
+            return false;
+        }
+        sprite.atlasPath = atlasIterator->second;
+        return true;
+    }
+    if (framesNode.size() == 0)
     {
         error = "effect sprite has no playable frames: " + resourceId;
         return false;
@@ -194,6 +224,10 @@ bool EffectResourceLibrary::load(
             {
                 requiredSprites.insert(sprite.spriteResource);
             }
+            for (const EffectRibbonDefinition &ribbon : definition->ribbons)
+            {
+                requiredSprites.insert(ribbon.spriteResource);
+            }
             for (const EffectModelDefinition &model : definition->models)
             {
                 requiredModels.insert(model.modelResource);
@@ -211,6 +245,18 @@ bool EffectResourceLibrary::load(
                 return false;
             }
             sprites.emplace(spriteId, std::move(sprite));
+        }
+        // Ribbons tile their sprite's first source image; cooked atlases are for sprites and particles only.
+        for (const std::shared_ptr<const EffectDefinition> &definition : definitions)
+        {
+            for (const EffectRibbonDefinition &ribbon : definition->ribbons)
+            {
+                if (sprites.at(ribbon.spriteResource).framePaths.empty())
+                {
+                    error = "effect ribbon needs an uncooked sprite: " + ribbon.spriteResource;
+                    return false;
+                }
+            }
         }
         for (const std::string &soundId : requiredSounds)
         {

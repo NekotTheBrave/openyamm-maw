@@ -47,7 +47,8 @@ void OutdoorPartyRuntime::update(
     uint64_t stageBeginTickCount = pPerformanceDiagnostics != nullptr ? SDL_GetTicksNS() : 0;
     if (!input.turnBasedPhysicsStep)
     {
-        m_party.updateRecovery(deltaSeconds, m_movementDriver.partyMovementState().running ? 0.5f : 1.0f);
+        // Running halves recovery speed, but only while the party actually runs.
+        m_party.updateRecovery(deltaSeconds, m_movementDriver.isRunningMovement(input) ? 0.5f : 1.0f);
         if (pPerformanceDiagnostics != nullptr)
         {
             pPerformanceDiagnostics->partyRecoveryNanoseconds += SDL_GetTicksNS() - stageBeginTickCount;
@@ -168,6 +169,11 @@ float OutdoorPartyRuntime::partyFootZ() const
     return m_movementDriver.state().footZ;
 }
 
+float OutdoorPartyRuntime::partyEyeZ() const
+{
+    return m_movementDriver.state().footZ + m_eyeHeight;
+}
+
 void OutdoorPartyRuntime::setParty(const Party &party)
 {
     m_party = party;
@@ -226,6 +232,11 @@ void OutdoorPartyRuntime::setMovementSpeedMultiplier(float multiplier)
 void OutdoorPartyRuntime::setBodyDimensions(float radius, float height, float maxStepHeight)
 {
     m_movementDriver.setBodyDimensions(radius, height, maxStepHeight);
+}
+
+void OutdoorPartyRuntime::setEyeHeight(float eyeHeight)
+{
+    m_eyeHeight = eyeHeight;
 }
 
 void OutdoorPartyRuntime::setCollisionTraceEnabled(bool enabled, const std::string &mapName)

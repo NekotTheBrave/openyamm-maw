@@ -225,8 +225,7 @@ void OutdoorMovementDriver::update(
     const bx::Vec3 forward = {cosYaw, sinYaw, 0.0f};
     const bx::Vec3 forwardFlying = {cosYaw * cosPitch, sinYaw * cosPitch, sinPitch};
     const bx::Vec3 right = {sinYaw, -cosYaw, 0.0f};
-    const bool effectiveRunning =
-        input.runWalkModifier ? !m_partyMovementState.running : m_partyMovementState.running;
+    const bool effectiveRunning = isEffectiveRunning(input);
     float moveVelocityX = 0.0f;
     float moveVelocityY = 0.0f;
     float moveVelocityZ = 0.0f;
@@ -370,6 +369,8 @@ void OutdoorMovementDriver::update(
         pPerformanceDiagnostics->movementInputNanoseconds += SDL_GetTicksNS() - totalBeginTickCount;
     }
 
+    bool landedDuringUpdate = false;
+
     while (m_movementAccumulatorSeconds >= OutdoorMovementStepSeconds)
     {
         if (pPerformanceDiagnostics != nullptr)
@@ -412,6 +413,13 @@ void OutdoorMovementDriver::update(
         if (pPerformanceDiagnostics != nullptr)
         {
             pPerformanceDiagnostics->movementCollisionNanoseconds += SDL_GetTicksNS() - collisionBeginTickCount;
+        }
+
+        // Flight sets its vertical speed every step; never carry it (a wheel step is a whole step's height)
+        // into a fall or jump when flight ends.
+        if (m_partyMovementState.flying)
+        {
+            m_state.verticalVelocity = 0.0f;
         }
 
         m_pendingJumpPress = false;
@@ -559,6 +567,7 @@ void OutdoorMovementDriver::update(
         if (m_state.landedThisFrame)
         {
             m_landedEventSeconds = EventHoldSeconds;
+            landedDuringUpdate = true;
         }
 
         if (!previousState.supportOnWater && m_state.supportOnWater)
@@ -680,7 +689,8 @@ void OutdoorMovementDriver::update(
     m_lastConsequences.playLandingSound = m_landingSoundConsequenceSeconds > 0.0f;
     m_lastConsequences.playHardLandingSound = m_hardLandingSoundConsequenceSeconds > 0.0f;
 
-    if (m_lastEvents.landed)
+    // Only a landing in this update ends flight; the held landed event must not cancel a flight started after it.
+    if (landedDuringUpdate)
     {
         m_partyMovementState.flying = false;
     }
@@ -810,6 +820,19 @@ void OutdoorMovementDriver::setFlyingAvailable(bool active)
         m_partyMovementState.flying = false;
         m_pendingFlyHeightDelta = 0.0f;
     }
+}
+
+bool OutdoorMovementDriver::isEffectiveRunning(const OutdoorMovementInput &input) const
+{
+    return input.runWalkModifier ? !m_partyMovementState.running : m_partyMovementState.running;
+}
+
+bool OutdoorMovementDriver::isRunningMovement(const OutdoorMovementInput &input) const
+{
+    // Backward movement runs only while flying; on foot it always uses the walk multiplier.
+    const bool runSpeedMovement =
+        input.forward || input.left || input.right || (input.backward && m_partyMovementState.flying);
+    return isEffectiveRunning(input) && runSpeedMovement;
 }
 
 void OutdoorMovementDriver::setRunning(bool active)

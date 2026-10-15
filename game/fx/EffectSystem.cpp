@@ -23,6 +23,10 @@ std::vector<std::string> EffectSystem::activeSpriteResources() const
         {
             result.push_back(emitter.spriteResource);
         }
+        for (const EffectRibbonDefinition &ribbon : slot.definition->ribbons)
+        {
+            result.push_back(ribbon.spriteResource);
+        }
     }
     std::sort(result.begin(), result.end());
     result.erase(std::unique(result.begin(), result.end()), result.end());
@@ -195,7 +199,7 @@ bool isValidSpritePlane(
     const std::array<float, 3> &planeRight,
     const std::array<float, 3> &planeUp)
 {
-    if (alignment == EffectSpriteAlignment::CameraFacing)
+    if (alignment != EffectSpriteAlignment::WorldPlane)
     {
         return true;
     }
@@ -333,6 +337,9 @@ bool validateDefinition(const EffectDefinition &definition, std::string &error)
             emitter.endSeconds <= definition.durationSeconds;
         if (!validTimes || emitter.repeatCount == 0 || emitter.spriteResource.empty() ||
             !std::isfinite(emitter.emissionIntervalSeconds) || emitter.emissionIntervalSeconds < 0.0f ||
+            !std::isfinite(emitter.emissionDistance) || emitter.emissionDistance < 0.0f ||
+            !std::isfinite(emitter.spinSpeed) || !std::isfinite(emitter.gravity) ||
+            (emitter.emissionDistance > 0.0f && emitter.particleSpace == EffectParticleSpace::Local) ||
             !std::isfinite(emitter.particleLifetimeSeconds) || emitter.particleLifetimeSeconds <= 0.0f ||
             !std::isfinite(emitter.radius) || emitter.radius < 0.0f || !std::isfinite(emitter.velocity) ||
             !isFiniteVector(emitter.planeDirection) || !isFiniteVector(emitter.windDirection) ||
@@ -349,6 +356,35 @@ bool validateDefinition(const EffectDefinition &definition, std::string &error)
             !validateTrackValues(emitter.scaleKeys, emitter.motionKeys, error))
         {
             error = "effect '" + definition.id + "': " + error;
+            return false;
+        }
+    }
+    for (const EffectRibbonDefinition &ribbon : definition.ribbons)
+    {
+        if (!componentIds.insert(ribbon.componentId).second)
+        {
+            error = "effect '" + definition.id + "' has duplicate component id";
+            return false;
+        }
+        const bool valid = std::isfinite(ribbon.startSeconds) && std::isfinite(ribbon.endSeconds) &&
+            ribbon.startSeconds >= 0.0f && ribbon.endSeconds >= ribbon.startSeconds &&
+            ribbon.endSeconds <= definition.durationSeconds && !ribbon.spriteResource.empty() &&
+            isFiniteVector(ribbon.offset) && std::isfinite(ribbon.lifetimeSeconds) && ribbon.lifetimeSeconds > 0.0f &&
+            std::isfinite(ribbon.maxLength) && ribbon.maxLength >= 0.0f &&
+            std::isfinite(ribbon.sampleDistance) && ribbon.sampleDistance > 0.0f &&
+            std::isfinite(ribbon.width) && ribbon.width > 0.0f &&
+            std::isfinite(ribbon.textureLength) && ribbon.textureLength > 0.0f && std::isfinite(ribbon.scrollSpeed) &&
+            std::isfinite(ribbon.fill) && ribbon.fill >= 0.0f &&
+            std::isfinite(ribbon.erosion) && ribbon.erosion >= 0.0f && ribbon.erosion <= 1.0f &&
+            std::isfinite(ribbon.core) && ribbon.core >= 0.0f &&
+            std::isfinite(ribbon.jitter) && ribbon.jitter >= 0.0f &&
+            std::isfinite(ribbon.jitterRate) && ribbon.jitterRate >= 0.0f;
+        if (!valid || !validateTrack(ribbon.widthKeys, "width", error) ||
+            !validateTrack(ribbon.colorKeys, "color", error) ||
+            !validateTrackValues(ribbon.widthKeys, {}, error))
+        {
+            error = "effect '" + definition.id + "' has invalid ribbon component " +
+                std::to_string(ribbon.componentId) + (error.empty() ? "" : ": " + error);
             return false;
         }
     }
@@ -539,6 +575,8 @@ EffectHandle EffectSystem::spawn(const std::string &id, const EffectSpawnParams 
     slot.draining = false;
     slot.elapsedSeconds = 0.0f;
     slot.transform = params;
+    slot.travelDirection = normalized(rotateByQuaternion({1.0f, 0.0f, 0.0f}, params.rotation), {1.0f, 0.0f, 0.0f});
+    slot.ribbonsStarted.assign(pDefinition->ribbons.size(), false);
     slot.definition = m_pLibrary->m_definitions.at(id);
     slot.random.state = params.seed;
     slot.emitters.assign(pDefinition->spriteEmitters.size(), {});
@@ -567,11 +605,29 @@ bool EffectSystem::setTransform(
     {
         return false;
     }
+    const std::array<float, 3> movement = add(position, multiply(pSlot->transform.position, -1.0f));
+    if (length(movement) > 0.01f)
+    {
+        pSlot->travelDirection = normalized(movement);
+    }
     pSlot->transform.position = position;
     pSlot->transform.rotation = rotation;
     pSlot->transform.scale = scale;
     updateModels(*pSlot);
     updateFixedSprites(handle.index, *pSlot);
+    // Ribbon heads follow at once too, so a fast trail stays attached to its head between reference ticks.
+    for (EffectRibbon &ribbon : m_ribbons)
+    {
+        if (ribbon.owner != handle || !ribbon.emitting || ribbon.points.size() < 2)
+        {
+            continue;
+        }
+        const EffectRibbonDefinition &definition = ribbon.settings();
+        EffectRibbonPoint &head = ribbon.points.back();
+        head.position = add(position, rotateByQuaternion(multiply(definition.offset, scale), rotation));
+        const EffectRibbonPoint &previous = ribbon.points[ribbon.points.size() - 2];
+        head.distance = previous.distance + length(add(head.position, multiply(previous.position, -1.0f)));
+    }
     for (size_t soundIndex = 0; soundIndex < pSlot->sounds.size(); ++soundIndex)
     {
         const EffectSoundDefinition &sound = pSlot->definition->sounds[soundIndex];
@@ -654,6 +710,16 @@ bool EffectSystem::restart(EffectHandle handle)
                 return particle.owner == handle;
             }),
         m_particles.end());
+    m_ribbons.erase(
+        std::remove_if(
+            m_ribbons.begin(),
+            m_ribbons.end(),
+            [&](const EffectRibbon &ribbon)
+            {
+                return ribbon.owner == handle;
+            }),
+        m_ribbons.end());
+    pSlot->ribbonsStarted.assign(pSlot->definition->ribbons.size(), false);
     pSlot->paused = false;
     pSlot->draining = false;
     pSlot->elapsedSeconds = 0.0f;
@@ -726,6 +792,7 @@ void EffectSystem::clear()
     }
     m_particles.clear();
     m_fixedSprites.clear();
+    m_ribbons.clear();
     m_freeIndices.clear();
     for (uint32_t index = 0; index < m_slots.size(); ++index)
     {
@@ -757,6 +824,7 @@ size_t EffectSystem::estimatedTransientBytes() const
         + m_freeIndices.capacity() * sizeof(uint32_t)
         + m_particles.capacity() * sizeof(EffectParticle)
         + m_fixedSprites.capacity() * sizeof(EffectFixedSprite)
+        + m_ribbons.capacity() * sizeof(EffectRibbon)
         + m_soundEvents.capacity() * sizeof(EffectSoundEvent);
     for (const Slot &slot : m_slots)
     {
@@ -767,6 +835,10 @@ size_t EffectSystem::estimatedTransientBytes() const
         {
             bytes += emitter.cachedSamples.capacity() * sizeof(EmissionSample);
         }
+    }
+    for (const EffectRibbon &ribbon : m_ribbons)
+    {
+        bytes += ribbon.points.capacity() * sizeof(EffectRibbonPoint);
     }
     return bytes;
 }
@@ -779,6 +851,11 @@ const std::vector<EffectParticle> &EffectSystem::particles() const
 const std::vector<EffectFixedSprite> &EffectSystem::fixedSprites() const
 {
     return m_fixedSprites;
+}
+
+const std::vector<EffectRibbon> &EffectSystem::ribbons() const
+{
+    return m_ribbons;
 }
 
 std::vector<EffectSoundEvent> EffectSystem::consumeSoundEvents()
@@ -837,6 +914,7 @@ void EffectSystem::tickInstance(uint32_t slotIndex, Slot &slot, float stepSecond
     slot.elapsedSeconds += stepSeconds;
     updateModels(slot);
     updateFixedSprites(slotIndex, slot);
+    updateRibbons(slotIndex, slot, stepSeconds);
     for (size_t emitterIndex = 0; emitterIndex < slot.definition->spriteEmitters.size(); ++emitterIndex)
     {
         const EffectSpriteEmitterDefinition &definition = slot.definition->spriteEmitters[emitterIndex];
@@ -850,7 +928,11 @@ void EffectSystem::tickInstance(uint32_t slotIndex, Slot &slot, float stepSecond
             continue;
         }
         const bool emitting = !slot.draining && slot.elapsedSeconds < definition.endSeconds;
-        if (emitting && slot.elapsedSeconds - state.lastEmissionSeconds > definition.emissionIntervalSeconds)
+        if (emitting && definition.emissionDistance > 0.0f)
+        {
+            emitParticlesAlongPath(slotIndex, slot, emitterIndex, stepSeconds);
+        }
+        else if (emitting && slot.elapsedSeconds - state.lastEmissionSeconds > definition.emissionIntervalSeconds)
         {
             emitParticles(slotIndex, slot, emitterIndex);
             state.lastEmissionSeconds = slot.elapsedSeconds;
@@ -885,7 +967,7 @@ void EffectSystem::tickInstance(uint32_t slotIndex, Slot &slot, float stepSecond
             return !state.started || state.stopped;
         });
     if ((slot.draining || slot.elapsedSeconds >= slot.definition->durationSeconds) &&
-        emittersFinished && soundsFinished)
+        emittersFinished && soundsFinished && !hasRibbons({slotIndex, slot.generation}))
     {
         finishSlot(slotIndex, slot, false);
     }
@@ -903,6 +985,8 @@ void EffectSystem::startEmitter(Slot &slot, size_t emitterIndex)
         : add(
             basePosition,
             rotateByQuaternion(multiply(definition.offset, slot.transform.scale), slot.transform.rotation));
+    // A full spacing already travelled: the first distance emission lands on the starting point.
+    state.distanceSinceEmission = definition.emissionDistance * slot.transform.scale;
     if (slot.definition->timingProfile != EffectTimingProfile::Mm9Native)
     {
         return;
@@ -970,85 +1054,159 @@ EffectSystem::EmissionSample EffectSystem::createEmissionSample(
     return sample;
 }
 
-void EffectSystem::emitParticles(uint32_t slotIndex, Slot &slot, size_t emitterIndex)
+std::array<float, 3> EffectSystem::emitterCenter(
+    const Slot &slot,
+    const EffectSpriteEmitterDefinition &definition) const
 {
-    const EffectSpriteEmitterDefinition &definition = slot.definition->spriteEmitters[emitterIndex];
-    EmitterState &state = slot.emitters[emitterIndex];
     const float duration = (definition.endSeconds - definition.startSeconds) /
         static_cast<float>(std::max(1u, definition.repeatCount));
     const float phase = duration > 0.0f
         ? std::fmod(slot.elapsedSeconds - definition.startSeconds, duration) / duration : 0.0f;
     const std::array<float, 3> motion = sampleVectorTrack(definition.motionKeys, phase, {});
     const std::array<float, 3> localCenter = add(definition.offset, motion);
+    if (definition.particleSpace == EffectParticleSpace::Local)
+    {
+        return localCenter;
+    }
     const std::array<float, 3> basePosition =
         linkedPosition(slot, definition.link).value_or(slot.transform.position);
-    const std::array<float, 3> worldCenter = add(
+    return add(
         basePosition,
         rotateByQuaternion(
             multiply(localCenter, slot.transform.scale),
             slot.transform.rotation));
-    const std::array<float, 3> center = definition.particleSpace == EffectParticleSpace::Local
-        ? localCenter : worldCenter;
+}
+
+EffectSystem::EmissionSample EffectSystem::nextEmissionSample(
+    Slot &slot,
+    const EffectSpriteEmitterDefinition &definition,
+    EmitterState &state)
+{
+    EmissionSample sample = state.cachedSamples.empty()
+        ? createEmissionSample(slot, definition)
+        : state.cachedSamples[slot.random.next() & 255u];
+    sample.velocity = rotateByAxisAngleVector(sample.velocity, state.rotation);
+    return sample;
+}
+
+void EffectSystem::spawnParticle(
+    uint32_t slotIndex,
+    Slot &slot,
+    const EffectSpriteEmitterDefinition &definition,
+    const EmissionSample &sample,
+    const std::array<float, 3> &center,
+    float ageSeconds)
+{
+    EffectParticle particle;
+    particle.owner = {slotIndex, slot.generation};
+    particle.componentId = definition.componentId;
+    particle.spriteResource = internSpriteResource(definition.spriteResource);
+    particle.particleSpace = definition.particleSpace;
+    particle.alignment = definition.alignment;
+    particle.planeRight = rotateByQuaternion(definition.planeRight, slot.transform.rotation);
+    particle.planeUp = rotateByQuaternion(definition.planeUp, slot.transform.rotation);
+    if (definition.particleSpace == EffectParticleSpace::Local)
+    {
+        particle.localPosition = add(center, sample.offset);
+        particle.localVelocity = sample.velocity;
+        particle.position = add(
+            slot.transform.position,
+            rotateByQuaternion(
+                multiply(particle.localPosition, slot.transform.scale),
+                slot.transform.rotation));
+        particle.velocity = rotateByQuaternion(
+            multiply(particle.localVelocity, slot.transform.scale),
+            slot.transform.rotation);
+    }
+    else
+    {
+        particle.position = add(
+            center,
+            rotateByQuaternion(multiply(sample.offset, slot.transform.scale), slot.transform.rotation));
+        particle.velocity = rotateByQuaternion(
+            multiply(sample.velocity, slot.transform.scale),
+            slot.transform.rotation);
+    }
+    particle.lifetimeSeconds = definition.particleLifetimeSeconds;
+    particle.ageSeconds = ageSeconds;
+    particle.spriteAnimationSeconds = ageSeconds;
+    const float phase = ageSeconds / std::max(particle.lifetimeSeconds, 0.01f);
+    particle.scale = sampleScalarTrack(definition.scaleKeys, phase, 0.2f) * slot.transform.scale;
+    particle.color = sampleColorTrack(
+        definition.colorKeys,
+        phase,
+        definition.particleLifetimeSeconds,
+        slot.definition->timingProfile);
+    particle.stretchU = definition.stretchU;
+    particle.stretchV = definition.stretchV;
+    particle.blendMode = definition.blendMode;
+    if (definition.randomRoll)
+    {
+        particle.roll = (slot.random.signedValue() + 1.0f) * 3.14159265f;
+    }
+    if (definition.spinSpeed != 0.0f)
+    {
+        const float turn = slot.random.signedValue();
+        particle.rollSpeed = definition.spinSpeed * (turn < 0.0f ? -0.5f + turn * 0.5f : 0.5f + turn * 0.5f);
+        particle.roll += particle.rollSpeed * ageSeconds;
+    }
+    if (definition.alignment == EffectSpriteAlignment::Velocity)
+    {
+        particle.planeRight = normalized(particle.velocity, slot.travelDirection);
+    }
+    m_particles.push_back(std::move(particle));
+}
+
+void EffectSystem::emitParticles(uint32_t slotIndex, Slot &slot, size_t emitterIndex)
+{
+    const EffectSpriteEmitterDefinition &definition = slot.definition->spriteEmitters[emitterIndex];
+    EmitterState &state = slot.emitters[emitterIndex];
+    const std::array<float, 3> center = emitterCenter(slot, definition);
     const uint32_t particleCount = definition.spritesPerEmission;
     for (uint32_t particleIndex = 0; particleIndex < particleCount; ++particleIndex)
     {
-        EmissionSample sample;
-        if (!state.cachedSamples.empty())
-        {
-            sample = state.cachedSamples[slot.random.next() & 255u];
-        }
-        else
-        {
-            sample = createEmissionSample(slot, definition);
-        }
-        sample.velocity = rotateByAxisAngleVector(sample.velocity, state.rotation);
-        const float interpolation = particleCount > 0
-            ? static_cast<float>(particleIndex) / static_cast<float>(particleCount) : 0.0f;
+        const EmissionSample sample = nextEmissionSample(slot, definition, state);
+        const float interpolation = static_cast<float>(particleIndex) / static_cast<float>(particleCount);
         const std::array<float, 3> batchCenter = add(
             center,
             multiply(add(state.previousPosition, multiply(center, -1.0f)), interpolation));
-        EffectParticle particle;
-        particle.owner = {slotIndex, slot.generation};
-        particle.componentId = definition.componentId;
-        particle.spriteResource = definition.spriteResource;
-        particle.particleSpace = definition.particleSpace;
-        particle.alignment = definition.alignment;
-        particle.planeRight = rotateByQuaternion(definition.planeRight, slot.transform.rotation);
-        particle.planeUp = rotateByQuaternion(definition.planeUp, slot.transform.rotation);
-        if (definition.particleSpace == EffectParticleSpace::Local)
-        {
-            particle.localPosition = add(batchCenter, sample.offset);
-            particle.localVelocity = sample.velocity;
-            particle.position = add(
-                slot.transform.position,
-                rotateByQuaternion(
-                    multiply(particle.localPosition, slot.transform.scale),
-                    slot.transform.rotation));
-            particle.velocity = rotateByQuaternion(
-                multiply(particle.localVelocity, slot.transform.scale),
-                slot.transform.rotation);
-        }
-        else
-        {
-            particle.position = add(
-                batchCenter,
-                rotateByQuaternion(multiply(sample.offset, slot.transform.scale), slot.transform.rotation));
-            particle.velocity = rotateByQuaternion(
-                multiply(sample.velocity, slot.transform.scale),
-                slot.transform.rotation);
-        }
-        particle.lifetimeSeconds = definition.particleLifetimeSeconds;
-        particle.scale = sampleScalarTrack(definition.scaleKeys, 0.0f, 0.2f) * slot.transform.scale;
-        particle.color = sampleColorTrack(
-            definition.colorKeys,
-            0.0f,
-            definition.particleLifetimeSeconds,
-            slot.definition->timingProfile);
-        particle.stretchU = definition.stretchU;
-        particle.stretchV = definition.stretchV;
-        particle.blendMode = definition.blendMode;
-        m_particles.push_back(std::move(particle));
+        spawnParticle(slotIndex, slot, definition, sample, batchCenter, 0.0f);
     }
+    state.previousPosition = center;
+}
+
+void EffectSystem::emitParticlesAlongPath(uint32_t slotIndex, Slot &slot, size_t emitterIndex, float stepSeconds)
+{
+    // A jump this many spacings long in one step is a teleport, not a path: restart the trail at the new position.
+    constexpr float MaxEmissionsPerStep = 64.0f;
+    const EffectSpriteEmitterDefinition &definition = slot.definition->spriteEmitters[emitterIndex];
+    EmitterState &state = slot.emitters[emitterIndex];
+    const std::array<float, 3> center = emitterCenter(slot, definition);
+    const std::array<float, 3> segment = add(center, multiply(state.previousPosition, -1.0f));
+    const float segmentLength = length(segment);
+    const float spacing = std::max(definition.emissionDistance * slot.transform.scale, 0.01f);
+    if (segmentLength > spacing * MaxEmissionsPerStep)
+    {
+        state.previousPosition = center;
+        state.distanceSinceEmission = 0.0f;
+        return;
+    }
+    // Points are spaced along the path; the older end of the step was passed earlier, so its particles start older.
+    float distance = std::max(spacing - state.distanceSinceEmission, 0.0f);
+    float lastEmission = -state.distanceSinceEmission;
+    while (distance <= segmentLength)
+    {
+        const float fraction = segmentLength > 0.0f ? distance / segmentLength : 1.0f;
+        const std::array<float, 3> point = add(state.previousPosition, multiply(segment, fraction));
+        const float ageSeconds = (1.0f - fraction) * stepSeconds;
+        for (uint32_t particleIndex = 0; particleIndex < definition.spritesPerEmission; ++particleIndex)
+        {
+            spawnParticle(slotIndex, slot, definition, nextEmissionSample(slot, definition, state), point, ageSeconds);
+        }
+        lastEmission = distance;
+        distance += spacing;
+    }
+    state.distanceSinceEmission = segmentLength - lastEmission;
     state.previousPosition = center;
 }
 
@@ -1078,6 +1236,7 @@ void EffectSystem::updateParticles(float stepSeconds, const EffectHandle *pOwner
         }
         const EffectSpriteEmitterDefinition &definition = *emitterIterator;
         particle.ageSeconds += stepSeconds;
+        particle.roll += particle.rollSpeed * stepSeconds;
         particle.spriteAnimationSeconds += pOwner->definition->timingProfile == EffectTimingProfile::Mm9Native
             ? std::floor(stepSeconds * 1000.0f) / 1000.0f : stepSeconds;
         const std::array<float, 3> localWind = multiply(definition.windDirection, definition.windAmount);
@@ -1096,14 +1255,29 @@ void EffectSystem::updateParticles(float stepSeconds, const EffectHandle *pOwner
             particle.velocity = rotateByQuaternion(
                 multiply(particle.localVelocity, pOwner->transform.scale),
                 pOwner->transform.rotation);
-            particle.planeRight = rotateByQuaternion(definition.planeRight, pOwner->transform.rotation);
-            particle.planeUp = rotateByQuaternion(definition.planeUp, pOwner->transform.rotation);
+            if (definition.alignment == EffectSpriteAlignment::Velocity)
+            {
+                particle.planeRight = normalized(particle.velocity, pOwner->travelDirection);
+            }
+            else
+            {
+                particle.planeRight = rotateByQuaternion(definition.planeRight, pOwner->transform.rotation);
+                particle.planeUp = rotateByQuaternion(definition.planeUp, pOwner->transform.rotation);
+            }
         }
         else
         {
             const std::array<float, 3> wind = rotateByQuaternion(
                 multiply(localWind, pOwner->transform.scale),
                 pOwner->transform.rotation);
+            if (definition.gravity != 0.0f)
+            {
+                particle.velocity[2] -= definition.gravity * pOwner->transform.scale * stepSeconds;
+                if (definition.alignment == EffectSpriteAlignment::Velocity)
+                {
+                    particle.planeRight = normalized(particle.velocity, particle.planeRight);
+                }
+            }
             particle.position = add(particle.position, multiply(add(particle.velocity, wind), stepSeconds));
         }
         const float phase = particle.ageSeconds / std::max(particle.lifetimeSeconds, 0.01f);
@@ -1290,7 +1464,7 @@ void EffectSystem::updateFixedSprites(uint32_t slotIndex, Slot &slot)
         EffectFixedSprite sprite;
         sprite.owner = owner;
         sprite.componentId = definition.componentId;
-        sprite.spriteResource = definition.spriteResource;
+        sprite.spriteResource = internSpriteResource(definition.spriteResource);
         sprite.position = add(
             basePosition,
             rotateByQuaternion(multiply(localPosition, slot.transform.scale), slot.transform.rotation));
@@ -1305,10 +1479,147 @@ void EffectSystem::updateFixedSprites(uint32_t slotIndex, Slot &slot)
         sprite.spriteAnimationSeconds = componentSeconds;
         sprite.blendMode = definition.blendMode;
         sprite.alignment = definition.alignment;
-        sprite.planeRight = rotateByQuaternion(definition.planeRight, slot.transform.rotation);
+        sprite.planeRight = definition.alignment == EffectSpriteAlignment::Velocity
+            ? slot.travelDirection
+            : rotateByQuaternion(definition.planeRight, slot.transform.rotation);
         sprite.planeUp = rotateByQuaternion(definition.planeUp, slot.transform.rotation);
         m_fixedSprites.push_back(std::move(sprite));
     }
+}
+
+void EffectSystem::updateRibbons(uint32_t slotIndex, Slot &slot, float stepSeconds)
+{
+    const EffectHandle owner = {slotIndex, slot.generation};
+    const std::vector<EffectRibbonDefinition> &definitions = slot.definition->ribbons;
+    const auto headPosition = [&](const EffectRibbonDefinition &definition)
+    {
+        return add(
+            slot.transform.position,
+            rotateByQuaternion(multiply(definition.offset, slot.transform.scale), slot.transform.rotation));
+    };
+    for (size_t index = 0; index < definitions.size(); ++index)
+    {
+        if (slot.ribbonsStarted[index] || slot.draining || slot.elapsedSeconds < definitions[index].startSeconds)
+        {
+            continue;
+        }
+        slot.ribbonsStarted[index] = true;
+        EffectRibbon ribbon;
+        ribbon.owner = owner;
+        ribbon.componentId = definitions[index].componentId;
+        ribbon.definition = slot.definition;
+        ribbon.definitionIndex = index;
+        ribbon.scale = slot.transform.scale;
+        const std::array<float, 3> head = headPosition(definitions[index]);
+        ribbon.points.push_back({head, 0.0f, 0.0f, ribbon.nextSerial++});
+        ribbon.points.push_back({head, 0.0f, 0.0f, ribbon.nextSerial++});
+        m_ribbons.push_back(std::move(ribbon));
+    }
+    for (EffectRibbon &ribbon : m_ribbons)
+    {
+        if (ribbon.owner != owner)
+        {
+            continue;
+        }
+        const EffectRibbonDefinition &definition = ribbon.settings();
+        ribbon.elapsedSeconds += stepSeconds;
+        ribbon.scale = slot.transform.scale;
+        ribbon.emitting = !slot.draining && slot.elapsedSeconds < definition.endSeconds;
+        for (EffectRibbonPoint &point : ribbon.points)
+        {
+            point.ageSeconds += stepSeconds;
+        }
+        if (ribbon.emitting)
+        {
+            if (ribbon.points.empty())
+            {
+                ribbon.points.push_back({headPosition(definition), 0.0f, 0.0f, ribbon.nextSerial++});
+            }
+            // The last point follows the effect; it is left behind as a sample once it is sample_distance from the
+            // previous one, and a new live head takes its place.
+            EffectRibbonPoint &head = ribbon.points.back();
+            head.position = headPosition(definition);
+            head.ageSeconds = 0.0f;
+            if (ribbon.points.size() >= 2)
+            {
+                const EffectRibbonPoint &previous = ribbon.points[ribbon.points.size() - 2];
+                const float segment = length(add(head.position, multiply(previous.position, -1.0f)));
+                head.distance = previous.distance + segment;
+                if (segment >= definition.sampleDistance * slot.transform.scale)
+                {
+                    EffectRibbonPoint next = head;
+                    next.serial = ribbon.nextSerial++;
+                    ribbon.points.push_back(next);
+                }
+            }
+            else
+            {
+                EffectRibbonPoint next = head;
+                next.serial = ribbon.nextSerial++;
+                ribbon.points.push_back(next);
+            }
+        }
+        const float maxLength = definition.maxLength * slot.transform.scale;
+        const float headDistance = ribbon.points.empty() ? 0.0f : ribbon.points.back().distance;
+        const auto pointPhase = [&](const EffectRibbonPoint &point)
+        {
+            const float agePhase = point.ageSeconds / definition.lifetimeSeconds;
+            const float lengthPhase = maxLength > 0.0f ? (headDistance - point.distance) / maxLength : 0.0f;
+            return std::max(agePhase, lengthPhase);
+        };
+        const size_t keep = ribbon.emitting ? 1u : 0u;
+        size_t expired = 0;
+        // Drop a sample once the next one has also run out, so the strip ends exactly at the limit (that last
+        // segment is clipped by fading to transparent at phase 1).
+        while (ribbon.points.size() - expired > keep &&
+            (ribbon.points[expired].ageSeconds >= definition.lifetimeSeconds ||
+                (ribbon.points.size() - expired > 1 && pointPhase(ribbon.points[expired + 1]) >= 1.0f)))
+        {
+            ++expired;
+        }
+        ribbon.points.erase(ribbon.points.begin(), ribbon.points.begin() + static_cast<std::ptrdiff_t>(expired));
+        const uint32_t jitterStep = static_cast<uint32_t>(ribbon.elapsedSeconds * definition.jitterRate);
+        for (EffectRibbonPoint &point : ribbon.points)
+        {
+            point.phase = std::clamp(pointPhase(point), 0.0f, 1.0f);
+            point.width = definition.width * slot.transform.scale * sampleScalarTrack(definition.widthKeys, point.phase,
+                1.0f);
+            point.color = sampleColorTrack(definition.colorKeys, point.phase, definition.lifetimeSeconds,
+                slot.definition->timingProfile);
+            point.jitterOffset = 0.0f;
+            if (definition.jitter > 0.0f)
+            {
+                // Hash of the sample and the current jitter step; the live head stays put.
+                uint32_t hash = (point.serial + 1u) * 2654435761u ^ (jitterStep + 7u) * 2246822519u;
+                hash ^= hash >> 15;
+                hash *= 2246822519u;
+                hash ^= hash >> 13;
+                const float random = static_cast<float>(hash & 0xffffu) / 32767.5f - 1.0f;
+                point.jitterOffset = random * definition.jitter * slot.transform.scale *
+                    std::min(1.0f, point.phase * 6.0f + (point.ageSeconds > 0.0f ? 0.35f : 0.0f));
+            }
+        }
+    }
+    m_ribbons.erase(
+        std::remove_if(
+            m_ribbons.begin(),
+            m_ribbons.end(),
+            [&](const EffectRibbon &ribbon)
+            {
+                return ribbon.owner == owner && !ribbon.emitting && ribbon.points.empty();
+            }),
+        m_ribbons.end());
+}
+
+bool EffectSystem::hasRibbons(EffectHandle owner) const
+{
+    return std::any_of(
+        m_ribbons.begin(),
+        m_ribbons.end(),
+        [&](const EffectRibbon &ribbon)
+        {
+            return ribbon.owner == owner;
+        });
 }
 
 std::optional<std::array<float, 3>> EffectSystem::linkedPosition(
@@ -1375,6 +1686,15 @@ void EffectSystem::finishSlot(uint32_t slotIndex, Slot &slot, bool immediate)
                 return sprite.owner == owner;
             }),
         m_fixedSprites.end());
+    m_ribbons.erase(
+        std::remove_if(
+            m_ribbons.begin(),
+            m_ribbons.end(),
+            [&](const EffectRibbon &ribbon)
+            {
+                return ribbon.owner == owner;
+            }),
+        m_ribbons.end());
     if (m_pModelInstances != nullptr)
     {
         for (const ModelState &model : slot.models)
@@ -1387,6 +1707,7 @@ void EffectSystem::finishSlot(uint32_t slotIndex, Slot &slot, bool immediate)
     slot.emitters.clear();
     slot.sounds.clear();
     slot.models.clear();
+    slot.ribbonsStarted.clear();
     ++slot.generation;
     if (slot.generation == 0)
     {
@@ -1394,5 +1715,15 @@ void EffectSystem::finishSlot(uint32_t slotIndex, Slot &slot, bool immediate)
     }
     m_freeIndices.push_back(slotIndex);
     --m_activeCount;
+}
+
+std::string_view EffectSystem::internSpriteResource(const std::string &id)
+{
+    const auto existing = m_spriteResourceIds.find(std::string_view(id));
+    if (existing != m_spriteResourceIds.end())
+    {
+        return *existing;
+    }
+    return *m_spriteResourceIds.insert(id).first;
 }
 }

@@ -23,6 +23,7 @@
 #include <optional>
 #include <random>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace OpenYAMM::Game
@@ -341,21 +342,6 @@ struct InventoryItemScreenRect
     float height = 0.0f;
 };
 
-std::string formatFoundGoldStatusText(int goldAmount)
-{
-    return "You found " + std::to_string(std::max(0, goldAmount)) + " gold!";
-}
-
-int followerAdjustedGoldAmount(int goldAmount, const EventRuntimeState *pEventRuntimeState)
-{
-    if (pEventRuntimeState == nullptr || goldAmount <= 0)
-    {
-        return std::max(0, goldAmount);
-    }
-
-    return static_cast<int>(hiredNpcGoldAfterBonusAndFees(static_cast<uint32_t>(goldAmount), *pEventRuntimeState));
-}
-
 template <typename Target, typename ResolveTargetFn, typename ActivateTargetFn>
 void handlePointerClickRelease(
     const HudPointerState &pointerState,
@@ -569,6 +555,118 @@ std::optional<std::pair<int, int>> computeHeldInventoryPlacement(
         (centerY - gridMetrics.y - slotSpanHeight * 0.5f + gridMetrics.cellHeight * 0.5f)
         / gridMetrics.cellHeight));
     return std::pair<int, int>{gridX, gridY};
+}
+
+InventoryItem chestItemAsInventoryItem(const GameplayChestItemState &chestItem)
+{
+    InventoryItem item = chestItem.item;
+    item.objectDescriptionId = item.objectDescriptionId != 0 ? item.objectDescriptionId : chestItem.itemId;
+    item.quantity = chestItem.quantity;
+    item.width = chestItem.width;
+    item.height = chestItem.height;
+    return item;
+}
+
+// Takes all gold, then every item that fits somewhere in the party (largest first); the rest stays in the chest.
+void takeAllActiveChestItems(GameplayScreenRuntime &view)
+{
+    IGameplayWorldRuntime *pWorldRuntime = view.worldRuntime();
+    Party *pParty = view.party();
+
+    if (pWorldRuntime == nullptr || pParty == nullptr || pWorldRuntime->activeChestView() == nullptr)
+    {
+        return;
+    }
+
+    FoundGold totalGold = {};
+    std::vector<std::pair<uint8_t, uint8_t>> leftBehindCells;
+    const auto isLeftBehind =
+        [&leftBehindCells](const GameplayChestItemState &item)
+        {
+            return std::find(leftBehindCells.begin(), leftBehindCells.end(), std::pair(item.gridX, item.gridY))
+                != leftBehindCells.end();
+        };
+    const auto takeOrderKey =
+        [](const GameplayChestItemState &item)
+        {
+            return std::tuple(!item.isGold, -int(item.width) * int(item.height), -int(item.height));
+        };
+
+    while (const GameplayChestViewState *pChestView = pWorldRuntime->activeChestView())
+    {
+        std::optional<size_t> nextIndex;
+
+        for (size_t itemIndex = 0; itemIndex < pChestView->items.size(); ++itemIndex)
+        {
+            const GameplayChestItemState &candidate = pChestView->items[itemIndex];
+
+            if (isLeftBehind(candidate))
+            {
+                continue;
+            }
+
+            if (!nextIndex)
+            {
+                nextIndex = itemIndex;
+                continue;
+            }
+
+            if (takeOrderKey(candidate) < takeOrderKey(pChestView->items[*nextIndex]))
+            {
+                nextIndex = itemIndex;
+            }
+        }
+
+        if (!nextIndex)
+        {
+            break;
+        }
+
+        const GameplayChestItemState chestItem = pChestView->items[*nextIndex];
+        size_t recipientMemberIndex = 0;
+
+        if (!chestItem.isGold
+            && !pParty->tryGrantInventoryItem(chestItemAsInventoryItem(chestItem), &recipientMemberIndex))
+        {
+            leftBehindCells.emplace_back(chestItem.gridX, chestItem.gridY);
+            continue;
+        }
+
+        GameplayChestItemState removedItem = {};
+
+        if (!pWorldRuntime->takeActiveChestItem(*nextIndex, removedItem))
+        {
+            break;
+        }
+
+        if (removedItem.isGold)
+        {
+            const FoundGold foundGold = resolveFoundGold(removedItem.goldAmount, pWorldRuntime->eventRuntimeState());
+            pParty->addGold(static_cast<int>(foundGold.partyAmount));
+            totalGold.amount += foundGold.amount;
+            totalGold.followerShare += foundGold.followerShare;
+            totalGold.partyAmount += foundGold.partyAmount;
+            continue;
+        }
+
+        GAMEPLAY_DEBUG_TRACE(
+            "item_received destination=inventory source=chest_take_all item_id="
+            + std::to_string(removedItem.item.objectDescriptionId)
+            + gameplayDebugTraceItemSummary(removedItem.item.objectDescriptionId, view.itemTable())
+            + " member_index=" + std::to_string(recipientMemberIndex));
+    }
+
+    std::string status = totalGold.amount > 0 ? foundGoldStatusText(totalGold) : std::string();
+
+    if (!leftBehindCells.empty())
+    {
+        status += status.empty() ? "Inventory full." : " Inventory full.";
+    }
+
+    if (!status.empty())
+    {
+        view.setStatusBarEvent(status);
+    }
 }
 } // namespace
 
@@ -3772,6 +3870,29 @@ void GameplayOverlayInputController::handleLootOverlayInput(
                 const GameplayScreenRuntime::HudLayoutElement *pCloseLayout =
                     view.findHudLayoutElement("ChestCloseButton");
 
+                const GameplayScreenRuntime::HudLayoutElement *pTakeAllLayout =
+                    view.findHudLayoutElement("ChestTakeAllButton");
+
+                if (pTakeAllLayout != nullptr)
+                {
+                    const std::optional<GameplayScreenRuntime::ResolvedHudLayoutElement> resolvedTakeAll =
+                        view.resolveHudLayoutElement(
+                            "ChestTakeAllButton",
+                            screenWidth,
+                            screenHeight,
+                            pTakeAllLayout->width,
+                            pTakeAllLayout->height);
+
+                    if (resolvedTakeAll
+                        && mouseX >= resolvedTakeAll->x
+                        && mouseX < resolvedTakeAll->x + resolvedTakeAll->width
+                        && mouseY >= resolvedTakeAll->y
+                        && mouseY < resolvedTakeAll->y + resolvedTakeAll->height)
+                    {
+                        return {GameplayChestPointerTargetType::TakeAllButton};
+                    }
+                }
+
                 if (pCloseLayout == nullptr)
                 {
                     return {};
@@ -3957,6 +4078,12 @@ void GameplayOverlayInputController::handleLootOverlayInput(
             findChestPointerTarget,
             [&view](const GameplayChestPointerTarget &target)
             {
+                if (target.type == GameplayChestPointerTargetType::TakeAllButton)
+                {
+                    takeAllActiveChestItems(view);
+                    return;
+                }
+
                 if (target.type != GameplayChestPointerTargetType::CloseButton)
                 {
                     return;
@@ -4074,11 +4201,11 @@ void GameplayOverlayInputController::handleLootOverlayInput(
                 {
                     if (takenItem.isGold)
                     {
-                        const int goldAmount = followerAdjustedGoldAmount(
-                            static_cast<int>(takenItem.goldAmount),
+                        const FoundGold foundGold = resolveFoundGold(
+                            takenItem.goldAmount,
                             view.worldRuntime() != nullptr ? view.worldRuntime()->eventRuntimeState() : nullptr);
-                        view.party()->addGold(goldAmount);
-                        view.setStatusBarEvent(formatFoundGoldStatusText(goldAmount));
+                        view.party()->addGold(static_cast<int>(foundGold.partyAmount));
+                        view.setStatusBarEvent(foundGoldStatusText(foundGold));
                     }
                     else
                     {
@@ -4230,11 +4357,11 @@ void GameplayOverlayInputController::handleLootOverlayInput(
                     {
                         if (removedItem.isGold)
                         {
-                            const int goldAmount = followerAdjustedGoldAmount(
-                                static_cast<int>(removedItem.goldAmount),
+                            const FoundGold foundGold = resolveFoundGold(
+                                removedItem.goldAmount,
                                 view.worldRuntime() != nullptr ? view.worldRuntime()->eventRuntimeState() : nullptr);
-                            view.party()->addGold(goldAmount);
-                            view.setStatusBarEvent(formatFoundGoldStatusText(goldAmount));
+                            view.party()->addGold(static_cast<int>(foundGold.partyAmount));
+                            view.setStatusBarEvent(foundGoldStatusText(foundGold));
                         }
                         else
                         {

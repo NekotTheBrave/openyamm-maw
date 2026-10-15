@@ -329,6 +329,8 @@ public:
         std::unordered_map<uint32_t, uint32_t> npcItemOverrides;
         std::unordered_set<uint32_t> unavailableNpcIds;
         std::vector<HiredNpcFollower> hiredNpcFollowers;
+        // Potion pairs (target << 32 | held) that exploded when mixed, so the alchemy bench can warn.
+        std::unordered_set<uint64_t> explosiveMixes;
     };
 
     struct PendingAudioRequest
@@ -457,6 +459,8 @@ public:
     int inventoryItemCount(uint32_t objectDescriptionId, std::optional<size_t> memberIndex = std::nullopt) const;
     void recordEverOwnedItem(uint32_t objectDescriptionId);
     bool hasEverOwnedItem(uint32_t objectDescriptionId) const;
+    void recordExplosiveMix(uint32_t targetItemId, uint32_t heldItemId);
+    bool isExplosiveMixKnown(uint32_t targetItemId, uint32_t heldItemId) const;
     void setHeldItemForQueries(const InventoryItem &item);
     uint32_t heldItemIdForQueries() const;
     void clearHeldItemForQueries();
@@ -465,6 +469,8 @@ public:
     bool removeItemFromMember(size_t memberIndex, uint32_t objectDescriptionId, uint32_t quantity = 1);
     bool takeItemFromMemberInventoryCell(size_t memberIndex, uint8_t gridX, uint8_t gridY, InventoryItem &item);
     bool tryAutoPlaceItemInMemberInventory(size_t memberIndex, const InventoryItem &item);
+    // Regroups the inventory by item type and repacks it; leaves it unchanged when the items cannot be repacked.
+    bool sortMemberInventory(size_t memberIndex);
     bool tryPlaceItemInMemberInventoryCell(
         size_t memberIndex,
         const InventoryItem &item,
@@ -671,6 +677,7 @@ private:
     std::unordered_set<uint32_t> m_foundArtifactItems;
     std::unordered_set<uint32_t> m_arcomageWonHouseIds;
     std::unordered_set<uint32_t> m_everOwnedItemIds;
+    std::unordered_set<uint64_t> m_explosiveMixes;
     std::unordered_map<uint32_t, int32_t> m_continentReputations;
     std::unordered_set<uint32_t> m_questBits;
     uint64_t m_dialogueEligibilityRevision = 1;

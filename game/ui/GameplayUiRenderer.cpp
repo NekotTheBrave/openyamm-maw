@@ -291,9 +291,35 @@ void submitQuadClipped(
     queuedHudQuads.push_back(quad);
 }
 
+// A solid square in a palette colour (see GameplayUiRuntime::ensureHudPaletteColor), clipped like submitQuadClipped.
+void submitPaletteQuadClipped(
+    std::vector<GameplayHudBatchQuad> &queuedHudQuads,
+    const GameplayHudPaletteColor &color,
+    float x,
+    float y,
+    float size,
+    uint16_t scissorX,
+    uint16_t scissorY,
+    uint16_t scissorWidth,
+    uint16_t scissorHeight)
+{
+    if (!bgfx::isValid(color.textureHandle) || size <= 0.0f)
+    {
+        return;
+    }
+
+    GameplayHudBatchQuad quad = gameplayHudPaletteQuad(color, x, y, size, size);
+    quad.clipped = true;
+    quad.scissorX = scissorX;
+    quad.scissorY = scissorY;
+    quad.scissorWidth = scissorWidth;
+    quad.scissorHeight = scissorHeight;
+    queuedHudQuads.push_back(quad);
+}
+
 void submitLineClipped(
     std::vector<GameplayHudBatchQuad> &queuedHudQuads,
-    const GameplayHudTextureHandle &texture,
+    const GameplayHudPaletteColor &color,
     float x0,
     float y0,
     float x1,
@@ -304,13 +330,17 @@ void submitLineClipped(
     uint16_t scissorWidth,
     uint16_t scissorHeight)
 {
-    if (!bgfx::isValid(texture.textureHandle) || thickness <= 0.0f)
+    if (!bgfx::isValid(color.textureHandle) || thickness <= 0.0f)
     {
         return;
     }
 
     GameplayHudBatchQuad quad = {};
-    quad.textureHandle = texture.textureHandle;
+    quad.textureHandle = color.textureHandle;
+    quad.u0 = color.u;
+    quad.u1 = color.u;
+    quad.v0 = color.v;
+    quad.v1 = color.v;
     quad.x = x0;
     quad.y = y0;
     quad.x2 = x1;
@@ -364,7 +394,7 @@ void GameplayUiRenderer::renderGameplayHudArt(GameplayScreenRuntime &context, in
     queuedHudQuads.clear();
     const auto flushQueuedHudQuads = [&context, width, height]()
     {
-        context.submitHudQuadBatch(queuedHudQuads, width, height);
+        context.submitHudQuadBatch(queuedHudQuads);
         queuedHudQuads.clear();
     };
     const auto draw = [&](const std::string &id, const std::string &asset = std::string{})
@@ -513,7 +543,7 @@ void GameplayUiRenderer::renderGameplayHudArt(GameplayScreenRuntime &context, in
                         line.y2 = cy + std::sin(next) * radius;
                         ring.push_back(line);
                     }
-                    context.submitHudQuadBatch(ring, width, height);
+                    context.submitHudQuadBatch(ring);
                 }
             }
         }
@@ -902,7 +932,6 @@ void GameplayUiRenderer::renderGameplayHudArt(GameplayScreenRuntime &context, in
             static_cast<uint16_t>(std::max(1.0f, std::ceil(minimapOverlay.height - markerMargin * 2.0f)));
         std::vector<GameplayMinimapLineState> minimapLines;
         context.collectGameplayMinimapLines(minimapLines);
-        std::unordered_map<uint32_t, std::optional<GameplayHudTextureHandle>> lineTextureByColor;
 
         for (const GameplayMinimapLineState &line : minimapLines)
         {
@@ -922,23 +951,17 @@ void GameplayUiRenderer::renderGameplayHudArt(GameplayScreenRuntime &context, in
                 continue;
             }
 
-            std::optional<GameplayHudTextureHandle> &lineTexture = lineTextureByColor[line.colorAbgr];
+            const std::optional<GameplayHudPaletteColor> lineColor =
+                context.gameplayUiRuntime().ensureHudPaletteColor(line.colorAbgr);
 
-            if (!lineTexture)
-            {
-                lineTexture = context.gameplayUiRuntime().ensureSolidHudTextureLoaded(
-                    "__minimap_line__",
-                    line.colorAbgr);
-            }
-
-            if (!lineTexture)
+            if (!lineColor)
             {
                 continue;
             }
 
             submitLineClipped(
                 queuedHudQuads,
-                *lineTexture,
+                *lineColor,
                 lineX0,
                 lineY0,
                 lineX1,
@@ -950,36 +973,25 @@ void GameplayUiRenderer::renderGameplayHudArt(GameplayScreenRuntime &context, in
                 minimapScissorHeight);
         }
 
-        const std::optional<GameplayHudTextureHandle> friendlyMarkerTexture =
-            minimapState.wizardEyeActive
-                ? context.gameplayUiRuntime().ensureSolidHudTextureLoaded("__minimap_marker_friendly__", 0xff00ff00u)
-                : std::nullopt;
-        const std::optional<GameplayHudTextureHandle> hostileMarkerTexture =
-            minimapState.wizardEyeActive
-                ? context.gameplayUiRuntime().ensureSolidHudTextureLoaded("__minimap_marker_hostile__", 0xff0000ffu)
-                : std::nullopt;
-        const std::optional<GameplayHudTextureHandle> corpseMarkerTexture =
-            minimapState.wizardEyeActive
-                ? context.gameplayUiRuntime().ensureSolidHudTextureLoaded("__minimap_marker_corpse__", 0xff00ffffu)
-                : std::nullopt;
-        const std::optional<GameplayHudTextureHandle> worldItemMarkerTexture =
-            minimapState.wizardEyeShowsExpertObjects
-                ? context.gameplayUiRuntime().ensureSolidHudTextureLoaded("__minimap_marker_world_item__", 0xffff0000u)
-                : std::nullopt;
-        const std::optional<GameplayHudTextureHandle> projectileMarkerTexture =
-            minimapState.wizardEyeShowsExpertObjects
-                ? context.gameplayUiRuntime().ensureSolidHudTextureLoaded("__minimap_marker_projectile__", 0xff0000ffu)
-                : std::nullopt;
-        const std::optional<GameplayHudTextureHandle> decorationMarkerTexture =
-            minimapState.wizardEyeShowsDecorations
-                ? context.gameplayUiRuntime().ensureSolidHudTextureLoaded("__minimap_marker_decoration__", 0xffffffffu)
-                : std::nullopt;
+        GameplayUiRuntime &uiRuntime = context.gameplayUiRuntime();
+        const std::optional<GameplayHudPaletteColor> friendlyMarkerTexture =
+            minimapState.wizardEyeActive ? uiRuntime.ensureHudPaletteColor(0xff00ff00u) : std::nullopt;
+        const std::optional<GameplayHudPaletteColor> hostileMarkerTexture =
+            minimapState.wizardEyeActive ? uiRuntime.ensureHudPaletteColor(0xff0000ffu) : std::nullopt;
+        const std::optional<GameplayHudPaletteColor> corpseMarkerTexture =
+            minimapState.wizardEyeActive ? uiRuntime.ensureHudPaletteColor(0xff00ffffu) : std::nullopt;
+        const std::optional<GameplayHudPaletteColor> worldItemMarkerTexture =
+            minimapState.wizardEyeShowsExpertObjects ? uiRuntime.ensureHudPaletteColor(0xffff0000u) : std::nullopt;
+        const std::optional<GameplayHudPaletteColor> projectileMarkerTexture =
+            minimapState.wizardEyeShowsExpertObjects ? uiRuntime.ensureHudPaletteColor(0xff0000ffu) : std::nullopt;
+        const std::optional<GameplayHudPaletteColor> decorationMarkerTexture =
+            minimapState.wizardEyeShowsDecorations ? uiRuntime.ensureHudPaletteColor(0xffffffffu) : std::nullopt;
         std::vector<GameplayMinimapMarkerState> markers;
         context.collectGameplayMinimapMarkers(markers);
 
         for (const GameplayMinimapMarkerState &marker : markers)
         {
-            const GameplayHudTextureHandle *pTexture = nullptr;
+            const GameplayHudPaletteColor *pTexture = nullptr;
             float markerHalfExtent = markerHalfSize;
             float markerDrawSize = markerSize;
 
@@ -1029,12 +1041,11 @@ void GameplayUiRenderer::renderGameplayHudArt(GameplayScreenRuntime &context, in
                 continue;
             }
 
-            submitQuadClipped(
+            submitPaletteQuadClipped(
                 queuedHudQuads,
                 *pTexture,
                 markerCenterX - markerHalfExtent,
                 markerCenterY - markerHalfExtent,
-                markerDrawSize,
                 markerDrawSize,
                 minimapScissorX,
                 minimapScissorY,

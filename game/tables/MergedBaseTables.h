@@ -444,6 +444,8 @@ public:
     bool loadFromRows(const std::vector<std::vector<std::string>> &rows);
     const MergedNpcProfessionEntry *get(uint32_t professionId) const;
     const std::vector<MergedNpcProfessionEntry> &entries() const;
+    // "Name the Profession", as the original NameAndTitle; the plain name when the NPC has no profession.
+    std::string nameAndTitle(const std::string &name, uint32_t professionId) const;
 
 private:
     std::vector<MergedNpcProfessionEntry> m_entries;

@@ -374,35 +374,6 @@ TEST_CASE("AssetFileSystem reads aliased package files case-insensitively")
     std::filesystem::remove_all(temporaryRoot);
 }
 
-TEST_CASE("AssetFileSystem keeps EnglishT and icon font aliases distinct")
-{
-    const std::filesystem::path temporaryRoot = makeTemporaryRoot();
-    const std::filesystem::path assetRoot = temporaryRoot / "assets_dev";
-
-    writeTextFile(assetRoot / "engine" / "fonts" / "english_text" / "LEGAL.FNT", "english-legal");
-    writeTextFile(assetRoot / "engine" / "fonts" / "icons" / "LEGAL.FNT", "icon-legal");
-
-    {
-        OpenYAMM::Engine::AssetFileSystem assetFileSystem;
-        REQUIRE(assetFileSystem.initialize(
-            temporaryRoot,
-            assetRoot,
-            OpenYAMM::Engine::AssetScaleTier::X1));
-
-        const std::optional<std::string> englishFontText =
-            assetFileSystem.readTextFile("Data/EnglishT/LEGAL.FNT");
-        REQUIRE(englishFontText.has_value());
-        CHECK_EQ(*englishFontText, "english-legal");
-
-        const std::optional<std::string> iconFontText =
-            assetFileSystem.readTextFile("Data/icons/LEGAL.FNT");
-        REQUIRE(iconFontText.has_value());
-        CHECK_EQ(*iconFontText, "icon-legal");
-    }
-
-    std::filesystem::remove_all(temporaryRoot);
-}
-
 TEST_CASE("AssetFileSystem merges inactive world icon roots")
 {
     const std::filesystem::path temporaryRoot = makeTemporaryRoot();
@@ -807,15 +778,12 @@ TEST_CASE("AssetFileSystem applies asset scale by package category")
 
     writeTextFile(assetRoot / "engine" / "textures" / "wall.bmp", "base-wall");
     writeTextFile(assetRoot / "engine" / "textures_x4" / "wall.bmp", "scaled-wall");
-    writeTextFile(assetRoot / "engine" / "terrain" / "grass.bmp", "base-grass");
-    writeTextFile(assetRoot / "engine" / "terrain_x4" / "grass.bmp", "scaled-grass");
     writeTextFile(assetRoot / "engine" / "sprites" / "tree.bmp", "base-tree");
 
     {
         OpenYAMM::Engine::AssetScaleProfile assetScaleProfile =
             OpenYAMM::Engine::createUniformAssetScaleProfile(OpenYAMM::Engine::AssetScaleTier::X1);
         assetScaleProfile.textures = OpenYAMM::Engine::AssetScaleTier::X4;
-        assetScaleProfile.terrain = OpenYAMM::Engine::AssetScaleTier::X4;
 
         OpenYAMM::Engine::AssetFileSystem assetFileSystem;
         REQUIRE(assetFileSystem.initialize(
@@ -830,11 +798,6 @@ TEST_CASE("AssetFileSystem applies asset scale by package category")
         REQUIRE(textureText.has_value());
         CHECK_EQ(*textureText, "scaled-wall");
 
-        const std::optional<std::string> terrainText =
-            assetFileSystem.readTextFile("terrain/grass.bmp");
-        REQUIRE(terrainText.has_value());
-        CHECK_EQ(*terrainText, "scaled-grass");
-
         const std::optional<std::string> spriteText =
             assetFileSystem.readTextFile("Data/sprites/tree.bmp");
         REQUIRE(spriteText.has_value());
@@ -844,86 +807,17 @@ TEST_CASE("AssetFileSystem applies asset scale by package category")
     std::filesystem::remove_all(temporaryRoot);
 }
 
-TEST_CASE("AssetFileSystem lets terrain fall back to base textures independently of texture scale")
-{
-    const std::filesystem::path temporaryRoot = makeTemporaryRoot();
-    const std::filesystem::path assetRoot = temporaryRoot / "assets_dev";
-
-    writeTextFile(assetRoot / "engine" / "textures" / "grass.bmp", "base-grass");
-    writeTextFile(assetRoot / "engine" / "textures_x4" / "wall.bmp", "scaled-wall");
-
-    {
-        OpenYAMM::Engine::AssetScaleProfile assetScaleProfile =
-            OpenYAMM::Engine::createUniformAssetScaleProfile(OpenYAMM::Engine::AssetScaleTier::X1);
-        assetScaleProfile.textures = OpenYAMM::Engine::AssetScaleTier::X4;
-        assetScaleProfile.terrain = OpenYAMM::Engine::AssetScaleTier::X1;
-
-        OpenYAMM::Engine::AssetFileSystem assetFileSystem;
-        REQUIRE(assetFileSystem.initialize(
-            temporaryRoot,
-            assetRoot,
-            OpenYAMM::Engine::AssetScaleTier::X1,
-            assetScaleProfile,
-            "mm8"));
-
-        const std::optional<std::string> bmodelTextureText =
-            assetFileSystem.readTextFile("Data/bitmaps/wall.bmp");
-        REQUIRE(bmodelTextureText.has_value());
-        CHECK_EQ(*bmodelTextureText, "scaled-wall");
-
-        const std::optional<std::string> terrainFallbackText =
-            assetFileSystem.readTextFile("terrain_textures/grass.bmp");
-        REQUIRE(terrainFallbackText.has_value());
-        CHECK_EQ(*terrainFallbackText, "base-grass");
-    }
-
-    std::filesystem::remove_all(temporaryRoot);
-}
-
-TEST_CASE("AssetFileSystem does not use scaled geometry textures as terrain fallback")
+TEST_CASE("AssetFileSystem requires the scaled directory of a scaled required category")
 {
     const std::filesystem::path temporaryRoot = makeTemporaryRoot();
     const std::filesystem::path assetRoot = temporaryRoot / "assets_dev";
 
     writeTextFile(assetRoot / "engine" / "textures" / "water.bmp", "base-water");
-    writeTextFile(assetRoot / "engine" / "textures_x4" / "water.bmp", "scaled-geometry-water");
-    writeTextFile(assetRoot / "engine" / "terrain_x4" / "grass.bmp", "scaled-grass");
-
-    {
-        OpenYAMM::Engine::AssetScaleProfile assetScaleProfile =
-            OpenYAMM::Engine::createUniformAssetScaleProfile(OpenYAMM::Engine::AssetScaleTier::X1);
-        assetScaleProfile.textures = OpenYAMM::Engine::AssetScaleTier::X4;
-        assetScaleProfile.terrain = OpenYAMM::Engine::AssetScaleTier::X4;
-
-        OpenYAMM::Engine::AssetFileSystem assetFileSystem;
-        REQUIRE(assetFileSystem.initialize(
-            temporaryRoot,
-            assetRoot,
-            OpenYAMM::Engine::AssetScaleTier::X1,
-            assetScaleProfile,
-            "mm8"));
-
-        const std::optional<std::string> terrainFallbackText =
-            assetFileSystem.readTextFile("terrain_textures/water.bmp");
-        REQUIRE(terrainFallbackText.has_value());
-        CHECK_EQ(*terrainFallbackText, "base-water");
-    }
-
-    std::filesystem::remove_all(temporaryRoot);
-}
-
-TEST_CASE("AssetFileSystem requires explicit scaled terrain directory for scaled terrain")
-{
-    const std::filesystem::path temporaryRoot = makeTemporaryRoot();
-    const std::filesystem::path assetRoot = temporaryRoot / "assets_dev";
-
-    writeTextFile(assetRoot / "engine" / "textures" / "water.bmp", "base-water");
-    writeTextFile(assetRoot / "engine" / "textures_x4" / "water.bmp", "scaled-geometry-water");
+    writeTextFile(assetRoot / "engine" / "textures_x2" / "water.bmp", "scaled-geometry-water");
 
     OpenYAMM::Engine::AssetScaleProfile assetScaleProfile =
         OpenYAMM::Engine::createUniformAssetScaleProfile(OpenYAMM::Engine::AssetScaleTier::X1);
     assetScaleProfile.textures = OpenYAMM::Engine::AssetScaleTier::X4;
-    assetScaleProfile.terrain = OpenYAMM::Engine::AssetScaleTier::X4;
 
     OpenYAMM::Engine::AssetFileSystem assetFileSystem;
     CHECK_FALSE(assetFileSystem.initialize(

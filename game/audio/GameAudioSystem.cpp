@@ -1,27 +1,16 @@
 #include "game/audio/GameAudioSystem.h"
 #include "game/audio/ActorAudioRules.h"
+#include "game/audio/MusicStream.h"
 
 #include "engine/TextTable.h"
 
 #include <SDL3/SDL.h>
-
-extern "C"
-{
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavutil/channel_layout.h>
-#include <libavutil/error.h>
-#include <libavutil/opt.h>
-#include <libavutil/samplefmt.h>
-#include <libswresample/swresample.h>
-}
 
 #include <array>
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
-#include <future>
 #include <iostream>
 #include <memory>
 #include <string_view>
@@ -158,411 +147,6 @@ std::vector<std::vector<std::string>> rowsFromTextTable(const Engine::TextTable 
     return rows;
 }
 
-struct AvFormatContextCloser
-{
-    void operator()(AVFormatContext *pFormatContext) const
-    {
-        if (pFormatContext != nullptr)
-        {
-            avformat_close_input(&pFormatContext);
-        }
-    }
-};
-
-struct AvCodecContextCloser
-{
-    void operator()(AVCodecContext *pCodecContext) const
-    {
-        if (pCodecContext != nullptr)
-        {
-            avcodec_free_context(&pCodecContext);
-        }
-    }
-};
-
-struct AvFrameCloser
-{
-    void operator()(AVFrame *pFrame) const
-    {
-        if (pFrame != nullptr)
-        {
-            av_frame_free(&pFrame);
-        }
-    }
-};
-
-struct AvPacketCloser
-{
-    void operator()(AVPacket *pPacket) const
-    {
-        if (pPacket != nullptr)
-        {
-            av_packet_free(&pPacket);
-        }
-    }
-};
-
-struct SwrContextCloser
-{
-    void operator()(SwrContext *pSwrContext) const
-    {
-        if (pSwrContext != nullptr)
-        {
-            swr_free(&pSwrContext);
-        }
-    }
-};
-
-struct AvioContextCloser
-{
-    void operator()(AVIOContext *pIoContext) const
-    {
-        if (pIoContext != nullptr)
-        {
-            av_freep(&pIoContext->buffer);
-            avio_context_free(&pIoContext);
-        }
-    }
-};
-
-using AvFormatContextPtr = std::unique_ptr<AVFormatContext, AvFormatContextCloser>;
-using AvCodecContextPtr = std::unique_ptr<AVCodecContext, AvCodecContextCloser>;
-using AvFramePtr = std::unique_ptr<AVFrame, AvFrameCloser>;
-using AvPacketPtr = std::unique_ptr<AVPacket, AvPacketCloser>;
-using SwrContextPtr = std::unique_ptr<SwrContext, SwrContextCloser>;
-using AvioContextPtr = std::unique_ptr<AVIOContext, AvioContextCloser>;
-
-struct MemoryAudioReader
-{
-    const std::vector<uint8_t> *pBytes = nullptr;
-    size_t position = 0;
-};
-
-std::string ffmpegErrorString(int errorCode)
-{
-    std::array<char, AV_ERROR_MAX_STRING_SIZE> buffer = {};
-    av_strerror(errorCode, buffer.data(), buffer.size());
-    return std::string(buffer.data());
-}
-
-int readAudioBytes(void *pOpaque, uint8_t *pBuffer, int bufferSize)
-{
-    if (pOpaque == nullptr || pBuffer == nullptr || bufferSize <= 0)
-    {
-        return AVERROR_EOF;
-    }
-
-    MemoryAudioReader &reader = *static_cast<MemoryAudioReader *>(pOpaque);
-
-    if (reader.pBytes == nullptr || reader.position >= reader.pBytes->size())
-    {
-        return AVERROR_EOF;
-    }
-
-    const size_t remainingBytes = reader.pBytes->size() - reader.position;
-    const size_t copySize = std::min(static_cast<size_t>(bufferSize), remainingBytes);
-    std::memcpy(pBuffer, reader.pBytes->data() + reader.position, copySize);
-    reader.position += copySize;
-    return static_cast<int>(copySize);
-}
-
-int64_t seekAudioBytes(void *pOpaque, int64_t offset, int whence)
-{
-    if (pOpaque == nullptr)
-    {
-        return -1;
-    }
-
-    MemoryAudioReader &reader = *static_cast<MemoryAudioReader *>(pOpaque);
-
-    if (reader.pBytes == nullptr)
-    {
-        return -1;
-    }
-
-    if (whence == AVSEEK_SIZE)
-    {
-        return static_cast<int64_t>(reader.pBytes->size());
-    }
-
-    int64_t targetPosition = 0;
-
-    switch (whence)
-    {
-        case SEEK_SET:
-            targetPosition = offset;
-            break;
-
-        case SEEK_CUR:
-            targetPosition = static_cast<int64_t>(reader.position) + offset;
-            break;
-
-        case SEEK_END:
-            targetPosition = static_cast<int64_t>(reader.pBytes->size()) + offset;
-            break;
-
-        default:
-            return -1;
-    }
-
-    if (targetPosition < 0 || targetPosition > static_cast<int64_t>(reader.pBytes->size()))
-    {
-        return -1;
-    }
-
-    reader.position = static_cast<size_t>(targetPosition);
-    return targetPosition;
-}
-
-bool decodeAudioSamplesFromBytes(const std::vector<uint8_t> &bytes, std::vector<float> &samples)
-{
-    samples.clear();
-
-    if (bytes.empty())
-    {
-        return false;
-    }
-
-    MemoryAudioReader reader = {};
-    reader.pBytes = &bytes;
-    uint8_t *pIoBuffer = static_cast<uint8_t *>(av_malloc(4096));
-
-    if (pIoBuffer == nullptr)
-    {
-        return false;
-    }
-
-    AVIOContext *pRawIoContext = avio_alloc_context(
-        pIoBuffer,
-        4096,
-        0,
-        &reader,
-        &readAudioBytes,
-        nullptr,
-        &seekAudioBytes);
-
-    if (pRawIoContext == nullptr)
-    {
-        return false;
-    }
-
-    AvioContextPtr pIoContext(pRawIoContext);
-    AVFormatContext *pRawFormatContext = avformat_alloc_context();
-
-    if (pRawFormatContext == nullptr)
-    {
-        return false;
-    }
-
-    pRawFormatContext->pb = pIoContext.get();
-    pRawFormatContext->flags |= AVFMT_FLAG_CUSTOM_IO;
-    const int openResult = avformat_open_input(&pRawFormatContext, nullptr, nullptr, nullptr);
-
-    if (openResult < 0)
-    {
-        avformat_free_context(pRawFormatContext);
-        std::cerr << "GameAudioSystem: avformat_open_input failed: " << ffmpegErrorString(openResult) << '\n';
-        return false;
-    }
-
-    AvFormatContextPtr pFormatContext(pRawFormatContext);
-
-    const int streamInfoResult = avformat_find_stream_info(pFormatContext.get(), nullptr);
-
-    if (streamInfoResult < 0)
-    {
-        std::cerr << "GameAudioSystem: avformat_find_stream_info failed: "
-                  << ffmpegErrorString(streamInfoResult) << '\n';
-        return false;
-    }
-
-    const int audioStreamIndex = av_find_best_stream(pFormatContext.get(), AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
-
-    if (audioStreamIndex < 0)
-    {
-        std::cerr << "GameAudioSystem: no decodable audio stream found\n";
-        return false;
-    }
-
-    AVStream *pStream = pFormatContext->streams[audioStreamIndex];
-    const AVCodec *pCodec = avcodec_find_decoder(pStream->codecpar->codec_id);
-
-    if (pCodec == nullptr)
-    {
-        std::cerr << "GameAudioSystem: decoder not available for codec id " << pStream->codecpar->codec_id << '\n';
-        return false;
-    }
-
-    AvCodecContextPtr pCodecContext(avcodec_alloc_context3(pCodec));
-
-    if (pCodecContext == nullptr)
-    {
-        return false;
-    }
-
-    int result = avcodec_parameters_to_context(pCodecContext.get(), pStream->codecpar);
-
-    if (result < 0)
-    {
-        std::cerr << "GameAudioSystem: avcodec_parameters_to_context failed: "
-                  << ffmpegErrorString(result) << '\n';
-        return false;
-    }
-
-    result = avcodec_open2(pCodecContext.get(), pCodec, nullptr);
-
-    if (result < 0)
-    {
-        std::cerr << "GameAudioSystem: avcodec_open2 failed: " << ffmpegErrorString(result) << '\n';
-        return false;
-    }
-
-    SwrContextPtr pResampler(swr_alloc());
-
-    if (pResampler == nullptr)
-    {
-        return false;
-    }
-
-    AVChannelLayout outputLayout = AV_CHANNEL_LAYOUT_STEREO;
-    av_opt_set_chlayout(pResampler.get(), "in_chlayout", &pCodecContext->ch_layout, 0);
-    av_opt_set_chlayout(pResampler.get(), "out_chlayout", &outputLayout, 0);
-    av_opt_set_int(pResampler.get(), "in_sample_rate", pCodecContext->sample_rate, 0);
-    av_opt_set_int(pResampler.get(), "out_sample_rate", 48000, 0);
-    av_opt_set_sample_fmt(pResampler.get(), "in_sample_fmt", pCodecContext->sample_fmt, 0);
-    av_opt_set_sample_fmt(pResampler.get(), "out_sample_fmt", AV_SAMPLE_FMT_FLT, 0);
-
-    result = swr_init(pResampler.get());
-
-    if (result < 0)
-    {
-        std::cerr << "GameAudioSystem: swr_init failed: " << ffmpegErrorString(result) << '\n';
-        return false;
-    }
-
-    AvPacketPtr pPacket(av_packet_alloc());
-    AvFramePtr pFrame(av_frame_alloc());
-
-    if (pPacket == nullptr || pFrame == nullptr)
-    {
-        return false;
-    }
-
-    const auto appendFrame =
-        [&samples, &pResampler](AVCodecContext &codecContext, const AVFrame &frame) -> bool
-        {
-            const int outputCapacity = av_rescale_rnd(
-                swr_get_delay(pResampler.get(), codecContext.sample_rate) + frame.nb_samples,
-                48000,
-                codecContext.sample_rate,
-                AV_ROUND_UP);
-
-            if (outputCapacity <= 0)
-            {
-                return true;
-            }
-
-            std::vector<float> convertedSamples(static_cast<size_t>(outputCapacity) * 2);
-            uint8_t *pOutputData[1] = {reinterpret_cast<uint8_t *>(convertedSamples.data())};
-            const int convertedFrames = swr_convert(
-                pResampler.get(),
-                pOutputData,
-                outputCapacity,
-                const_cast<const uint8_t **>(frame.extended_data),
-                frame.nb_samples);
-
-            if (convertedFrames < 0)
-            {
-                return false;
-            }
-
-            convertedSamples.resize(static_cast<size_t>(convertedFrames) * 2);
-            samples.insert(samples.end(), convertedSamples.begin(), convertedSamples.end());
-            return true;
-        };
-
-    const auto drainDecoder =
-        [&](bool flushing) -> bool
-        {
-            while (true)
-            {
-                result = avcodec_receive_frame(pCodecContext.get(), pFrame.get());
-
-                if (result == AVERROR(EAGAIN))
-                {
-                    return true;
-                }
-
-                if (result == AVERROR_EOF)
-                {
-                    return true;
-                }
-
-                if (result < 0)
-                {
-                    std::cerr << "GameAudioSystem: avcodec_receive_frame failed: "
-                              << ffmpegErrorString(result) << '\n';
-                    return false;
-                }
-
-                if (!appendFrame(*pCodecContext, *pFrame))
-                {
-                    std::cerr << "GameAudioSystem: failed to resample decoded audio frame\n";
-                    return false;
-                }
-
-                av_frame_unref(pFrame.get());
-
-                if (!flushing)
-                {
-                    break;
-                }
-            }
-
-            return true;
-        };
-
-    while ((result = av_read_frame(pFormatContext.get(), pPacket.get())) >= 0)
-    {
-        if (pPacket->stream_index != audioStreamIndex)
-        {
-            av_packet_unref(pPacket.get());
-            continue;
-        }
-
-        result = avcodec_send_packet(pCodecContext.get(), pPacket.get());
-        av_packet_unref(pPacket.get());
-
-        if (result < 0)
-        {
-            std::cerr << "GameAudioSystem: avcodec_send_packet failed: "
-                      << ffmpegErrorString(result) << '\n';
-            return false;
-        }
-
-        if (!drainDecoder(false))
-        {
-            return false;
-        }
-    }
-
-    if (result != AVERROR_EOF)
-    {
-        std::cerr << "GameAudioSystem: av_read_frame failed: " << ffmpegErrorString(result) << '\n';
-        return false;
-    }
-
-    result = avcodec_send_packet(pCodecContext.get(), nullptr);
-
-    if (result < 0)
-    {
-        std::cerr << "GameAudioSystem: avcodec_send_packet(flush) failed: "
-                  << ffmpegErrorString(result) << '\n';
-        return false;
-    }
-
-    return drainDecoder(true) && !samples.empty();
-}
 }
 
 bool GameAudioSystem::initialize(
@@ -650,14 +234,12 @@ void GameAudioSystem::shutdown()
     m_persistentPreloadedClipKeys.clear();
     m_mapPreloadedClipKeys.clear();
     m_previousMapPreloadedClipKeys.clear();
-    m_pendingMusicDecodeJob.reset();
-    m_loadedMusicClipKeys.clear();
+    m_loadedMusicTracks.clear();
     m_activeMusicTrack = 0;
     m_pendingMusicTrack = 0;
     m_activeMusicInstanceId = 0;
     m_activeMusicVolume = 0.0f;
     m_musicFadeVelocity = 0.0f;
-    m_pendingMusicDecodeDelaySeconds = 0.0f;
     m_backgroundMusicPaused = false;
     m_recordingMapSoundPreloads = false;
     m_soundVolume = 1.0f;
@@ -674,8 +256,6 @@ void GameAudioSystem::shutdown()
 void GameAudioSystem::update(
     float listenerX, float listenerY, float listenerZ, float deltaSeconds, float listenerYawRadians)
 {
-    updatePendingBackgroundMusicDecode();
-
     const float musicTargetVolume = targetMusicVolume();
 
     if (m_activeMusicInstanceId != 0 && !m_audioSystem.isClipPlaying(m_activeMusicInstanceId))
@@ -689,26 +269,8 @@ void GameAudioSystem::update(
     if (!m_backgroundMusicPaused && m_activeMusicInstanceId == 0 && m_pendingMusicTrack > 0)
     {
         const int nextTrack = m_pendingMusicTrack;
-
-        if (isBackgroundMusicTrackLoaded(nextTrack))
-        {
-            m_pendingMusicTrack = 0;
-            m_pendingMusicDecodeDelaySeconds = 0.0f;
-            startBackgroundMusicTrack(nextTrack);
-        }
-        else
-        {
-            if (m_pendingMusicDecodeDelaySeconds > 0.0f)
-            {
-                m_pendingMusicDecodeDelaySeconds =
-                    std::max(0.0f, m_pendingMusicDecodeDelaySeconds - std::max(deltaSeconds, 0.0f));
-            }
-
-            if (m_pendingMusicDecodeDelaySeconds <= 0.0f)
-            {
-                queueBackgroundMusicTrackDecode(nextTrack);
-            }
-        }
+        m_pendingMusicTrack = 0;
+        startBackgroundMusicTrack(nextTrack);
     }
 
     if (!m_backgroundMusicPaused && m_activeMusicInstanceId != 0 && m_musicFadeVelocity != 0.0f)
@@ -728,20 +290,8 @@ void GameAudioSystem::update(
             if (m_pendingMusicTrack > 0)
             {
                 const int nextTrack = m_pendingMusicTrack;
-
-                if (isBackgroundMusicTrackLoaded(nextTrack))
-                {
-                    m_pendingMusicTrack = 0;
-                    m_pendingMusicDecodeDelaySeconds = 0.0f;
-                    startBackgroundMusicTrack(nextTrack);
-                }
-                else
-                {
-                    if (m_pendingMusicDecodeDelaySeconds <= 0.0f)
-                    {
-                        queueBackgroundMusicTrackDecode(nextTrack);
-                    }
-                }
+                m_pendingMusicTrack = 0;
+                startBackgroundMusicTrack(nextTrack);
             }
         }
         else if (m_activeMusicVolume >= musicTargetVolume && m_musicFadeVelocity > 0.0f)
@@ -1528,29 +1078,14 @@ void GameAudioSystem::setBackgroundMusicTrack(int redbookTrack)
 
     if (m_backgroundMusicPaused)
     {
-        if (m_activeMusicTrack == normalizedTrack && m_activeMusicInstanceId != 0)
-        {
-            m_pendingMusicTrack = 0;
-            m_pendingMusicDecodeDelaySeconds = 0.0f;
-        }
-        else
-        {
-            m_pendingMusicTrack = normalizedTrack;
-            m_pendingMusicDecodeDelaySeconds = 0.0f;
-
-            if (!isBackgroundMusicTrackLoaded(normalizedTrack))
-            {
-                queueBackgroundMusicTrackDecode(normalizedTrack);
-            }
-        }
-
+        m_pendingMusicTrack =
+            m_activeMusicTrack == normalizedTrack && m_activeMusicInstanceId != 0 ? 0 : normalizedTrack;
         return;
     }
 
     if (m_activeMusicTrack == normalizedTrack && m_activeMusicInstanceId != 0)
     {
         m_pendingMusicTrack = 0;
-        m_pendingMusicDecodeDelaySeconds = 0.0f;
         m_musicFadeVelocity = MusicFadeInSeconds > 0.0f ? (MusicVolume / MusicFadeInSeconds) : 0.0f;
         m_backgroundMusicPaused = false;
         return;
@@ -1558,27 +1093,12 @@ void GameAudioSystem::setBackgroundMusicTrack(int redbookTrack)
 
     if (m_activeMusicInstanceId == 0)
     {
-        if (isBackgroundMusicTrackLoaded(normalizedTrack))
-        {
-            startBackgroundMusicTrack(normalizedTrack);
-        }
-        else
-        {
-            m_pendingMusicTrack = normalizedTrack;
-            m_pendingMusicDecodeDelaySeconds = 0.0f;
-            queueBackgroundMusicTrackDecode(normalizedTrack);
-        }
+        m_pendingMusicTrack = 0;
+        startBackgroundMusicTrack(normalizedTrack);
         return;
     }
 
     m_pendingMusicTrack = normalizedTrack;
-    m_pendingMusicDecodeDelaySeconds = 0.0f;
-
-    if (!isBackgroundMusicTrackLoaded(normalizedTrack))
-    {
-        queueBackgroundMusicTrackDecode(normalizedTrack);
-    }
-
     m_musicFadeVelocity = MusicFadeOutSeconds > 0.0f ? (-MusicVolume / MusicFadeOutSeconds) : -MusicVolume;
 }
 
@@ -1592,7 +1112,6 @@ void GameAudioSystem::stopBackgroundMusic()
     }
 
     m_pendingMusicTrack = 0;
-    m_pendingMusicDecodeDelaySeconds = 0.0f;
     m_backgroundMusicPaused = false;
 
     if (m_activeMusicInstanceId == 0)
@@ -1616,7 +1135,6 @@ void GameAudioSystem::stopBackgroundMusicImmediate()
     }
 
     m_pendingMusicTrack = 0;
-    m_pendingMusicDecodeDelaySeconds = 0.0f;
     m_backgroundMusicPaused = false;
 
     if (m_activeMusicInstanceId != 0)
@@ -1686,26 +1204,18 @@ bool GameAudioSystem::isBackgroundMusicPaused() const
     return m_backgroundMusicPaused;
 }
 
-bool GameAudioSystem::isBackgroundMusicTrackLoaded(int redbookTrack) const
+std::shared_ptr<const std::vector<uint8_t>> GameAudioSystem::loadBackgroundMusicTrack(int redbookTrack)
 {
-    return m_loadedMusicClipKeys.find(redbookTrack) != m_loadedMusicClipKeys.end();
-}
-
-bool GameAudioSystem::queueBackgroundMusicTrackDecode(int redbookTrack)
-{
-    if (m_pAssetFileSystem == nullptr || redbookTrack <= 0 || isBackgroundMusicTrackLoaded(redbookTrack))
+    if (m_pAssetFileSystem == nullptr || redbookTrack <= 0)
     {
-        return false;
+        return nullptr;
     }
 
-    if (m_pendingMusicDecodeJob && m_pendingMusicDecodeJob->redbookTrack == redbookTrack)
-    {
-        return true;
-    }
+    const auto loadedIt = m_loadedMusicTracks.find(redbookTrack);
 
-    if (m_pendingMusicDecodeJob)
+    if (loadedIt != m_loadedMusicTracks.end())
     {
-        return false;
+        return loadedIt->second;
     }
 
     const std::string virtualPath = "Music/" + std::to_string(redbookTrack) + ".mp3";
@@ -1714,131 +1224,28 @@ bool GameAudioSystem::queueBackgroundMusicTrackDecode(int redbookTrack)
     if (!musicBytes || musicBytes->empty())
     {
         std::cerr << "GameAudioSystem: missing music track " << virtualPath << '\n';
-        clearPendingBackgroundMusicTrack(redbookTrack);
-        return false;
+        return nullptr;
     }
 
-    PendingMusicDecodeJob job = {};
-    job.redbookTrack = redbookTrack;
-    job.clipKey = "music_track_" + std::to_string(redbookTrack);
-    job.samplesFuture = std::async(
-        std::launch::async,
-        [bytes = std::move(*musicBytes)]() -> std::vector<float>
-        {
-            std::vector<float> decodedSamples;
-
-            if (!decodeAudioSamplesFromBytes(bytes, decodedSamples))
-            {
-                decodedSamples.clear();
-            }
-
-            return decodedSamples;
-        });
-    m_pendingMusicDecodeJob = std::move(job);
-    return true;
-}
-
-void GameAudioSystem::updatePendingBackgroundMusicDecode()
-{
-    if (!m_pendingMusicDecodeJob)
-    {
-        return;
-    }
-
-    if (m_pendingMusicDecodeJob->samplesFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
-    {
-        return;
-    }
-
-    const int redbookTrack = m_pendingMusicDecodeJob->redbookTrack;
-    const std::string clipKey = m_pendingMusicDecodeJob->clipKey;
-    std::vector<float> decodedSamples = m_pendingMusicDecodeJob->samplesFuture.get();
-    m_pendingMusicDecodeJob.reset();
-
-    if (decodedSamples.empty())
-    {
-        std::cerr << "GameAudioSystem: failed to decode music track Music/" << redbookTrack << ".mp3\n";
-        clearPendingBackgroundMusicTrack(redbookTrack);
-
-        return;
-    }
-
-    if (!m_audioSystem.registerClip(clipKey, std::move(decodedSamples)))
-    {
-        std::cerr << "GameAudioSystem: failed to register decoded music clip " << clipKey << '\n';
-        clearPendingBackgroundMusicTrack(redbookTrack);
-
-        return;
-    }
-
-    m_loadedMusicClipKeys[redbookTrack] = clipKey;
-
-    if (m_pendingMusicTrack == redbookTrack && m_activeMusicInstanceId == 0 && !m_backgroundMusicPaused)
-    {
-        m_pendingMusicTrack = 0;
-        m_pendingMusicDecodeDelaySeconds = 0.0f;
-        startBackgroundMusicTrack(redbookTrack);
-    }
-}
-
-bool GameAudioSystem::ensureBackgroundMusicTrackLoaded(int redbookTrack)
-{
-    if (m_pAssetFileSystem == nullptr || redbookTrack <= 0)
-    {
-        return false;
-    }
-
-    const auto loadedIt = m_loadedMusicClipKeys.find(redbookTrack);
-
-    if (loadedIt != m_loadedMusicClipKeys.end())
-    {
-        return true;
-    }
-
-    const std::string virtualPath = "Music/" + std::to_string(redbookTrack) + ".mp3";
-    const std::optional<std::vector<uint8_t>> musicBytes = m_pAssetFileSystem->readBinaryFile(virtualPath);
-
-    if (!musicBytes || musicBytes->empty())
-    {
-        std::cerr << "GameAudioSystem: missing music track " << virtualPath << '\n';
-        clearPendingBackgroundMusicTrack(redbookTrack);
-        return false;
-    }
-
-    std::vector<float> decodedSamples;
-
-    if (!decodeAudioSamplesFromBytes(*musicBytes, decodedSamples))
-    {
-        std::cerr << "GameAudioSystem: failed to decode music track " << virtualPath << '\n';
-        clearPendingBackgroundMusicTrack(redbookTrack);
-        return false;
-    }
-
-    const std::string clipKey = "music_track_" + std::to_string(redbookTrack);
-
-    if (!m_audioSystem.registerClip(clipKey, std::move(decodedSamples)))
-    {
-        std::cerr << "GameAudioSystem: failed to register decoded music clip " << clipKey << '\n';
-        clearPendingBackgroundMusicTrack(redbookTrack);
-        return false;
-    }
-
-    m_loadedMusicClipKeys[redbookTrack] = clipKey;
-    return true;
+    std::shared_ptr<const std::vector<uint8_t>> pTrack =
+        std::make_shared<const std::vector<uint8_t>>(std::move(*musicBytes));
+    m_loadedMusicTracks[redbookTrack] = pTrack;
+    return pTrack;
 }
 
 bool GameAudioSystem::startBackgroundMusicTrack(int redbookTrack)
 {
-    if (redbookTrack <= 0 || !ensureBackgroundMusicTrackLoaded(redbookTrack))
+    const std::shared_ptr<const std::vector<uint8_t>> pTrack = loadBackgroundMusicTrack(redbookTrack);
+
+    if (pTrack == nullptr)
     {
         return false;
     }
 
-    const std::string &clipKey = m_loadedMusicClipKeys[redbookTrack];
+    const std::string clipKey = "Music/" + std::to_string(redbookTrack) + ".mp3";
     Engine::AudioSystem::PlaybackOptions options = {};
-    options.loop = true;
     options.volume = 0.0f;
-    const uint64_t instanceId = m_audioSystem.playClip(clipKey, options);
+    const uint64_t instanceId = m_audioSystem.playStream(std::make_shared<MusicStream>(pTrack), options);
 
     if (instanceId == 0)
     {
@@ -1871,31 +1278,17 @@ bool GameAudioSystem::startBackgroundMusicTrack(int redbookTrack)
 
 void GameAudioSystem::evictUnusedMusicClips()
 {
-    const int pendingDecodeTrack = m_pendingMusicDecodeJob ? m_pendingMusicDecodeJob->redbookTrack : 0;
-
-    for (auto iterator = m_loadedMusicClipKeys.begin(); iterator != m_loadedMusicClipKeys.end();)
+    for (auto iterator = m_loadedMusicTracks.begin(); iterator != m_loadedMusicTracks.end();)
     {
         const int track = iterator->first;
 
-        if (track == m_activeMusicTrack || track == m_pendingMusicTrack || track == pendingDecodeTrack)
+        if (track == m_activeMusicTrack || track == m_pendingMusicTrack)
         {
             ++iterator;
             continue;
         }
 
-        m_audioSystem.releaseClip(iterator->second);
-        iterator = m_loadedMusicClipKeys.erase(iterator);
+        iterator = m_loadedMusicTracks.erase(iterator);
     }
-}
-
-void GameAudioSystem::clearPendingBackgroundMusicTrack(int redbookTrack)
-{
-    if (m_pendingMusicTrack != redbookTrack)
-    {
-        return;
-    }
-
-    m_pendingMusicTrack = 0;
-    m_pendingMusicDecodeDelaySeconds = 0.0f;
 }
 }
