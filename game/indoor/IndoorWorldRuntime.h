@@ -505,6 +505,9 @@ public:
     bool worldItemPosition(size_t worldItemIndex, float &x, float &y, float &z) const override;
     bool moveWorldItem(size_t worldItemIndex, float x, float y, float z) override;
     bool setPartyPosition(float x, float y, float footZ) override;
+    bool setWorldItemKind(size_t worldItemIndex, uint32_t itemId) override;
+    size_t mapChestCount() const override;
+    std::vector<uint8_t> *mapChestItemRecords(size_t chestId) override;
     GameplayWorldHoverCacheState worldHoverCacheState() const override;
     GameplayHoverStatusPayload refreshWorldHover(const GameplayWorldHoverRequest &request) override;
     GameplayHoverStatusPayload readCachedWorldHover() override;

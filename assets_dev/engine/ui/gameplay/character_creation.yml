@@ -1478,6 +1478,28 @@ elements:
       scale: 0.43333
       pad_x: 12.8
     notes: 'Live label; image padding, disabled and focus states: level_generation/ui/menu_study_20260928/runtime_stage/contracts/theme.yml.'
+  - id: CharacterCreationModOptionValue
+    anchor: top_left
+    offset_x: 104.0
+    offset_y: 428.6667
+    width: 132.0
+    height: 22.0
+    z_index: 10
+    visible: true
+    interactive: true
+    asset:
+      default: hud_x2/menus/omenu_button_quiet_default.png
+      highlighted: hud_x2/menus/omenu_button_quiet_hover.png
+      pressed: hud_x2/menus/omenu_button_quiet_pressed.png
+    text:
+      value: '{option}'
+      font: menu_lucida
+      color: '#e9dcc0'
+      align_x: left
+      align_y: middle
+      scale: 0.71529
+      pad_x: 6.9333
+    notes: 'The active mod''s further option for a new game (MAW''s randomizer), shown as its name and the choice. Controller supplies live text.'
   - id: CharacterCreationConfirmButton
     anchor: top_left
     offset_x: 666.1333

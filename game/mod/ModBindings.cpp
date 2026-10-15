@@ -32,6 +32,7 @@
 #include <cmath>
 #include <exception>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <map>
 #include <optional>
@@ -2828,7 +2829,10 @@ int nativeMapStatsSet(lua_State *pLuaState)
 
             if (field == "Monster" + digit + "Pic")
             {
+                // The original makes the map's monsters from the picture; the game from the monster's name (the
+                // next column, the same in the table but for a few). Both follow (MAW's randomizer shuffles them).
                 encounter.pictureName = luaL_checkstring(pLuaState, 3);
+                encounter.monsterName = encounter.pictureName;
                 lua_pushboolean(pLuaState, true);
                 return 1;
             }
@@ -4766,6 +4770,91 @@ int nativeWorldItemGet(lua_State *pLuaState)
     return 1;
 }
 
+// modrt.worldItemSetNumber(index, itemId): the item lying on the map becomes one of that kind (and looks it).
+int nativeWorldItemSetNumber(lua_State *pLuaState)
+{
+    IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+    const int64_t index = integerArgument(pLuaState, 1);
+    const int64_t itemId = integerArgument(pLuaState, 2);
+    lua_pushboolean(
+        pLuaState,
+        pWorld != nullptr && index >= 0 && itemId > 0
+            && pWorld->setWorldItemKind(static_cast<size_t>(index), static_cast<uint32_t>(itemId)));
+    return 1;
+}
+
+// The original's chest item record: 36 bytes, the item's number first (negative: a random item of that level).
+constexpr size_t ChestItemRecordBytes = 36;
+
+// modrt.chestGet(chest, field, slot): the map's chests. "#" how many chests; "ItemCount" how many item records the
+// chest has; "Number" the item number of record `slot` (from 0). Nothing for a chest or record there is none of.
+int nativeChestGet(lua_State *pLuaState)
+{
+    IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+    const int64_t chestId = integerArgument(pLuaState, 1);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+
+    if (pWorld == nullptr)
+    {
+        return 0;
+    }
+
+    if (field == "#")
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(pWorld->mapChestCount()));
+        return 1;
+    }
+
+    std::vector<uint8_t> *pRecords = chestId >= 0 ? pWorld->mapChestItemRecords(static_cast<size_t>(chestId)) : nullptr;
+
+    if (pRecords == nullptr)
+    {
+        return 0;
+    }
+
+    if (field == "ItemCount")
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(pRecords->size() / ChestItemRecordBytes));
+        return 1;
+    }
+
+    const int64_t slot = luaL_optinteger(pLuaState, 3, -1);
+
+    if (field != "Number" || slot < 0 || static_cast<size_t>(slot + 1) * ChestItemRecordBytes > pRecords->size())
+    {
+        return 0;
+    }
+
+    int32_t number = 0;
+    std::memcpy(&number, pRecords->data() + static_cast<size_t>(slot) * ChestItemRecordBytes, sizeof(number));
+    lua_pushinteger(pLuaState, number);
+    return 1;
+}
+
+// modrt.chestSet(chest, "Number", slot, itemId): the item number of a chest's record; whether it took. A chest
+// already opened keeps the contents it had.
+int nativeChestSet(lua_State *pLuaState)
+{
+    IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+    const int64_t chestId = integerArgument(pLuaState, 1);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+    const int64_t slot = integerArgument(pLuaState, 3);
+    std::vector<uint8_t> *pRecords =
+        pWorld != nullptr && chestId >= 0 ? pWorld->mapChestItemRecords(static_cast<size_t>(chestId)) : nullptr;
+
+    if (pRecords == nullptr || field != "Number" || slot < 0
+        || static_cast<size_t>(slot + 1) * ChestItemRecordBytes > pRecords->size())
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    const int32_t number = clampedInteger<int32_t>(integerArgument(pLuaState, 4));
+    std::memcpy(pRecords->data() + static_cast<size_t>(slot) * ChestItemRecordBytes, &number, sizeof(number));
+    lua_pushboolean(pLuaState, true);
+    return 1;
+}
+
 // modrt.worldItemMove(index, x, y, z): moves an item lying on the map. Whether it moved.
 int nativeWorldItemMove(lua_State *pLuaState)
 {
@@ -5096,6 +5185,9 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"houseGet", nativeHouseGet},
         {"worldItemGet", nativeWorldItemGet},
         {"worldItemMove", nativeWorldItemMove},
+        {"worldItemSetNumber", nativeWorldItemSetNumber},
+        {"chestGet", nativeChestGet},
+        {"chestSet", nativeChestSet},
         {"hoveredMonster", nativeHoveredMonster},
         {"castSpell", nativeCastSpell},
         {"showStatusText", nativeShowStatusText},

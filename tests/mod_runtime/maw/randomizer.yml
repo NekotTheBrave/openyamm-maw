@@ -1,0 +1,130 @@
+id: mod_runtime.maw.randomizer
+title: MAW's randomizer shuffles quest items and the maps' monsters
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's randomizer (zzzzMalekith-Randomizer.lua; zMaw-Randomizer.lua for the port): chosen for a new game
+# (ModRT.NewGameOptions, the footer of character creation), it shuffles about a hundred quest items into
+# vars.Randomizer, swapped the first time one is met: in chests and on the ground on arriving at a map, in the
+# backpacks and the hand after (here: within half a second of) receiving it; and it shuffles the maps' monsters among
+# the maps (Game.MapStats). Run with the MAW mods.yml.
+- mod_lua:
+    code: |
+      local option = ModRT.NewGameOptions[1]
+      option.Set("On")
+      return option.Name, table.concat(option.Choices, ","), option.Get()
+    expect: "Randomizer\tOff,On\tOn"
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 1
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- load_map:
+    map: out02.odm
+- mod_lua:
+    code: |
+      local changed = 0
+      for i = 1, Game.MapStats.High do
+        local m = Game.MapStats[i]
+        if BackupMapStats and BackupMapStats[i] and m.Monster1Pic ~= BackupMapStats[i].Monster1Pic then
+          changed = changed + 1
+        end
+      end
+      return tostring(vars.RandomizerMode), #vars.Randomizer == #vars.OriginalItemOrder, #vars.Randomizer > 50,
+        #vars.MonsterShuffleList > 50, changed > 10, ModRT.totalErrorCount
+    expect: "true\ttrue\ttrue\ttrue\ttrue\t0"
+# An item of the list reaching the backpack leaves it for another of the list, given in the hand (evt.Add). As in MAW,
+# the hand is looked at in the same step: the counterpart there, itself of the list and not met yet, becomes its own
+# counterpart in turn.
+- mod_lua:
+    code: |
+      local found = {}
+      for _, id in ipairs(vars.ItemFound) do found[id] = true end
+      Unmet = {}
+      for index, id in ipairs(vars.OriginalItemOrder) do
+        if not found[id] and not found[vars.Randomizer[index]] then Unmet[#Unmet + 1] = index end
+      end
+      local listed = {}
+      for _, id in ipairs(vars.OriginalItemOrder) do listed[id] = true end
+      local original = vars.OriginalItemOrder[Unmet[1]]
+      modrt.inventoryTake(0)
+      modrt.inventoryPut(0, {Number = original})
+      RandomizerSwapReceivedItems()
+      local inPack = #modrt.inventoryTake(0)
+      local held = Mouse.Item.Number
+      Mouse.Item.Number = 0
+      return inPack, listed[held] == true, held ~= original, ModRT.totalErrorCount
+    expect: "0\ttrue\ttrue\t0"
+# In a chest and on the ground, items of the list become their counterparts on arriving at the map (MAW's LoadMap).
+- mod_lua:
+    code: |
+      -- Two items not met yet, after the step above (MAW marks the items it gave too), and neither the other's
+      -- counterpart (MAW marks a chest item's counterpart as met).
+      local found = {}
+      for _, id in ipairs(vars.ItemFound) do found[id] = true end
+      local chestIndex, groundIndex
+      for index, id in ipairs(vars.OriginalItemOrder) do
+        if not found[id] and not found[vars.Randomizer[index]] then
+          if not chestIndex then
+            chestIndex = index
+          elseif vars.Randomizer[chestIndex] ~= id and vars.Randomizer[index] ~= vars.OriginalItemOrder[chestIndex] then
+            groundIndex = index
+            break
+          end
+        end
+      end
+      local chestId = nil
+      for i = 0, Map.Chests.High do
+        if Map.Chests[i].Items.High >= 1 then chestId = i break end
+      end
+      Map.Chests[chestId].Items[1].Number = vars.OriginalItemOrder[chestIndex]
+      SummonItem(vars.OriginalItemOrder[groundIndex], Party.X + 300, Party.Y, Party.Z, 0)
+      local ground = nil
+      for i = 0, Map.Objects.High do
+        if Map.Objects[i].Item.Number == vars.OriginalItemOrder[groundIndex] then ground = i end
+      end
+      ModRT.fire("LoadMap", true)
+      return Map.Chests[chestId].Items[1].Number == vars.Randomizer[chestIndex],
+        Map.Objects[ground].Item.Number == vars.Randomizer[groundIndex], ModRT.totalErrorCount
+    expect: "true\ttrue\t0"
+# A map first visited after the shuffle spawns its shuffled monsters (Alvar, out03): its spawn points take the
+# encounters as MAW wrote them (the game reads the monster from the table's name column, which follows MAW's
+# Monster1Pic..3Pic writes, and loads the map with the table as written; MAW keeps the originals in baseSpawnMonsters). Monsters placed in the map itself keep their
+# kinds, as in the original.
+- mod_lua:
+    code: |
+      for i = 1, Game.MapStats.High do
+        if Game.MapStats[i].FileName == "out03.odm" then Alvar = i end
+      end
+      local now = Game.MapStats[Alvar]
+      Shuffled, Original = {}, {}
+      for slot = 1, 3 do
+        local pic, old = now["Monster" .. slot .. "Pic"], baseSpawnMonsters[Alvar][slot]
+        if pic ~= old then Shuffled[pic] = true; Original[old] = true end
+      end
+      return next(Shuffled) ~= nil
+    expect: "true"
+- load_map:
+    map: out03.odm
+- mod_lua:
+    code: |
+      local shuffled, original = 0, 0
+      for i = 0, Map.Monsters.High do
+        local family = (Game.MonstersTxt[Map.Monsters[i].Id].Picture or ""):gsub(" [ABC]$", "")
+        if Shuffled[family] then shuffled = shuffled + 1 end
+        if Original[family] and not Shuffled[family] then original = original + 1 end
+      end
+      return shuffled > 0, ModRT.totalErrorCount
+    expect: "true\t0"

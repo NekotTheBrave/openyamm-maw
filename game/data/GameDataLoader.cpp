@@ -4423,12 +4423,29 @@ bool GameDataLoader::loadSelectedMap(
     m_selectedMapRenderSourcePixelsReleased = false;
     m_lastReleasedMapRenderSourcePixelBytes = 0;
     m_mapAssetLoadSharedCache.beginLoad(assetFileSystem.contentGeneration());
-    const std::optional<MapStatsEntry> selectedMap = m_mapRegistry.findById(mapId);
+    std::optional<MapStatsEntry> selectedMap = m_mapRegistry.findById(mapId);
 
     if (!selectedMap)
     {
         std::cerr << "Failed to select map from map registry: id=" << mapId << '\n';
         return false;
+    }
+
+    // The registry is a copy of the map table made at startup; a mod writes the table itself (Game.MapStats: MAW's
+    // randomizer shuffles the encounters, Road to Insanity sets the refill days). The map loads with what it wrote.
+    if (const MapStatsEntry *pModdedEntry = m_mapStats.findById(static_cast<uint32_t>(mapId)))
+    {
+        selectedMap->encounter1 = pModdedEntry->encounter1;
+        selectedMap->encounter2 = pModdedEntry->encounter2;
+        selectedMap->encounter3 = pModdedEntry->encounter3;
+        selectedMap->encounterChance = pModdedEntry->encounterChance;
+        selectedMap->respawnIntervalDays = pModdedEntry->respawnIntervalDays;
+        selectedMap->perceptionDifficulty = pModdedEntry->perceptionDifficulty;
+        selectedMap->baseStealingFine = pModdedEntry->baseStealingFine;
+        selectedMap->disarmDifficulty = pModdedEntry->disarmDifficulty;
+        selectedMap->trapDamageD20DiceCount = pModdedEntry->trapDamageD20DiceCount;
+        selectedMap->treasureLevel = pModdedEntry->treasureLevel;
+        selectedMap->redbookTrack = pModdedEntry->redbookTrack;
     }
 
     GameDataLoadTimingLogger timingLogger(selectedMap->fileName, "game_data_loader");

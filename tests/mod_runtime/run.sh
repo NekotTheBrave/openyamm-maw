@@ -68,6 +68,37 @@ selftest() {
     esac
 }
 
+# The menu layouts (assets_dev/engine/ui) parse as YAML: a menu screen ends the game on one that does not (a plain
+# value with ": " in it did, on 2026-10-15). Needs Python with PyYAML; skipped without.
+ui_layouts() {
+    local python
+    python="$(command -v python || command -v python3)"
+
+    if [ -z "$python" ] || ! "$python" -c "import yaml" 2>/dev/null; then
+        report "menu layouts parse" ok "(skipped: no Python with PyYAML)"
+        return
+    fi
+
+    local output
+    output="$("$python" - <<'EOF'
+import glob, yaml
+bad = []
+for path in glob.glob("assets_dev/engine/ui/**/*.yml", recursive=True):
+    try:
+        yaml.safe_load(open(path, encoding="utf-8"))
+    except Exception as error:
+        bad.append(path + ": " + str(error).splitlines()[0])
+print("; ".join(bad) if bad else "ok")
+EOF
+)"
+
+    if [ "$output" = "ok" ]; then
+        report "menu layouts parse" ok ""
+    else
+        report "menu layouts parse" FAILED "$output"
+    fi
+}
+
 maw_load() {
     local output
     output="$("$game" --headless-mod-report 5 2>/dev/null | grep -a 'files loaded')"
@@ -80,6 +111,7 @@ maw_load() {
 
 # --- with the test mod only ------------------------------------------------------------------------------------------
 export OPENYAMM_MODS_CONFIG="$tests/mods.test.yml"
+ui_layouts
 selftest "runtime self-test"
 
 for path in "$tests"/scenarios/*.yml; do

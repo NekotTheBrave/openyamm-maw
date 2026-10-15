@@ -14909,6 +14909,57 @@ size_t IndoorWorldRuntime::worldItemCount() const
     return pMapDeltaData != nullptr ? pMapDeltaData->spriteObjects.size() : 0;
 }
 
+bool IndoorWorldRuntime::setWorldItemKind(size_t worldItemIndex, uint32_t itemId)
+{
+    MapDeltaData *pMapDeltaData = mapDeltaData();
+    const ItemDefinition *pItemDefinition = m_pItemTable != nullptr ? m_pItemTable->get(itemId) : nullptr;
+
+    if (pMapDeltaData == nullptr || worldItemIndex >= pMapDeltaData->spriteObjects.size()
+        || pItemDefinition == nullptr || m_pObjectTable == nullptr)
+    {
+        return false;
+    }
+
+    MapDeltaSpriteObject &spriteObject = pMapDeltaData->spriteObjects[worldItemIndex];
+    GameplayWorldItemInspectState current = {};
+
+    if (!worldItemInspectState(worldItemIndex, current) || current.isGold)
+    {
+        return false;
+    }
+
+    // It looks like the new kind: the object its sprite index names, as when such an item is put down.
+    const std::optional<uint16_t> objectDescriptionId =
+        m_pObjectTable->findDescriptionIdByObjectId(static_cast<int16_t>(pItemDefinition->spriteIndex));
+    const ObjectEntry *pObjectEntry = objectDescriptionId ? m_pObjectTable->get(*objectDescriptionId) : nullptr;
+
+    if (pObjectEntry == nullptr)
+    {
+        return false;
+    }
+
+    spriteObject.objectDescriptionId = *objectDescriptionId;
+    spriteObject.spriteId = pObjectEntry->spriteId;
+    writeIndoorHeldItemPayload(
+        spriteObject.rawContainingItem,
+        ItemGenerator::makeInventoryItem(itemId, *m_pItemTable, ItemGenerationMode::Generic));
+    return true;
+}
+
+size_t IndoorWorldRuntime::mapChestCount() const
+{
+    const MapDeltaData *pMapDeltaData = mapDeltaData();
+    return pMapDeltaData != nullptr ? pMapDeltaData->chests.size() : 0;
+}
+
+std::vector<uint8_t> *IndoorWorldRuntime::mapChestItemRecords(size_t chestId)
+{
+    MapDeltaData *pMapDeltaData = mapDeltaData();
+    return pMapDeltaData != nullptr && chestId < pMapDeltaData->chests.size()
+        ? &pMapDeltaData->chests[chestId].rawItems
+        : nullptr;
+}
+
 bool IndoorWorldRuntime::setPartyPosition(float x, float y, float footZ)
 {
     if (m_pPartyRuntime == nullptr)

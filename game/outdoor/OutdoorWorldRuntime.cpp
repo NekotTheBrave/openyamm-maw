@@ -17816,6 +17816,46 @@ void OutdoorWorldRuntime::removeDepletedSemanticLootContainer(uint32_t container
         });
 }
 
+bool OutdoorWorldRuntime::setWorldItemKind(size_t worldItemIndex, uint32_t itemId)
+{
+    WorldItemState *pWorldItem = worldItemStateMutable(worldItemIndex);
+
+    if (pWorldItem == nullptr || pWorldItem->isGold || m_pItemTable == nullptr || m_pItemTable->get(itemId) == nullptr)
+    {
+        return false;
+    }
+
+    WorldItemState changed = *pWorldItem;
+
+    if (!resolveWorldItemVisual(
+            itemId,
+            changed.objectDescriptionId,
+            changed.objectSpriteId,
+            changed.objectSpriteFrameIndex,
+            changed.objectFlags,
+            changed.radius,
+            changed.height,
+            changed.objectName,
+            changed.objectSpriteName))
+    {
+        return false;
+    }
+
+    changed.item = ItemGenerator::makeInventoryItem(itemId, *m_pItemTable, ItemGenerationMode::Generic);
+    *pWorldItem = std::move(changed);
+    return true;
+}
+
+size_t OutdoorWorldRuntime::mapChestCount() const
+{
+    return m_chests.size();
+}
+
+std::vector<uint8_t> *OutdoorWorldRuntime::mapChestItemRecords(size_t chestId)
+{
+    return chestId < m_chests.size() ? &m_chests[chestId].rawItems : nullptr;
+}
+
 bool OutdoorWorldRuntime::setPartyPosition(float x, float y, float footZ)
 {
     if (m_pPartyRuntime == nullptr)

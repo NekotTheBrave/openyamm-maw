@@ -327,6 +327,30 @@ local function dispatchKind(kind, ...)
         return ModRT.HudButtons.click(...)
     elseif kind == "questionAnswered" then
         return ModRT.MapEvents.questionAnswered(...)
+    elseif kind == "newGameOptions" or kind == "newGameOptionSet" then
+        -- A mod's further options for a new game: ModRT.NewGameOptions, a list of {Name, Choices, Get = f, Set = f}.
+        ModRT.ensureSession()
+        local options = ModRT.NewGameOptions or {}
+
+        if kind == "newGameOptions" then
+            local list = {}
+
+            for _, option in ipairs(options) do
+                list[#list + 1] = {Name = option.Name, Choices = option.Choices, Value = tostring(option.Get())}
+            end
+
+            return list
+        end
+
+        local name, value = ...
+
+        for _, option in ipairs(options) do
+            if option.Name == name then
+                option.Set(value)
+            end
+        end
+
+        return nil
     elseif kind == "difficultyChoices" or kind == "difficultyGet" or kind == "difficultySet"
         or kind == "gameModeChoices" or kind == "gameModeGet" or kind == "gameModeSet" then
         -- A mod that has difficulties registers them as ModRT.Difficulty = {choices = f, get = f, set = f}, and its

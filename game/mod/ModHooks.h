@@ -191,6 +191,14 @@ struct ModMonsterInfoBox
 
 // A topic of the NPC dialog being shown as a mod sets it (Merge's quests: Quest{...}, NPCTopic{...}): slot 0 to 5
 // of the NPC's topics shows event `eventId` (0: nothing), named `label` when that is not empty.
+// An option a mod offers for a new game (MAW's randomizer): its name, the choices, and the one chosen.
+struct ModNewGameOption
+{
+    std::string name;
+    std::vector<std::string> choices;
+    std::string value;
+};
+
 // A button a mod puts on a screen of the original's (CustomUI.CreateButton): its icon and its place at the original's
 // 640x480 positions.
 struct ModHudButton
@@ -381,6 +389,10 @@ public:
     virtual void setDifficulty(const std::string &name) = 0;
     // The game modes the mod offers (MAW's Normal, Doom, Road to Insanity, Beyond Madness, Austerity), none when it
     // has none; the one the next new game starts in; and choosing it. A game keeps the mode it began in.
+    // Further options the mod offers for a new game (MAW's randomizer, Off or On), and choosing one; the next new game
+    // starts with what is chosen.
+    virtual void newGameOptions(std::vector<ModNewGameOption> &options) = 0;
+    virtual void setNewGameOption(const std::string &name, const std::string &value) = 0;
     virtual std::vector<std::string> gameModeChoices() = 0;
     virtual std::string gameMode() = 0;
     virtual void setGameMode(const std::string &name) = 0;
@@ -543,6 +555,9 @@ void modQuestionAnswered(const std::string &answer);
 std::vector<std::string> modDifficultyChoices();
 std::string modDifficulty();
 void modSetDifficulty(const std::string &name);
+// The mod's further options for a new game (none without a mod), and choosing one; see IModHooks::newGameOptions.
+std::vector<ModNewGameOption> modNewGameOptions();
+void modSetNewGameOption(const std::string &name, const std::string &value);
 // The same for the game modes; see IModHooks::gameModeChoices.
 std::vector<std::string> modGameModeChoices();
 std::string modGameMode();

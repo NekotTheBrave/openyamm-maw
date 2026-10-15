@@ -2232,6 +2232,26 @@ void NewGameScreen::drawScreen(float deltaSeconds)
                     }, true);
         }
     }
+    // The mod's further option for a new game (MAW's randomizer), in the footer: "Name: choice".
+    if (const std::vector<ModNewGameOption> options = modNewGameOptions(); !options.empty())
+    {
+        const ModNewGameOption option = options.front();
+
+        if (selectBox("mod_option", designRect("CharacterCreationModOptionValue"), option.name + ": " + option.value,
+                      true, 12.16f))
+        {
+            endNameEditing(true);
+            confirm("Choose " + option.name, "The new adventure starts with it.", option.choices,
+                    [option](int index)
+                    {
+                        if (index >= 0)
+                        {
+                            modSetNewGameOption(option.name, option.choices[size_t(index)]);
+                        }
+                    }, true);
+        }
+    }
+
     const Rect nameRect = designRect("CharacterCreationNameField");
     if (m_state.nameEditing && (keyPressed(SDL_SCANCODE_TAB) || (leftMouseJustPressed() && !pointerInside(nameRect))))
     {

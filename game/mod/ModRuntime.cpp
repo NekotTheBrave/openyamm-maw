@@ -2157,6 +2157,74 @@ void ModRuntime::setDifficulty(const std::string &name)
     dispatchChoose("difficultySet", name);
 }
 
+void ModRuntime::newGameOptions(std::vector<ModNewGameOption> &options)
+{
+    if (!m_active || !beginDispatch("newGameOptions") || !endDispatch(0, 1))
+    {
+        return;
+    }
+
+    if (lua_istable(m_pLuaState, -1))
+    {
+        const lua_Integer count = luaL_len(m_pLuaState, -1);
+
+        for (lua_Integer index = 1; index <= count; ++index)
+        {
+            lua_rawgeti(m_pLuaState, -1, index);
+
+            if (lua_istable(m_pLuaState, -1))
+            {
+                ModNewGameOption option = {};
+                lua_getfield(m_pLuaState, -1, "Name");
+                option.name = lua_type(m_pLuaState, -1) == LUA_TSTRING ? lua_tostring(m_pLuaState, -1) : "";
+                lua_pop(m_pLuaState, 1);
+                lua_getfield(m_pLuaState, -1, "Value");
+                option.value = lua_type(m_pLuaState, -1) == LUA_TSTRING ? lua_tostring(m_pLuaState, -1) : "";
+                lua_pop(m_pLuaState, 1);
+                lua_getfield(m_pLuaState, -1, "Choices");
+
+                if (lua_istable(m_pLuaState, -1))
+                {
+                    const lua_Integer choiceCount = luaL_len(m_pLuaState, -1);
+
+                    for (lua_Integer choice = 1; choice <= choiceCount; ++choice)
+                    {
+                        lua_rawgeti(m_pLuaState, -1, choice);
+
+                        if (lua_type(m_pLuaState, -1) == LUA_TSTRING)
+                        {
+                            option.choices.emplace_back(lua_tostring(m_pLuaState, -1));
+                        }
+
+                        lua_pop(m_pLuaState, 1);
+                    }
+                }
+
+                lua_pop(m_pLuaState, 1);
+
+                if (!option.name.empty() && !option.choices.empty())
+                {
+                    options.push_back(std::move(option));
+                }
+            }
+
+            lua_pop(m_pLuaState, 1);
+        }
+    }
+
+    lua_pop(m_pLuaState, 1);
+}
+
+void ModRuntime::setNewGameOption(const std::string &name, const std::string &value)
+{
+    if (m_active && beginDispatch("newGameOptionSet"))
+    {
+        lua_pushlstring(m_pLuaState, name.data(), name.size());
+        lua_pushlstring(m_pLuaState, value.data(), value.size());
+        endDispatch(2, 0);
+    }
+}
+
 std::vector<std::string> ModRuntime::gameModeChoices()
 {
     return dispatchChoices("gameModeChoices");

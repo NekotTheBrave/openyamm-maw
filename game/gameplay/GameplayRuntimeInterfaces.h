@@ -1205,6 +1205,25 @@ public:
         (void)z;
         return false;
     }
+    // Makes the item lying on the map one of another kind, as it looks too (MAW's randomizer). False for gold or no
+    // item there.
+    virtual bool setWorldItemKind(size_t worldItemIndex, uint32_t itemId)
+    {
+        (void)worldItemIndex;
+        (void)itemId;
+        return false;
+    }
+    // The map's chests as the map data keeps them (their item records), by chest number; nullptr past the last.
+    // A chest's records become its contents the first time it is opened.
+    virtual size_t mapChestCount() const
+    {
+        return 0;
+    }
+    virtual std::vector<uint8_t> *mapChestItemRecords(size_t chestId)
+    {
+        (void)chestId;
+        return nullptr;
+    }
     virtual GameplayWorldHoverCacheState worldHoverCacheState() const = 0;
     virtual GameplayHoverStatusPayload refreshWorldHover(const GameplayWorldHoverRequest &request) = 0;
     virtual GameplayHoverStatusPayload readCachedWorldHover() = 0;

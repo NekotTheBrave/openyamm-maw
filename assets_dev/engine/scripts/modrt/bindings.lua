@@ -2138,13 +2138,23 @@ function Bindings.setPickedObject(objectId)
 end
 
 local function mapObject(index)
+    -- Its item: Number (a write makes it one of that kind, looking it: MAW's randomizer) and T(), the item's row.
     local item = setmetatable({}, {
-        __index = function(_, key)
+        __index = function(self, key)
             if key == "Number" then
                 return modrt.worldItemGet(index, "Number") or 0
+            elseif key == "T" then
+                return function()
+                    return Game.ItemsTxt[modrt.worldItemGet(index, "Number") or 0]
+                end
             end
 
             return nil
+        end,
+        __newindex = function(_, key, value)
+            if key == "Number" and tonumber(value) then
+                modrt.worldItemSetNumber(index, floor(tonumber(value)))
+            end
         end,
     })
 
@@ -2194,11 +2204,64 @@ local mapObjects = boundObject("Map.Objects", {
     range = function() return 0, objectCount() - 1 end,
 })
 
+-- Map.Chests[i].Items[k].Number: the item records of the map's chests (k from 0; negative a random item of that
+-- level), read and written; a chest already opened keeps the contents it had (MAW's randomizer changes them on
+-- arriving at a map).
+local function chestItems(chestId)
+    local function count()
+        return modrt.chestGet(chestId, "ItemCount") or 0
+    end
+
+    return boundObject("Map.Chests[].Items", {
+        index = function(slot)
+            slot = floor(slot)
+
+            if slot < 0 or slot >= count() then
+                return nil
+            end
+
+            return setmetatable({}, {
+                __index = function(_, key)
+                    if key == "Number" then
+                        return modrt.chestGet(chestId, "Number", slot) or 0
+                    elseif key == "T" then
+                        return function(self)
+                            return Game.ItemsTxt[self.Number]
+                        end
+                    elseif key == "Randomize" then
+                        -- A random item of that strength, made when the chest is opened (the record's number
+                        -- -strength, as the map's own random items are; MAW makes artifacts placed in chests so).
+                        return function(self, strength)
+                            modrt.chestSet(chestId, "Number", slot, -math.max(1, math.min(6, floor(strength or 1))))
+                        end
+                    end
+
+                    return 0
+                end,
+                __newindex = function(_, key, value)
+                    if key == "Number" and tonumber(value) then
+                        modrt.chestSet(chestId, "Number", slot, floor(tonumber(value)))
+                    end
+                end,
+            })
+        end,
+        get = sizeFields(count),
+        range = function() return 0, count() - 1 end,
+    })
+end
+
+local function chestCount()
+    return modrt.chestGet(0, "#") or 0
+end
+
 local mapChests = boundObject("Map.Chests", {
     index = function(index)
+        index = floor(index)
         local trapped = openingChest[index]
-        return {Trapped = trapped == true}
+        return {Trapped = trapped == true, Items = chestItems(index)}
     end,
+    get = sizeFields(chestCount),
+    range = function() return 0, chestCount() - 1 end,
 })
 
 local MapMonsterLimit = 3000

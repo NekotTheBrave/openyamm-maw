@@ -143,6 +143,26 @@ void modSetDifficulty(const std::string &name)
     }
 }
 
+std::vector<ModNewGameOption> modNewGameOptions()
+{
+    std::vector<ModNewGameOption> options;
+
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->newGameOptions(options);
+    }
+
+    return options;
+}
+
+void modSetNewGameOption(const std::string &name, const std::string &value)
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->setNewGameOption(name, value);
+    }
+}
+
 std::vector<std::string> modGameModeChoices()
 {
     IModHooks *pModHooks = activeModHooks();

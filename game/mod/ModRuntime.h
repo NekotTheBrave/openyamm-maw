@@ -114,6 +114,8 @@ public:
     std::vector<std::string> difficultyChoices() override;
     std::string difficulty() override;
     void setDifficulty(const std::string &name) override;
+    void newGameOptions(std::vector<ModNewGameOption> &options) override;
+    void setNewGameOption(const std::string &name, const std::string &value) override;
     std::vector<std::string> gameModeChoices() override;
     std::string gameMode() override;
     void setGameMode(const std::string &name) override;
