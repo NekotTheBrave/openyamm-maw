@@ -1624,8 +1624,9 @@ void GameplayCombatController::handlePendingCombatEvents(
 
         if (event.affectsAllParty)
         {
-            for (size_t memberIndex = 0; memberIndex < context.party.members().size(); ++memberIndex)
+            for (size_t partyIndex = 0; partyIndex < context.party.members().size(); ++partyIndex)
             {
+                size_t memberIndex = partyIndex;
                 Character *pMember = context.party.member(memberIndex);
 
                 if (pMember == nullptr
@@ -1636,6 +1637,36 @@ void GameplayCombatController::handlePendingCombatEvents(
                     || pMember->conditions.test(static_cast<size_t>(CharacterCondition::Eradicated)))
                 {
                     continue;
+                }
+
+                // The original raises PlayerAttacked for each member an attack on the whole party reaches, as for
+                // one aimed at a single member: a mod may take the blow over (handled) or pass it to another
+                // member (MAW's Cover).
+                if (IModHooks *pModHooks = activeModHooks(); pModHooks != nullptr)
+                {
+                    ModPlayerAttackedEvent modEvent = {};
+                    modEvent.partyMemberIndex = memberIndex;
+                    modEvent.attackAction = static_cast<int>(event.ability);
+                    modEvent.spellId = static_cast<uint32_t>(std::max(0, event.spellId));
+                    modEvent.fromObject = event.type == CombatEventType::PartyProjectileImpact;
+
+                    if (sourceActor)
+                    {
+                        modEvent.actorIndex = sourceActor->actorIndex;
+                    }
+
+                    pModHooks->playerAttacked(modEvent);
+
+                    if (modEvent.handled)
+                    {
+                        continue;
+                    }
+
+                    if (Character *pRedirected = context.party.member(modEvent.partyMemberIndex))
+                    {
+                        memberIndex = modEvent.partyMemberIndex;
+                        pMember = pRedirected;
+                    }
                 }
 
                 if (pMember->physicalDamageImmune
