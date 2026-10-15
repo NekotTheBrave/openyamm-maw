@@ -14,6 +14,7 @@ import subprocess
 import sys
 import time
 
+import bmesh
 import bpy
 import numpy as np
 from mathutils import Matrix, Vector
@@ -21,7 +22,7 @@ from mathutils import Matrix, Vector
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from bake_geometry import face_basis, pack_lightmap_charts, rle_bgra
-from bake_assets import bake_texture_paths
+from bake_assets import bake_texture_paths, dependency_file
 
 sys.path.insert(0, str(ROOT / 'util'))
 from map_export import parse_odm_file
@@ -46,6 +47,73 @@ def rgbm(pixels):
     return rgba[:, :, [2, 1, 0, 3]].tobytes()
 
 
+# The glTF importer turns glTF's Y-up space into Blender's Z-up one: Blender = GLTF_TO_BLENDER @ glTF.
+GLTF_TO_BLENDER = Matrix(((1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (0, 0, 0, 1)))
+
+
+def casts_shadow(material):
+    """The runtime shadow rule (ModelRenderer): blended and camera-facing (openyamm_billboard) materials cast none."""
+    return material is None or (material.blend_method != 'BLEND' and not material.get('openyamm_billboard'))
+
+
+def casting_faces_only(obj):
+    """Deletes the faces of non-casting materials from an imported mesh; False when none remain."""
+    silent = {index for index, slot in enumerate(obj.material_slots) if not casts_shadow(slot.material)}
+    if silent:
+        mesh = bmesh.new()
+        mesh.from_mesh(obj.data)
+        bmesh.ops.delete(mesh, geom=[face for face in mesh.faces if face.material_index in silent], context='FACES')
+        mesh.to_mesh(obj.data)
+        mesh.free()
+    return len(obj.data.polygons) > 0
+
+
+def decoration_model_casters(game_binary, profile, out, dependency):
+    """Shadow-only copies of every 3D decoration placement; returns the objects and the decoration entity indices.
+
+    The placements come from the game itself (openyamm --headless-export-decoration-models), so heights, height
+    jitter, yaw and offsets match the rendered models. Each model is imported once (its LOD0 meshes) and linked into
+    every placement. Like the sprite cards, the copies only cast: they are invisible to the camera and to bounces.
+    Faces of blended or camera-facing materials (flame cards, foam) are removed first: the runtime shadows skip them
+    too, since a camera-facing card has no fixed shadow and a flipbook card would cast its whole atlas."""
+    export = out / 'decoration_models.json'
+    subprocess.check_call([str(game_binary), '--world', profile['world'], '--headless-export-decoration-models',
+                           profile['map'], str(export)], cwd=ROOT, stdout=subprocess.DEVNULL)
+    placements = json.loads(export.read_text())
+    dependency(ROOT / 'assets_dev/worlds' / profile['world'] / 'models/decorations.yml')
+    to_bake = Matrix.Scale(1 / 128, 4)
+    casters, modelled = [], set()
+    for model in placements['models']:
+        if not model['placements']:
+            continue
+        # The model's source (assets_source): a cooked runtime copy references .oytex textures Blender cannot read.
+        path = dependency_file(ROOT / 'assets_dev', model['model'])
+        dependency(path)
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=str(path))
+        imported = [obj for obj in bpy.data.objects if obj not in before]
+        sources = [obj for obj in imported if obj.type == 'MESH' and casting_faces_only(obj)]
+        for placement in model['placements']:
+            modelled.add(placement['entity'])
+            values = placement['matrix']
+            world = Matrix([[values[column * 4 + row] for column in range(4)] for row in range(4)])
+            for source in sources:
+                caster = source.copy()
+                caster.parent = None
+                bpy.context.scene.collection.objects.link(caster)
+                caster.matrix_world = to_bake @ world @ GLTF_TO_BLENDER.inverted() @ source.matrix_world
+                caster.visible_camera = False
+                caster.visible_diffuse = False
+                caster.visible_glossy = False
+                caster.visible_transmission = False
+                casters.append(caster)
+        for obj in imported:
+            bpy.data.objects.remove(obj, do_unlink=True)
+    print('DECORATION MODEL CASTERS', len(placements['models']), 'models', len(modelled), 'placements',
+          len(casters), 'objects', flush=True)
+    return casters, modelled
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--profile', required=True, type=Path)
@@ -53,7 +121,10 @@ def main():
     parser.add_argument('--azimuth', type=float)
     parser.add_argument('--samples', type=int)
     parser.add_argument('--decoration-shadows', action=argparse.BooleanOptionalAction, default=None,
-                        help='Bake static decoration alpha silhouettes into the sun term only')
+                        help='Bake static decoration shadows into the sun terms only: 3D decoration models '
+                             '(worlds/<world>/models/decorations.yml) as meshes, other decorations as sprite cards')
+    parser.add_argument('--game-binary', type=Path, default=ROOT / 'build/game/openyamm',
+                        help='OpenYAMM build that exports the 3D decoration placements')
     parser.add_argument('--preview-only', action='store_true')
     migration = parser.add_mutually_exclusive_group()
     migration.add_argument('--model-probes-only', type=Path,
@@ -106,7 +177,9 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     deps = {}
     def dependency(path):
-        rel = str(path.relative_to(ROOT / 'assets_dev'))
+        # Recorded relative to the runtime tree; source art in assets_source keeps the same relative path.
+        base = ROOT / 'assets_source' if path.is_relative_to(ROOT / 'assets_source') else ROOT / 'assets_dev'
+        rel = str(path.relative_to(base))
         deps[rel] = fnv(path.read_bytes())
     dependency(source)
     dependency(source.with_suffix('.scene.yml'))
@@ -289,6 +362,7 @@ def main():
     objects.extend(make_mesh('buildings_'+str(pi), groups[pi], building_dimensions[pi])
                    for pi in range(len(building_dimensions)))
     decoration_objects = []
+    model_casters = []
     decoration_report = None
     if profile.get('decoration_shadows', False):
         effective_profile = out / 'effective_profile.json'
@@ -298,6 +372,10 @@ def main():
             '--profile', str(effective_profile), '--output', str(out / 'decoration_masks')], text=True))
         for path in decoration_report['dependencies']:
             dependency(ROOT / 'assets_dev' / path)
+        # Decorations the game draws as 3D models cast with their meshes, placed exactly as the game places them.
+        model_casters, modelled = decoration_model_casters(args.game_binary, profile, out, dependency)
+        decoration_report['cards'] = [card for card in decoration_report['cards'] if card['index'] not in modelled]
+        decoration_report['model_casters'] = {'decorations': len(modelled), 'objects': len(model_casters)}
         card_materials = {}
         right = Vector((-math.sin(a), math.cos(a), 0))
         for card in decoration_report['cards']:
@@ -445,7 +523,7 @@ def main():
         elif not args.model_probes_only:
             terms += ['sun_direct']
         for term in terms:
-            for caster in decoration_objects:
+            for caster in decoration_objects + model_casters:
                 caster.hide_render = not term.startswith('sun')
             scene.render.bake.use_pass_direct = term != 'sun_indirect'
             scene.render.bake.use_pass_indirect = term != 'sun_direct'
@@ -491,7 +569,7 @@ def main():
             cursor += length
             if name.startswith('worlds/') and '/events/maps/' in name and name.endswith('.lua'):
                 continue
-            path = ROOT / 'assets_dev' / name
+            path = dependency_file(ROOT / 'assets_dev', name)
             if fnv(path.read_bytes()) != digest:
                 raise ValueError('Stale installed bake dependency: ' + name)
             old_dependencies[name] = digest

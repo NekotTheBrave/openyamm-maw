@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check that release bundles retain gameplay assets and exclude development model payloads."""
+"""Check that release bundles ship runtime models and leave development model files out."""
 
 from pathlib import Path
 import tempfile
@@ -8,7 +8,7 @@ import zipfile
 from package_runtime_assets import package
 
 
-def check_model_exclusions():
+def check_model_selection():
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         for name in ("engine", "mm6"):
@@ -18,6 +18,9 @@ def check_model_exclusions():
                 "sprites/grass.png": b"grass",
                 "models/actors.yml": b"actors:\n- model: worlds/mm6/models/demon.glb\n",
                 "models/demon.glb": b"model",
+                "models/textures/0123.oytex": b"cooked texture",
+                "models/README.md": b"notes",
+                "models/crowd_test.yml": b"actors: []\n",
                 "models/fixtures/checker.png": b"fixture texture",
                 "effects/mm9/models/spells/bugpath.glb": b"existing particle animation path",
             }
@@ -29,11 +32,17 @@ def check_model_exclusions():
             package(source, output)
             with zipfile.ZipFile(output) as archive:
                 assert set(archive.namelist()) == {
+                    "world.yml", "sprites/grass.png", "models/actors.yml", "models/demon.glb",
+                    "models/textures/0123.oytex", "effects/mm9/models/spells/bugpath.glb"
+                }, archive.namelist()
+            # A world whose models are not released (UNRELEASED_MODEL_WORLDS) ships no models/ at all.
+            package(source, output, models=False)
+            with zipfile.ZipFile(output) as archive:
+                assert set(archive.namelist()) == {
                     "world.yml", "sprites/grass.png", "effects/mm9/models/spells/bugpath.glb"
                 }, archive.namelist()
-                assert all(b"worlds/mm6/models/" not in archive.read(path) for path in archive.namelist())
 
 
 if __name__ == "__main__":
-    check_model_exclusions()
-    print("Model payload and binding exclusions passed for engine and world packages.")
+    check_model_selection()
+    print("Model selection passed for engine and world packages.")

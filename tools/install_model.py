@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""Install an accepted 3D model (creature, attachment, decoration or prop) as a source, and its runtime copy.
+
+The accepted GLB goes to assets_source/<scope>/models/<name>.glb, the authoritative source (scope: worlds/<world> or
+engine). A model matching COOKED_MODELS (decorations since 2026-10-12) is then cooked into assets_dev
+(tools/cook_models.py --only <path>). Any other model, until the switch to cooked models (ASSET_COOKING_PLAN.md
+section 12), gets an uncooked runtime copy at the same relative path in assets_dev, with hidden back faces culled
+(tools/model_backface_split.py).
+
+    tools/install_model.py <accepted.glb> [--world mm6 | --engine] [--name <file name>]
+
+Install the unprocessed export: never copy a runtime copy back over a project export or a source.
+"""
+import argparse
+import fnmatch
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ROOT = Path(__file__).resolve().parent.parent
+# Models whose runtime copy is cooked: every model since the switch (2026-10-14); the build's
+# OPENYAMM_COOK_MODELS option is switched on.
+COOKED_MODELS = ("*",)
+
+
+def copy_atomically(source, target):
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=target.parent, prefix=target.name + ".", suffix=".tmp",
+                                     delete=False) as handle:
+        temporary = Path(handle.name)
+    try:
+        shutil.copyfile(source, temporary)
+        temporary.chmod(0o644)
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("model", type=Path, help="the accepted, unprocessed GLB (usually the project's export)")
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument("--world", default="mm6", help="world package (default mm6)")
+    scope.add_argument("--engine", action="store_true", help="the engine package (shared models such as satchels)")
+    parser.add_argument("--name", help="installed file name (default: the model's file name)")
+    args = parser.parse_args()
+    model = args.model.resolve(strict=True)
+    if model.suffix.lower() != ".glb":
+        raise SystemExit(f"{model}: not a .glb")
+    relative = Path("engine" if args.engine else f"worlds/{args.world}") / "models" / (args.name or model.name)
+    source = ROOT / "assets_source" / relative
+    runtime = ROOT / "assets_dev" / relative
+    if model in (source, runtime):
+        raise SystemExit("Install from the project's export, not from an installed copy")
+    copy_atomically(model, source)
+    print(f"source: {source.relative_to(ROOT)}")
+    if any(fnmatch.fnmatch(relative.as_posix(), pattern) for pattern in COOKED_MODELS):
+        subprocess.run([sys.executable, str(ROOT / "tools/cook_models.py"), "--profile", "desktop", "--only",
+                        relative.as_posix()], check=True)
+        return 0
+    copy_atomically(source, runtime)
+    subprocess.run([sys.executable, str(ROOT / "tools/model_backface_split.py"), str(runtime)], check=True)
+    print(f"runtime copy (uncooked): {runtime.relative_to(ROOT)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

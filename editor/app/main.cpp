@@ -89,6 +89,8 @@ int runApplication(int argc, char **argv)
     config.appName = "openyamm-editor";
     config.windowWidth = 1920;
     config.windowHeight = 1200;
+    // The development tree carries the desktop game's tier only: cooked x4 surface textures.
+    config.assetScaleProfile.textures = OpenYAMM::Engine::AssetScaleTier::X4;
     std::vector<std::string> arguments;
 
     if (!parseCommonArguments(argc, argv, config, arguments))

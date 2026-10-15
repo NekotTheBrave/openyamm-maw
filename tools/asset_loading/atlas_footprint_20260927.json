@@ -1,0 +1,309 @@
+{
+  "date": "2026-09-27",
+  "scope": "Installed engine/sprites_new: 62 packages, 237 pages; primarily MM6, plus crusader and pmn2",
+  "source": {
+    "counts": {
+      "frames": 3654,
+      "base_png_bytes": 633889480,
+      "mask_png_bytes": 110913882
+    },
+    "unique_crops": 3608,
+    "source_pixels": 721043991,
+    "crop_pixels": 640336703,
+    "cooked_level0_pixels": 931048192
+  },
+  "source_metadata_and_palettes_bytes": 2823077,
+  "raw_runtime_bytes_including_stamps": 8334336098,
+  "lossless_full_library": {
+    "bytes": 8334316365,
+    "base_bytes": 4960741148,
+    "mask_bytes": 3292510496,
+    "opacity_bytes": 80819268,
+    "zstd3_bytes": 1337628083,
+    "zstd9_bytes": 1257582591,
+    "deflate6_bytes": 1347632436,
+    "wall_seconds": 45.94315063000249
+  },
+  "lossless_verification": "Every page decoded byte-for-byte equal to input for Zstd levels 3 and 9 and DEFLATE level 6",
+  "lossless_decode_microbenchmark": {
+    "raw_bytes": 382531751,
+    "compressed_bytes": 58538440,
+    "decode_median_seconds_sum": 0.3029495160080842,
+    "throughput_mib_per_second": 1204.196365604611
+  },
+  "lossless_decode_caveat": "Desktop, 11 pages selected across the size distribution; 5 decodes each; concurrent ASTC probes; not in-game or mobile timing",
+  "astc_probe": {
+    "inputs": [
+      {
+        "package": "mm6_gob",
+        "page": 0,
+        "mask_channels": 2,
+        "mips": [
+          [
+            1872,
+            2336
+          ],
+          [
+            936,
+            1168
+          ],
+          [
+            468,
+            584
+          ],
+          [
+            234,
+            292
+          ],
+          [
+            117,
+            146
+          ]
+        ]
+      },
+      {
+        "package": "mm6_wel",
+        "page": 0,
+        "mask_channels": 4,
+        "mips": [
+          [
+            1872,
+            2656
+          ],
+          [
+            936,
+            1328
+          ],
+          [
+            468,
+            664
+          ],
+          [
+            234,
+            332
+          ],
+          [
+            117,
+            166
+          ]
+        ]
+      }
+    ],
+    "raw_cooked_bytes": 88719114,
+    "zstd9_cooked_bytes": 15867454,
+    "settings": "Existing vendored Arm astc-encoder, medium quality, LDR, alpha-weighted base; unweighted material masks",
+    "formats": [
+      {
+        "format": "ASTC 4x4",
+        "gpu_texture_bytes": 24901056,
+        "zstd9_texture_bytes": 6189740,
+        "zstd9_mapping_header_hit_mask_bytes": 109637,
+        "combined_compressed_bytes": 6299377
+      },
+      {
+        "format": "ASTC 6x6",
+        "gpu_texture_bytes": 11084960,
+        "zstd9_texture_bytes": 3016370,
+        "zstd9_mapping_header_hit_mask_bytes": 109637,
+        "combined_compressed_bytes": 3126007
+      }
+    ],
+    "visual_review": "Decoded gobata0 and welatc0 viewed at native output size on dark and light backgrounds. 6x6 visibly coarsens fine details/edges; 4x4 is the safer starting point.",
+    "limitations": "Historical two-page sample. See full_library_astc_probe for subsequent whole-library size measurements. No final shipping container, full-library visual acceptance, colored-variant shader review, distant-mip gameplay, native GPU upload or Android test. These are native ASTC encodes, not Basis/UASTC measurements."
+  },
+  "production_changes": "No runtime/asset migration in this review; probes and comparison image are under /tmp/openyamm-atlas-footprint",
+  "references": [
+    "https://www.khronos.org/ktx/",
+    "https://github.com/KhronosGroup/3D-Formats-Guidelines/blob/main/KTXArtistGuide.md",
+    "https://developer.android.com/guide/playcore/asset-delivery/texture-compression",
+    "https://github.com/ARM-software/astc-encoder/blob/main/Docs/FormatOverview.md"
+  ],
+  "goblin_full_family_comparison": {
+    "frame_names": 59,
+    "unique_crops": 58,
+    "source_atlas_pages": 4,
+    "palette_ids": [
+      "745",
+      "746",
+      "747"
+    ],
+    "native_bmp_bytes": 6133758,
+    "native_bmp_compressed_bytes_in_existing_engine_zip": 822532,
+    "native_comparison_note": "59 original 8-bit BMPs in current OpenYAMM assets; ZIP entries match by size/CRC. Not an original-game LOD measurement. Shared sprite tables/palette registries and ZIP headers are excluded.",
+    "x2_base_png_bytes": 10495391,
+    "x2_material_mask_png_bytes": 3652330,
+    "manifest_bytes": 12311,
+    "x2_png_and_manifest_bytes": 14160032,
+    "current_raw_runtime_page_bytes": 115619549,
+    "current_combined_bytes_excluding_build_stamps": 129779581,
+    "lossless_zstd9_runtime_and_manifest_bytes": 22451891,
+    "gpu_compressed_probes": [
+      {
+        "format": "ASTC 4x4",
+        "gpu_texture_bytes": 38118976,
+        "zstd9_texture_bytes": 9348384,
+        "zstd9_mapping_header_hit_mask_bytes": 179043,
+        "combined_compressed_bytes_with_manifest": 9539738,
+        "note": "All 4 pages, base and masks, 5 mip levels. Native ASTC medium-quality probe; lossy. Final shipping-container headers are additional; no runtime migration or Android validation."
+      },
+      {
+        "format": "ASTC 6x6",
+        "gpu_texture_bytes": 16990304,
+        "zstd9_texture_bytes": 4658795,
+        "zstd9_mapping_header_hit_mask_bytes": 179043,
+        "combined_compressed_bytes_with_manifest": 4850149,
+        "note": "All 4 pages, base and masks, 5 mip levels. Native ASTC medium-quality probe; lossy. Final shipping-container headers are additional; no runtime migration or Android validation."
+      }
+    ]
+  },
+  "original_sprite_collection": {
+    "root": "assets_dev/engine/sprites",
+    "bmp_files": 20498,
+    "loose_bytes": 1393657556,
+    "corresponding_engine_zip_payload_bytes": 195791337,
+    "comparison": "All current files matched existing engine.zip entries by path and uncompressed size; archive headers excluded.",
+    "scope_note": "This original sprite collection and the currently restored 62 creature packages have different coverage. Do not extrapolate a whole-game shipping total from one creature."
+  },
+  "full_library_astc_probe": {
+    "packages": 62,
+    "pages": 237,
+    "raw_runtime_page_bytes": 8334316365,
+    "mip_levels_per_page": 5,
+    "settings": "Existing vendored Arm astc-encoder, medium quality, LDR, alpha-weighted base; unweighted material masks",
+    "coverage": "All current pages; base color and material masks; both profiles encoded and decoded, with decoded byte counts checked against dimensions.",
+    "compressed_page_metadata_bytes": 10432521,
+    "formats": [
+      {
+        "format": "ASTC 4x4",
+        "gpu_bytes": 2480777696,
+        "zstd9_texture_bytes": 497309594,
+        "zstd9_textures_and_page_metadata_bytes": 507742115,
+        "compressed_manifest_palette_bytes": 1377437,
+        "complete_enhanced_creature_payload_bytes": 509119552
+      },
+      {
+        "format": "ASTC 6x6",
+        "gpu_bytes": 1105816800,
+        "zstd9_texture_bytes": 244569119,
+        "zstd9_textures_and_page_metadata_bytes": 255001640,
+        "compressed_manifest_palette_bytes": 1377437,
+        "complete_enhanced_creature_payload_bytes": 256379077
+      }
+    ],
+    "wall_seconds": 211.5484586720013,
+    "private_report_path": "/tmp/openyamm-atlas-footprint/library-astc.json",
+    "private_report_sha256": "024f2e3f4342f5951990dae4e4ec8d1e15158f25888d3db283278203938406f2",
+    "probe_script_sha256": "46da7add5d53068281450e97d0c16420c23196d01d51ff1f27997a2952f25eca",
+    "limitations": "Lossy native ASTC probes, not Basis/UASTC or BC7. Full visual/recoloring/mip acceptance, final container integration, native compressed GPU upload and Android validation remain outstanding. Whole-library GPU totals are not gameplay residency measurements."
+  },
+  "current_shipping_comparison": {
+    "units": "Bytes; report MB and GB are decimal.",
+    "baseline": {
+      "original_files": 20498,
+      "original_loose_bytes": 1393657556,
+      "original_zip_payload_bytes": 195791337,
+      "restored_frame_names": 3590,
+      "matching_original_files": 3496,
+      "matching_original_zip_payload_bytes": 48023519,
+      "unmatched_restored_names": 94,
+      "original_zip_payload_after_removing_matching_names": 147767818,
+      "manifest_palette_raw_bytes": 2823077,
+      "manifest_palette_deflate6_bytes": 1377437,
+      "removal_caveat": "Removing originals matched by frame name requires a full runtime-reference audit; the conservative total retains every original BMP."
+    },
+    "restored_decorations": {
+      "files": 2532,
+      "loose_bytes": 184499863,
+      "deflate6_payload_bytes": 183628772,
+      "png_bytes": 183801103,
+      "note": "Existing engine/decorations_x2; no new GPU compression or content stripping applied."
+    },
+    "profiles": [
+      {
+        "format": "ASTC 4x4",
+        "all_originals_plus_enhanced_creatures_bytes": 704910889,
+        "all_originals_plus_enhanced_creatures_and_decorations_bytes": 888539661,
+        "after_conditional_original_removal_bytes": 656887370,
+        "after_conditional_original_removal_including_decorations_bytes": 840516142
+      },
+      {
+        "format": "ASTC 6x6",
+        "all_originals_plus_enhanced_creatures_bytes": 452170414,
+        "all_originals_plus_enhanced_creatures_and_decorations_bytes": 635799186,
+        "after_conditional_original_removal_bytes": 404146895,
+        "after_conditional_original_removal_including_decorations_bytes": 587775667
+      }
+    ],
+    "shipping_layout": "Ship one selected compressed runtime profile, manifests and palette LUTs; omit source PNG atlases and raw v1 cooked copies. Retain originals unless a runtime-reference audit proves removal safe.",
+    "scope": "Original engine/sprites plus the currently restored 62 creature packages and, where stated, engine/decorations_x2. Not an eventual full MM6/MM7/MM8 restoration or whole-game package estimate.",
+    "container_caveat": "Final archive/container headers are additional. Metadata/palettes and decorations use per-file DEFLATE level 6; native sprite entries use existing engine.zip compressed sizes."
+  },
+  "full_trilogy_replacement_only_projection": {
+    "scope": "Current merged MM6/MM7/MM8 native creature roster and restored non-creature sprite set, one selected x2 representation only; original backups, authoring PNGs for cooked creatures, unused poses and custom 901+ descriptors excluded. User-excluded snow remains excluded.",
+    "measurement_summary": {
+      "worlds": {
+        "mm6": {
+          "families": 60,
+          "frames": 3299,
+          "native_bytes": 246692978,
+          "native_compressed_bytes": 46181875,
+          "native_crop_pixels": 134712112,
+          "known_enhanced_families": 60,
+          "known_enhanced_crop_pixels": 582378977,
+          "projected_enhanced_needed_crop_pixels": 582378977,
+          "projected_astc4_shipping_bytes": 462095155
+        },
+        "mm7": {
+          "families": 72,
+          "frames": 7722,
+          "native_bytes": 512475100,
+          "native_compressed_bytes": 64684148,
+          "native_crop_pixels": 163202533,
+          "known_enhanced_families": 67,
+          "known_enhanced_crop_pixels": 669961323,
+          "projected_enhanced_needed_crop_pixels": 724179550.9564817,
+          "projected_astc4_shipping_bytes": 574608417
+        },
+        "mm8": {
+          "families": 61,
+          "frames": 7758,
+          "native_bytes": 515169396,
+          "native_compressed_bytes": 68263819,
+          "native_crop_pixels": 171177285,
+          "known_enhanced_families": 30,
+          "known_enhanced_crop_pixels": 474108036,
+          "projected_enhanced_needed_crop_pixels": 870768658.6985327,
+          "projected_astc4_shipping_bytes": 690921195
+        }
+      },
+      "calibration_compressed_bytes_per_enhanced_crop_pixel": 0.79346125732485,
+      "calibration_enhanced_crop_pixels_per_native_crop_pixel": 4.316119686080126,
+      "original_needed_creature_bytes": 1265877496,
+      "original_needed_creature_compressed_bytes": 178021140,
+      "original_other_referenced_files": 2520,
+      "original_other_referenced_bytes": 53985268,
+      "original_other_referenced_compressed_bytes": 12557710,
+      "projected_creature_astc4_bytes_before_shared_family_dedup": 1727624767
+    },
+    "original_needed_bmp_loose_bytes": 1319862764,
+    "original_needed_bmp_compressed_bytes": 190578850,
+    "original_method": "Unique referenced physical BMPs; existing matching ZIP-entry compressed sizes, otherwise per-file raw DEFLATE-6. Native-resolution OpenYAMM BMP representation, not original LOD sizes.",
+    "projection_method": "Calibrate compressed bytes per unique enhanced crop pixel using the full 60 installed MM6-package ASTC4/Zstd probe. Use needed enhanced crop rectangles from available candidate manifests (MM6 60, MM7 67, MM8 30). Estimate missing family crop area using native foreground bounds times the measured enhanced/native area ratio. Allow shared-family deduplication and small metadata/container overhead in the rounded total.",
+    "calibration_packages": 60,
+    "distinct_art_families": 192,
+    "calibration_page_payload_bytes": 491957549,
+    "calibration_enhanced_crop_pixels": 620014581,
+    "rounded_projected_creature_shipping_bytes": 1700000000,
+    "measured_non_creature_shipping_bytes": 183628772,
+    "rounded_projected_all_sprite_shipping_bytes": 1900000000,
+    "planning_budget_bytes": 2000000000,
+    "planning_range_bytes": [
+      1500000000,
+      2500000000
+    ],
+    "limitations": "Projection, not a complete trilogy runtime cook. Candidate art is not all accepted. Future artwork/masks/packing can change compression; range is a planning allowance, not a confidence interval. Platform-specific format size, visual and runtime validation remain. Historical missing art is not invented. Maps, surface textures, UI packages, audio, video and executable excluded.",
+    "private_report_path": "/tmp/openyamm-atlas-footprint/trilogy-projection.json",
+    "private_report_sha256": "8ea577a7743743252533263934645ed07d1fc4db21ba0ccdc3e6b97ecd1e1e50",
+    "private_script_sha256": "5c09247ff7d33063356f2283bcefacb73ca0cea172125250d7fee679fe6d1484"
+  }
+}

@@ -136,7 +136,6 @@ assets_dev/
   worlds/mm6/         world-local maps and presentation
   worlds/mm7/
   worlds/mm8/
-  worlds/mmmerge/     Merge-specific maps
 ```
 
 Runtime packages can be distributed as ZIP archives under:

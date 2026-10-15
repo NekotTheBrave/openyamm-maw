@@ -171,15 +171,16 @@ jobs:
             /tools/TextureBlockEncode.cpp
             /tools/TextureBlockEncode.h
             /tools/cook_model_textures_main.cpp
+            /tools/CookModelGeometry.cpp
+            /tools/CookModelGeometry.h
             /tools/cook_sprite_atlases.py
             /tools/package_runtime_assets.py
-            /assets_cooked/android/sprites_new/
+            /assets_cooked/android/
             /assets_dev/_legacy/sprites_original/
             /assets_dev/engine/
             /assets_dev/worlds/mm6/
             /assets_dev/worlds/mm7/
             /assets_dev/worlds/mm8/
-            /assets_dev/worlds/mmmerge/
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -309,6 +310,8 @@ jobs:
             /tools/TextureBlockEncode.cpp
             /tools/TextureBlockEncode.h
             /tools/cook_model_textures_main.cpp
+            /tools/CookModelGeometry.cpp
+            /tools/CookModelGeometry.h
             /tools/cook_sprite_atlases.py
             /tools/package_runtime_assets.py
             /assets_dev/_legacy/sprites_original/
@@ -316,7 +319,6 @@ jobs:
             /assets_dev/worlds/mm6/
             /assets_dev/worlds/mm7/
             /assets_dev/worlds/mm8/
-            /assets_dev/worlds/mmmerge/
 
       - name: Install MSYS2 UCRT64 toolchain
         uses: msys2/setup-msys2@v2
@@ -369,7 +371,6 @@ jobs:
           grep -Fxq "OpenYAMM/assets/worlds/mm6.zip" windows-package-contents.txt
           grep -Fxq "OpenYAMM/assets/worlds/mm7.zip" windows-package-contents.txt
           grep -Fxq "OpenYAMM/assets/worlds/mm8.zip" windows-package-contents.txt
-          grep -Fxq "OpenYAMM/assets/worlds/mmmerge.zip" windows-package-contents.txt
           mkdir -p dist
           cp "$archive" "dist/$output"
 
@@ -411,6 +412,8 @@ jobs:
             /tools/TextureBlockEncode.cpp
             /tools/TextureBlockEncode.h
             /tools/cook_model_textures_main.cpp
+            /tools/CookModelGeometry.cpp
+            /tools/CookModelGeometry.h
             /tools/cook_sprite_atlases.py
             /tools/package_runtime_assets.py
             /assets_dev/_legacy/sprites_original/
@@ -418,7 +421,6 @@ jobs:
             /assets_dev/worlds/mm6/
             /assets_dev/worlds/mm7/
             /assets_dev/worlds/mm8/
-            /assets_dev/worlds/mmmerge/
 
       - name: Install Flatpak tooling
         run: |

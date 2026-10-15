@@ -3,10 +3,12 @@
 #include "engine/AssetFileSystem.h"
 #include "engine/AssetScaleTier.h"
 #include "engine/ImageAssetLoader.h"
+#include "engine/render/CookedTexture.h"
 #include "game/FaceEnums.h"
 #include "game/events/EventRuntime.h"
 #include "game/indoor/IndoorGeometryUtils.h"
 #include "game/maps/MapDeltaData.h"
+#include "game/maps/MapIdentity.h"
 #include "game/maps/TerrainTileData.h"
 #include "game/outdoor/OutdoorGeometryUtils.h"
 #include "game/outdoor/OutdoorMapData.h"
@@ -59,7 +61,8 @@ constexpr float GizmoDragDeadzonePixels = 4.0f;
 constexpr int GizmoRotationSegments = 32;
 constexpr uint16_t DecorationDescDontDraw = 0x0002;
 constexpr uint16_t LevelDecorationInvisible = 0x0020;
-constexpr int TerrainTextureTileSize = 128;
+// The native terrain tiles' source art is 256 texels square (assets_source/worlds/<world>/terrain_x2).
+constexpr int TerrainSourceTileSize = 256;
 constexpr int TerrainTextureAtlasColumns = 16;
 constexpr const char *BuiltinTerrainClayMaterialName = "Builtin/TerrainClay";
 constexpr const char *BuiltinObjectGridMaterialName = "Builtin/ObjectGrid";
@@ -134,23 +137,58 @@ std::string toLowerCopy(const std::string &value)
     return result;
 }
 
-int terrainTexturePhysicalTileSize(Engine::AssetScaleTier assetScaleTier)
-{
-    return TerrainTextureTileSize * Engine::assetScaleTierFactor(assetScaleTier);
-}
-
 std::optional<std::string> findBitmapPath(
     const Engine::AssetFileSystem &assetFileSystem,
     const std::string &directoryPath,
     const std::string &textureName,
     BitmapLoadCache &bitmapLoadCache)
 {
-    return Engine::findImageAssetPath(
+    return Engine::findCookedOrImageAssetPath(
         assetFileSystem,
         directoryPath,
         textureName,
         bitmapLoadCache.directoryEntriesByPath,
         bitmapLoadCache.bitmapPathByKey);
+}
+
+// The texels of a found image at the native (x1) size the editor's texel UVs use. A cooked texture's mip level of
+// that size is already filtered; an image of a higher tier is reduced to it.
+std::optional<Engine::ImagePixelsBgra> decodeNativeSizeImageBgra(
+    const std::vector<uint8_t> &bytes,
+    const std::string &path,
+    bool keepPhysicalSize)
+{
+    const int factor = keepPhysicalSize ? 1 : Engine::assetScaleTierFactor(Engine::assetScaleTierFromResolvedPath(path));
+    if (Engine::hasCookedTextureSignature(bytes))
+    {
+        try
+        {
+            const Engine::CookedTexture texture = Engine::decodeCookedTexture(bytes);
+            uint8_t level = 0;
+            while ((1 << level) < factor && level + 1 < texture.levels)
+            {
+                ++level;
+            }
+            Engine::ImagePixelsBgra image;
+            image.width = std::max(1, texture.width >> level);
+            image.height = std::max(1, texture.height >> level);
+            image.pixels = Engine::decodeCookedTextureLevelBgra(texture, level);
+            return image;
+        }
+        catch (const std::exception &)
+        {
+            return std::nullopt;
+        }
+    }
+    std::optional<Engine::ImagePixelsBgra> image = Engine::decodeImagePixelsBgra(bytes, path);
+    if (image && factor > 1 && image->width >= factor && image->height >= factor)
+    {
+        image->pixels = Engine::scalePixelsNearestBgra(
+            image->pixels, image->width, image->height, image->width / factor, image->height / factor);
+        image->width /= factor;
+        image->height /= factor;
+    }
+    return image;
 }
 
 std::optional<std::string> findDirectoryEntryPath(
@@ -326,15 +364,9 @@ std::optional<std::vector<uint8_t>> loadBitmapPixelsBgra(
     const std::string &textureName,
     int &width,
     int &height,
-    bool forceTerrainTileSize,
     BitmapLoadCache &bitmapLoadCache)
 {
-    const int forcedTerrainTileSize =
-        forceTerrainTileSize
-            ? terrainTexturePhysicalTileSize(assetFileSystem.getAssetScaleTier(Engine::AssetScaleCategory::Terrain))
-            : 0;
-    const std::string cacheKey =
-        directoryPath + "|" + toLowerCopy(textureName) + "|" + std::to_string(forcedTerrainTileSize);
+    const std::string cacheKey = directoryPath + "|" + toLowerCopy(textureName);
     const auto cachedPixelsIt = bitmapLoadCache.pixelsByKey.find(cacheKey);
 
     if (cachedPixelsIt != bitmapLoadCache.pixelsByKey.end())
@@ -377,7 +409,7 @@ std::optional<std::vector<uint8_t>> loadBitmapPixelsBgra(
     }
 
     const std::optional<Engine::ImagePixelsBgra> image =
-        Engine::decodeImagePixelsBgra(*bitmapBytes, *bitmapPath);
+        decodeNativeSizeImageBgra(*bitmapBytes, *bitmapPath, false);
 
     if (!image)
     {
@@ -388,47 +420,40 @@ std::optional<std::vector<uint8_t>> loadBitmapPixelsBgra(
     width = image->width;
     height = image->height;
     std::vector<uint8_t> pixels = image->pixels;
-
-    if (forceTerrainTileSize && (width != forcedTerrainTileSize || height != forcedTerrainTileSize))
-    {
-        pixels = Engine::scalePixelsNearestBgra(pixels, width, height, forcedTerrainTileSize, forcedTerrainTileSize);
-
-        if (pixels.empty())
-        {
-            bitmapLoadCache.pixelsByKey[cacheKey] = std::nullopt;
-            return std::nullopt;
-        }
-
-        width = forcedTerrainTileSize;
-        height = forcedTerrainTileSize;
-    }
-
     bitmapLoadCache.pixelsByKey[cacheKey] = BitmapPixelsResult{width, height, pixels};
     return pixels;
 }
 
-std::optional<std::vector<uint8_t>> loadTerrainBitmapPixelsBgra(
+// The native terrain tiles are source art beside the development tree (the game draws the terrain from its
+// materials): the editor previews a tile from assets_source/worlds/<world>/terrain_x2.
+std::optional<std::vector<uint8_t>> loadTerrainSourceTilePixelsBgra(
     const Engine::AssetFileSystem &assetFileSystem,
-    const std::string &textureName,
-    int &width,
-    int &height,
-    BitmapLoadCache &bitmapLoadCache)
+    const std::string &worldId,
+    const std::string &textureName)
 {
-    std::optional<std::vector<uint8_t>> pixels =
-        loadBitmapPixelsBgra(assetFileSystem, "terrain", textureName, width, height, true, bitmapLoadCache);
+    const std::filesystem::path path = assetFileSystem.getDevelopmentRoot().parent_path() / "assets_source" / "worlds"
+        / worldId / "terrain_x2" / (textureName + ".png");
+    std::ifstream stream(path, std::ios::binary);
 
-    if (pixels)
+    if (!stream)
     {
-        return pixels;
+        return std::nullopt;
     }
 
-    return loadBitmapPixelsBgra(assetFileSystem, "terrain_textures", textureName, width, height, true, bitmapLoadCache);
+    const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    const std::optional<Engine::ImagePixelsBgra> image = Engine::decodeImagePixelsBgra(bytes, path.string());
+
+    if (!image || image->width != TerrainSourceTileSize || image->height != TerrainSourceTileSize)
+    {
+        return std::nullopt;
+    }
+
+    return image->pixels;
 }
 
 std::optional<TerrainAtlasData> buildTerrainAtlasData(
     const Engine::AssetFileSystem &assetFileSystem,
-    const Game::OutdoorMapData &outdoorMapData,
-    BitmapLoadCache &bitmapLoadCache)
+    const Game::OutdoorMapData &outdoorMapData)
 {
     const std::optional<std::vector<std::string>> tileTextureNames =
         Game::loadTerrainTileTextureNames(assetFileSystem, outdoorMapData);
@@ -438,8 +463,10 @@ std::optional<TerrainAtlasData> buildTerrainAtlasData(
         return std::nullopt;
     }
 
-    const int terrainTileSize = terrainTexturePhysicalTileSize(
-        assetFileSystem.getAssetScaleTier(Engine::AssetScaleCategory::Terrain));
+    const std::string worldId = !outdoorMapData.worldId.empty()
+        ? outdoorMapData.worldId
+        : Game::inferWorldIdFromMapFileName(outdoorMapData.fileName, assetFileSystem.getActiveWorldId());
+    const int terrainTileSize = TerrainSourceTileSize;
     TerrainAtlasData atlas = {};
     atlas.tileSize = terrainTileSize;
     atlas.width = TerrainTextureAtlasColumns * terrainTileSize;
@@ -458,17 +485,10 @@ std::optional<TerrainAtlasData> buildTerrainAtlasData(
 
         region.hasAssignedTexture = true;
 
-        int textureWidth = 0;
-        int textureHeight = 0;
         const std::optional<std::vector<uint8_t>> tilePixels =
-            loadTerrainBitmapPixelsBgra(
-                assetFileSystem,
-                textureName,
-                textureWidth,
-                textureHeight,
-                bitmapLoadCache);
+            loadTerrainSourceTilePixelsBgra(assetFileSystem, worldId, textureName);
 
-        if (!tilePixels || textureWidth != terrainTileSize || textureHeight != terrainTileSize)
+        if (!tilePixels)
         {
             region.hasMissingAsset = true;
             continue;
@@ -6518,7 +6538,6 @@ void EditorOutdoorViewport::ensureGeometryBuffers(const EditorSession &session)
                     face.textureName,
                     textureWidth,
                     textureHeight,
-                    false,
                     bitmapLoadCache);
 
             if (!texturePixels || textureWidth <= 0 || textureHeight <= 0)
@@ -6567,7 +6586,6 @@ void EditorOutdoorViewport::ensureGeometryBuffers(const EditorSession &session)
                     textureName,
                     textureWidth,
                     textureHeight,
-                    false,
                     bitmapLoadCache);
 
             if (!texturePixels || textureWidth <= 0 || textureHeight <= 0)
@@ -6666,7 +6684,7 @@ void EditorOutdoorViewport::ensureGeometryBuffers(const EditorSession &session)
 
     BitmapLoadCache bitmapLoadCache = {};
     const std::optional<TerrainAtlasData> atlasData =
-        buildTerrainAtlasData(assetFileSystem, outdoorGeometry, bitmapLoadCache);
+        buildTerrainAtlasData(assetFileSystem, outdoorGeometry);
 
     if (atlasData && !atlasData->pixels.empty())
     {
@@ -6781,7 +6799,6 @@ void EditorOutdoorViewport::ensureGeometryBuffers(const EditorSession &session)
                     face.textureName,
                     textureWidth,
                     textureHeight,
-                    false,
                     bitmapLoadCache);
 
             if (!texturePixels || textureWidth <= 0 || textureHeight <= 0)
@@ -6847,7 +6864,6 @@ void EditorOutdoorViewport::ensureGeometryBuffers(const EditorSession &session)
                 textureName,
                 textureWidth,
                 textureHeight,
-                false,
                 bitmapLoadCache);
 
         if (!texturePixels || textureWidth <= 0 || textureHeight <= 0)

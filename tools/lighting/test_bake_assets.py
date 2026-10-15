@@ -2,7 +2,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from bake_assets import bake_texture_paths
+from bake_assets import bake_texture_paths, dependency_file
 
 
 class BakeAssetTests(unittest.TestCase):
@@ -34,6 +34,30 @@ class BakeAssetTests(unittest.TestCase):
             self.assertEqual(terrain['shared'], ground)
             self.assertEqual(terrain['wtrtyl'], texture_only)
             self.assertNotIn('absent', textures)
+
+    def test_world_texture_originals_resolve_from_assets_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            def asset(relative):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()
+                return path
+
+            runtime = asset('assets_dev/worlds/mm6/textures/runtime.bmp')
+            source = asset('assets_source/worlds/mm6/textures/wall.bmp')
+            asset('assets_source/worlds/mm7/textures/wall.bmp')
+            other = asset('assets_source/worlds/mm7/textures/trim.bmp')
+            asset('assets_dev/worlds/mm7/terrain/grass.bmp')
+            engine_terrain = asset('assets_source/engine/terrain/dirt.bmp')
+            textures, _ = bake_texture_paths(root / 'assets_dev', 'mm6')
+            self.assertEqual(textures['runtime'], runtime)
+            self.assertEqual(textures['wall'], source)
+            self.assertEqual(textures['trim'], other)
+            self.assertEqual(textures['dirt'], engine_terrain)
+            self.assertEqual(dependency_file(root / 'assets_dev', 'worlds/mm6/textures/wall.bmp'), source)
+            self.assertEqual(dependency_file(root / 'assets_dev', 'worlds/mm6/textures/runtime.bmp'), runtime)
 
 
 if __name__ == '__main__':

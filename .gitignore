@@ -35,9 +35,8 @@ __pycache__/
 /gprof*.txt
 /hitch*.txt
 
-# Local authoring banks, editor payloads and original game extractions.
-# Runtime assets belong in assets_dev; source banks can be archived separately.
-/assets_source/
+# Local editor payloads and original game extractions. Runtime assets belong in assets_dev; source assets are the
+# assets_source submodule (openyamm-source-assets, see tools/ASSET_STORAGE.md).
 /assets_editor_dev/
 /data/
 # MM9 imports and the optional world payload are local for now.
@@ -46,6 +45,9 @@ __pycache__/
 
 # Historical generation projects and outputs remain local; reusable code lives in tools/.
 /level_generation/
+# Local animation source library (humanoid set, Mixamo and Meshy clips); only its README is tracked.
+/anim_library/*
+!/anim_library/README.md
 # Generated equipment catalogs, previews, reports and browser test outputs.
 /tools/paperdoll_review/catalog.js
 /tools/paperdoll_review/native_manifest.json

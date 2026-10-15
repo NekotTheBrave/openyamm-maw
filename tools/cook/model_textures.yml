@@ -1,0 +1,79 @@
+# Cook decisions for model textures, applied by tools/cook_models.py (see ASSET_COOKING_PLAN.md).
+# A texture's role comes from the material slot that samples it; colour uses alpha when its material is MASK or
+# BLEND and some texel's alpha is below alpha_threshold. Changing this file re-cooks the affected textures.
+version: 1
+alpha_threshold: 250
+# Normal maps cook at this fraction of their source's largest power-of-two side (a class entry or a model's
+# <name>.cook.yml can set normal_scale too; an image's own max_size override still wins).
+normal_scale: 0.5
+
+# Block codec per profile and role. colour_hero applies to opaque colour of hero-quality assets. Burn maps (burn
+# deaths) use red and green only; the cook bakes their red channel per vertex for the CPU (cook_model_geometry.py).
+codecs:
+  desktop:
+    colour: bc1
+    colour_hero: bc7
+    colour_alpha: bc7
+    normal: bc5
+    metallic_roughness: bc1
+    region_mask: bc7
+    burn_map: bc5
+  android:
+    colour: etc2_rgb
+    colour_hero: etc2_rgb
+    colour_alpha: etc2_rgba
+    normal: eac_rg
+    metallic_roughness: etc2_rgb
+    region_mask: etc2_rgba
+    burn_map: eac_rg
+
+# Every cooked texture is power-of-two: the cooker area-downscales other sources first (OpenGL leaves
+# non-power-of-two sRGB block textures with mips incomplete, and many GLES drivers restrict them), so the 2080-wide
+# creature atlases cook at 2048.
+# Asset classes by source path (relative to assets_source, fnmatch); the first match applies. max_size caps the
+# largest side per profile by dropping the largest mip levels.
+# A texture shared by models of different classes (corpses reuse creature skins) takes the larger size and the
+# higher-quality codec of its uses. A model's <name>.cook.yml sidecar can override quality, max_size and
+# normal_scale for the model, and max_size or codec for one image (by glTF image name).
+classes:
+  - match: "worlds/*/models/mm6_deco_*.glb"
+    quality: standard
+    max_size: {desktop: 4096, android: 2048}
+  - match: "worlds/*/models/*.glb"
+    quality: hero
+    max_size: {desktop: 2048, android: 2048}
+    reduce: true
+  - match: "engine/models/*.glb"
+    quality: hero
+    max_size: {desktop: 4096, android: 4096}
+    reduce: true
+
+# Visually lossless reductions for classes with `reduce: true` (creatures, attachments, satchels; 2026-10-14). Each is
+# measured on the source image and only lowers max_size; region masks keep their size except for far-LOD-only use.
+#   lod_caps / prop_lod_caps  texture sampled only by LOD1/2/3 meshes: the mip the GPU samples at those switch sizes
+#   prop_max_size             held attachments (weapons, shields), which cover a fraction of the actor on screen
+#   flat_psnr / flat_max_size colour or roughness map that is effectively one colour (PSNR after a 2x resample)
+#   halve_psnr                roughness/ORM map that loses nothing at half size (and is at least halve_min_size)
+#   empty_fraction            colour map that is mostly near-black (unused atlas space)
+reductions:
+  lod_caps: {1: 1024, 2: 512, 3: 256}
+  prop_lod_caps: {1: 512, 2: 256, 3: 128}
+  prop_max_size: 1024
+  flat_psnr: 60
+  flat_max_size: 256
+  halve_psnr: 38
+  halve_min_size: 1024
+  empty_fraction: 0.8
+  empty_min_size: 512
+
+# Measured package bytes per source texel after zstd (2026-10-09 sample of 96 MM6 model textures), for --plan
+# estimates only. Mip chains add a third.
+estimate_bytes_per_texel:
+  bc1: 0.28
+  bc4: 0.06
+  bc5: 0.54
+  bc7: 0.61
+  etc2_rgb: 0.28
+  etc2_rgba: 0.33
+  eac_r: 0.03
+  eac_rg: 0.45

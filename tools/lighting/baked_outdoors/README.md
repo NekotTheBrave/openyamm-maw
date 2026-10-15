@@ -178,6 +178,18 @@ python3 tools/lighting/remove_map_script_dependencies.py \
 
 The migration validates every retained source dependency before writing and backs up each changed sidecar.
 
+### Stale bakes during development
+
+Each bake records the content hash of every file it was baked from: the map, its scene file, textures, sprite tables,
+decoration models and `decorations.yml`. Changing one of those files makes the bake stale. The game loads bakes
+without checking them (the check read and hashed every source on each map load).
+
+Before a release or a commit, run `tools/lighting/stale_bakes.py`. It rechecks every installed bake, writes
+`assets_dev/STALE_LIGHTING_BAKES.txt` (one line per stale bake with the changed sources; a tracked file, so
+`git status` shows it), and exits with status 1 while any bake is stale. `--check` reports without touching the
+note. Re-bake what it lists with this producer and run it again. It caches source hashes by size and modification time in
+`output/stale_bakes_hash_cache.json`, so only the first run hashes everything (about a minute).
+
 ## Checks
 
 ```sh

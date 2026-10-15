@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Prepare runtime PNG maps, optionally omitting mesh effects implemented by the particle system."""
+"""Prepare runtime PNG maps in the glTF normal-map convention (normal_map_convention.py), optionally omitting mesh
+effects implemented by the particle system."""
 import argparse
 import io
 import json
@@ -7,6 +8,11 @@ import struct
 from pathlib import Path
 
 from PIL import Image
+
+import normal_map_convention
+
+# Actor normal maps come from Meshy's retexture (+y down); resampled to 1K the weakest measures -0.18.
+MESHY_FLIP = 0.15
 
 
 def omit_mesh_nodes(document, original, names):
@@ -116,6 +122,9 @@ def prepare(source: Path, destination: Path, omitted_mesh_nodes=()):
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_bytes(result)
     print(f"{destination}: {len(result)} bytes; retained geometry, UVs, skin and animation samples unchanged")
+    for name, correlation, flipped in normal_map_convention.convert(destination, destination, threshold=MESHY_FLIP):
+        print(f"{destination}: normal map {name} {correlation:+.2f}"
+              f" {'converted to the glTF convention (+y up)' if flipped else 'kept'}")
 
 
 if __name__ == "__main__":

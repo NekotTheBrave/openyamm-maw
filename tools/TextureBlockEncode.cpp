@@ -2,6 +2,7 @@
 
 #include <ProcessDxtc.hpp>
 #include <ProcessRGB.hpp>
+#include <astcenc.h>
 #include <bc7enc.h>
 #include <EtcImage.h>
 
@@ -83,6 +84,50 @@ std::vector<uint8_t> encodeTextureBlocks(std::span<const uint8_t> rgba, int widt
     const size_t bytes = Engine::textureBlockBytes(codec, paddedWidth, paddedHeight);
     const unsigned workers = options.workers != 0 ? options.workers
         : std::clamp(std::thread::hardware_concurrency(), 1u, 8u);
+    if (codec == TextureBlockCodec::Astc4x4)
+    {
+        // Arm's reference encoder (bimg's copy), LDR profile on raw texel values: the same sampling as BGRA8/BC7.
+        astcenc_config config = {};
+        // The default error metric weighs the four channels independently, as data channels need.
+        if (astcenc_config_init(ASTCENC_PRF_LDR, 4, 4, 1, ASTCENC_PRE_MEDIUM, 0, &config) != ASTCENC_SUCCESS)
+        {
+            throw std::runtime_error("ASTC encoder configuration failed");
+        }
+        astcenc_context *pContext = nullptr;
+        if (astcenc_context_alloc(&config, workers, &pContext) != ASTCENC_SUCCESS)
+        {
+            throw std::runtime_error("ASTC encoder allocation failed");
+        }
+        void *pSlices[1] = {pixels.data()};
+        astcenc_image image = {};
+        image.dim_x = unsigned(paddedWidth);
+        image.dim_y = unsigned(paddedHeight);
+        image.dim_z = 1;
+        image.data_type = ASTCENC_TYPE_U8;
+        image.data = pSlices;
+        const astcenc_swizzle swizzle = {ASTCENC_SWZ_R, ASTCENC_SWZ_G, ASTCENC_SWZ_B, ASTCENC_SWZ_A};
+        std::vector<uint8_t> result(bytes);
+        std::atomic<bool> failed = false;
+        std::vector<std::jthread> threads;
+        for (unsigned thread = 0; thread < workers; ++thread)
+        {
+            threads.emplace_back([&, thread]()
+            {
+                if (astcenc_compress_image(pContext, &image, &swizzle, result.data(), result.size(), thread)
+                    != ASTCENC_SUCCESS)
+                {
+                    failed = true;
+                }
+            });
+        }
+        threads.clear();
+        astcenc_context_free(pContext);
+        if (failed)
+        {
+            throw std::runtime_error("ASTC texture encoding failed");
+        }
+        return result;
+    }
     if (codec == TextureBlockCodec::Etc2Rgba || codec == TextureBlockCodec::Etc2Rgb)
     {
         std::vector<float> channels(pixels.size() * 4);
@@ -137,7 +182,8 @@ std::vector<uint8_t> encodeTextureBlocks(std::span<const uint8_t> rgba, int widt
                 case TextureBlockCodec::EacR: CompressEacR(pSource, pTarget, count, paddedWidth); break;
                 case TextureBlockCodec::EacRg: CompressEacRg(pSource, pTarget, count, paddedWidth); break;
                 case TextureBlockCodec::Etc2Rgba:
-                case TextureBlockCodec::Etc2Rgb: break; // Encoded above with the offline quality encoder.
+                case TextureBlockCodec::Etc2Rgb:
+                case TextureBlockCodec::Astc4x4: break; // Encoded above with their own encoders.
                 }
             }
         });
