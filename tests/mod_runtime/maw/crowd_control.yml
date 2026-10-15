@@ -1,0 +1,72 @@
+id: mod_runtime.maw.crowd_control
+title: MAW's crowd control lands on the spell's target, and a monster's own level and resistances reach the engine
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW casts its crowd control itself (Slow, Charm, Berserk, Paralyze, Enslave, Dark Grasp, Control Undead:
+# castCCSpell, zzMaw-Spells.lua), on the monster under the mouse (Mouse:GetTarget(), here the spell's target) or else
+# one in sight (Game.GetMonstersInSight()); without either it said "Spell Failed". A monster's own Level and
+# Resistances (MAW's bosses; its other crowd control, which sets a resistance to 0 or 65000 to decide whether the
+# engine's effect takes hold) are the engine's for that monster. Slow at a goblin by New Sorpigal. Run with the MAW
+# mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Wilma
+        class: Sorcerer
+        level: 10
+        intellect: 25
+        skills:
+        - name: Staff
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      pl.Skills[const.Skills.Earth] = JoinSkill(10, 2)
+      pl.Spells[const.Spells.Slow] = true
+      Target = nil
+      for i = 0, Map.Monsters.High do
+        local m = Map.Monsters[i]
+        if m.Id >= 550 and m.Id <= 551 and not m.IsDead then Target = i break end
+      end
+      function Cast()
+        local m = Map.Monsters[Target]
+        m.X = Party.X + 400; m.Y = Party.Y; m.Z = Party.Z; m.HP = 1000
+        m.SpellBuffs[const.MonsterBuff.Slow].ExpireTime = 0
+        pl.SP = 500
+        pl.RecoveryDelay = 0
+        pl:CastSpell(const.Spells.Slow, Target)
+        return m.SpellBuffs[const.MonsterBuff.Slow].ExpireTime > Game.Time
+      end
+      local m = Map.Monsters[Target]
+      m.Level = 77
+      m.Resistances[const.Damage.Earth] = 40
+      return Target ~= nil, modrt.mapMonsterGet(Target, "Level"), modrt.mapMonsterGet(Target, "Resistance3"),
+        #Game.GetMonstersInSight() > 0
+    expect: "true\t77\t40\ttrue"
+# MAW's own Slow (its chance is high against a goblin): it lands at least once in five.
+- mod_lua:
+    code: |
+      local landed = 0
+      for i = 1, 5 do
+        if Cast() then landed = landed + 1 end
+      end
+      return landed > 0, ModRT.totalErrorCount
+    expect: "true\t0"
+# The engine's own Slow, MAW's handlers taken away: the monster's own Earth resistance decides, 65000 (immune) and 0.
+- mod_lua:
+    code: |
+      events.remove("PlayerCastSpell")
+      Map.Monsters[Target].Resistances[const.Damage.Earth] = 65000
+      local immune = Cast()
+      Map.Monsters[Target].Resistances[const.Damage.Earth] = 0
+      return immune, Cast()
+    expect: "false\ttrue"

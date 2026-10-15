@@ -55,7 +55,7 @@ steps:
         row.Resistances[7], kept
     expect: "9\t31\t77\t6\t12\t0"
 # A monster on the map has a few fields of its own and reads the rest from its kind's row. What a script writes to
-# one monster's copy stays with that monster.
+# one monster's copy stays with that monster; its Level and Resistances are the engine's (no missing binding).
 - mod_lua:
     code: |
       local first, second = nil, nil
@@ -71,7 +71,7 @@ steps:
       return shared, first.Resistances[0], first.Level, second.Resistances[0], second.Level,
         Game.MonstersTxt[1].FireResistance, first:GetIndex() ~= second:GetIndex(),
         ModRT.Bindings.tableWrites["Map.Monsters[].Level"]
-    expect: "true\t5\t40\t77\t9\t77\ttrue\t1"
+    expect: "true\t5\t40\t77\t9\t77\ttrue\tnil"
 # The names placed monsters go by: mods add their own and point a monster at one.
 - mod_lua:
     code: |

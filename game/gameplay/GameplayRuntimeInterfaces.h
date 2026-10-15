@@ -7,6 +7,7 @@
 #include "game/party/SkillData.h"
 #include "game/tables/MonsterTable.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -139,6 +140,102 @@ enum class GameplayModActorField : uint8_t
     AiType,
     // The item the actor carries and leaves on its body, 0 for none. Read only.
     CarriedItem,
+    // The actor's own level and resistances (Resistance0 + n: to const.Damage n, 0 to 10), its kind's until a mod
+    // sets them; see ModActorStatOverrides.
+    Level,
+    Resistance0,
+    Resistance10 = Resistance0 + 10,
+};
+
+// The const.Damage number of a damage type (0 fire, 1 air, 2 water, 3 earth, 4 physical, 6 spirit, 7 mind, 8 body,
+// 9 light, 10 dark); none for those the original's monsters have no resistance to.
+inline std::optional<size_t> mm8MonsterResistanceIndex(CombatDamageType damageType)
+{
+    switch (damageType)
+    {
+        case CombatDamageType::Fire: return 0;
+        case CombatDamageType::Air: return 1;
+        case CombatDamageType::Water: return 2;
+        case CombatDamageType::Earth: return 3;
+        case CombatDamageType::Physical: return 4;
+        case CombatDamageType::Spirit: return 6;
+        case CombatDamageType::Mind: return 7;
+        case CombatDamageType::Body: return 8;
+        case CombatDamageType::Light: return 9;
+        case CombatDamageType::Dark: return 10;
+        default: return std::nullopt;
+    }
+}
+
+// The damage type of const.Damage number `index`; none for 5 (magic, which the original's monsters do not resist).
+inline std::optional<CombatDamageType> mm8MonsterResistanceType(size_t index)
+{
+    constexpr std::array<std::optional<CombatDamageType>, 11> types = {
+        CombatDamageType::Fire, CombatDamageType::Air, CombatDamageType::Water, CombatDamageType::Earth,
+        CombatDamageType::Physical, std::nullopt, CombatDamageType::Spirit, CombatDamageType::Mind,
+        CombatDamageType::Body, CombatDamageType::Light, CombatDamageType::Dark};
+    return index < types.size() ? types[index] : std::nullopt;
+}
+
+// One monster's own level and resistances, as a mod's script set them on it in place of its kind's (MAW's bosses,
+// named monsters and arena waves; its crowd control, which sets a resistance for a moment to decide whether a spell
+// takes hold). The engine's rolls against the monster use them: whether a spell's effect takes hold, and its chance
+// to hit.
+struct ModActorStatOverrides
+{
+    std::optional<int> level;
+    std::array<std::optional<int>, 11> resistances = {};
+
+    int levelOr(int kindLevel) const
+    {
+        return level.value_or(kindLevel);
+    }
+
+    int resistanceOr(CombatDamageType damageType, int kindResistance) const
+    {
+        const std::optional<size_t> index = mm8MonsterResistanceIndex(damageType);
+        return index && resistances[*index] ? *resistances[*index] : kindResistance;
+    }
+
+    // Reads (`set` false) or sets the field, a Level or Resistance one; `kindValue` gives the kind's value of a
+    // resistance by its damage type. False for another field.
+    template <typename KindValue>
+    bool access(GameplayModActorField field, int64_t &value, bool set, int kindLevel, KindValue kindValue)
+    {
+        if (field == GameplayModActorField::Level)
+        {
+            if (set)
+            {
+                level = static_cast<int>(std::clamp<int64_t>(value, INT32_MIN, INT32_MAX));
+            }
+            else
+            {
+                value = levelOr(kindLevel);
+            }
+
+            return true;
+        }
+
+        if (field < GameplayModActorField::Resistance0 || field > GameplayModActorField::Resistance10)
+        {
+            return false;
+        }
+
+        const size_t index =
+            static_cast<size_t>(field) - static_cast<size_t>(GameplayModActorField::Resistance0);
+        const std::optional<CombatDamageType> type = mm8MonsterResistanceType(index);
+
+        if (set)
+        {
+            resistances[index] = static_cast<int>(std::clamp<int64_t>(value, INT32_MIN, INT32_MAX));
+        }
+        else
+        {
+            value = resistances[index] ? *resistances[index] : type ? kindValue(*type) : 0;
+        }
+
+        return true;
+    }
 };
 
 struct GameplayRuntimeActorState

@@ -65,6 +65,8 @@ public:
         uint16_t movementSpeed = 0;
         // A speed a mod's script gave this one monster, in place of its kind's.
         std::optional<uint16_t> modMoveSpeed;
+        // Its level and resistances, likewise.
+        ModActorStatOverrides modStats;
         float bolsterRewardMultiplier = 1.0f;
         GameplayActorAiType aiType = GameplayActorAiType::Normal;
         bool canFly = false;

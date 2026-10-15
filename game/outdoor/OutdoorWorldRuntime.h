@@ -182,6 +182,8 @@ public:
     struct MapActorState
     {
         uint32_t actorId = 0;
+        // Its level and resistances as a mod's script set them, in place of its kind's.
+        ModActorStatOverrides modStats;
         int16_t monsterId = 0;
         int16_t npcId = 0;
         int32_t mm9RudeId = 0;

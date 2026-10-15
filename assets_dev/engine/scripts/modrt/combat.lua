@@ -329,7 +329,17 @@ function Combat.playerCastSpell(slot, spellId, manaCost, skill, mastery, targetA
         SPCost = manaCost, Skill = skill, Mastery = mastery, TargetKind = targetKind, TargetId = targetId,
         IsSpellScroll = fromScroll, CurseInterrupt = false, Handled = false,
     }
+    -- In the original the player clicks the spell's target, which is then under the mouse: MAW's own crowd control
+    -- (castCCSpell) takes its target from Mouse:GetTarget().
+    local Bindings = ModRT.Bindings
+    local previousTarget = Bindings.mouseTarget
+
+    if targetKind == 3 then
+        Bindings.mouseTarget = {Kind = 3, Index = targetId}
+    end
+
     ModRT.fire("PlayerCastSpell", event)
+    Bindings.mouseTarget = previousTarget
 
     local newSkill, newMastery = event.Skill, event.Mastery
 

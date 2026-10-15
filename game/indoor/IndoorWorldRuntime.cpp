@@ -9343,7 +9343,7 @@ std::optional<ActorAiFacts> IndoorWorldRuntime::collectIndoorActorAiFacts(
     facts.identity.targetPolicy = actorPolicyState;
 
     facts.stats.aiType = aiState.aiType;
-    facts.stats.monsterLevel = pStats->level;
+    facts.stats.monsterLevel = aiState.modStats.levelOr(pStats->level);
     facts.stats.currentHp = actor.hp;
     facts.stats.maxHp = bolster.maxHp;
     facts.stats.armorClass = pActorService->effectiveArmorClass(bolster.armorClass, aiState.spellEffects);
@@ -10990,6 +10990,26 @@ bool IndoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField 
 
     const MapDeltaActor &actor = pMapDeltaData->actors[actorIndex];
 
+    if (field == GameplayModActorField::Level
+        || (field >= GameplayModActorField::Resistance0 && field <= GameplayModActorField::Resistance10))
+    {
+        const MonsterTable::MonsterStatsEntry *pStats = findIndoorActorStats(m_pMonsterTable, actor);
+
+        if (pStats == nullptr)
+        {
+            return false;
+        }
+
+        ModActorStatOverrides overrides =
+            actorIndex < m_mapActorAiStates.size() ? m_mapActorAiStates[actorIndex].modStats : ModActorStatOverrides {};
+        return overrides.access(
+            field,
+            value,
+            false,
+            pStats->level,
+            [pStats](CombatDamageType type) { return monsterResistanceForDamageType(*pStats, type); });
+    }
+
     switch (field)
     {
         case GameplayModActorField::MonsterId: value = resolveIndoorActorStatsId(actor); return true;
@@ -11074,6 +11094,14 @@ bool IndoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFie
     }
 
     MapDeltaActor &actor = pMapDeltaData->actors[actorIndex];
+
+    if (field == GameplayModActorField::Level
+        || (field >= GameplayModActorField::Resistance0 && field <= GameplayModActorField::Resistance10))
+    {
+        return actorIndex < m_mapActorAiStates.size()
+            && m_mapActorAiStates[actorIndex].modStats.access(
+                field, value, true, 0, [](CombatDamageType) { return 0; });
+    }
 
     // An actor's position is also kept, with its sector, in the AI state that movement and targeting work from;
     // a moved actor is put there too, and into the sector it now stands in.
@@ -12244,9 +12272,11 @@ bool IndoorWorldRuntime::applyPartySpellToActor(
                 pActorService->actorLooksUndead(resolvedMonsterId),
                 baselineHostileToParty,
                 pStats != nullptr
-                    ? monsterResistanceForDamageType(
-                        *pStats,
-                        GameMechanics::spellCombatDamageType(spellId, m_pSpellTable))
+                    ? aiState.modStats.resistanceOr(
+                        GameMechanics::spellCombatDamageType(spellId, m_pSpellTable),
+                        monsterResistanceForDamageType(
+                            *pStats,
+                            GameMechanics::spellCombatDamageType(spellId, m_pSpellTable)))
                     : 0,
                 effectState);
 

@@ -1818,6 +1818,11 @@ Game = boundObject("Game", {
         GetStatisticEffect = getStatisticEffect,
         -- The game builds an NPC dialog's topics again after each topic, which is when scripts ask for it.
         UpdateDialogTopics = function() end,
+        -- The map's monsters the party can see, by index: those within 5120 in its line of sight (the original
+        -- also needs them on the screen).
+        GetMonstersInSight = function()
+            return modrt.monstersInSight()
+        end,
         -- The engine's random number: 0 to 32767.
         Rand = function()
             return math.random(0, 32767)
@@ -2122,7 +2127,8 @@ rawset(Mouse, "Item", setmetatable({}, {
     end,
 }))
 
--- What is under the mouse pointer: the monster whose information box is being built (Kind 3), else nothing (Kind 0).
+-- What is under the mouse pointer: the monster whose information box is being built, or the one a spell being cast
+-- is aimed at (Kind 3), else nothing (Kind 0).
 rawset(Mouse, "GetTarget", function()
     return Bindings.mouseTarget or {Kind = 0, Index = 0}
 end)

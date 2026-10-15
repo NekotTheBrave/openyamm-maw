@@ -3275,6 +3275,32 @@ int nativeMapNoteSet(lua_State *pLuaState)
     return 0;
 }
 
+// modrt.monstersInSight(): the map's monsters the party can see, by index (the original's Game.GetMonstersInSight):
+// those within 5120 with a line of sight from the party's eyes; not limited to the screen's view.
+int nativeMonstersInSight(lua_State *pLuaState)
+{
+    const IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+    lua_newtable(pLuaState);
+
+    if (pWorld == nullptr)
+    {
+        return 1;
+    }
+
+    const float x = pWorld->partyX();
+    const float y = pWorld->partyY();
+    const float eyeZ = pWorld->partyFootZ() + 96.0f;
+    lua_Integer place = 1;
+
+    for (const size_t actorIndex : pWorld->collectMapActorIndicesWithinRadius(x, y, eyeZ, 5120.0f, true, x, y, eyeZ))
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(actorIndex));
+        lua_rawseti(pLuaState, -2, place++);
+    }
+
+    return 1;
+}
+
 // modrt.innDismiss(slot): sends party member `slot` to the Adventurer's Inn, as dismissing does. Whether it went.
 int nativeInnDismiss(lua_State *pLuaState)
 {
@@ -3820,7 +3846,32 @@ std::optional<GameplayModActorField> actorFieldFromName(const std::string &field
         {"Item", GameplayModActorField::CarriedItem},
     };
     const std::unordered_map<std::string, GameplayModActorField>::const_iterator it = fields.find(field);
-    return it != fields.end() ? std::optional<GameplayModActorField>(it->second) : std::nullopt;
+
+    if (it != fields.end())
+    {
+        return it->second;
+    }
+
+    // The monster's own level and its resistances, Resistance0 to Resistance10 by const.Damage (the scripts'
+    // Resistances[n]).
+    if (field == "Level")
+    {
+        return GameplayModActorField::Level;
+    }
+
+    if (field.rfind("Resistance", 0) == 0 && field.size() > 10)
+    {
+        const std::string number = field.substr(10);
+
+        if (std::all_of(number.begin(), number.end(), [](char character) { return character >= '0' && character <= '9'; })
+            && number.size() <= 2 && std::stoi(number) <= 10)
+        {
+            return static_cast<GameplayModActorField>(
+                static_cast<int>(GameplayModActorField::Resistance0) + std::stoi(number));
+        }
+    }
+
+    return std::nullopt;
 }
 
 int nativeMapMonsterGet(lua_State *pLuaState)
@@ -4598,6 +4649,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"inventoryTake", nativeInventoryTake},
         {"inventoryCell", nativeInventoryCell},
         {"innDismiss", nativeInnDismiss},
+        {"monstersInSight", nativeMonstersInSight},
         {"mapNoteGet", nativeMapNoteGet},
         {"mapNoteSet", nativeMapNoteSet},
         {"inventoryPut", nativeInventoryPut},

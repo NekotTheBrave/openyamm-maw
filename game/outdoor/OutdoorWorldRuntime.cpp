@@ -8491,7 +8491,7 @@ std::optional<ActorAiFacts> OutdoorWorldRuntime::collectOutdoorActorAiFacts(
     facts.identity.targetPolicy = buildGameplayActorTargetPolicyState(actor);
 
     facts.stats.aiType = actor.aiType;
-    facts.stats.monsterLevel = pStats->level;
+    facts.stats.monsterLevel = actor.modStats.levelOr(pStats->level);
     facts.stats.currentHp = actor.currentHp;
     facts.stats.maxHp = actor.maxHp;
     facts.stats.armorClass = effectiveMapActorArmorClass(actorIndex);
@@ -14004,6 +14004,26 @@ bool OutdoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField
         return false;
     }
 
+    if (field == GameplayModActorField::Level
+        || (field >= GameplayModActorField::Resistance0 && field <= GameplayModActorField::Resistance10))
+    {
+        const MonsterTable::MonsterStatsEntry *pStats =
+            m_pMonsterTable != nullptr ? m_pMonsterTable->findStatsById(pActor->monsterId) : nullptr;
+
+        if (pStats == nullptr)
+        {
+            return false;
+        }
+
+        ModActorStatOverrides overrides = pActor->modStats;
+        return overrides.access(
+            field,
+            value,
+            false,
+            pStats->level,
+            [pStats](CombatDamageType type) { return monsterResistanceForDamageType(*pStats, type); });
+    }
+
     switch (field)
     {
         case GameplayModActorField::MonsterId: value = pActor->monsterId; return true;
@@ -14051,6 +14071,11 @@ bool OutdoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFi
     }
 
     MapActorState &actor = m_mapActors[actorIndex];
+
+    if (actor.modStats.access(field, value, true, 0, [](CombatDamageType) { return 0; }))
+    {
+        return true;
+    }
 
     switch (field)
     {
@@ -16602,9 +16627,11 @@ bool OutdoorWorldRuntime::applyPartySpellToMapActor(
                 pActorService->actorLooksUndead(actor.monsterId),
                 baselineHostileToParty,
                 pStats != nullptr
-                    ? monsterResistanceForDamageType(
-                        *pStats,
-                        GameMechanics::spellCombatDamageType(spellId, m_pSpellTable))
+                    ? actor.modStats.resistanceOr(
+                        GameMechanics::spellCombatDamageType(spellId, m_pSpellTable),
+                        monsterResistanceForDamageType(
+                            *pStats,
+                            GameMechanics::spellCombatDamageType(spellId, m_pSpellTable)))
                     : 0,
                 effectState);
 
