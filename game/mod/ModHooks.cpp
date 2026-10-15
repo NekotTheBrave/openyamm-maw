@@ -1,4 +1,5 @@
 #include "game/mod/ModHooks.h"
+#include <map>
 #include <algorithm>
 #include <cmath>
 #include <SDL3/SDL.h>
@@ -93,6 +94,22 @@ std::unordered_map<std::string, std::string> &modRules()
 }
 }
 
+std::map<int, ModHudText> &mutableModHudTexts()
+{
+    static std::map<int, ModHudText> texts;
+    return texts;
+}
+
+const std::map<int, ModHudText> &modHudTexts()
+{
+    return mutableModHudTexts();
+}
+
+void setModHudText(int id, const ModHudText &text)
+{
+    mutableModHudTexts()[id] = text;
+}
+
 const std::string &modRule(const std::string &name)
 {
     static const std::string empty;
@@ -181,6 +198,19 @@ float modMonsterSpriteScale(size_t actorIndex)
     }
 
     return iterator->second.scale;
+}
+
+std::optional<std::string> modTownHallBounty()
+{
+    IModHooks *pModHooks = activeModHooks();
+    std::string text;
+
+    if (pModHooks == nullptr || !pModHooks->townHallBounty(text))
+    {
+        return std::nullopt;
+    }
+
+    return text;
 }
 
 void modMonsterInformationBox(ModMonsterInfoBox &box)

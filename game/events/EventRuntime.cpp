@@ -8821,9 +8821,11 @@ int runModMapEvent(const EventRuntime &eventRuntime, uint16_t eventId, LuaExecut
     executionContext.selector = {};
     executionContext.pendingMessageText.reset();
 
+    // The commands a mod gives outside a map event run one by one, each as this event: what one left waiting (an
+    // item for the hand, a message) stays for the game to hand on, as the commands of one event's would.
     if (executionContext.pRuntimeState != nullptr)
     {
-        if (!executionContext.preserveRuntimeOutputsOnBegin)
+        if (!executionContext.preserveRuntimeOutputsOnBegin && eventId != ModCommandEventId)
         {
             prepareRuntimeStateForEventExecution(
                 *executionContext.pRuntimeState,

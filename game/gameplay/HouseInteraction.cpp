@@ -1927,6 +1927,14 @@ HouseActionResult performHouseAction(
                 return result;
             }
 
+            // A mod that runs the bounty hunts itself (MAW) answers instead of the game's own hunt.
+            if (const std::optional<std::string> modText = modTownHallBounty())
+            {
+                result.succeeded = true;
+                result.messages.push_back(*modText);
+                return result;
+            }
+
             const BountyHuntInteractionResult bountyResult =
                 performBountyHuntInteraction(*pWorldRuntime, &party, true, pNpcDialogTable);
             result.succeeded = bountyResult.succeeded;

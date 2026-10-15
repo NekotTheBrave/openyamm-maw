@@ -27,9 +27,11 @@ local playerSelectors = {All = 5, Random = 6, Current = 7}
 -- Variables whose value names the thing (a quest bit's number, an item's): the engine takes them packed with it.
 local packedVariables = {QBits = true, Inventory = true, Awards = true, AutonotesBits = true, Players = true,
     PlayerBits = true}
--- MMExtension's other names for variables, and its MM8 numbers for ones the engine's table has no name for.
+-- MMExtension's other names for variables, and the engine's numbers (laid out as MM7's: EvtEnums.h) for those its
+-- table has no name for.
 local variableAliases = {Items = "Inventory"}
-local extraVariables = {MainCondition = 0x7C, ReputationIs = 0xEB}
+local extraVariables = {MainCondition = 0x7A, ReputationIs = 0xE9, Reputation = 0x113, Deaths = 0x133,
+    MontersHunted = 0x134}
 
 local function engineVarTag()
     if not varTag then
@@ -319,6 +321,31 @@ end
 for name, command in pairs(commands) do
     rawset(evt, name, command)
 end
+
+-- The original's message box (Message, Game.EscMessage): the game's event message box, as a sign's. With no map to
+-- show it on (the main menu), the text goes to the status line. Either way it is in the log in full.
+function Message(text, keepSound, global)
+    text = tostring(text or "")
+    print("[message] " .. text)
+
+    if inEvent or (Map and Map.Name) then
+        local shown = withinEvent(function()
+            modrt.eventCall("evt.SimpleMessage", text)
+            return true
+        end)
+
+        if shown then
+            return
+        end
+    end
+
+    modrt.showStatusText((text:gsub("\f%d%d%d%d%d", ""):gsub("%s*\n%s*", " ")))
+end
+
+SimpleMessage = Message
+rawset(Game, "EscMessage", function(text)
+    Message(text)
+end)
 
 rawset(evt, "str", strTable)
 rawset(evt, "Players", playerSelectors)

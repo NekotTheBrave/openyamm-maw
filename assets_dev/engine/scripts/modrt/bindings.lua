@@ -1772,6 +1772,11 @@ local function mapMonster(index)
             GetIndex = function()
                 return index
             end,
+            -- How the monster stands toward the party: 0 friendly, else the original's strongest relation (4). The
+            -- engine keeps one notion of hostility to the party; another monster as the argument is not followed.
+            IsAgainst = function()
+                return modrt.mapMonsterGet(index, "Hostile") and 4 or 0
+            end,
             -- Not a method: the record hands out its entries as they are.
             SpellBuffs = monsterSpellBuffs(index),
         })

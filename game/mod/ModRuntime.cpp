@@ -799,6 +799,7 @@ bool ModRuntime::loadConfiguration()
 bool ModRuntime::configure(Engine::AssetFileSystem &assetFileSystem)
 {
     m_pAssetFileSystem = &assetFileSystem;
+    m_host.pAssetFileSystem = m_pAssetFileSystem;
     m_configured = loadConfiguration();
 
     if (!m_configured)
@@ -837,6 +838,7 @@ bool ModRuntime::initialize(const Engine::AssetFileSystem &assetFileSystem)
     if (!m_configured || m_pAssetFileSystem != &assetFileSystem)
     {
         m_pAssetFileSystem = &assetFileSystem;
+        m_host.pAssetFileSystem = m_pAssetFileSystem;
         m_configured = loadConfiguration();
 
         if (!m_configured)
@@ -969,6 +971,7 @@ bool ModRuntime::endDispatch(int argumentCount, int resultCount)
 void ModRuntime::setHost(ModHost host)
 {
     m_host = std::move(host);
+    m_host.pAssetFileSystem = m_pAssetFileSystem;
 }
 
 const ModHost &ModRuntime::host() const
@@ -1734,6 +1737,29 @@ float ModRuntime::monsterSpriteScale(size_t actorIndex)
     }
 
     return scale;
+}
+
+bool ModRuntime::townHallBounty(std::string &text)
+{
+    if (!m_active || !beginDispatch("townHallBounty"))
+    {
+        return false;
+    }
+
+    bool answered = false;
+
+    if (endDispatch(0, 1))
+    {
+        if (lua_type(m_pLuaState, -1) == LUA_TSTRING)
+        {
+            text = lua_tostring(m_pLuaState, -1);
+            answered = true;
+        }
+
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return answered;
 }
 
 void ModRuntime::monsterInformationBox(ModMonsterInfoBox &box)

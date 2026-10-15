@@ -130,6 +130,11 @@ public:
         const std::vector<std::vector<std::string>> &randomItemRows
     );
     bool loadVisualRows(const std::vector<std::vector<std::string>> &rows, std::string &errorMessage);
+    // Gives an item another icon (a mod's Game.ItemsTxt[i].Picture) and the backpack size it takes, as loading does.
+    static void setItemIcon(
+        ItemDefinition &item,
+        const std::string &iconName,
+        const Engine::AssetFileSystem &assetFileSystem);
     bool loadContentEffectRows(const std::vector<std::vector<std::string>> &rows, std::string &errorMessage);
     bool loadItemSetRows(const std::vector<std::vector<std::string>> &rows, std::string &errorMessage);
     bool loadSourceAliasRows(const std::vector<std::vector<std::string>> &rows, std::string &errorMessage);

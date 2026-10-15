@@ -2930,6 +2930,19 @@ GameApplication::GameApplication(const Engine::ApplicationConfig &config)
             }
         }
     };
+    modHost.handOverEventItems = [this]()
+    {
+        IGameplayWorldRuntime *pWorld = m_gameSession.activeWorldRuntime();
+        EventRuntimeState *pRuntimeState = pWorld != nullptr ? pWorld->eventRuntimeState() : nullptr;
+
+        if (pRuntimeState != nullptr && m_gameSession.hasDataRepository())
+        {
+            GameplayHeldItemController::applyGrantedEventItemsToHeldInventory(
+                m_gameSession.gameplayScreenRuntime(),
+                *pRuntimeState,
+                m_gameSession.data().itemTable());
+        }
+    };
     modHost.presentPendingDialogue = [this]()
     {
         GameplayScreenRuntime &screen = m_gameSession.gameplayScreenRuntime();

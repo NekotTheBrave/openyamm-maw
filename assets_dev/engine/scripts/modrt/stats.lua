@@ -236,6 +236,15 @@ function Stats.canLearnSpell(slot, spell, needMastery)
     return math.floor(tonumber(event.NeedMastery) or needMastery)
 end
 
+-- The party asks a town hall about its bounty hunt. Not an MMExtension event (the original's scripts hook the game's
+-- code for it): a mod that runs the hunts itself answers TownHallBounty by setting Text, which the hall says instead
+-- of running its own hunt. Returns the text, or nil.
+function Stats.townHallBounty()
+    local event = {}
+    ModRT.fire("TownHallBounty", event)
+    return type(event.Text) == "string" and event.Text or nil
+end
+
 -- The size monster `index` (Map.Monsters) is drawn at: the original's MonsterSpriteScale, its Scale here a factor of
 -- the game's own size (the original's is the sprite's own scale, which handlers only multiply). Returns the factor.
 function Stats.monsterSpriteScale(index)

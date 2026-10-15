@@ -1122,6 +1122,22 @@ int nativePlayerSkillGet(lua_State *pLuaState)
     return 3;
 }
 
+// modrt.hudTextSet(id, text, x, y, screen, alignLeft, width, visible): a mod's screen text (CustomUI.CreateText).
+int nativeHudTextSet(lua_State *pLuaState)
+{
+    ModHudText text = {};
+    const int id = static_cast<int>(luaL_checkinteger(pLuaState, 1));
+    text.text = luaL_optstring(pLuaState, 2, "");
+    text.x = static_cast<float>(luaL_optnumber(pLuaState, 3, 0));
+    text.y = static_cast<float>(luaL_optnumber(pLuaState, 4, 0));
+    text.screen = static_cast<int>(luaL_optinteger(pLuaState, 5, 0));
+    text.alignLeft = lua_isnoneornil(pLuaState, 6) || lua_toboolean(pLuaState, 6) != 0;
+    text.width = static_cast<float>(luaL_optnumber(pLuaState, 7, 0));
+    text.visible = lua_isnoneornil(pLuaState, 8) || lua_toboolean(pLuaState, 8) != 0;
+    setModHudText(id, text);
+    return 0;
+}
+
 // modrt.setRule(name, value): sets one of the engine's native rules a mod changes (modRule in ModHooks.h lists
 // them); no value restores the engine's own.
 int nativeSetRule(lua_State *pLuaState)
@@ -1926,6 +1942,19 @@ int nativeItemTxtSet(lua_State *pLuaState)
     else if (field == "Notes")
     {
         item.notes = luaL_checkstring(pLuaState, 3);
+    }
+    else if (field == "Picture")
+    {
+        const ModHost *pHost = hostFromUpvalue(pLuaState);
+
+        if (pHost != nullptr && pHost->pAssetFileSystem != nullptr)
+        {
+            ItemTable::setItemIcon(item, luaL_checkstring(pLuaState, 3), *pHost->pAssetFileSystem);
+        }
+        else
+        {
+            item.iconName = luaL_checkstring(pLuaState, 3);
+        }
     }
     else if (field == "Value")
     {
@@ -3184,6 +3213,11 @@ int nativeRunCommandEvent(lua_State *pLuaState)
     size_t previousMessageCount = 0;
     const bool executed = pWorld->executeMapEvent(static_cast<uint16_t>(eventId), previousMessageCount);
 
+    if (executed && pHost->handOverEventItems)
+    {
+        pHost->handOverEventItems();
+    }
+
     if (executed && pHost->presentPendingDialogue)
     {
         pHost->presentPendingDialogue();
@@ -4100,6 +4134,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"partyRefreshBonuses", nativePartyRefreshBonuses},
         {"playerSkillCap", nativePlayerSkillCap},
         {"setRule", nativeSetRule},
+        {"hudTextSet", nativeHudTextSet},
         {"questBitGet", nativeQuestBitGet},
         {"questBitSet", nativeQuestBitSet},
         {"itemGet", nativeItemGet},

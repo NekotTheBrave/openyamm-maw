@@ -1,0 +1,45 @@
+id: mod_runtime.maw.bounty_hunt
+title: MAW runs the town hall's bounty hunts (its BountyHunt.lua, through TownHallBounty)
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# A town hall's bounty topic asks the mod first (TownHallBounty); MAW's port of its BountyHunt.lua answers: no hunt
+# until the area is cleared completely, then a boss of MAW's with its escort, and on the hunt's end the reward,
+# paid through evt.Add (an event command given outside a map event). Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out02.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 5
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      local before = ModRT.totalErrorCount
+      local refused = ModRT.Stats.townHallBounty()
+      mapvars.completed = true
+      local monstersBefore = Map.Monsters.High
+      local hunt = ModRT.Stats.townHallBounty()
+      local entry = vars.BountyHunt[Map.Name]
+      return refused, hunt:find("bounty is on") ~= nil, Map.Monsters.High - monstersBefore > 5,
+        hunt:find(entry.MonName, 1, true) ~= nil, ModRT.totalErrorCount - before
+    expect: "You need to clear the area COMPLETELY first.	true	true	true	0"
+- mod_lua:
+    code: |
+      local entry = vars.BountyHunt[Map.Name]
+      entry.Done = true
+      local gold = Party.Gold
+      local text = ModRT.Stats.townHallBounty()
+      local reward = tonumber(text:match("(%d+)"))
+      return Party.Gold - gold > 0, Party.Gold - gold == reward, entry.Claimed
+    expect: "true	true	true"

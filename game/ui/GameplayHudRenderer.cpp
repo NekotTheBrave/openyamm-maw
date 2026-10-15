@@ -1,4 +1,5 @@
 #include "game/ui/GameplayHudRenderer.h"
+#include "game/mod/ModHooks.h"
 
 #include "game/gameplay/GameplayScreenRuntime.h"
 #include "game/gameplay/TurnBasedCombatRuntime.h"
@@ -499,5 +500,70 @@ void GameplayHudRenderer::renderGameplayHud(GameplayScreenRuntime &context, int 
         renderContextAction(context, width, height);
     }
     renderPassTurnButton(context, width, height);
+
+    // The mods' texts on the game view (CustomUI.CreateText on Screen 0: MAW's map completion), at the original's
+    // 640x480 positions.
+    if (state == GameplayHudScreenState::Gameplay && !modHudTexts().empty())
+    {
+        if (const std::optional<GameplayScreenRuntime::HudFontHandle> font = context.findHudFont("Arrus"))
+        {
+            const GameplayUiViewportRect viewport = GameplayHudCommon::computeUiViewportRect(width, height);
+            const float scale = viewport.width / 640.0f;
+            const float fontHeight = static_cast<float>(context.hudFontHeight("Arrus")) * scale;
+            const auto resolveElement = [&context, width, height](const char *pLayoutId)
+                -> std::optional<GameplayResolvedHudLayoutElement>
+            {
+                const UiLayoutManager::LayoutElement *pLayout = context.findHudLayoutElement(pLayoutId);
+                return pLayout != nullptr
+                    ? context.resolveHudLayoutElement(pLayoutId, width, height, pLayout->width, pLayout->height)
+                    : std::nullopt;
+            };
+            std::optional<GameplayResolvedHudLayoutElement> minimap = resolveElement("ObsidianMinimapRim");
+
+            if (!minimap)
+            {
+                minimap = resolveElement("OutdoorMinimap");
+            }
+
+            for (const auto &[id, text] : modHudTexts())
+            {
+                if (text.screen != 0 || !text.visible || text.text.empty())
+                {
+                    continue;
+                }
+
+                // The original's screen is not this one: a text of its right-hand panel (from x 468, where its
+                // minimap was: MAW's map completion) goes under this minimap, centred; one of its portrait bar (from
+                // y 380, five portraits 96 apart) over that member's portrait; anything else where it was.
+                const float textWidth = context.measureHudTextWidth(*font, text.text) * scale;
+                float x = viewport.x + text.x * scale;
+                float y = viewport.y + text.y * scale;
+                const int member = text.x >= 5.0f ? static_cast<int>((text.x - 5.0f) / 96.0f) : -1;
+                std::optional<GameplayResolvedHudLayoutElement> portrait;
+
+                if (text.y >= 380.0f && text.x < 468.0f && member >= 0 && member < 5)
+                {
+                    portrait = context.resolvePartyPortraitRect(width, height, static_cast<size_t>(member));
+                }
+
+                if (text.x >= 468.0f && minimap)
+                {
+                    x = minimap->x + (minimap->width - textWidth) * 0.5f;
+                    y = minimap->y + minimap->height + 4.0f * scale + (text.y - 377.0f) * scale;
+                }
+                else if (portrait)
+                {
+                    x = portrait->x + (text.x - (5.0f + 96.0f * static_cast<float>(member))) * scale;
+                    y = portrait->y - fontHeight - 2.0f * scale;
+                }
+                else if (!text.alignLeft && text.width > 0.0f)
+                {
+                    x += (text.width * scale - textWidth) * 0.5f;
+                }
+
+                context.renderHudTextColored(*font, text.text, std::round(x), std::round(y), scale, 0xffffffffu);
+            }
+        }
+    }
 }
 } // namespace OpenYAMM::Game

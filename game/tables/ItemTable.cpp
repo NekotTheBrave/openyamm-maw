@@ -343,6 +343,41 @@ uint8_t inventorySlotsFromPixels(int pixelSize)
 }
 }
 
+void ItemTable::setItemIcon(
+    ItemDefinition &item,
+    const std::string &iconName,
+    const Engine::AssetFileSystem &assetFileSystem)
+{
+    // Kept between calls: a mod sets hundreds of pictures at startup (MAW's spell books), and listing the icon
+    // folders again for each made a start take minutes.
+    static const Engine::AssetFileSystem *pCachedFileSystem = nullptr;
+    static Engine::DirectoryAssetPathCache directories;
+    static Engine::AssetPathLookupCache paths;
+    static std::unordered_map<std::string, std::optional<Engine::ImageDimensions>> dimensions;
+
+    if (pCachedFileSystem != &assetFileSystem)
+    {
+        pCachedFileSystem = &assetFileSystem;
+        directories.clear();
+        paths.clear();
+        dimensions.clear();
+    }
+
+    int iconWidth = 0;
+    int iconHeight = 0;
+    std::string iconVirtualPath;
+
+    // A picture the assets lack leaves the item its own, so it stays drawn and fits in the pack.
+    if (loadBitmapDimensions(
+            assetFileSystem, directories, paths, dimensions, iconName, iconWidth, iconHeight, iconVirtualPath))
+    {
+        item.iconName = iconName;
+        item.iconVirtualPath = iconVirtualPath;
+        item.inventoryWidth = inventorySlotsFromPixels(iconWidth);
+        item.inventoryHeight = inventorySlotsFromPixels(iconHeight);
+    }
+}
+
 bool ItemTable::load(
     const Engine::AssetFileSystem &assetFileSystem,
     const std::vector<std::vector<std::string>> &itemRows,

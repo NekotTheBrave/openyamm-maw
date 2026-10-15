@@ -1,4 +1,5 @@
 #include "game/gameplay/GameplayDialogController.h"
+#include "game/mod/ModHooks.h"
 
 #include "game/StringUtils.h"
 #include "game/audio/SoundIds.h"
@@ -1503,6 +1504,14 @@ bool executeBuiltInNpcTopic(
     if (context.pWorldRuntime == nullptr)
     {
         context.eventRuntimeState.messages.push_back("The bounty office is unavailable right now.");
+        return true;
+    }
+
+    // A mod that runs the bounty hunts itself (MAW) answers instead of the game's own hunt.
+    if (const std::optional<std::string> modText = modTownHallBounty())
+    {
+        context.eventRuntimeState.messages.push_back(*modText);
+        context.uiController.setStatusBarEvent(*modText);
         return true;
     }
 

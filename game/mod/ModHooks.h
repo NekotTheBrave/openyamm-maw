@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -283,6 +284,9 @@ public:
     // The character may put on the held item, item `itemId`, as far as the game goes (the original's CanWearItem):
     // whether the mod lets it.
     virtual bool canWearItem(const Character &character, uint32_t itemId) = 0;
+    // The party asks a town hall about its bounty hunt: the mod's text, if it runs the hunts itself (MAW's
+    // BountyHunt.lua: the hunt, the monster's summoning and the reward are its own).
+    virtual bool townHallBounty(std::string &text) = 0;
     // The monster's information box is being shown (the original's BuildMonsterInformationBox).
     virtual void monsterInformationBox(ModMonsterInfoBox &box) = 0;
     // The size monster `actorIndex` is drawn at, as a factor of the game's (the original's MonsterSpriteScale).
@@ -340,6 +344,22 @@ bool modUseMouseItem(size_t memberIndex);
 // without a mod, or when it has no effect for that potion).
 bool modPotionEffect(uint32_t potionId, int power, InventoryItem &target);
 
+// A text a mod puts on one of the original's screens (CustomUI.CreateText), at the original's 640x480 position.
+struct ModHudText
+{
+    std::string text;
+    float x = 0.0f;
+    float y = 0.0f;
+    int screen = 0;
+    bool alignLeft = true;
+    float width = 0.0f;
+    bool visible = true;
+};
+
+// The mods' screen texts by their number; the game view draws those of Screen 0.
+const std::map<int, ModHudText> &modHudTexts();
+void setModHudText(int id, const ModHudText &text);
+
 // Native rules a mod sets otherwise (from its scripts: modrt.setRule(name, value)), for the Merge features a mod
 // leaves out or changes in its own copies of Merge's scripts. An empty value is the engine's own rule.
 //   meditation_regeneration  "off": no spell points from Meditation every five minutes (MAW regains them itself)
@@ -359,6 +379,9 @@ bool modMapEventRemoved(uint16_t eventId);
 // The factor the mod draws monster `actorIndex` at (1 without a mod). The mod is asked about a monster once a second;
 // the map's monsters are drawn every frame.
 float modMonsterSpriteScale(size_t actorIndex);
+
+// The mod's answer to a town hall's bounty hunt topic, when the mod runs the hunts itself; none without a mod.
+std::optional<std::string> modTownHallBounty();
 
 // Runs the mod's BuildMonsterInformationBox event over the box's texts; they stay the engine's without a mod.
 void modMonsterInformationBox(ModMonsterInfoBox &box);

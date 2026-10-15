@@ -111,6 +111,7 @@ loadRuntimeScript("combat.lua")
 loadRuntimeScript("stats.lua")
 loadRuntimeScript("merge.lua")
 loadRuntimeScript("mapevents.lua")
+loadRuntimeScript("hudtexts.lua")
 loadRuntimeScript("loader.lua")
 loadRuntimeScript("report.lua")
 loadRuntimeScript("selftest.lua")
@@ -311,6 +312,8 @@ local function dispatchKind(kind, ...)
         return ModRT.Stats.useMouseItem(...)
     elseif kind == "potionEffect" then
         return ModRT.Stats.potionEffect(...)
+    elseif kind == "townHallBounty" then
+        return ModRT.Stats.townHallBounty(...)
     elseif kind == "monsterSpriteScale" then
         return ModRT.Stats.monsterSpriteScale(...)
     elseif kind == "monsterInformationBox" then
