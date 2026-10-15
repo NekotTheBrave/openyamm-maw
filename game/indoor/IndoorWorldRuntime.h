@@ -261,6 +261,8 @@ public:
         const MapItemSourceData *pItemSourceData = nullptr
     );
     void setBolsterMonstersEnabled(bool enabled);
+    // Turns a projectile toward what it homes on, when homing projectiles are on (GameplayProjectileService).
+    void steerHomingProjectile(GameplayProjectileService::ProjectileState &projectile);
 
     const std::string &mapName() const override;
     const MonsterTable *monsterTable() const override;

@@ -26,6 +26,12 @@ settings:
   name: Monster scaling
   type: toggle
   desc: Scale monsters with the party. Apply when entering an area.
+- id: homing_projectiles
+  section: gameplay
+  group: Challenge
+  name: Homing projectiles
+  type: toggle
+  desc: Missiles and spells follow their targets, the party's and the monsters'.
 - id: quest_markers
   section: gameplay
   group: Exploration

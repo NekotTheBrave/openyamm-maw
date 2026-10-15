@@ -1,0 +1,51 @@
+id: mod_runtime.maw.homing_projectiles
+title: A party's projectile follows the monster it is aimed at (homing projectiles, on by default)
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's homing projectiles, an option of the game (Gameplay, Challenge: Homing projectiles; [features]
+# homing_projectiles, on unless set off): a Fire Bolt cast at a goblin 1500 away still hits it after the goblin is put
+# 400 to the side (it misses with the option off). Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Wilma
+        class: Sorcerer
+        level: 10
+        intellect: 25
+        skills:
+        - name: Staff
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      pl.Skills[const.Skills.Fire] = JoinSkill(10, 2)
+      pl.Spells[2] = true
+      Hits = 0
+      function events.CalcDamageToMonster(t) if t.ByPlayer and not t.Melee then Hits = Hits + 1 end end
+      Target = nil
+      for i = 0, Map.Monsters.High do
+        local m = Map.Monsters[i]
+        if m.Id >= 550 and m.Id <= 551 and not m.IsDead then Target = i break end
+      end
+      local m = Map.Monsters[Target]
+      m.X = Party.X + 1500; m.Y = Party.Y; m.Z = Party.Z; m.HP = 10000
+      m.SpellBuffs[6].ExpireTime = Game.Time + 256 * 60
+      pl.SP = 500
+      pl.RecoveryDelay = 0
+      local ok = pl:CastSpell(2, Target)
+      m.Y = Party.Y + 400
+      return tostring(ok)
+    expect: "true"
+- advance_runtime: {seconds: 3}
+- mod_lua:
+    code: return Hits
+    expect: "1"

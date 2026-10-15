@@ -7179,6 +7179,7 @@ void IndoorWorldRuntime::updateIndoorProjectiles(float deltaSeconds)
                 continue;
             }
 
+            steerHomingProjectile(projectile);
             const GameplayProjectileService::ProjectileFrameFacts facts =
                 collectIndoorProjectileFrameFacts(
                     projectile,
@@ -11981,6 +11982,45 @@ bool IndoorWorldRuntime::applyReflectedDamageToActor(
     return actor.hp != previousHp;
 }
 
+void IndoorWorldRuntime::steerHomingProjectile(GameplayProjectileService::ProjectileState &projectile)
+{
+    if (!GameplayProjectileService::homingProjectilesEnabled() || !GameplayProjectileService::projectileCanHome(projectile))
+    {
+        return;
+    }
+
+    if (projectile.sourceKind == GameplayProjectileService::ProjectileState::SourceKind::Party)
+    {
+        const size_t actorIndex = projectile.targetActorIndex;
+        const MapDeltaData *pMapDeltaData = mapDeltaData();
+
+        if (pMapDeltaData == nullptr || actorIndex >= pMapDeltaData->actors.size()
+            || actorIndex >= m_mapActorAiStates.size() || pMapDeltaData->actors[actorIndex].hp <= 0)
+        {
+            return;
+        }
+
+        const MapActorAiState &target = m_mapActorAiStates[actorIndex];
+
+        if (target.motionState == ActorAiMotionState::Dead || target.motionState == ActorAiMotionState::Dying)
+        {
+            return;
+        }
+
+        GameplayProjectileService::steerProjectileToward(
+            projectile,
+            target.preciseX,
+            target.preciseY,
+            target.preciseZ + static_cast<float>(target.collisionHeight) * 0.75f);
+        return;
+    }
+
+    if (GameplayProjectileService::projectileHeadsAt(projectile, partyX(), partyY()))
+    {
+        GameplayProjectileService::steerProjectileToward(projectile, partyX(), partyY(), partyFootZ() + 120.0f);
+    }
+}
+
 bool IndoorWorldRuntime::castPartySpellProjectile(const GameplayPartySpellProjectileRequest &request)
 {
     if (m_pGameplayProjectileService == nullptr || m_pObjectTable == nullptr || m_pSpellTable == nullptr)
@@ -12023,6 +12063,7 @@ bool IndoorWorldRuntime::castPartySpellProjectile(const GameplayPartySpellProjec
     spawnRequest.useActorHitChance = false;
     spawnRequest.damageType = request.damageType;
     spawnRequest.turnBasedPendingAction = request.turnBasedPendingAction;
+    spawnRequest.targetActorIndex = request.targetActorIndex;
     spawnRequest.sourceX = request.sourceX;
     spawnRequest.sourceY = request.sourceY;
     spawnRequest.sourceZ = request.sourceZ;
@@ -14346,6 +14387,7 @@ bool IndoorWorldRuntime::spawnPartyAttackProjectile(const GameplayPartyAttackPro
     spawnRequest.useActorHitChance = request.useActorHitChance;
     spawnRequest.damageType = request.damageType;
     spawnRequest.turnBasedPendingAction = request.turnBasedPendingAction;
+    spawnRequest.targetActorIndex = request.targetActorIndex;
     spawnRequest.sourceX = request.source.x;
     spawnRequest.sourceY = request.source.y;
     spawnRequest.sourceZ = request.source.z;

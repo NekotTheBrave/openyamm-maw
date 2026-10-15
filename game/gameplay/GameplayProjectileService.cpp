@@ -547,6 +547,7 @@ GameplayProjectileService::ProjectileSpawnResult GameplayProjectileService::spaw
         projectile.turnBasedPendingAction = request.turnBasedPendingAction;
         projectile.lifetimeTicks = request.definition.lifetimeTicks;
         projectile.sectorId = request.sectorId;
+        projectile.targetActorIndex = request.targetActorIndex.value_or(static_cast<size_t>(-1));
 
         result.kind = ProjectileSpawnResult::Kind::InstantImpact;
         result.projectile = std::move(projectile);
@@ -599,6 +600,7 @@ GameplayProjectileService::ProjectileSpawnResult GameplayProjectileService::spaw
     projectile.turnBasedPendingAction = request.turnBasedPendingAction;
     projectile.lifetimeTicks = request.definition.lifetimeTicks;
     projectile.sectorId = request.sectorId;
+    projectile.targetActorIndex = request.targetActorIndex.value_or(static_cast<size_t>(-1));
 
     m_projectiles.push_back(std::move(projectile));
 
@@ -851,6 +853,75 @@ bool GameplayProjectileService::advanceProjectileLifetime(
     projectile.lifetimeTickAccumulator -= static_cast<float>(deltaTicks);
     projectile.timeSinceCreatedTicks += deltaTicks;
     return projectile.timeSinceCreatedTicks >= projectile.lifetimeTicks;
+}
+
+namespace
+{
+bool g_homingProjectiles = false;
+}
+
+void GameplayProjectileService::setHomingProjectilesEnabled(bool enabled)
+{
+    g_homingProjectiles = enabled;
+}
+
+bool GameplayProjectileService::homingProjectilesEnabled()
+{
+    return g_homingProjectiles;
+}
+
+bool GameplayProjectileService::projectileCanHome(const ProjectileState &projectile)
+{
+    // Meteor Shower, Sparks, Starburst, Poison Spray, Ice Blast and Shrapmetal, as MAW leaves them.
+    switch (projectile.spellId)
+    {
+        case 9:
+        case 15:
+        case 22:
+        case 24:
+        case 32:
+        case 93:
+            return false;
+        default:
+            return !projectile.isSettled && !projectile.isExpired;
+    }
+}
+
+bool GameplayProjectileService::projectileHeadsAt(const ProjectileState &projectile, float x, float y)
+{
+    const float toX = x - projectile.x;
+    const float toY = y - projectile.y;
+    const float toLength = std::sqrt(toX * toX + toY * toY);
+    const float speed = std::sqrt(projectile.velocityX * projectile.velocityX + projectile.velocityY * projectile.velocityY);
+
+    if (toLength <= 0.0f || speed <= 0.0f)
+    {
+        return false;
+    }
+
+    const float cosine = (toX * projectile.velocityX + toY * projectile.velocityY) / (toLength * speed);
+    return cosine >= std::cos(0.5f * 3.14159265f / 180.0f);
+}
+
+void GameplayProjectileService::steerProjectileToward(ProjectileState &projectile, float x, float y, float z)
+{
+    const float speed = std::sqrt(
+        projectile.velocityX * projectile.velocityX
+        + projectile.velocityY * projectile.velocityY
+        + projectile.velocityZ * projectile.velocityZ);
+    const float toX = x - projectile.x;
+    const float toY = y - projectile.y;
+    const float toZ = z - projectile.z;
+    const float length = std::sqrt(toX * toX + toY * toY + toZ * toZ);
+
+    if (speed <= 0.0f || length <= 0.0f)
+    {
+        return;
+    }
+
+    projectile.velocityX = toX / length * speed;
+    projectile.velocityY = toY / length * speed;
+    projectile.velocityZ = toZ / length * speed;
 }
 
 GameplayProjectileService::ProjectileMotionSegment GameplayProjectileService::advanceProjectileMotion(

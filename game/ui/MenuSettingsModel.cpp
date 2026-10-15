@@ -11,6 +11,10 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
     {
         return settings.bolsterMonsters ? "true" : "false";
     }
+    if (id == "homing_projectiles")
+    {
+        return settings.homingProjectiles ? "true" : "false";
+    }
     if (id == "quest_markers")
     {
         return settings.questMarkers ? "true" : "false";
@@ -232,6 +236,15 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
             return false;
         }
         settings.bolsterMonsters = value == "true";
+        return true;
+    }
+    if (id == "homing_projectiles")
+    {
+        if (value != "true" && value != "false")
+        {
+            return false;
+        }
+        settings.homingProjectiles = value == "true";
         return true;
     }
     if (id == "quest_markers")

@@ -446,6 +446,8 @@ struct GameplayPartySpellProjectileRequest
     uint32_t effectSoundIdOverride = 0;
     uint32_t impactSoundIdOverride = 0;
     bool turnBasedPendingAction = false;
+    // The monster the projectile is aimed at, which a homing projectile follows.
+    std::optional<size_t> targetActorIndex;
 };
 
 enum class GameplayProjectileVisualMode
@@ -576,6 +578,8 @@ struct GameplayPartyAttackProjectileRequest
     GameplayWorldPoint source = {};
     GameplayWorldPoint target = {};
     bool turnBasedPendingAction = false;
+    // The monster the projectile is aimed at, which a homing projectile follows.
+    std::optional<size_t> targetActorIndex;
 };
 
 struct GameplayPartyAttackFallbackQuery

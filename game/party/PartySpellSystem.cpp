@@ -2604,6 +2604,7 @@ PartySpellCastResult PartySpellSystem::castSpell(
             party.members().size());
         GameplayPartySpellProjectileRequest worldRequest = {};
         worldRequest.casterMemberIndex = static_cast<uint32_t>(request.casterMemberIndex);
+        worldRequest.targetActorIndex = request.targetActorIndex;
         worldRequest.spellId = request.spellId;
         worldRequest.skillLevel = skillLevel;
         worldRequest.skillMastery = skillMastery;

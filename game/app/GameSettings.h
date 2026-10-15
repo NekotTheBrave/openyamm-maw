@@ -198,6 +198,9 @@ struct GameSettings
     bool startInMainMenu = false;
     std::string startupSaveFile;
     bool bolsterMonsters = false;
+    // Projectiles home on their targets, the party's on the monster aimed at and the monsters' on the party (MAW's
+    // homing projectiles, on by default as there).
+    bool homingProjectiles = true;
     bool indoorPathfinding = true;
     bool outdoorPathfinding = false;
     MonsterProjectileVisuals monsterProjectileVisuals = MonsterProjectileVisuals::FxRecipes;

@@ -6417,6 +6417,38 @@ bool OutdoorWorldRuntime::isInitialized() const
     return m_mapId != 0 || !m_mapName.empty() || m_eventRuntimeState.has_value();
 }
 
+void OutdoorWorldRuntime::steerHomingProjectile(ProjectileState &projectile)
+{
+    if (!GameplayProjectileService::homingProjectilesEnabled() || !GameplayProjectileService::projectileCanHome(projectile))
+    {
+        return;
+    }
+
+    if (projectile.sourceKind == ProjectileState::SourceKind::Party)
+    {
+        const size_t actorIndex = projectile.targetActorIndex;
+
+        if (actorIndex >= m_mapActors.size() || m_mapActors[actorIndex].isDead
+            || m_mapActors[actorIndex].currentHp <= 0)
+        {
+            return;
+        }
+
+        const MapActorState &target = m_mapActors[actorIndex];
+        GameplayProjectileService::steerProjectileToward(
+            projectile,
+            target.preciseX,
+            target.preciseY,
+            target.preciseZ + static_cast<float>(target.height) * 0.75f);
+        return;
+    }
+
+    if (GameplayProjectileService::projectileHeadsAt(projectile, partyX(), partyY()))
+    {
+        GameplayProjectileService::steerProjectileToward(projectile, partyX(), partyY(), partyFootZ() + 120.0f);
+    }
+}
+
 void OutdoorWorldRuntime::setBolsterMonstersEnabled(bool enabled)
 {
     m_bolsterMonstersEnabled = enabled;
@@ -13505,6 +13537,7 @@ void OutdoorWorldRuntime::updateProjectiles(float deltaSeconds, float partyX, fl
                 continue;
             }
 
+            steerHomingProjectile(projectile);
             const ProjectileFrameWorldFacts worldFacts =
                 collectProjectileFrameFacts(projectile, ProjectileUpdateStepSeconds, partyX, partyY, partyZ);
             const GameplayProjectileService::ProjectileFrameResult frameResult =
@@ -16237,7 +16270,10 @@ bool OutdoorWorldRuntime::spawnPartyAttackProjectile(const GameplayPartyAttackPr
     worldRequest.targetX = request.target.x;
     worldRequest.targetY = request.target.y;
     worldRequest.targetZ = request.target.z;
-    return spawnPartyProjectile(worldRequest);
+    const size_t projectilesBefore = projectileService().projectiles().size();
+    const bool spawned = spawnPartyProjectile(worldRequest);
+    markPartyProjectileTargets(projectilesBefore, request.targetActorIndex);
+    return spawned;
 }
 
 bool OutdoorWorldRuntime::castPartyAttackSpell(const GameplayPartyAttackSpellRequest &request)
@@ -19221,7 +19257,20 @@ bool OutdoorWorldRuntime::castPartySpellProjectile(const GameplayPartySpellProje
     worldRequest.effectSoundIdOverride = request.effectSoundIdOverride;
     worldRequest.impactSoundIdOverride = request.impactSoundIdOverride;
     worldRequest.turnBasedPendingAction = request.turnBasedPendingAction;
-    return castPartySpell(worldRequest);
+    const size_t projectilesBefore = projectileService().projectiles().size();
+    const bool cast = castPartySpell(worldRequest);
+    markPartyProjectileTargets(projectilesBefore, request.targetActorIndex);
+    return cast;
+}
+
+void OutdoorWorldRuntime::markPartyProjectileTargets(size_t firstProjectile, std::optional<size_t> targetActorIndex)
+{
+    std::vector<ProjectileState> &projectiles = projectileService().projectiles();
+
+    for (size_t index = firstProjectile; targetActorIndex && index < projectiles.size(); ++index)
+    {
+        projectiles[index].targetActorIndex = *targetActorIndex;
+    }
 }
 
 bool OutdoorWorldRuntime::spawnPartyProjectile(const PartyProjectileRequest &request)

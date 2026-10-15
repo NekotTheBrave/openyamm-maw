@@ -6883,6 +6883,7 @@ void GameApplication::applyCurrentSettingsToActiveRuntime()
     m_outdoorGameView.setFlipOnExitEnabled(m_settings.flipOnExit);
     m_outdoorGameView.setSettingsSnapshot(m_settings);
     m_indoorGameView.setSettingsSnapshot(m_settings);
+    GameplayProjectileService::setHomingProjectilesEnabled(m_settings.homingProjectiles);
 
     if (m_pOutdoorWorldRuntime != nullptr)
     {

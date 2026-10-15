@@ -940,6 +940,7 @@ GameplayActionController::PartyAttackExecutionResult GameplayActionController::e
                         .impactSoundIdOverride = static_cast<uint32_t>(SoundId::DragonBreathImpact),
                         .turnBasedPendingAction =
                             config.pRuntime != nullptr && config.pRuntime->turnBasedCombatRuntime().active(),
+                        .targetActorIndex = target ? std::optional<size_t>(target->actorIndex) : std::nullopt,
                     });
             }
         }
@@ -1004,6 +1005,7 @@ GameplayActionController::PartyAttackExecutionResult GameplayActionController::e
                 .target = toRuntimeWorldPoint(rangedTarget),
                 .turnBasedPendingAction =
                     config.pRuntime != nullptr && config.pRuntime->turnBasedCombatRuntime().active(),
+                .targetActorIndex = target ? std::optional<size_t>(target->actorIndex) : std::nullopt,
             };
             attacked = config.pWorldRuntime->spawnPartyAttackProjectile(projectileRequest);
 

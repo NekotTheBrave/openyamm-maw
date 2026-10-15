@@ -79,6 +79,9 @@ public:
         int16_t sectorId = -1;
         bool isSettled = false;
         bool isExpired = false;
+        // The monster a party projectile is aimed at, which a homing projectile follows; none (-1) for one fired at a
+        // place.
+        size_t targetActorIndex = static_cast<size_t>(-1);
     };
 
     struct ProjectileImpactState
@@ -149,6 +152,7 @@ public:
         float spawnForwardOffset = 0.0f;
         int16_t sectorId = -1;
         bool allowInstantImpact = false;
+        std::optional<size_t> targetActorIndex;
     };
 
     struct ProjectileSpawnResult
@@ -577,6 +581,18 @@ public:
     const std::vector<ProjectileImpactState> &projectileImpacts() const;
     static GameplayProjectileVisualMode monsterProjectileVisualModeForObjectId(int objectId);
     static bool projectileVisualModeUsesDedicatedFxImpact(const ProjectileState &projectile);
+
+    // Homing projectiles (MAW's, an option of the game: gameplay.homing_projectiles). Each projectile update step a
+    // party projectile aimed at a monster turns toward it while it lives, and one of a monster or an event that
+    // flies within half a degree of the party turns toward the party; the speed is kept. The spells that spray,
+    // shower or scatter keep their paths.
+    static void setHomingProjectilesEnabled(bool enabled);
+    static bool homingProjectilesEnabled();
+    static bool projectileCanHome(const ProjectileState &projectile);
+    // Whether the projectile flies within half a degree (seen from above) of the point.
+    static bool projectileHeadsAt(const ProjectileState &projectile, float x, float y);
+    // Turns the projectile toward the point, keeping its speed.
+    static void steerProjectileToward(ProjectileState &projectile, float x, float y, float z);
 
     void advanceProjectileImpactLifetimes(float deltaSeconds);
     void updateProjectileImpactPresentation(float deltaSeconds);

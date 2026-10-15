@@ -602,6 +602,10 @@ public:
 
     bool isInitialized() const;
     void setBolsterMonstersEnabled(bool enabled);
+    // Turns a projectile toward what it homes on, when homing projectiles are on (GameplayProjectileService).
+    void steerHomingProjectile(ProjectileState &projectile);
+    // The monster the party's projectiles from `firstProjectile` on are aimed at.
+    void markPartyProjectileTargets(size_t firstProjectile, std::optional<size_t> targetActorIndex);
     void setPartyCollisionDimensions(float radius, float height);
     void bindInteractionView(OutdoorGameView *pView);
     void bindGlobalEventProgram(const std::optional<ScriptedEventProgram> *pGlobalEventProgram);
