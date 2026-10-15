@@ -1846,7 +1846,14 @@ EventDialogContent buildEventDialogContent(
 
             if (text && !text->empty())
             {
-                eventMessageLines = wrapDialogText(*text, MaxLineWidth);
+                // A mod may name its own requirement and price in it (MAW).
+                ModTeachSkillMasteryEvent event = {};
+                event.partyMemberIndex = pParty != nullptr ? pParty->activeMemberIndex() : 0;
+                event.skillName = teacherTopic->skillName;
+                event.mastery = static_cast<int>(teacherTopic->targetMastery);
+                event.text = *text;
+                modTeacherText(event);
+                eventMessageLines = wrapDialogText(event.text, MaxLineWidth);
             }
         }
     }

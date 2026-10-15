@@ -280,6 +280,10 @@ public:
     virtual int skillStatBonus(const Character &character, int statId, int engineBonus) = 0;
     // A teacher is asked for a skill mastery; see ModTeachSkillMasteryEvent.
     virtual void canTeachSkillMastery(ModTeachSkillMasteryEvent &event) = 0;
+    // The teacher's own text for the mastery the party asked of it (what it says before the offer): the mod's, which
+    // may name its own requirement and price (the original's AfterPopulateNPCDialog of a TeachSkill dialog). Only
+    // `text` is the mod's to change.
+    virtual void teacherText(ModTeachSkillMasteryEvent &event) = 0;
     // The active member has trained a level: how long the training takes, in game minutes (the original's
     // CalcTrainingTime). `engineMinutes` is the engine's.
     virtual float trainingMinutes(float engineMinutes) = 0;
@@ -425,6 +429,9 @@ std::optional<std::string> modTownHallBounty();
 // Runs the mod's MonsterDropItem event for a death drop of monster `actorIndex`: whether the item still falls
 // (true without a mod).
 bool modMonsterDropsItem(size_t actorIndex, uint32_t itemId);
+
+// Runs the mod's TeacherText event over a teacher's text for a mastery; it stays the engine's without a mod.
+void modTeacherText(ModTeachSkillMasteryEvent &event);
 
 // Runs the mod's MercenaryItemGenerated event over an item made for a mercenary; the item is the engine's without a
 // mod.

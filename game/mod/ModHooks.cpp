@@ -199,6 +199,14 @@ bool modCanHandleItem(bool repair, uint32_t itemId, bool engineAnswer)
     return pModHooks != nullptr ? pModHooks->canHandleItem(repair, itemId, engineAnswer) : engineAnswer;
 }
 
+void modTeacherText(ModTeachSkillMasteryEvent &event)
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->teacherText(event);
+    }
+}
+
 void modCanTeachSkillMastery(ModTeachSkillMasteryEvent &event)
 {
     if (IModHooks *pModHooks = activeModHooks())

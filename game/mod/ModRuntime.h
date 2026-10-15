@@ -90,6 +90,7 @@ public:
     int playerSkillTotal(ModPlayerSkillTotal kind, const Character &character, int engineValue) override;
     bool canHandleItem(bool repair, uint32_t itemId, bool engineAnswer) override;
     void canTeachSkillMastery(ModTeachSkillMasteryEvent &event) override;
+    void teacherText(ModTeachSkillMasteryEvent &event) override;
     float trainingMinutes(float engineMinutes) override;
     void statInformationBox(int stat, std::string &text) override;
     int canLearnSpell(const Character &character, uint32_t spellId, int engineMastery) override;

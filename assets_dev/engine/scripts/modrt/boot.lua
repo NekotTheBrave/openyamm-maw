@@ -303,6 +303,8 @@ local function dispatchKind(kind, ...)
         return ModRT.Stats.action(...)
     elseif kind == "canTeachSkillMastery" then
         return ModRT.Stats.canTeachSkillMastery(...)
+    elseif kind == "teacherText" then
+        return ModRT.Stats.teacherText(...)
     elseif kind == "trainingTime" then
         return ModRT.Stats.trainingTime(...)
     elseif kind == "statInformationBox" then

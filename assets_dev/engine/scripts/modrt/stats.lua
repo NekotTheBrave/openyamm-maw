@@ -203,6 +203,14 @@ function Stats.canTeachSkillMastery(slot, skill, mastery, cost, allow, text)
     return event.Allow and true or false, math.floor(newCost), tostring(event.Text or text)
 end
 
+-- A teacher's own text for the mastery asked of it (not an MMExtension event: the original's AfterPopulateNPCDialog of
+-- a TeachSkill dialog, where a mod rewrites the text). Skill and Mastery as in CanTeachSkillMastery; returns Text.
+function Stats.teacherText(slot, skill, mastery, text)
+    local event = {Skill = skill, Mastery = mastery, Text = text, Player = Party[slot], PlayerIndex = slot}
+    ModRT.fire("TeacherText", event)
+    return tostring(event.Text or text)
+end
+
 -- The held item (Mouse.Item) is used on the party member in `slot`: the original's UseMouseItem. A handler that does
 -- the use itself sets Allow to false (MAW drinks its potions its own way). Returns Allow.
 function Stats.useMouseItem(slot)

@@ -2236,6 +2236,42 @@ float ModRuntime::trainingMinutes(float engineMinutes)
     return minutes;
 }
 
+void ModRuntime::teacherText(ModTeachSkillMasteryEvent &event)
+{
+    std::optional<size_t> skillId;
+
+    for (const size_t id : mergeSkillIds())
+    {
+        if (canonicalSkillName(mergeSkillName(id)) == canonicalSkillName(event.skillName))
+        {
+            skillId = id;
+            break;
+        }
+    }
+
+    if (!skillId || !m_active || !m_host.party || m_host.party() == nullptr || !beginDispatch("teacherText"))
+    {
+        return;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(event.partyMemberIndex));
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(*skillId));
+    lua_pushinteger(m_pLuaState, event.mastery);
+    lua_pushlstring(m_pLuaState, event.text.data(), event.text.size());
+
+    if (endDispatch(4, 1))
+    {
+        if (lua_isstring(m_pLuaState, -1))
+        {
+            size_t length = 0;
+            const char *pText = lua_tolstring(m_pLuaState, -1, &length);
+            event.text.assign(pText, length);
+        }
+
+        lua_pop(m_pLuaState, 1);
+    }
+}
+
 void ModRuntime::canTeachSkillMastery(ModTeachSkillMasteryEvent &event)
 {
     std::optional<size_t> skillId;

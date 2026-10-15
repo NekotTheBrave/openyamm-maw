@@ -34,6 +34,13 @@ steps:
       return refused, hunt:find("bounty is on") ~= nil, Map.Monsters.High - monstersBefore > 5,
         hunt:find(entry.MonName, 1, true) ~= nil, ModRT.totalErrorCount - before
     expect: "You need to clear the area COMPLETELY first.	true	true	true	0"
+# The hunt's target is marked on the map (Map.Notes: a note of the game's map screen).
+- mod_lua:
+    code: |
+      local entry = vars.BountyHunt[Map.Name]
+      local note = Map.Notes[entry.NoteIndex]
+      return entry.NoteIndex, tostring(note.Active), note.Text, note.X ~= 0 or note.Y ~= 0
+    expect: "0\ttrue\tBounty\ttrue"
 - mod_lua:
     code: |
       local entry = vars.BountyHunt[Map.Name]

@@ -3,7 +3,7 @@
 -- MAW's file is Merge's bounty hunt with MAW's own: the reward from the monster's level and the party's, a hunt only
 -- once the area is cleared, the target a boss of MAW's with its escort, its map named. It is MAW's file but for its
 -- last part, which hooks the game's code to have the town hall's topic run SetCurrentHunt; here the game asks the
--- TownHallBounty event instead (the hall then runs none of its own). Map notes are left out (not bound yet).
+-- TownHallBounty event instead (the hall then runs none of its own).
 
 
 BountyHuntFunctions = {}
@@ -46,10 +46,6 @@ end
 BountyHuntFunctions.ClaimedText = ClaimedText
 
 local function FindNextNoteIndex()
-	-- OpenYAMM: the map's notes are not bound yet; the hunt goes without its map note.
-	if type(Map.Notes.High) ~= "number" then
-		return nil
-	end
 	for i=0,Map.Notes.High do
 		local Note = Map.Notes[i]
 		if not Note.Active then

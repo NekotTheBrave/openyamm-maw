@@ -3171,6 +3171,110 @@ int nativeInventoryTake(lua_State *pLuaState)
     return 1;
 }
 
+// The original's 100 map notes of the current map (Map.Notes) are the game's map notes under ids of their own:
+// 0x80000000 plus a number of the map's name, hundreds of them, plus the note's place.
+constexpr int64_t ModMapNoteCount = 100;
+
+std::optional<uint32_t> modMapNoteId(lua_State *pLuaState, int64_t slot, std::string &mapFileName)
+{
+    const ModHost *pHost = hostFromUpvalue(pLuaState);
+    mapFileName = pHost != nullptr && pHost->currentMapFileName ? pHost->currentMapFileName() : std::string();
+
+    if (slot < 0 || slot >= ModMapNoteCount || mapFileName.empty())
+    {
+        return std::nullopt;
+    }
+
+    std::transform(mapFileName.begin(), mapFileName.end(), mapFileName.begin(),
+        [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+    uint32_t hash = 2166136261u;
+
+    for (const char character : mapFileName)
+    {
+        hash = (hash ^ static_cast<uint8_t>(character)) * 16777619u;
+    }
+
+    return 0x80000000u + (hash % 20000000u) * 100u + static_cast<uint32_t>(slot);
+}
+
+// modrt.mapNoteGet(slot, field): Active, Id, X, Y or Text of the current map's note `slot` (0 to 99).
+int nativeMapNoteGet(lua_State *pLuaState)
+{
+    std::string mapFileName;
+    const std::optional<uint32_t> noteId = modMapNoteId(pLuaState, integerArgument(pLuaState, 1), mapFileName);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+    IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+    const EventRuntimeState *pState = pWorld != nullptr ? pWorld->eventRuntimeState() : nullptr;
+
+    if (!noteId || pState == nullptr)
+    {
+        return 0;
+    }
+
+    const auto it = pState->runtimeMapNotes.find(*noteId);
+    const EventRuntimeState::RuntimeMapNote note =
+        it != pState->runtimeMapNotes.end() ? it->second : EventRuntimeState::RuntimeMapNote {};
+
+    if (field == "Active")
+    {
+        lua_pushboolean(pLuaState, note.active);
+    }
+    else if (field == "Id")
+    {
+        // The original's number for the note (MAW writes 9999) is not kept.
+        lua_pushinteger(pLuaState, 0);
+    }
+    else if (field == "X" || field == "Y")
+    {
+        lua_pushinteger(pLuaState, field == "X" ? note.x : note.y);
+    }
+    else if (field == "Text")
+    {
+        pushString(pLuaState, note.text);
+    }
+    else
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+// modrt.mapNoteSet(slot, field, value): sets Active, X, Y or Text of the current map's note `slot`, which the map
+// screen shows while it is active. Id is the original's own number and is not kept.
+int nativeMapNoteSet(lua_State *pLuaState)
+{
+    std::string mapFileName;
+    const std::optional<uint32_t> noteId = modMapNoteId(pLuaState, integerArgument(pLuaState, 1), mapFileName);
+    const std::string field = luaL_checkstring(pLuaState, 2);
+    IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+    EventRuntimeState *pState = pWorld != nullptr ? pWorld->eventRuntimeState() : nullptr;
+
+    if (!noteId || pState == nullptr)
+    {
+        return 0;
+    }
+
+    EventRuntimeState::RuntimeMapNote &note = pState->runtimeMapNotes[*noteId];
+    note.id = *noteId;
+    note.mapFileName = mapFileName;
+
+    if (field == "Active")
+    {
+        note.active = lua_toboolean(pLuaState, 3) != 0;
+    }
+    else if (field == "X" || field == "Y")
+    {
+        (field == "X" ? note.x : note.y) = static_cast<int32_t>(luaL_checknumber(pLuaState, 3));
+    }
+    else if (field == "Text")
+    {
+        note.text = luaL_checkstring(pLuaState, 3);
+    }
+
+    return 0;
+}
+
 // modrt.innDismiss(slot): sends party member `slot` to the Adventurer's Inn, as dismissing does. Whether it went.
 int nativeInnDismiss(lua_State *pLuaState)
 {
@@ -4494,6 +4598,8 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"inventoryTake", nativeInventoryTake},
         {"inventoryCell", nativeInventoryCell},
         {"innDismiss", nativeInnDismiss},
+        {"mapNoteGet", nativeMapNoteGet},
+        {"mapNoteSet", nativeMapNoteSet},
         {"inventoryPut", nativeInventoryPut},
         {"heldItemPresent", nativeHeldItemPresent},
         {"heldItemSet", nativeHeldItemSet},

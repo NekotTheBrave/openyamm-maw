@@ -37,3 +37,13 @@ steps:
       return ModRT.Stats.canTeachSkillMastery(0, const.Skills.Sword, 2, 500, true,
         "Become Expert in Sword for 500 gold")
     expect: "true\t1000\tBecome Expert in Sword for 1000 gold"
+# The teacher's own text, which names the original's requirement and price, names MAW's (TeacherText, the game's
+# stand-in for MAW's AfterPopulateNPCDialog): the skill 4 stays (MAW's Expert asks 4), the 2000 gold becomes 1000. A
+# text naming neither gets both on a line of its own.
+- mod_lua:
+    code: |
+      local named = ModRT.Stats.teacherText(0, const.Skills.Sword, 2,
+        "With a Sword skill of 4 or more, I can teach you Expert for 2000 gold.")
+      local plain = ModRT.Stats.teacherText(0, const.Skills.Sword, 2, "I teach the sword.")
+      return named, plain
+    expect: "With a Sword skill of 4 or more, I can teach you Expert for 1000 gold.\tI teach the sword.\n\nYou need at least 4 skill and 1000 gold."

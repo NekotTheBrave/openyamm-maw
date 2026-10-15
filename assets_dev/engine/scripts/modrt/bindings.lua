@@ -1960,11 +1960,41 @@ local mapMonsters = boundObject("Map.Monsters", {
 -- The original's sign for "no floor here".
 local NoFloorLevel = -30000
 
+-- Map.Notes[0..99]: the current map's notes as the map screen shows them (Active, X, Y, Text; Id reads 0).
+local MapNoteCount = 100
+local mapNote = cached(function(slot)
+    return boundObject("Map.Notes[]", {
+        get = function(key)
+            return modrt.mapNoteGet(slot, key)
+        end,
+        set = function(key, value)
+            if key == "Id" then
+                return true
+            end
+
+            modrt.mapNoteSet(slot, key, value)
+            return key == "Active" or key == "X" or key == "Y" or key == "Text"
+        end,
+    })
+end)
+
+local mapNotes = boundObject("Map.Notes", {
+    index = function(slot)
+        slot = floor(slot)
+        return slot >= 0 and slot < MapNoteCount and mapNote(slot) or nil
+    end,
+    get = sizeFields(function() return MapNoteCount end),
+    range = function() return 0, MapNoteCount - 1 end,
+})
+
 Map = boundObject("Map", {
     owned = "Map",
-    bound = {Monsters = true, Name = true, MapStatsIndex = true, IndoorOrOutdoor = true, TilesetsFile = true},
+    bound = {Monsters = true, Name = true, MapStatsIndex = true, IndoorOrOutdoor = true, TilesetsFile = true,
+        Notes = true},
     get = function(key)
-        if key == "Monsters" then
+        if key == "Notes" then
+            return mapNotes
+        elseif key == "Monsters" then
             return mapMonsters
         elseif key == "TilesetsFile" then
             -- Which of the Merge's three tile tables the map uses. The engine keeps one.
