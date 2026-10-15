@@ -1211,7 +1211,8 @@ local function monsterRecord(path, read, write, methods)
             elseif key == "Resistances" then
                 return resistances
             elseif key == "SpellSkill" or key == "Spell2Skill" then
-                return skill(key)
+                -- A value the engine did not take reads back as the script wrote it.
+                return (written and written[key]) or skill(key)
             elseif resistanceKindByField[key] then
                 return get("Resistance" .. resistanceKindByField[key])
             end
@@ -1221,6 +1222,15 @@ local function monsterRecord(path, read, write, methods)
         set = function(key, value)
             if resistanceKindByField[key] then
                 return set("Resistance" .. resistanceKindByField[key], value)
+            end
+
+            -- The engine keeps a spell's skill as its level and mastery.
+            if (key == "SpellSkill" or key == "Spell2Skill") and type(value) == "number" then
+                local level, mastery = SplitSkill(value)
+
+                if write(key .. "Level", level) and write(key .. "Mastery", mastery) then
+                    return true
+                end
             end
 
             return set(key, value)
@@ -1630,7 +1640,24 @@ local placeMonTxt = boundObject("Game.PlaceMonTxt", {
         return modrt.placeMonGet(floor(index))
     end,
     newindex = function(index, value)
-        return modrt.placeMonSet(floor(index), tostring(value))
+        index, value = floor(index), tostring(value)
+
+        if modrt.placeMonGet(index) == value then
+            return true
+        end
+
+        local written = modrt.placeMonSet(index, value)
+
+        -- The map's monsters going by this name show it: MAW sets a boss's NameId, then writes its name.
+        if written then
+            for monster = 0, (modrt.mapMonsterGet(0, "#") or 0) - 1 do
+                if modrt.mapMonsterGet(monster, "NameId") == index then
+                    modrt.mapMonsterSet(monster, "NameId", index)
+                end
+            end
+        end
+
+        return written
     end,
     get = sizeFields(function() return modrt.placeMonGet("#") or 0 end),
     range = function() return 0, (modrt.placeMonGet("#") or 0) - 1 end,

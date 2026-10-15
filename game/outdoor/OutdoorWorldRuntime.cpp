@@ -8564,10 +8564,15 @@ std::optional<ActorAiFacts> OutdoorWorldRuntime::collectOutdoorActorAiFacts(
     facts.stats.spell2Id = actor.spell2Id;
     facts.stats.spell2DamageType = actor.spell2DamageType;
     facts.stats.spell2CastSupported = actor.spell2CastSupported;
-    facts.stats.spell1SkillLevel = actor.spell1SkillLevel;
-    facts.stats.spell1SkillMastery = actor.spell1SkillMastery;
-    facts.stats.spell2SkillLevel = actor.spell2SkillLevel;
-    facts.stats.spell2SkillMastery = actor.spell2SkillMastery;
+    // The monster's own spell skill where a mod set it (MAW's bosses).
+    facts.stats.spell1SkillLevel = static_cast<uint32_t>(
+        actor.modStats.spellSkillOr(GameplayModActorField::SpellSkillLevel, static_cast<int>(actor.spell1SkillLevel)));
+    facts.stats.spell1SkillMastery = static_cast<SkillMastery>(actor.modStats.spellSkillOr(
+        GameplayModActorField::SpellSkillMastery, static_cast<int>(actor.spell1SkillMastery)));
+    facts.stats.spell2SkillLevel = static_cast<uint32_t>(
+        actor.modStats.spellSkillOr(GameplayModActorField::Spell2SkillLevel, static_cast<int>(actor.spell2SkillLevel)));
+    facts.stats.spell2SkillMastery = static_cast<SkillMastery>(actor.modStats.spellSkillOr(
+        GameplayModActorField::Spell2SkillMastery, static_cast<int>(actor.spell2SkillMastery)));
     facts.stats.spell1UseChance =
         actor.generatedSpell1UseChance > 0 ? actor.generatedSpell1UseChance : pStats->spell1UseChance;
     facts.stats.spell2UseChance =
@@ -14045,7 +14050,7 @@ bool OutdoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField
     }
 
     if (field == GameplayModActorField::Level
-        || (field >= GameplayModActorField::Resistance0 && field <= GameplayModActorField::SpecialAttackLevel))
+        || (field >= GameplayModActorField::Resistance0 && field <= GameplayModActorField::Spell2SkillMastery))
     {
         const MonsterTable::MonsterStatsEntry *pStats =
             m_pMonsterTable != nullptr ? m_pMonsterTable->findStatsById(pActor->monsterId) : nullptr;
@@ -14058,7 +14063,15 @@ bool OutdoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField
         ModActorStatOverrides overrides = pActor->modStats;
 
         if (overrides.accessSpecialAttack(
-                field, value, false, pStats->specialAttackKind, pStats->specialAttackLevel))
+                field, value, false, pStats->specialAttackKind, pStats->specialAttackLevel)
+            || overrides.accessSpellSkill(
+                field,
+                value,
+                false,
+                field == GameplayModActorField::SpellSkillLevel ? static_cast<int>(pStats->spell1SkillLevel)
+                : field == GameplayModActorField::SpellSkillMastery ? static_cast<int>(pStats->spell1SkillMastery)
+                : field == GameplayModActorField::Spell2SkillLevel ? static_cast<int>(pStats->spell2SkillLevel)
+                : static_cast<int>(pStats->spell2SkillMastery)))
         {
             return true;
         }
@@ -14120,7 +14133,8 @@ bool OutdoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFi
     MapActorState &actor = m_mapActors[actorIndex];
 
     if (actor.modStats.access(field, value, true, 0, [](CombatDamageType) { return 0; })
-        || actor.modStats.accessSpecialAttack(field, value, true, MonsterSpecialAttackKind::None, 0))
+        || actor.modStats.accessSpecialAttack(field, value, true, MonsterSpecialAttackKind::None, 0)
+        || actor.modStats.accessSpellSkill(field, value, true, 0))
     {
         return true;
     }

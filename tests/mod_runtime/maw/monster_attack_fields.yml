@@ -1,0 +1,46 @@
+id: mod_runtime.maw.monster_attack_fields
+title: Monster missiles and a monster's own spell skill reach the engine
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW gives melee monsters a missile for their second attack at Hell and above outdoors (Game.MonstersTxt[i].Attack2
+# .Missile = 1, zzMaw-Monsters.lua), by the original's missile numbers (1 arrow ... 12 energy), and makes its bosses'
+# spells stronger (Map.Monsters[i].SpellSkill, packed level and mastery). Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+- mod_lua:
+    code: |
+      -- A melee kind (no missile on either attack) gets an arrow for its second attack, then loses it again.
+      Melee = nil
+      for id = 1, 651 do
+        local row = Game.MonstersTxt[id]
+        if row.Attack1.Missile == 0 and row.Attack2.Missile == 0 then Melee = id break end
+      end
+      local row = Game.MonstersTxt[Melee]
+      row.Attack2.Missile = 1
+      local withArrow = row.Attack2.Missile
+      row.Attack2.Missile = 4
+      local withAir = row.Attack2.Missile
+      row.Attack2.Missile = 0
+      return Melee ~= nil, withArrow, withAir, row.Attack2.Missile
+    expect: "true\t1\t4\t0"
+- mod_lua:
+    code: |
+      Probe = nil
+      for i = 0, Map.Monsters.High do
+        if Map.Monsters[i].NameId == 0 then Probe = i break end
+      end
+      local mon = Map.Monsters[Probe]
+      local kindSkill = Game.MonstersTxt[mon.Id].SpellSkill
+      mon.SpellSkill = JoinSkill(12, 3)
+      local s, m = SplitSkill(mon.SpellSkill)
+      -- A kind's row keeps what a script writes to it, read back as written.
+      Game.MonstersTxt[mon.Id].SpellSkill = JoinSkill(7, 2)
+      local ks, km = SplitSkill(Game.MonstersTxt[mon.Id].SpellSkill)
+      Game.MonstersTxt[mon.Id].SpellSkill = kindSkill
+      return s, m, modrt.mapMonsterGet(Probe, "SpellSkillLevel"), modrt.mapMonsterGet(Probe, "SpellSkillMastery"),
+        ks, km, ModRT.totalErrorCount
+    expect: "12\t3\t12\t3\t7\t2\t0"

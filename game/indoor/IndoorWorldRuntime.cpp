@@ -9384,10 +9384,15 @@ std::optional<ActorAiFacts> IndoorWorldRuntime::collectIndoorActorAiFacts(
             facts.stats.spell2CastSupported = indoorMonsterSpellCastSupported(pSpellEntry->name);
         }
     }
-    facts.stats.spell1SkillLevel = bolster.spell1SkillLevel;
-    facts.stats.spell1SkillMastery = bolster.spell1SkillMastery;
-    facts.stats.spell2SkillLevel = bolster.spell2SkillLevel;
-    facts.stats.spell2SkillMastery = bolster.spell2SkillMastery;
+    // The monster's own spell skill where a mod set it (MAW's bosses).
+    facts.stats.spell1SkillLevel = static_cast<uint32_t>(aiState.modStats.spellSkillOr(
+        GameplayModActorField::SpellSkillLevel, static_cast<int>(bolster.spell1SkillLevel)));
+    facts.stats.spell1SkillMastery = static_cast<SkillMastery>(aiState.modStats.spellSkillOr(
+        GameplayModActorField::SpellSkillMastery, static_cast<int>(bolster.spell1SkillMastery)));
+    facts.stats.spell2SkillLevel = static_cast<uint32_t>(aiState.modStats.spellSkillOr(
+        GameplayModActorField::Spell2SkillLevel, static_cast<int>(bolster.spell2SkillLevel)));
+    facts.stats.spell2SkillMastery = static_cast<SkillMastery>(aiState.modStats.spellSkillOr(
+        GameplayModActorField::Spell2SkillMastery, static_cast<int>(bolster.spell2SkillMastery)));
     facts.stats.spell1UseChance =
         bolster.generatedSpell1UseChance > 0 ? bolster.generatedSpell1UseChance : pStats->spell1UseChance;
     facts.stats.spell2UseChance =
@@ -10992,7 +10997,7 @@ bool IndoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField 
     const MapDeltaActor &actor = pMapDeltaData->actors[actorIndex];
 
     if (field == GameplayModActorField::Level
-        || (field >= GameplayModActorField::Resistance0 && field <= GameplayModActorField::SpecialAttackLevel))
+        || (field >= GameplayModActorField::Resistance0 && field <= GameplayModActorField::Spell2SkillMastery))
     {
         const MonsterTable::MonsterStatsEntry *pStats = findIndoorActorStats(m_pMonsterTable, actor);
 
@@ -11005,7 +11010,15 @@ bool IndoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField 
             actorIndex < m_mapActorAiStates.size() ? m_mapActorAiStates[actorIndex].modStats : ModActorStatOverrides {};
 
         if (overrides.accessSpecialAttack(
-                field, value, false, pStats->specialAttackKind, pStats->specialAttackLevel))
+                field, value, false, pStats->specialAttackKind, pStats->specialAttackLevel)
+            || overrides.accessSpellSkill(
+                field,
+                value,
+                false,
+                field == GameplayModActorField::SpellSkillLevel ? static_cast<int>(pStats->spell1SkillLevel)
+                : field == GameplayModActorField::SpellSkillMastery ? static_cast<int>(pStats->spell1SkillMastery)
+                : field == GameplayModActorField::Spell2SkillLevel ? static_cast<int>(pStats->spell2SkillLevel)
+                : static_cast<int>(pStats->spell2SkillMastery)))
         {
             return true;
         }
@@ -11104,13 +11117,14 @@ bool IndoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFie
     MapDeltaActor &actor = pMapDeltaData->actors[actorIndex];
 
     if (field == GameplayModActorField::Level
-        || (field >= GameplayModActorField::Resistance0 && field <= GameplayModActorField::SpecialAttackLevel))
+        || (field >= GameplayModActorField::Resistance0 && field <= GameplayModActorField::Spell2SkillMastery))
     {
         return actorIndex < m_mapActorAiStates.size()
             && (m_mapActorAiStates[actorIndex].modStats.access(
                     field, value, true, 0, [](CombatDamageType) { return 0; })
                 || m_mapActorAiStates[actorIndex].modStats.accessSpecialAttack(
-                    field, value, true, MonsterSpecialAttackKind::None, 0));
+                    field, value, true, MonsterSpecialAttackKind::None, 0)
+                || m_mapActorAiStates[actorIndex].modStats.accessSpellSkill(field, value, true, 0));
     }
 
     // An actor's position is also kept, with its sector, in the AI state that movement and targeting work from;
@@ -11163,6 +11177,13 @@ bool IndoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFie
             return true;
         case GameplayModActorField::UniqueNameId:
             actor.uniqueNameIndex = static_cast<int32_t>(std::clamp<int64_t>(value, 0, INT32_MAX));
+
+            // The name shown over the monster goes with it (MAW's bosses are named so).
+            if (actorIndex < m_mapActorAiStates.size() && m_pMonsterTable != nullptr)
+            {
+                m_mapActorAiStates[actorIndex].displayName = resolveMapDeltaActorName(*m_pMonsterTable, actor);
+            }
+
             return true;
         case GameplayModActorField::Ally:
             actor.ally = static_cast<uint32_t>(std::clamp<int64_t>(value, 0, UINT32_MAX));

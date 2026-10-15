@@ -149,6 +149,12 @@ enum class GameplayModActorField : uint8_t
     // strength (BonusMul), its kind's until a mod sets them (MAW's Doom gives monsters one on arriving at a map).
     SpecialAttack,
     SpecialAttackLevel,
+    // The actor's own skill with its two spells, level and mastery (1 normal ... 4 grandmaster), its kind's until a
+    // mod sets them (the original's SpellSkill and Spell2Skill; MAW's bosses cast stronger).
+    SpellSkillLevel,
+    SpellSkillMastery,
+    Spell2SkillLevel,
+    Spell2SkillMastery,
 };
 
 // The original's number of a monster special attack (Bonus), 0 for none.
@@ -248,6 +254,8 @@ struct ModActorStatOverrides
     // The special attack by the original's number (Bonus) and its strength (BonusMul).
     std::optional<int> specialAttack;
     std::optional<int> specialAttackLevel;
+    // The two spells' skill: level and mastery of the first, then of the second (GameplayModActorField order).
+    std::array<std::optional<int>, 4> spellSkills = {};
 
     int levelOr(int kindLevel) const
     {
@@ -262,6 +270,37 @@ struct ModActorStatOverrides
     int specialAttackLevelOr(int kindSpecialAttackLevel) const
     {
         return specialAttackLevel.value_or(kindSpecialAttackLevel);
+    }
+
+    // A spell's skill level or mastery (`field` SpellSkillLevel ... Spell2SkillMastery), the kind's when not set.
+    int spellSkillOr(GameplayModActorField field, int kindValue) const
+    {
+        const size_t index = static_cast<size_t>(field) - static_cast<size_t>(GameplayModActorField::SpellSkillLevel);
+        return index < spellSkills.size() && spellSkills[index] ? *spellSkills[index] : kindValue;
+    }
+
+    // Reads (`set` false) or sets a spell's skill level or mastery; `kindValue` the kind's. False for another field.
+    bool accessSpellSkill(GameplayModActorField field, int64_t &value, bool set, int kindValue)
+    {
+        if (field < GameplayModActorField::SpellSkillLevel || field > GameplayModActorField::Spell2SkillMastery)
+        {
+            return false;
+        }
+
+        const size_t index = static_cast<size_t>(field) - static_cast<size_t>(GameplayModActorField::SpellSkillLevel);
+        const bool mastery = field == GameplayModActorField::SpellSkillMastery
+            || field == GameplayModActorField::Spell2SkillMastery;
+
+        if (set)
+        {
+            spellSkills[index] = static_cast<int>(std::clamp<int64_t>(value, 0, mastery ? 4 : 1000));
+        }
+        else
+        {
+            value = spellSkills[index].value_or(kindValue);
+        }
+
+        return true;
     }
 
     // Reads (`set` false) or sets the special attack or its strength; false for another field.

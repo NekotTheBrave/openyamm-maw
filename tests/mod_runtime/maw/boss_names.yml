@@ -1,0 +1,55 @@
+id: mod_runtime.maw.boss_names
+title: A boss shows the name MAW gives it, over it and in its information box
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW names its bosses in Game.PlaceMonTxt (221 to 299, zzMaw-Monsters.lua): it fills the free names with their own
+# numbers, sets the boss's NameId to a free one, and only then writes the boss's name there. The game showed the
+# number ("223"), the name when NameId was set. Outdoors and indoors. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+- mod_lua:
+    code: |
+      function NameBoss()
+        local index = nil
+        for i = 0, Map.Monsters.High do
+          if Map.Monsters[i].NameId == 0 then index = i break end
+        end
+        local mon = Map.Monsters[index]
+        for i = 221, 299 do Game.PlaceMonTxt[i] = string.format("%s", i) end
+        mon.NameId = 223
+        local before = mon.DisplayName
+        Game.PlaceMonTxt[223] = "Broodlord " .. Game.MonstersTxt[mon.Id].Name
+        return before, mon.DisplayName == Game.PlaceMonTxt[223], Game.PlaceMonTxt[224]
+      end
+      return NameBoss()
+    expect: "223\ttrue\t224"
+- load_map:
+    map: d05.blv
+- mod_lua:
+    code: return NameBoss()
+    expect: "223\ttrue\t224"
+# MAW's own boss: generateBoss names it; after saving and loading MAW writes the names again on arriving
+# (mapvars.bossNames), and the boss shows its name again.
+- load_map:
+    map: oute3.odm
+- mod_lua:
+    code: |
+      Boss = nil
+      for i = 0, Map.Monsters.High do
+        if Map.Monsters[i].NameId == 0 and not Map.Monsters[i].IsDead then Boss = i break end
+      end
+      generateBoss(Boss)
+      local mon = Map.Monsters[Boss]
+      BossName = Game.PlaceMonTxt[mon.NameId]
+      return mon.NameId > 220, mon.DisplayName == BossName, tostring(BossName):find("%d+$") == nil
+    expect: "true\ttrue\ttrue"
+- save_game: maw_boss_names
+- load_game: maw_boss_names
+- advance_runtime: {seconds: 1}
+- mod_lua:
+    code: return Map.Monsters[Boss].DisplayName == BossName, ModRT.totalErrorCount
+    expect: "true\t0"

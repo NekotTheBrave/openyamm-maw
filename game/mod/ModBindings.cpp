@@ -21,6 +21,7 @@
 #include "game/tables/MapStats.h"
 #include "game/tables/MonsterTable.h"
 #include "game/tables/SpellTable.h"
+#include "game/StringUtils.h"
 
 #include <lua.hpp>
 
@@ -2243,6 +2244,25 @@ auto monsterNumberField(StatsType &stats, const std::string &field) -> decltype(
     return nullptr;
 }
 
+// The original's monster missiles by number (Monsters.txt's tokens in its order): 1 arrow, 2 fire arrow, 3 fire,
+// 4 air, 5 water, 6 earth, 7 spirit, 8 mind, 9 body, 10 light, 11 dark, 12 energy.
+constexpr std::array<const char *, 13> Mm8MonsterMissileTokens = {
+    "", "Arrow", "ArrowF", "Fire", "Air", "Water", "Earth", "Spirit", "Mind", "Body", "Light", "Dark", "Ener"};
+
+int mm8MonsterMissileNumber(const std::string &token)
+{
+    for (size_t index = 1; index < Mm8MonsterMissileTokens.size(); ++index)
+    {
+        if (toLowerCopy(token) == toLowerCopy(Mm8MonsterMissileTokens[index]))
+        {
+            return static_cast<int>(index);
+        }
+    }
+
+    // A missile the original has no number for (MM9's knives, rocks...): still a missile.
+    return 1;
+}
+
 int nativeMonsterTxtGet(lua_State *pLuaState)
 {
     const GameDataLoader *pData = dataFromHost(pLuaState);
@@ -2327,12 +2347,12 @@ int nativeMonsterTxtGet(lua_State *pLuaState)
     }
     else if (field == "Attack1Missile")
     {
-        // The original holds the missile's kind here; scripts ask whether there is one.
-        lua_pushinteger(pLuaState, pStats->attack1HasMissile ? 1 : 0);
+        // The original holds the missile's kind here, by its number (0 none).
+        lua_pushinteger(pLuaState, pStats->attack1HasMissile ? mm8MonsterMissileNumber(pStats->attack1MissileType) : 0);
     }
     else if (field == "Attack2Missile")
     {
-        lua_pushinteger(pLuaState, pStats->attack2HasMissile ? 1 : 0);
+        lua_pushinteger(pLuaState, pStats->attack2HasMissile ? mm8MonsterMissileNumber(pStats->attack2MissileType) : 0);
     }
     else if (field == "Spell")
     {
@@ -2388,6 +2408,50 @@ int nativeMonsterTxtSet(lua_State *pLuaState)
     if (pNumber != nullptr)
     {
         *pNumber = clampedInteger<int>(integerArgument(pLuaState, 3));
+    }
+    else if (pStats != nullptr && (field == "Attack1Missile" || field == "Attack2Missile"))
+    {
+        // MAW gives melee monsters a missile for their second attack at high difficulties (Attack2.Missile = 1).
+        // A kind that has a missile of that number already keeps its own token.
+        const int64_t number = integerArgument(pLuaState, 3);
+        const bool first = field == "Attack1Missile";
+        std::string &token = first ? pStats->attack1MissileType : pStats->attack2MissileType;
+        bool &hasMissile = first ? pStats->attack1HasMissile : pStats->attack2HasMissile;
+
+        if (number <= 0 || number >= static_cast<int64_t>(Mm8MonsterMissileTokens.size()))
+        {
+            hasMissile = false;
+        }
+        else if (!hasMissile || mm8MonsterMissileNumber(token) != number)
+        {
+            token = Mm8MonsterMissileTokens[static_cast<size_t>(number)];
+            hasMissile = true;
+        }
+
+        lua_pushboolean(pLuaState, true);
+        return 1;
+    }
+    else if (pStats != nullptr
+        && (field == "SpellSkillLevel" || field == "SpellSkillMastery" || field == "Spell2SkillLevel"
+            || field == "Spell2SkillMastery"))
+    {
+        // SpellSkill and Spell2Skill, split by the scripts (modrt/bindings.lua).
+        const int64_t value = integerArgument(pLuaState, 3);
+        const bool second = field[5] == '2';
+
+        if (field.find("Mastery") != std::string::npos)
+        {
+            (second ? pStats->spell2SkillMastery : pStats->spell1SkillMastery) =
+                static_cast<SkillMastery>(std::clamp<int64_t>(value, 0, 4));
+        }
+        else
+        {
+            (second ? pStats->spell2SkillLevel : pStats->spell1SkillLevel) =
+                static_cast<uint32_t>(std::clamp<int64_t>(value, 0, 1000));
+        }
+
+        lua_pushboolean(pLuaState, true);
+        return 1;
     }
     else if (pStats != nullptr && field == "AIType")
     {
@@ -3870,6 +3934,11 @@ std::optional<GameplayModActorField> actorFieldFromName(const std::string &field
         {"Item", GameplayModActorField::CarriedItem},
         {"Bonus", GameplayModActorField::SpecialAttack},
         {"BonusMul", GameplayModActorField::SpecialAttackLevel},
+        // SpellSkill and Spell2Skill, which the scripts split into these (modrt/bindings.lua).
+        {"SpellSkillLevel", GameplayModActorField::SpellSkillLevel},
+        {"SpellSkillMastery", GameplayModActorField::SpellSkillMastery},
+        {"Spell2SkillLevel", GameplayModActorField::Spell2SkillLevel},
+        {"Spell2SkillMastery", GameplayModActorField::Spell2SkillMastery},
     };
     const std::unordered_map<std::string, GameplayModActorField>::const_iterator it = fields.find(field);
 
@@ -3942,6 +4011,20 @@ int nativeMapMonsterGet(lua_State *pLuaState)
                 : field == "IsDead" ? state.isDead
                 : field == "Invisible" ? state.isInvisible
                 : !state.isInvisible);
+        return 1;
+    }
+
+    // Not the original's: the name the game shows for the monster (over it and in its information box).
+    if (field == "DisplayName")
+    {
+        GameplayActorInspectState inspect = {};
+
+        if (actorIndex < 0 || !pWorld->actorInspectState(static_cast<size_t>(actorIndex), 0, inspect))
+        {
+            return 0;
+        }
+
+        pushString(pLuaState, inspect.displayName);
         return 1;
     }
 
