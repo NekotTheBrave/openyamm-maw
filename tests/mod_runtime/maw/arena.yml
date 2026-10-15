@@ -1,0 +1,65 @@
+id: mod_runtime.maw.arena
+title: MAW's Endless Arena runs a level from the arena master's topic to its reward
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's Global/zzMaw_Arena.lua: the arena master (NPC 313, d42) gets an "Endless Arena" topic (Merge's quests), then
+# "Start Level 1", which moves the party into the arena. Its timer spawns six waves of three rounds, the last a boss;
+# the level is done when every monster is removed (MAW removes the dead ones; a boss's body once searched), and pays
+# 20000 gold. The waves are run here by calling the timer's function, the monsters killed each time. A script step
+# before entering the arena lets the new game's first map be loaded as far as the scripts go (in play a game always
+# starts there). Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 0
+      food: 10
+      members:
+      - name: Arena Tester
+        class: Knight
+        level: 10
+        endurance: 1000
+        skills: []
+        equipment: {}
+- mod_lua:
+    code: return tostring(vars.highestArenaWave)
+    expect: "0"
+- load_map:
+    map: d42.blv
+- mod_lua:
+    code: return "A", tostring(vars.highestArenaWave), ModRT.totalErrorCount
+    expect: "A	0	0"
+- speak_npc:
+    source_id: 313
+- select_topic:
+    action_id: 996
+- select_topic:
+    action_id: 996
+- mod_lua:
+    code: return "B", tostring(vars.highestArenaWave), ModRT.totalErrorCount
+    expect: "B	0	0"
+- mod_lua:
+    code: |
+      local savedPrint = print
+      print = function() end
+      ArenaGold = Party.Gold
+      local spawned, rounds, bosses = 0, 0, 0
+      while not stop and rounds < 200 do
+        local before = Map.Monsters.High
+        arenaSpawns()
+        spawned = spawned + (Map.Monsters.High - before)
+        for i = 0, Map.Monsters.High do
+          local mon = Map.Monsters[i]
+          -- killed; a named one's body searched (which the game marks removed, 11), as the player would
+          if mon.AIState ~= 11 and mon.AIState ~= 5 then mon.HP = 0 mon.AIState = 5 end
+          if mon.AIState == 5 and mon.NameId ~= 0 then mon.AIState = 11 end
+        end
+        rounds = rounds + 1
+      end
+      print = savedPrint
+      return tostring(stop), spawned > 20, tostring(bossSpawned), vars.highestArenaWave, Party.Gold - ArenaGold,
+        completition.Text, ModRT.totalErrorCount
+    expect: "true	true	3	1	20000	100%	0"
