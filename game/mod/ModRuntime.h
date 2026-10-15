@@ -102,6 +102,10 @@ public:
     void mercenaryItemGenerated(InventoryItem &item) override;
     bool monsterDropItem(size_t actorIndex, uint32_t itemId) override;
     void npcTopics(uint32_t npcId, std::vector<ModNpcTopic> &topics) override;
+    void questionAnswered(const std::string &answer) override;
+    std::vector<std::string> difficultyChoices() override;
+    std::string difficulty() override;
+    void setDifficulty(const std::string &name) override;
     bool npcGreeting(uint32_t npcId, bool seen, std::string &text) override;
     void npcDialogClosed() override;
     void questLog(std::vector<std::string> &texts) override;

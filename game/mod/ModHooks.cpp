@@ -89,6 +89,34 @@ std::vector<uint32_t> modQuestTextBits()
     return bits;
 }
 
+void modQuestionAnswered(const std::string &answer)
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->questionAnswered(answer);
+    }
+}
+
+std::vector<std::string> modDifficultyChoices()
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks != nullptr ? pModHooks->difficultyChoices() : std::vector<std::string>();
+}
+
+std::string modDifficulty()
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks != nullptr ? pModHooks->difficulty() : std::string();
+}
+
+void modSetDifficulty(const std::string &name)
+{
+    if (IModHooks *pModHooks = activeModHooks(); pModHooks != nullptr && !name.empty())
+    {
+        pModHooks->setDifficulty(name);
+    }
+}
+
 std::vector<ModNpcTopic> modNpcTopics(uint32_t npcId)
 {
     std::vector<ModNpcTopic> topics;

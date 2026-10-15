@@ -3275,6 +3275,26 @@ int nativeMapNoteSet(lua_State *pLuaState)
     return 0;
 }
 
+// modrt.questionOpen(): whether the game's answer prompt is open for a question a mod asked (under
+// ModCommandEventId).
+int nativeQuestionOpen(lua_State *pLuaState)
+{
+    IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+    const EventRuntimeState *pState = pWorld != nullptr ? pWorld->eventRuntimeState() : nullptr;
+    lua_pushboolean(
+        pLuaState,
+        pState != nullptr && pState->pendingInputPrompt && pState->pendingInputPrompt->eventId == ModCommandEventId);
+    return 1;
+}
+
+// modrt.difficultySetting(): the difficulty the game's settings name for a new game ("" for the mod's own default).
+int nativeDifficultySetting(lua_State *pLuaState)
+{
+    const ModHost *pHost = hostFromUpvalue(pLuaState);
+    pushString(pLuaState, pHost != nullptr && pHost->difficultySetting ? pHost->difficultySetting() : std::string());
+    return 1;
+}
+
 // modrt.monstersInSight(): the map's monsters the party can see, by index (the original's Game.GetMonstersInSight):
 // those within 5120 with a line of sight from the party's eyes; not limited to the screen's view.
 int nativeMonstersInSight(lua_State *pLuaState)
@@ -4650,6 +4670,8 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"inventoryCell", nativeInventoryCell},
         {"innDismiss", nativeInnDismiss},
         {"monstersInSight", nativeMonstersInSight},
+        {"difficultySetting", nativeDifficultySetting},
+        {"questionOpen", nativeQuestionOpen},
         {"mapNoteGet", nativeMapNoteGet},
         {"mapNoteSet", nativeMapNoteSet},
         {"inventoryPut", nativeInventoryPut},

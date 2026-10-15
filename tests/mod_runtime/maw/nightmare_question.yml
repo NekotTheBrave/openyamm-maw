@@ -1,0 +1,46 @@
+id: mod_runtime.maw.nightmare_question
+title: MAW's Nightmare confirmation asks the player and takes the answer
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# At Nightmare (Game.BolsterAmount 250) MAW's nightmare() asks with Question whether to go "true Nightmare". The
+# question is the game's answer prompt and nightmare() waits for the answer (it runs in a coroutine:
+# zzMaw-Nightmare.lua, ModRT.async): "yes" makes it true Nightmare (300), anything else Hell (200). The timer's further
+# calls do nothing while the question is open. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+- mod_lua:
+    code: |
+      local savedPrint = print
+      print = function() end
+      vars.introduction = true
+      Game.BolsterAmount = 250
+      nightmare()
+      nightmare()
+      print = savedPrint
+      return Game.BolsterAmount, tostring(modrt.questionOpen()), tostring(vars.trueNightmare)
+    expect: "250\ttrue\tnil"
+- answer_input:
+    text: "yes"
+- mod_lua:
+    code: return Game.BolsterAmount, tostring(vars.trueNightmare), tostring(modrt.questionOpen()), ModRT.totalErrorCount
+    expect: "300\ttrue\tfalse\t0"
+# Asked again in a new game and answered no: Hell.
+- new_game_flow:
+    start_map: oute3.odm
+- mod_lua:
+    code: |
+      vars.introduction = true
+      vars.trueNightmare = nil
+      Game.BolsterAmount = 250
+      nightmare()
+      return tostring(modrt.questionOpen())
+    expect: "true"
+- answer_input:
+    text: "no"
+- mod_lua:
+    code: return Game.BolsterAmount, tostring(vars.trueNightmare), ModRT.totalErrorCount
+    expect: "200\tnil\t0"

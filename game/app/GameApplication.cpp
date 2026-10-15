@@ -1,4 +1,5 @@
 #include "game/app/GameApplication.h"
+#include "game/mod/ModHooks.h"
 #include "game/gameplay/SavePreviewImage.h"
 
 #include "game/StringUtils.h"
@@ -2930,6 +2931,7 @@ GameApplication::GameApplication(const Engine::ApplicationConfig &config)
             }
         }
     };
+    modHost.difficultySetting = [this]() { return m_settings.difficulty; };
     modHost.handOverEventItems = [this]()
     {
         IGameplayWorldRuntime *pWorld = m_gameSession.activeWorldRuntime();
@@ -6658,6 +6660,16 @@ void GameApplication::finishPendingInputPrompt(bool accepted)
 
     clearPendingInputPromptUi(true);
 
+    // A mod's question (Question, asked as the mod's command event): the answer is the mod's, typed or left empty.
+    if (prompt.eventId == ModCommandEventId)
+    {
+        pRuntimeState->pendingDialogueContext.reset();
+        m_gameSession.gameplayScreenRuntime().activeEventDialog() = {};
+        m_skipGameplayUpdateUntilPromptSubmitKeysReleased = true;
+        modQuestionAnswered(accepted ? submittedInput : std::string());
+        return;
+    }
+
     if (!accepted)
     {
         GAMEPLAY_DEBUG_TRACE(
@@ -9415,12 +9427,25 @@ bool GameApplication::applyMenuSettings(const GameSettings &settings, bool persi
         return false;
     }
     m_settings = settings;
+
+    // The difficulty chosen in the options is the game's being played, if any (and the next new game's).
+    if (previous.difficulty != settings.difficulty)
+    {
+        modSetDifficulty(settings.difficulty);
+    }
+
     applyCurrentSettingsToActiveRuntime();
     return true;
 }
 
 void GameApplication::openMenuScreen(bool paused)
 {
+    // The options show the difficulty of the game being played (or the one a new game would start at).
+    if (const std::string difficulty = modDifficulty(); !difficulty.empty())
+    {
+        m_settings.difficulty = difficulty;
+    }
+
     if (m_pAssetFileSystem == nullptr)
     {
         return;

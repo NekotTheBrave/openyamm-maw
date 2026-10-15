@@ -1286,6 +1286,11 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         }
     }
 
+    if (const std::optional<std::string> value = getIniValue(document, "features", "difficulty"))
+    {
+        settings.difficulty = *value;
+    }
+
     if (const std::optional<std::string> value = getIniValue(document, "features", "homing_projectiles"))
     {
         bool parsed = settings.homingProjectiles;
@@ -1912,6 +1917,7 @@ bool saveGameSettings(const std::filesystem::path &path, const GameSettings &set
         << "[features]\n"
         << "bolster_monsters=" << (settings.bolsterMonsters ? "true" : "false") << '\n'
         << "homing_projectiles=" << (settings.homingProjectiles ? "true" : "false") << '\n'
+        << "difficulty=" << settings.difficulty << '\n'
         << "indoor_pathfinding=" << (settings.indoorPathfinding ? "true" : "false") << '\n'
         << "outdoor_pathfinding=" << (settings.outdoorPathfinding ? "true" : "false") << '\n'
         << "monster_projectile_visuals=" << monsterProjectileVisualsValue(settings.monsterProjectileVisuals) << '\n'

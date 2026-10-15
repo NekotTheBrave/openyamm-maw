@@ -495,6 +495,75 @@ function MapEvents.run(eventId)
     return (ran and 1 or 0) + ((removed[eventId] or removedAll) and 2 or 0)
 end
 
+-- A question a mod asks (Question): the game's answer prompt, asked as the mod's command event; the coroutine that
+-- asked waits for the answer (questionAnswered).
+local questionAsker = nil
+
+function MapEvents.askQuestion(text)
+    if questionAsker or not (Map and Map.Name) then
+        return false
+    end
+
+    local asked = withinEvent(function()
+        modrt.eventCall("evt.AskQuestion", CommandEventId, 0, 0, text)
+        return true
+    end)
+
+    if asked then
+        questionAsker = coroutine.running()
+    end
+
+    return asked == true
+end
+
+function MapEvents.questionAnswered(answer)
+    local asker = questionAsker
+    questionAsker = nil
+
+    if asker and coroutine.status(asker) == "suspended" then
+        local ok, message = coroutine.resume(asker, answer)
+
+        if not ok then
+            ModRT.log("error", "after a question: " .. tostring(message))
+        end
+    end
+end
+
+-- Whether coroutine `co` still waits for an answer; one whose prompt was closed without an answer gets an empty one.
+function MapEvents.questionWaits(co)
+    if questionAsker ~= co then
+        return false
+    end
+
+    if modrt.questionOpen() then
+        return true
+    end
+
+    MapEvents.questionAnswered("")
+    return questionAsker == co
+end
+
+-- ModRT.async(fn): fn as a function that runs in a coroutine, so that it may wait for a Question; while it waits,
+-- calls to it do nothing (a timer's asking again).
+function ModRT.async(fn)
+    local waiting = nil
+
+    return function(...)
+        if waiting and coroutine.status(waiting) == "suspended" and MapEvents.questionWaits(waiting) then
+            return
+        end
+
+        local co = coroutine.create(fn)
+        local ok, message = coroutine.resume(co, ...)
+
+        if not ok then
+            ModRT.log("error", tostring(message))
+        end
+
+        waiting = coroutine.status(co) == "suspended" and co or nil
+    end
+end
+
 -- What the scripts of a playthrough set for the global events goes with them (Loader.loadSessionScripts).
 function MapEvents.resetGlobal()
     removedGlobal = {}

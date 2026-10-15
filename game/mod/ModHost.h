@@ -44,5 +44,7 @@ struct ModHost
     // Hands the items an event gave to the party (into the hand, the one held before into the pack), as the game
     // does after an event the player set off.
     std::function<void()> handOverEventItems;
+    // The difficulty the game's settings name for a new game ("" for the mod's own default).
+    std::function<std::string()> difficultySetting;
 };
 }

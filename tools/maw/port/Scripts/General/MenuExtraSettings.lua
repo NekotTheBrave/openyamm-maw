@@ -11,7 +11,10 @@
 --                        each map keeps its own level ("horizontal" progression). On by default, as in MAW.
 --   vars.ExtraSettings   where Merge keeps these settings in the save
 --
--- The difficulty of a new game comes from mods.yml:
+-- The difficulty is chosen in the game: on character creation for a new game, and in the options (Gameplay >
+-- Difficulty) for the game being played, which MAW's settings page does in the original (its monsters are worked
+-- out again at once, as MAW does when that page is left). The engine asks ModRT.Difficulty for MAW's names. A new
+-- game starts at the one chosen last, else the options' ([features] difficulty), else mods.yml's:
 --
 --   mods:
 --     - id: maw
@@ -19,7 +22,7 @@
 --         difficulty: MAW          # Easy | Normal | MAW | Hard | Hell | Nightmare
 --         free_progression: true   # true | false
 --
--- After that it belongs to the save, as in MAW, and mods.yml is not consulted again for that game.
+-- After that it belongs to the save, as in MAW.
 
 MAWBOLSTER = {
     [0] = "Easy", [50] = "Norm.", [100] = "MAW", [150] = "Hard", [200] = "Hell", [250] = "Night\nmare",
@@ -27,18 +30,72 @@ MAWBOLSTER = {
 }
 
 local difficultyByName = {easy = 0, normal = 50, maw = 100, hard = 150, hell = 200, nightmare = 250}
+local difficultyNames = {"Easy", "Normal", "MAW", "Hard", "Hell", "Nightmare"}
+-- The difficulty chosen in the game (character creation, the options) for the next new game.
+local chosenDifficulty = nil
 
 local function configuredDifficulty()
-    local name = tostring(ModSettings.difficulty or "MAW"):lower()
+    if chosenDifficulty then
+        return chosenDifficulty
+    end
+
+    local setting = modrt.difficultySetting and modrt.difficultySetting() or ""
+    local name = tostring(setting ~= "" and setting or ModSettings.difficulty or "MAW"):lower()
     local value = difficultyByName[name]
 
     if value == nil then
-        print("MenuExtraSettings: unknown difficulty '" .. name .. "' in mods.yml, using MAW")
+        print("MenuExtraSettings: unknown difficulty '" .. name .. "', using MAW")
         value = 100
     end
 
     return value
 end
+
+local function difficultyName(value)
+    if value >= 250 then
+        return "Nightmare"
+    end
+
+    return difficultyNames[math.floor(value / 50) + 1] or "MAW"
+end
+
+local function inGame()
+    return Map ~= nil and Map.Name ~= nil and modrt.gameGet("MapReady") == true
+end
+
+ModRT.Difficulty = {
+    choices = function()
+        return difficultyNames
+    end,
+    get = function()
+        return difficultyName(inGame() and Game.BolsterAmount or configuredDifficulty())
+    end,
+    -- The game being played changes at once, its monsters worked out again (MAW does so when its settings page is
+    -- left, events.Action 113 in zzMaw-Monsters.lua); the next new game starts at it too.
+    set = function(name)
+        local value = difficultyByName[tostring(name):lower()]
+
+        if value == nil then
+            return
+        end
+
+        chosenDifficulty = value
+
+        if inGame() and Game.BolsterAmount ~= value then
+            Game.BolsterAmount = value
+            vars.ExtraSettings = vars.ExtraSettings or {}
+            vars.ExtraSettings.BolsterAmount = value
+
+            if type(recalculateMonsterTable) == "function" then
+                recalculateMonsterTable()
+            end
+
+            if type(recalculateMawMonster) == "function" then
+                recalculateMawMonster()
+            end
+        end
+    end,
+}
 
 local function configuredFreeProgression()
     local setting = ModSettings.free_progression

@@ -146,6 +146,8 @@ public:
     void cycleVoice(int direction);
     void resetCurrentState(bool applyCandidateDefaults = false);
     void confirmCreation();
+    // The difficulty the new game starts at, by the active mod's name for it; empty until the screen asks the mod.
+    std::string m_difficulty;
     void cancelCreation();
     Character buildVoicePreviewCharacter() const;
     void showCreationCompletionError();

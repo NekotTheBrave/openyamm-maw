@@ -334,6 +334,15 @@ public:
     virtual void npcDialogClosed() = 0;
     // The quest log's entries the mod adds that have no quest bit of their own (Merge's AutoQuest).
     virtual void questLog(std::vector<std::string> &texts) = 0;
+    // The difficulties the mod offers (MAW's Easy ... Nightmare), none when it has none; the current one (the
+    // game's being played, else the one a new game would start at); and choosing one, which changes the game being
+    // played, if any, and is the one the next new game starts at.
+    // The player answered the question a mod asked (Question; the game's answer prompt, under ModCommandEventId):
+    // the text typed, empty when the prompt was left.
+    virtual void questionAnswered(const std::string &answer) = 0;
+    virtual std::vector<std::string> difficultyChoices() = 0;
+    virtual std::string difficulty() = 0;
+    virtual void setDifficulty(const std::string &name) = 0;
     // The game's global events the same way (the original's evt.global[id] handlers and
     // Game.GlobalEvtLines:RemoveEvent(id)), with the events the original raises around them: whether the mod has
     // anything for global event `eventId`.
@@ -458,6 +467,14 @@ ModPlayerActionResult modPlayerActionWithHeldItem(int action, InventoryItem &hel
 // Runs the mod's event for a dead monster's loot and returns what to roll, which is `engineLoot` without a mod
 // runtime.
 MonsterTable::LootPrototype modCorpseLoot(size_t actorIndex, const MonsterTable::LootPrototype &engineLoot);
+
+// The difficulties the mod offers (none without a mod or when it has none), the current one, and choosing one; see
+// IModHooks::difficultyChoices.
+// Hands the mod the answer to its question (see IModHooks::questionAnswered).
+void modQuestionAnswered(const std::string &answer);
+std::vector<std::string> modDifficultyChoices();
+std::string modDifficulty();
+void modSetDifficulty(const std::string &name);
 
 // The topics a mod sets for NPC `npcId`'s dialog (none without a mod); see IModHooks::npcTopics.
 std::vector<ModNpcTopic> modNpcTopics(uint32_t npcId);

@@ -15,6 +15,10 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
     {
         return settings.homingProjectiles ? "true" : "false";
     }
+    if (id == "difficulty")
+    {
+        return settings.difficulty;
+    }
     if (id == "quest_markers")
     {
         return settings.questMarkers ? "true" : "false";
@@ -245,6 +249,11 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
             return false;
         }
         settings.homingProjectiles = value == "true";
+        return true;
+    }
+    if (id == "difficulty")
+    {
+        settings.difficulty = std::string(value);
         return true;
     }
     if (id == "quest_markers")

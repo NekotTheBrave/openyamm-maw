@@ -1,5 +1,6 @@
 #include "game/ui/screens/MainMenuScreen.h"
 
+#include "game/mod/ModHooks.h"
 #include "game/data/GameDataRepository.h"
 #include "game/gameplay/GameplaySaveLoadUiSupport.h"
 #include "game/ui/MenuSettingsModel.h"
@@ -450,6 +451,13 @@ void MainMenuScreen::editSetting(const Setting &setting, const std::string &valu
 void MainMenuScreen::chooseSetting(const Setting &setting)
 {
     std::vector<std::pair<std::string, std::string>> choices = setting.options;
+    if (setting.id == "difficulty")
+    {
+        for (const std::string &name : modDifficultyChoices())
+        {
+            choices.emplace_back(name, name);
+        }
+    }
     if (setting.id == "resolution")
     {
         std::set<std::pair<int, int>> sizes;
@@ -601,7 +609,8 @@ void MainMenuScreen::drawSettings(float deltaSeconds)
         Rect rect = designRect(id + "Control");
         rect.y -= m_scroll * designScale();
         const bool enabled = (setting.depends.empty() || menuSettingValue(m_draft, setting.depends) == "true") &&
-                             !(setting.id == "resolution" && m_draft.windowMode == WindowMode::WindowedFullscreen);
+                             !(setting.id == "resolution" && m_draft.windowMode == WindowMode::WindowedFullscreen) &&
+                             !(setting.id == "difficulty" && modDifficultyChoices().empty());
         const std::string value = menuSettingValue(m_draft, setting.id);
         if (setting.type == "toggle")
         {

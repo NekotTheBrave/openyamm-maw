@@ -2097,8 +2097,14 @@ end
 
 SimpleMessage = Message
 
--- The original asks the player and returns the reply. With no dialogue box to ask in, the reply is empty: no.
+-- The original asks the player and returns the reply, the game waiting meanwhile. Here the question is the game's
+-- answer prompt (the text and "Answer: _"), and the asking function waits for the reply when it runs in a coroutine
+-- (ModRT.async); elsewhere, or with no map to ask on, the text is said and the reply is empty: no.
 function Question(text, questionText)
+    if coroutine.isyieldable() and ModRT.MapEvents.askQuestion(tostring(text or "")) then
+        return tostring(coroutine.yield() or "")
+    end
+
     Message(text)
     return ""
 end

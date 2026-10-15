@@ -201,6 +201,9 @@ struct GameSettings
     // Projectiles home on their targets, the party's on the monster aimed at and the monsters' on the party (MAW's
     // homing projectiles, on by default as there).
     bool homingProjectiles = true;
+    // The difficulty a new game starts at, by the name the active mod gives it (MAW's Easy ... Nightmare); empty for
+    // the mod's own default. A game keeps its own; the options change the current game's when one is being played.
+    std::string difficulty;
     bool indoorPathfinding = true;
     bool outdoorPathfinding = false;
     MonsterProjectileVisuals monsterProjectileVisuals = MonsterProjectileVisuals::FxRecipes;

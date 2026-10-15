@@ -321,6 +321,25 @@ local function dispatchKind(kind, ...)
         return ModRT.Stats.mercenaryItemGenerated(...)
     elseif kind == "monsterDropItem" then
         return ModRT.Stats.monsterDropItem(...)
+    elseif kind == "questionAnswered" then
+        return ModRT.MapEvents.questionAnswered(...)
+    elseif kind == "difficultyChoices" or kind == "difficultyGet" or kind == "difficultySet" then
+        -- A mod that has difficulties registers them as ModRT.Difficulty = {choices = f, get = f, set = f}.
+        local provider = ModRT.Difficulty
+
+        if not provider then
+            return nil
+        end
+
+        ModRT.ensureSession()
+
+        if kind == "difficultyChoices" then
+            return provider.choices()
+        elseif kind == "difficultyGet" then
+            return provider.get()
+        end
+
+        return provider.set(...)
     elseif kind == "npcTopics" then
         return ModRT.Quests.topics(...)
     elseif kind == "npcGreeting" then

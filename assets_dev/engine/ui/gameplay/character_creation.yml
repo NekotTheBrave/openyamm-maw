@@ -91,6 +91,46 @@ elements:
       scale: 0.64
       pad_x: 0.0
     notes: Controller supplies live text.
+  - id: CharacterCreationDifficultyLabel
+    anchor: top_left
+    offset_x: 400.0
+    offset_y: 34.8251
+    width: 60.0
+    height: 11.2
+    z_index: 10
+    visible: true
+    interactive: false
+    text:
+      value: Difficulty
+      font: menu_lucida
+      color: '#b6b8a5'
+      align_x: left
+      align_y: middle
+      scale: 0.64
+      pad_x: 0.0
+    notes: Shown when the active mod offers difficulties (MAW).
+  - id: CharacterCreationDifficultyValue
+    anchor: top_left
+    offset_x: 462.0
+    offset_y: 28.6584
+    width: 120.0
+    height: 23.4667
+    z_index: 10
+    visible: true
+    interactive: true
+    asset:
+      default: hud_x2/menus/omenu_button_quiet_default.png
+      highlighted: hud_x2/menus/omenu_button_quiet_hover.png
+      pressed: hud_x2/menus/omenu_button_quiet_pressed.png
+    text:
+      value: '{difficulty}'
+      font: menu_lucida
+      color: '#e9dcc0'
+      align_x: left
+      align_y: middle
+      scale: 0.71529
+      pad_x: 6.9333
+    notes: The mod's difficulties; the new game starts at the one chosen. Controller supplies live text.
   - id: CharacterCreationPortraitImage
     anchor: top_left
     offset_x: 58.9333

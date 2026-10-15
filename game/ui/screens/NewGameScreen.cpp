@@ -2004,6 +2004,9 @@ void NewGameScreen::confirmCreation()
         }
     }
 
+    // The new game starts at the difficulty chosen here.
+    modSetDifficulty(m_difficulty);
+
     if (m_continueAction)
     {
         const std::vector<Character> characters = buildPartyCharacters();
@@ -2170,6 +2173,30 @@ void NewGameScreen::drawScreen(float deltaSeconds)
     const UiLayoutManager::LayoutElement *pStart =
         m_designLayouts.findElement("ContinentSelection" + continentKey + "Start");
     label("CharacterCreationContinent", m_selectedContinent.name + " - " + pStart->labelText);
+
+    // The mod's difficulties (MAW's), the one the new game starts at.
+    if (const std::vector<std::string> difficulties = modDifficultyChoices(); !difficulties.empty())
+    {
+        if (m_difficulty.empty())
+        {
+            m_difficulty = modDifficulty();
+        }
+
+        label("CharacterCreationDifficultyLabel", "Difficulty");
+
+        if (selectBox("difficulty", designRect("CharacterCreationDifficultyValue"), m_difficulty, true, 12.16f))
+        {
+            endNameEditing(true);
+            confirm("Choose Difficulty", "The new adventure starts at it.", difficulties,
+                    [this, difficulties](int index)
+                    {
+                        if (index >= 0)
+                        {
+                            m_difficulty = difficulties[size_t(index)];
+                        }
+                    }, true);
+        }
+    }
     const Rect nameRect = designRect("CharacterCreationNameField");
     if (m_state.nameEditing && (keyPressed(SDL_SCANCODE_TAB) || (leftMouseJustPressed() && !pointerInside(nameRect))))
     {

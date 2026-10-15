@@ -1951,6 +1951,84 @@ int ModRuntime::mapEvent(uint16_t eventId)
     return flags;
 }
 
+void ModRuntime::questionAnswered(const std::string &answer)
+{
+    if (!m_active || !beginDispatch("questionAnswered"))
+    {
+        return;
+    }
+
+    lua_pushlstring(m_pLuaState, answer.data(), answer.size());
+    endDispatch(1, 0);
+}
+
+std::vector<std::string> ModRuntime::difficultyChoices()
+{
+    std::vector<std::string> choices;
+
+    if (!m_active || !beginDispatch("difficultyChoices"))
+    {
+        return choices;
+    }
+
+    if (endDispatch(0, 1))
+    {
+        if (lua_istable(m_pLuaState, -1))
+        {
+            const lua_Integer count = luaL_len(m_pLuaState, -1);
+
+            for (lua_Integer index = 1; index <= count; ++index)
+            {
+                lua_rawgeti(m_pLuaState, -1, index);
+
+                if (lua_type(m_pLuaState, -1) == LUA_TSTRING)
+                {
+                    choices.emplace_back(lua_tostring(m_pLuaState, -1));
+                }
+
+                lua_pop(m_pLuaState, 1);
+            }
+        }
+
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return choices;
+}
+
+std::string ModRuntime::difficulty()
+{
+    std::string name;
+
+    if (!m_active || !beginDispatch("difficultyGet"))
+    {
+        return name;
+    }
+
+    if (endDispatch(0, 1))
+    {
+        if (lua_type(m_pLuaState, -1) == LUA_TSTRING)
+        {
+            name = lua_tostring(m_pLuaState, -1);
+        }
+
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return name;
+}
+
+void ModRuntime::setDifficulty(const std::string &name)
+{
+    if (!m_active || !beginDispatch("difficultySet"))
+    {
+        return;
+    }
+
+    lua_pushlstring(m_pLuaState, name.data(), name.size());
+    endDispatch(1, 0);
+}
+
 void ModRuntime::npcTopics(uint32_t npcId, std::vector<ModNpcTopic> &topics)
 {
     if (!m_active || !beginDispatch("npcTopics"))

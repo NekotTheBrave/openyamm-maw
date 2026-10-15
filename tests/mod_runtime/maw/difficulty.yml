@@ -1,0 +1,37 @@
+id: mod_runtime.maw.difficulty
+title: MAW's difficulty is chosen in the game and changes the game being played
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# The engine asks the mod for its difficulties (ModRT.Difficulty, MAW's in its port of MenuExtraSettings.lua) for
+# character creation and the options. Choosing one while playing sets Game.BolsterAmount and the save's copy and works
+# the monsters out again (hit points up for Hell), as MAW does when its settings page is left; the next new game starts at it. Run with the
+# MAW mods.yml (difficulty MAW).
+- new_game_flow:
+    start_map: oute3.odm
+- mod_lua:
+    code: |
+      local d = ModRT.Difficulty
+      Probe = nil
+      for i = 0, Map.Monsters.High do
+        if Map.Monsters[i].NameId == 0 then Probe = i break end
+      end
+      HPBefore = Map.Monsters[Probe].FullHitPoints
+      return table.concat(d.choices(), ","), d.get(), Game.BolsterAmount
+    expect: "Easy,Normal,MAW,Hard,Hell,Nightmare\tMAW\t100"
+- mod_lua:
+    code: |
+      local d = ModRT.Difficulty
+      d.set("Hell")
+      return d.get(), Game.BolsterAmount, vars.ExtraSettings.BolsterAmount, Map.Monsters[Probe].FullHitPoints > HPBefore,
+        ModRT.totalErrorCount
+    expect: "Hell\t200\t200\ttrue\t0"
+# A new game now starts at Hell, the difficulty chosen last.
+- new_game_flow:
+    start_map: oute3.odm
+- mod_lua:
+    code: return ModRT.Difficulty.get(), Game.BolsterAmount, vars.ExtraSettings.BolsterAmount
+    expect: "Hell\t200\t200"

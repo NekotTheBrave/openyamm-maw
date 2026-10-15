@@ -32,6 +32,12 @@ settings:
   name: Homing projectiles
   type: toggle
   desc: Missiles and spells follow their targets, the party's and the monsters'.
+- id: difficulty
+  section: gameplay
+  group: Challenge
+  name: Difficulty
+  type: select
+  desc: The mod's difficulty. Changes the adventure in progress, and new ones.
 - id: quest_markers
   section: gameplay
   group: Exploration
