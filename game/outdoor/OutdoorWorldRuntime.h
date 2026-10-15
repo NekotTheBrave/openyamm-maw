@@ -889,6 +889,7 @@ public:
     bool takeWorldItemInspectState(size_t worldItemIndex, GameplayWorldItemInspectState &state) override;
     bool worldItemPosition(size_t worldItemIndex, float &x, float &y, float &z) const override;
     bool moveWorldItem(size_t worldItemIndex, float x, float y, float z) override;
+    bool setPartyPosition(float x, float y, float footZ) override;
     GameplayWorldHoverCacheState worldHoverCacheState() const override;
     GameplayHoverStatusPayload refreshWorldHover(const GameplayWorldHoverRequest &request) override;
     GameplayHoverStatusPayload readCachedWorldHover() override;

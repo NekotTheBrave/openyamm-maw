@@ -37,12 +37,12 @@ Port changes are marked **(port)**.
 | Shift+B | Inventory page | Mark the open bag as a crafting bag (again to clear); crafting materials picked up go to it | |
 | U, then U | Inventory page | Combine three crafting gems of a kind into one of the next tier (the first U shows what, the second does it) | |
 | P | Skills page | Cover on/off for the character | |
-| M | Skills page | Mana Shield on/off for the character | M also opens the map in OpenYAMM; whether it does so over the character screen has not been checked |
+| M | Skills page | Mana Shield on/off for the character | OpenYAMM's map key (M) does not open the map over the character screen (checked in play) |
 | R | Skills page | Elementalist rotation on/off (Elementalists only) | |
 | R, then Y | Stats page | Reset the damage figures of the map | |
 | Tab | Spellbook | Next school of magic | OpenYAMM's next character is off in the spellbook |
 | O | World | Bow off/on (a challenge: melee only) | |
-| L | World | Unstuck: lift the party a little; once every 5 game minutes | Also OpenYAMM's Map Book: both happen |
+| L | World | Unstuck: lift the party 100 so it drops free of what it is caught on; once every 5 game minutes | Also OpenYAMM's Map Book: both happen. **(port)** the lift works since the party's position can be written |
 | R | A shop's goods or special goods page | Pay to make the shop's goods again, stronger with the continent's progress, of the kinds it sells | **(port)** works since the shop's goods are bound; OpenYAMM's Rest is off in a house |
 
 MAW's Ctrl+F1 and Alt+F1 only note the use of its console, and its F9 boss dump is switched off in MAW itself.

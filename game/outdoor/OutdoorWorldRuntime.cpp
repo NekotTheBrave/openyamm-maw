@@ -17816,6 +17816,17 @@ void OutdoorWorldRuntime::removeDepletedSemanticLootContainer(uint32_t container
         });
 }
 
+bool OutdoorWorldRuntime::setPartyPosition(float x, float y, float footZ)
+{
+    if (m_pPartyRuntime == nullptr)
+    {
+        return false;
+    }
+
+    m_pPartyRuntime->moveTo(x, y, footZ);
+    return true;
+}
+
 bool OutdoorWorldRuntime::worldItemPosition(size_t worldItemIndex, float &x, float &y, float &z) const
 {
     if (worldItemIndex >= m_worldItems.size())

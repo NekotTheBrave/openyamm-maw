@@ -47,3 +47,19 @@ steps:
 - mod_lua:
     code: return Mouse:GetTarget().Kind
     expect: "0"
+# L in the world (MAW's unstuck, zzMAW-Skills.lua): lifts the party 100 so that it drops free, once every five game
+# minutes; Party.X, Y and Z move the party (MAW's Knight charge moves it so too). L is also OpenYAMM's Map Book.
+- mod_lua:
+    code: |
+      Ground = Party.Z
+      ModRT.fire("KeyDown", {Key = 76})
+      local lifted = Party.Z - Ground
+      ModRT.fire("KeyDown", {Key = 76})
+      local x = Party.X
+      Party.X = x + 200
+      return lifted, Party.Z - Ground, Party.X - x
+    expect: "100\t100\t200"
+- advance_runtime: {seconds: 2}
+- mod_lua:
+    code: return math.abs(Party.Z - Ground) < 20, ModRT.totalErrorCount
+    expect: "true\t0"

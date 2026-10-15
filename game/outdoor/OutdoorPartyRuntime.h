@@ -25,6 +25,8 @@ public:
 
     void initialize(float x, float y, float footZHint, bool resetParty = true);
     void teleportTo(float x, float y, float footZHint);
+    // Moves the party without starting its movement afresh (a script moving it: MAW's Knight charge).
+    void moveTo(float x, float y, float footZ);
     void update(
         const OutdoorMovementInput &input,
         float deltaSeconds,

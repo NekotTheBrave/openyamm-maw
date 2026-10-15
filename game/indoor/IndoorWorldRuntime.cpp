@@ -14909,6 +14909,17 @@ size_t IndoorWorldRuntime::worldItemCount() const
     return pMapDeltaData != nullptr ? pMapDeltaData->spriteObjects.size() : 0;
 }
 
+bool IndoorWorldRuntime::setPartyPosition(float x, float y, float footZ)
+{
+    if (m_pPartyRuntime == nullptr)
+    {
+        return false;
+    }
+
+    m_pPartyRuntime->teleportPartyPosition(x, y, footZ);
+    return true;
+}
+
 bool IndoorWorldRuntime::worldItemPosition(size_t worldItemIndex, float &x, float &y, float &z) const
 {
     const MapDeltaData *pMapDeltaData = mapDeltaData();

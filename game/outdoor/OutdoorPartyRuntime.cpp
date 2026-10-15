@@ -36,6 +36,11 @@ void OutdoorPartyRuntime::teleportTo(float x, float y, float footZHint)
     m_movementDriver.initialize(x, y, footZHint);
 }
 
+void OutdoorPartyRuntime::moveTo(float x, float y, float footZ)
+{
+    m_movementDriver.setPosition(x, y, footZ);
+}
+
 void OutdoorPartyRuntime::update(
     const OutdoorMovementInput &input,
     float deltaSeconds,

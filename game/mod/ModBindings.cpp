@@ -377,6 +377,17 @@ int nativePartySet(lua_State *pLuaState)
     {
         pParty->addFood(clampedInteger<int>(integerArgument(pLuaState, 2)) - pParty->food());
     }
+    else if (field == "X" || field == "Y" || field == "Z")
+    {
+        // The party moves there (Z its feet), the other two staying as they are.
+        IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+        const float value = static_cast<float>(luaL_checknumber(pLuaState, 2));
+        handled = pWorld != nullptr
+            && pWorld->setPartyPosition(
+                field == "X" ? value : pWorld->partyX(),
+                field == "Y" ? value : pWorld->partyY(),
+                field == "Z" ? value : pWorld->partyFootZ());
+    }
     else
     {
         handled = false;

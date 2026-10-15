@@ -108,6 +108,9 @@ public:
     );
 
     void initialize(float x, float y, float footZHint);
+    // Moves the party there and nothing else (flying, running, the spells' states stay); raised, it is in the air and
+    // falls, as from a jump.
+    void setPosition(float x, float y, float footZ);
     void restoreState(const OutdoorMoveState &state, const OutdoorPartyMovementState &partyMovementState);
     void update(
         const OutdoorMovementInput &input,

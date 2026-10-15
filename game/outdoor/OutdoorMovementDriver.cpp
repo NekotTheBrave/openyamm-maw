@@ -144,6 +144,23 @@ void OutdoorMovementDriver::initialize(float x, float y, float footZHint)
     m_speedMultiplier = 1.0f;
 }
 
+void OutdoorMovementDriver::setPosition(float x, float y, float footZ)
+{
+    const bool raised = footZ > m_state.footZ + 1.0f;
+    m_state.x = x;
+    m_state.y = y;
+    m_state.footZ = footZ;
+
+    if (raised)
+    {
+        m_state.airborne = true;
+        m_state.supportKind = OutdoorSupportKind::None;
+        m_state.verticalVelocity = 0.0f;
+        m_state.fallStartZ = footZ;
+        m_state.fallDistance = 0.0f;
+    }
+}
+
 void OutdoorMovementDriver::restoreState(
     const OutdoorMoveState &state,
     const OutdoorPartyMovementState &partyMovementState)

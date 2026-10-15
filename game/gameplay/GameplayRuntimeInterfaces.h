@@ -803,6 +803,15 @@ public:
     virtual float partyX() const = 0;
     virtual float partyY() const = 0;
     virtual float partyFootZ() const = 0;
+    // Puts the party at a point of the map (its feet at footZ), as a script moving it does (MAW's Knight charge, its
+    // unstuck key). False when the world cannot.
+    virtual bool setPartyPosition(float x, float y, float footZ)
+    {
+        (void)x;
+        (void)y;
+        (void)footZ;
+        return false;
+    }
     virtual float partyEngagementRange() const
     {
         return 10240.0f;
