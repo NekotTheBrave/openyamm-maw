@@ -1,6 +1,7 @@
 #include "game/ui/MenuScreenBase.h"
 #include "engine/BgfxContext.h"
 #include "engine/ImageAssetLoader.h"
+#include "engine/render/CookedTexture.h"
 #include "game/render/TextureFiltering.h"
 #include "game/ui/UiLayoutManager.h"
 
@@ -585,10 +586,12 @@ void MenuScreenBase::drawTextureRegionColor(
     const float top = rect.y;
     const float bottom = rect.y + rect.height;
     const bool useSourceRect = sourceRect.width > 0.0f && sourceRect.height > 0.0f;
-    const float u0 = useSourceRect ? sourceRect.x / static_cast<float>(pTexture->width) : 0.0f;
-    const float v0 = useSourceRect ? sourceRect.y / static_cast<float>(pTexture->height) : 0.0f;
-    const float u1 = useSourceRect ? (sourceRect.x + sourceRect.width) / static_cast<float>(pTexture->width) : 1.0f;
-    const float v1 = useSourceRect ? (sourceRect.y + sourceRect.height) / static_cast<float>(pTexture->height) : 1.0f;
+    const float uScale = pTexture->uScale / static_cast<float>(pTexture->width);
+    const float vScale = pTexture->vScale / static_cast<float>(pTexture->height);
+    const float u0 = useSourceRect ? sourceRect.x * uScale : 0.0f;
+    const float v0 = useSourceRect ? sourceRect.y * vScale : 0.0f;
+    const float u1 = useSourceRect ? (sourceRect.x + sourceRect.width) * uScale : pTexture->uScale;
+    const float v1 = useSourceRect ? (sourceRect.y + sourceRect.height) * vScale : pTexture->vScale;
     pVertices[0] = MenuVertex{left, top, 0.0f, u0, v0};
     pVertices[1] = MenuVertex{right, top, 0.0f, u1, v0};
     pVertices[2] = MenuVertex{right, bottom, 0.0f, u1, v1};
@@ -623,7 +626,7 @@ void MenuScreenBase::drawTextureRegionColor(
         0,
         m_textureUniformHandle,
         textureHandle,
-        TextureFilterProfile::Ui,
+        pTexture->filterProfile,
         BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
     bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_MSAA);
     applyClipRect();
@@ -1090,6 +1093,11 @@ const MenuScreenBase::TextureHandle *MenuScreenBase::ensureTexture(const std::st
         return nullptr;
     }
 
+    if (Engine::hasCookedTextureSignature(*bytes))
+    {
+        return ensureCookedTexture(textureName, *resolvedPath, *bytes);
+    }
+
     int width = 0;
     int height = 0;
     const std::optional<std::vector<uint8_t>> pixels = loadTexturePixelsBgra(*bytes, *resolvedPath, width, height);
@@ -1126,6 +1134,48 @@ const MenuScreenBase::TextureHandle *MenuScreenBase::ensureTexture(const std::st
                   << "x"
                   << height
                   << '\n';
+        return nullptr;
+    }
+
+    s_textureHandles.push_back(std::move(textureHandle));
+    s_textureIndexByName[s_textureHandles.back().normalizedTextureName] = s_textureHandles.size() - 1;
+    return &s_textureHandles.back();
+}
+
+// HUD art cooked by tools/cook_ui_textures.py (the Obsidian illustrations have no PNG at runtime).
+const MenuScreenBase::TextureHandle *MenuScreenBase::ensureCookedTexture(
+    const std::string &textureName, const std::string &resolvedPath, const std::vector<uint8_t> &bytes)
+{
+    TextureHandle textureHandle = {};
+    textureHandle.normalizedTextureName = toLowerCopy(textureName);
+    textureHandle.filterProfile = textureHandle.normalizedTextureName.starts_with("obsidian_")
+        ? TextureFilterProfile::UiIllustration
+        : TextureFilterProfile::Ui;
+    try
+    {
+        const Engine::CookedTexture cooked = Engine::decodeCookedTexture(bytes);
+        const int width = cooked.contentWidth != 0 ? cooked.contentWidth : cooked.width;
+        const int height = cooked.contentHeight != 0 ? cooked.contentHeight : cooked.height;
+        const Engine::AssetScaleTier loadedTier = Engine::assetScaleTierFromResolvedPath(resolvedPath);
+        textureHandle.width = Engine::scalePhysicalPixelsToLogical(width, loadedTier);
+        textureHandle.height = Engine::scalePhysicalPixelsToLogical(height, loadedTier);
+        textureHandle.physicalWidth = width;
+        textureHandle.physicalHeight = height;
+        textureHandle.uScale = float(width) / float(cooked.width);
+        textureHandle.vScale = float(height) / float(cooked.height);
+        textureHandle.handle = createCookedTexture2D(
+            cooked, textureHandle.filterProfile, BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
+    }
+    catch (const std::exception &exception)
+    {
+        std::cerr << "MenuScreenBase could not load cooked texture " << resolvedPath << ": " << exception.what()
+                  << '\n';
+        return nullptr;
+    }
+
+    if (!bgfx::isValid(textureHandle.handle))
+    {
+        std::cerr << "MenuScreenBase could not create bgfx texture: " << resolvedPath << '\n';
         return nullptr;
     }
 
@@ -1270,7 +1320,7 @@ std::optional<std::string> MenuScreenBase::resolveTexturePath(const std::string 
     {
         return m_pAssetFileSystem->resolveExistingFilePath(textureName);
     }
-    return Engine::findImageAssetPath(
+    return Engine::findCookedOrImageAssetPath(
         *m_pAssetFileSystem, "Data/icons", textureName, s_directoryEntriesByPath, s_resolvedTexturePaths);
 }
 

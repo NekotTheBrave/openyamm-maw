@@ -156,8 +156,13 @@ protected:
         int height = 0;
         int physicalWidth = 0;
         int physicalHeight = 0;
+        // Empty for cooked art, whose blocks go straight to the GPU.
         std::vector<uint8_t> bgraPixels;
         bgfx::TextureHandle handle = BGFX_INVALID_HANDLE;
+        // Cooked art is padded to whole blocks (and power-of-two sides when mipped); UVs cover the content only.
+        float uScale = 1.0f;
+        float vScale = 1.0f;
+        TextureFilterProfile filterProfile = TextureFilterProfile::Ui;
     };
 
     struct DynamicTextureHandle
@@ -179,6 +184,8 @@ protected:
     void destroyRendererResources();
     const TextureHandle *findTexture(const std::string &textureName) const;
     const TextureHandle *ensureTexture(const std::string &textureName);
+    const TextureHandle *ensureCookedTexture(
+        const std::string &textureName, const std::string &resolvedPath, const std::vector<uint8_t> &bytes);
     const FontHandle *findFont(const std::string &fontName, int pixelHeight) const;
     const FontHandle *ensureFont(const std::string &fontName, int pixelHeight = 0);
     const FontHandle *ensureTextFont(const std::string &fontName, float &scale);
