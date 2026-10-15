@@ -69,6 +69,44 @@ math.sinh = function(x) return (math.exp(x) - math.exp(-x)) / 2 end
 math.tanh = function(x) return (math.exp(x) - math.exp(-x)) / (math.exp(x) + math.exp(-x)) end
 string.gfind = string.gmatch
 
+-- LuaJIT's math.max and math.min compare with the processor's maxsd/minsd, which give the later argument when
+-- either is NaN: math.max(0/0, 0) is 0 there and NaN in Lua 5.4. MAW relies on it (Austerity's bolster level is
+-- math.max((level - 4)^1.015, 0), NaN below level 4). Without NaN the results are Lua 5.4's.
+local rawMax, rawMin = math.max, math.min
+
+local function luajitMinMax(raw, isBetter)
+    return function(...)
+        local count = select("#", ...)
+
+        if count == 2 then
+            local a, b = ...
+
+            if a == a and b == b then
+                return raw(a, b)
+            end
+
+            raw(a, b)
+            return b
+        end
+
+        local result = raw((...))
+
+        for index = 2, count do
+            local value = select(index, ...)
+            raw(value)
+
+            if result ~= result or value ~= value or isBetter(value, result) then
+                result = value
+            end
+        end
+
+        return result
+    end
+end
+
+math.max = luajitMinMax(rawMax, function(value, best) return value > best end)
+math.min = luajitMinMax(rawMin, function(value, best) return value < best end)
+
 ---------------------------------------------------------------------------------------------------------------------
 -- integer coercion
 

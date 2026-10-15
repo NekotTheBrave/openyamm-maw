@@ -1,0 +1,67 @@
+id: mod_runtime.maw.game_modes
+title: MAW's game modes are chosen for a new game and set it up as MAW's settings page does
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# The engine asks the mod for its game modes (ModRT.GameMode, in the port of MenuExtraSettings.lua) on character
+# creation; the new game starts in the one chosen, with MAW's switches in vars: Doom vars.Mode 2, Road to Insanity
+# also vars.insanityMode, Beyond Madness also vars.madnessMode, Austerity vars.AusterityMode. Doom and above play at
+# bolster 600 (their difficulty is the mode's own) and start with 5000 gold and 10000 experience shared out; Beyond
+# Madness starts every character at level 1 with skills at 1. Run with the MAW mods.yml (difficulty MAW).
+- new_game_flow:
+    start_map: oute3.odm
+- mod_lua:
+    code: |
+      return table.concat(ModRT.GameMode.choices(), ","), ModRT.GameMode.get(), vars.Mode, ModRT.Difficulty.get()
+    expect: "Normal,Doom,Road to Insanity,Beyond Madness,Austerity\tNormal\t0\tMAW"
+# Doom chosen: its difficulty is the mode's own until the new game starts.
+- mod_lua:
+    code: |
+      ModRT.GameMode.set("Doom")
+      return ModRT.GameMode.get(), table.concat(ModRT.Difficulty.choices(), ","), vars.Mode, Game.BolsterAmount
+    expect: "Doom\tDoom\t0\t100"
+- new_game_flow:
+    start_map: oute3.odm
+- advance_runtime: {seconds: 2}
+- mod_lua:
+    code: |
+      local d = ModRT.Difficulty
+      d.set("Easy")
+      return vars.Mode, tostring(vars.insanityMode), Game.BolsterAmount, d.get(), table.concat(d.choices(), ","),
+        Party.Gold, Party[0].Experience >= 10000 / Party.Count, tostring(vars.DoomPartyNeedInit), ModRT.totalErrorCount
+    expect: "2\tnil\t600\tDoom\tDoom\t5000\ttrue\tnil\t0"
+# Beyond Madness: Doom with Insanity and Madness, horizontal progression, everyone back to level 1 and skills at 1.
+- mod_lua:
+    code: |
+      ModRT.GameMode.set("Beyond Madness")
+      return ModRT.Difficulty.get()
+    expect: "Mad"
+- new_game_flow:
+    start_map: oute3.odm
+- advance_runtime: {seconds: 2}
+- mod_lua:
+    code: |
+      local skillsAtOne = true
+      for j = 0, 38 do
+        local s = Party[0].Skills[j]
+        if s > 0 and s ~= 1 then skillsAtOne = false end
+      end
+      return vars.Mode, tostring(vars.insanityMode), tostring(vars.madnessMode), tostring(Game.freeProgression),
+        Game.BolsterAmount, Party[0].LevelBase, skillsAtOne, ModRT.Difficulty.get(), ModRT.totalErrorCount
+    expect: "2\ttrue\ttrue\tfalse\t600\t1\ttrue\tMad\t0"
+# Austerity: played at the chosen difficulty.
+- mod_lua:
+    code: |
+      ModRT.GameMode.set("Austerity")
+      return ModRT.Difficulty.get()
+    expect: "MAW"
+- new_game_flow:
+    start_map: oute3.odm
+- advance_runtime: {seconds: 2}
+- mod_lua:
+    code: |
+      return vars.Mode, tostring(vars.AusterityMode), Game.BolsterAmount, ModRT.Difficulty.get(), ModRT.totalErrorCount
+    expect: "8\ttrue\t100\tMAW\t0"

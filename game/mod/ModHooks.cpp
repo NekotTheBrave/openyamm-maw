@@ -143,6 +143,26 @@ void modSetDifficulty(const std::string &name)
     }
 }
 
+std::vector<std::string> modGameModeChoices()
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks != nullptr ? pModHooks->gameModeChoices() : std::vector<std::string>();
+}
+
+std::string modGameMode()
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks != nullptr ? pModHooks->gameMode() : std::string();
+}
+
+void modSetGameMode(const std::string &name)
+{
+    if (IModHooks *pModHooks = activeModHooks(); pModHooks != nullptr && !name.empty())
+    {
+        pModHooks->setGameMode(name);
+    }
+}
+
 std::vector<ModNpcTopic> modNpcTopics(uint32_t npcId)
 {
     std::vector<ModNpcTopic> topics;
@@ -429,6 +449,24 @@ bool modCanWearItem(const Character &character, uint32_t itemId)
 {
     IModHooks *pModHooks = activeModHooks();
     return pModHooks == nullptr || pModHooks->canWearItem(character, itemId);
+}
+
+bool modCanOpenChest(uint32_t chestId, bool trapped)
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks == nullptr || pModHooks->canOpenChest(chestId, trapped);
+}
+
+bool modCanHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal)
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks == nullptr || pModHooks->canHireNpcFollower(npcId, houseId, refusal);
+}
+
+float modShopItemTreatment(bool repair, uint32_t houseId, const InventoryItem &item, float engineMultiplier)
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks != nullptr ? pModHooks->shopItemTreatment(repair, houseId, item, engineMultiplier) : engineMultiplier;
 }
 
 int modCanLearnSpell(const Character &character, uint32_t spellId, int engineMastery)

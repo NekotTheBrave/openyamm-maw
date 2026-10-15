@@ -1737,6 +1737,41 @@ local function getStatisticEffect(value)
     return modrt.statisticEffect(floor(tonumber(value) or 0))
 end
 
+-- Game.Houses[id]: a house of the house table. Val is its price multiplier; a script's Val stays with the scripts
+-- and reaches the engine where it asks them for a house's prices (GetShopItemTreatment: identifying, repairing).
+local houseVals = {}
+
+function Bindings.houseVal(id)
+    return houseVals[id] or modrt.houseGet(id, "Val")
+end
+
+local houses = boundObject("Game.Houses", {
+    index = function(id)
+        id = floor(id)
+
+        return setmetatable({}, {
+            __index = function(_, field)
+                if field == "Val" then
+                    return Bindings.houseVal(id)
+                end
+
+                return modrt.houseGet(id, field)
+            end,
+            __newindex = function(_, field, value)
+                if field == "Val" then
+                    houseVals[id] = tonumber(value)
+                end
+            end,
+        })
+    end,
+})
+
+-- The house whose dialog is open (0 for none): Merge's GetCurrentHouse. While a house names its prices
+-- (GetShopItemTreatment) it is that house.
+function GetCurrentHouse()
+    return Bindings.pricingHouse or modrt.gameGet("CurrentHouse") or 0
+end
+
 Game = boundObject("Game", {
     owned = "Game",
     bound = {
@@ -1747,6 +1782,7 @@ Game = boundObject("Game", {
         CurrentPlayer = true, Time = true, Classes = true, ClassNames = true, ClassesExtra = true,
         HouseScreen = true, GlobalTxt = true, CurrentCharScreen = true, NPCText = true, HouseRules = true,
         SpellsTxt = true, StatsDescriptions = true, NPC = true, NPCTopic = true, QuestsTxt = true,
+        TurnBased = true, TurnBasedPhase = true, Houses = true,
     },
     get = function(key)
         if key == "ItemsTxt" then
@@ -1779,6 +1815,13 @@ Game = boundObject("Game", {
         elseif key == "CurrentScreen" then
             -- Which screen is up, by const.Screens: 0 the game itself, 7 the character screen, 13 a house...
             return modrt.gameGet("CurrentScreen") or 0
+        elseif key == "Houses" then
+            return houses
+        elseif key == "TurnBased" then
+            return (modrt.gameGet("TurnBasedPhase") or 0) ~= 0
+        elseif key == "TurnBasedPhase" then
+            -- 1 the monsters' turn, 2 the party's attacks, 3 the party walking; 0 out of turn-based combat.
+            return modrt.gameGet("TurnBasedPhase") or 0
         elseif key == "Spells" then
             return spellsTxt
         elseif key == "StdItemsTxt" then
@@ -1828,6 +1871,19 @@ Game = boundObject("Game", {
             return math.random(0, 32767)
         end,
     },
+    set = function(key, value)
+        -- Setting the phase away from 3 ends the party's turn-based walk (MAW's Doom limits it so); the engine moves
+        -- through its other phases itself.
+        if key == "TurnBasedPhase" then
+            if tonumber(value) ~= 3 and modrt.gameGet("TurnBasedPhase") == 3 then
+                modrt.turnBasedEndWalk()
+            end
+
+            return true
+        end
+
+        return false
+    end,
 })
 
 local function monsterCount()
@@ -1913,7 +1969,13 @@ local function mapMonster(index)
             local kind = modrt.mapMonsterGet(index, "Id")
             return kind and modrt.monsterTxtGet(kind, field) or nil
         end, function(field, value)
-            return modrt.mapMonsterSet(index, field, value)
+            local written = modrt.mapMonsterSet(index, field, value)
+
+            if written and (field == "Bonus" or field == "BonusMul") then
+                Bindings.rememberMonsterSpecial(index, field, value)
+            end
+
+            return written
         end, {
             GetIndex = function()
                 return index
@@ -1939,6 +2001,53 @@ function Bindings.resetMapMonsters()
     monsterBuffWrites = {}
     modrt.mapMonstersResetSpeed()
 end
+
+-- A monster's special attack (Bonus) and its strength (BonusMul) as a script set them stay with it, as they do in the
+-- original's map data: they are kept with the save by map and monster, and given back when the map is entered
+-- (MAW's Doom gives them once per map).
+local function monsterSpecials(mapName, create)
+    local runtime = ModRT.State.runtime
+    runtime.monsterSpecials = runtime.monsterSpecials or {}
+
+    if create then
+        runtime.monsterSpecials[mapName] = runtime.monsterSpecials[mapName] or {}
+    end
+
+    return runtime.monsterSpecials[mapName]
+end
+
+function Bindings.rememberMonsterSpecial(index, field, value)
+    local mapName = (modrt.gameGet("MapFileName") or ""):lower()
+
+    if mapName ~= "" then
+        local specials = monsterSpecials(mapName, true)
+        specials[index] = specials[index] or {}
+        specials[index][field] = math.floor(tonumber(value) or 0)
+    end
+end
+
+function Bindings.restoreMonsterSpecials(mapName)
+    for index, fields in pairs(monsterSpecials(mapName, false) or {}) do
+        for field, value in pairs(fields) do
+            modrt.mapMonsterSet(index, field, value)
+        end
+    end
+end
+
+-- Map.Chests[i]: Trapped is known while a chest is being opened (CanOpenChest); the engine's chests are not bound
+-- otherwise.
+local openingChest = {}
+
+function Bindings.setOpeningChest(chestId, trapped)
+    openingChest = chestId and {[chestId] = trapped} or {}
+end
+
+local mapChests = boundObject("Map.Chests", {
+    index = function(index)
+        local trapped = openingChest[index]
+        return {Trapped = trapped == true}
+    end,
+})
 
 local MapMonsterLimit = 3000
 local monsterSizes = sizeFields(monsterCount)
@@ -1995,10 +2104,12 @@ local mapNotes = boundObject("Map.Notes", {
 Map = boundObject("Map", {
     owned = "Map",
     bound = {Monsters = true, Name = true, MapStatsIndex = true, IndoorOrOutdoor = true, TilesetsFile = true,
-        Notes = true},
+        Notes = true, Chests = true},
     get = function(key)
         if key == "Notes" then
             return mapNotes
+        elseif key == "Chests" then
+            return mapChests
         elseif key == "Monsters" then
             return mapMonsters
         elseif key == "TilesetsFile" then

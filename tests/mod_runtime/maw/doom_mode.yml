@@ -1,0 +1,86 @@
+id: mod_runtime.maw.doom_mode
+title: MAW's Doom reaches the engine where its scripts need it
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# Doom (vars.Mode 2) asks the engine for: a monster's own special attack (Map.Monsters[i].Bonus and BonusMul, given
+# on arriving at a map and kept with the save), the turn-based phase (Game.TurnBasedPhase, which ends the party's
+# walk when set away from 3), and whether a chest opens (CanOpenChest: in Doom an untrapped chest needs Disarm
+# Traps, a trapped one goes to its trap). Run with the MAW mods.yml.
+- mod_lua:
+    code: ModRT.GameMode.set("Doom")
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 1
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- advance_runtime: {seconds: 2}
+# MAW gave the map's monsters their Doom effects on arrival; a monster's own special attack reads back from the engine.
+- mod_lua:
+    code: |
+      Probe = nil
+      for i = 0, Map.Monsters.High do
+        if Map.Monsters[i].NameId == 0 then Probe = i break end
+      end
+      local mon = Map.Monsters[Probe]
+      local kindBonus = Game.MonstersTxt[mon.Id].Bonus
+      mon.Bonus = 8
+      mon.BonusMul = 3
+      return vars.Mode, tostring(mapvars.monsterBuffs), mon.Bonus, mon.BonusMul, Game.MonstersTxt[mon.Id].Bonus == kindBonus,
+        Game.TurnBased, Game.TurnBasedPhase
+    expect: "2\ttrue\t8\t3\ttrue\tfalse\t0"
+- save_game: maw_doom_mode
+- load_game: maw_doom_mode
+- advance_runtime: {seconds: 1}
+- mod_lua:
+    code: return Map.Monsters[Probe].Bonus, Map.Monsters[Probe].BonusMul
+    expect: "8\t3"
+# A chest without a trap stays shut for a party without enough Disarm Traps; one with a trap goes on to it.
+- mod_lua:
+    code: |
+      -- MAW asks for Disarm Traps skill of at least the map's lock (0 here; 3 for the check).
+      Game.MapStats[Map.MapStatsIndex].Lock = 3
+      local untrapped = ModRT.Stats.canOpenChest(0, false)
+      local trapped = ModRT.Stats.canOpenChest(0, true)
+      return tostring(untrapped), tostring(trapped), tostring(Map.Chests[0].Trapped), ModRT.totalErrorCount
+    expect: "false\ttrue\tfalse\t0"
+# A house's prices for identifying and repairing (GetShopItemTreatment, Game.Houses[house].Val, its price
+# multiplier): in Doom identifying costs as much as the item's IdRepSt squared makes it, repairing its whole value
+# (Val 5: value / (6 - 5)). The item here is a stand-in with IdRepSt 3.
+- mod_lua:
+    code: |
+      local realItem = ModRT.Bindings.eventItem
+      ModRT.Bindings.eventItem = {T = function() return {IdRepSt = 3} end}
+      local base = Game.Houses[1].Val
+      local identify = ModRT.Stats.shopItemTreatment(false, 1, base)
+      local repair = ModRT.Stats.shopItemTreatment(true, 1, base)
+      ModRT.Bindings.eventItem = realItem
+      return identify, repair, base > 0, GetCurrentHouse(), ModRT.totalErrorCount
+    expect: "9\t5\ttrue\t0\t0"
+# No one follows a Doom party for hire, but in houses 1466 and 1486 (MAW's NPCFollowers.lua).
+- mod_lua:
+    code: |
+      local allow, text = ModRT.Stats.canHireNpcFollower(1, 0)
+      local inHouse = ModRT.Stats.canHireNpcFollower(1, 1466)
+      return tostring(allow), text, tostring(inHouse)
+    expect: "false\tI wouldn't join in your reckless adventure, not even for all the wealth in the world.\ttrue"
+# In Normal mode chests open as the engine has them.
+- mod_lua:
+    code: ModRT.GameMode.set("Normal")
+- new_game_flow:
+    start_map: oute3.odm
+- mod_lua:
+    code: return vars.Mode, tostring(ModRT.Stats.canOpenChest(0, false)), tostring(ModRT.Stats.canHireNpcFollower(1, 0))
+    expect: "0\ttrue\ttrue"

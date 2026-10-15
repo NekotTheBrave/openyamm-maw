@@ -137,6 +137,7 @@ function State.syncMap()
 
     if ModRT.Bindings and ModRT.Bindings.resetMapMonsters then
         ModRT.Bindings.resetMapMonsters()
+        ModRT.Bindings.restoreMonsterSpecials(mapName)
     end
 
     ModRT.Events.removeScope("map")

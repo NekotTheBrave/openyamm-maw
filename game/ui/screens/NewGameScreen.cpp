@@ -2004,7 +2004,8 @@ void NewGameScreen::confirmCreation()
         }
     }
 
-    // The new game starts at the difficulty chosen here.
+    // The new game starts at the difficulty and in the mode chosen here.
+    modSetGameMode(m_gameMode);
     modSetDifficulty(m_difficulty);
 
     if (m_continueAction)
@@ -2184,7 +2185,9 @@ void NewGameScreen::drawScreen(float deltaSeconds)
 
         label("CharacterCreationDifficultyLabel", "Difficulty");
 
-        if (selectBox("difficulty", designRect("CharacterCreationDifficultyValue"), m_difficulty, true, 12.16f))
+        // A mode with a difficulty of its own (MAW's Doom) offers that one only.
+        if (selectBox("difficulty", designRect("CharacterCreationDifficultyValue"), m_difficulty,
+                      difficulties.size() > 1, 12.16f))
         {
             endNameEditing(true);
             confirm("Choose Difficulty", "The new adventure starts at it.", difficulties,
@@ -2193,6 +2196,38 @@ void NewGameScreen::drawScreen(float deltaSeconds)
                         if (index >= 0)
                         {
                             m_difficulty = difficulties[size_t(index)];
+                        }
+                    }, true);
+        }
+    }
+
+    // The mod's game modes (MAW's), the one the new game starts in. Choosing one is told to the mod at once, as the
+    // difficulties offered may follow it.
+    if (const std::vector<std::string> modes = modGameModeChoices(); !modes.empty())
+    {
+        if (m_gameMode.empty())
+        {
+            m_gameMode = modGameMode();
+        }
+
+        label("CharacterCreationModeLabel", "Mode");
+
+        if (selectBox("game_mode", designRect("CharacterCreationModeValue"), m_gameMode, true, 12.16f))
+        {
+            endNameEditing(true);
+            confirm("Choose Game Mode", "The new adventure is played in it from start to end.", modes,
+                    [this, modes](int index)
+                    {
+                        if (index >= 0)
+                        {
+                            m_gameMode = modes[size_t(index)];
+                            modSetGameMode(m_gameMode);
+                            const std::vector<std::string> difficulties = modDifficultyChoices();
+
+                            if (std::find(difficulties.begin(), difficulties.end(), m_difficulty) == difficulties.end())
+                            {
+                                m_difficulty = modDifficulty();
+                            }
                         }
                     }, true);
         }

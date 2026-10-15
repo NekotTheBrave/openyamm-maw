@@ -338,6 +338,36 @@ end
 
 -- The party member in `slot` would put on the held item, `itemId` (Mouse.Item), and the game lets them: the
 -- original's CanWearItem, which handlers answer by setting Available to false. Returns whether they may.
+-- Chest `chestId` of the map is being opened, before its trap is looked at: the original's CanOpenChest. Returns
+-- whether it opens (CanOpen as the handlers leave it); Map.Chests[ChestId].Trapped says whether it has a trap.
+function Stats.canOpenChest(chestId, trapped)
+    local event = {ChestId = chestId, CanOpen = true}
+    ModRT.Bindings.setOpeningChest(chestId, trapped)
+    ModRT.fire("CanOpenChest", event)
+    ModRT.Bindings.setOpeningChest(nil)
+    return event.CanOpen ~= false
+end
+
+-- NPC `npcId` is asked to follow the party for hire in house `houseId` (0 outside a house). Not an MMExtension
+-- event (Merge decides it in its NPCFollowers.lua, which OpenYAMM does natively): CanHireNPCFollower with NPC, House,
+-- Allow and Text, what the NPC says instead when Allow is false. Returns Allow and Text.
+function Stats.canHireNpcFollower(npcId, houseId)
+    local event = {NPC = npcId, House = houseId, Allow = true}
+    ModRT.fire("CanHireNPCFollower", event)
+    return event.Allow ~= false, event.Text ~= nil and tostring(event.Text) or nil
+end
+
+-- House `houseId` names its price for identifying (`repair` false) or repairing ModRT.Bindings.eventItem: the
+-- original's GetShopItemTreatment, Action "identify" or "repair", where handlers set Game.Houses[house].Val, the
+-- house's price multiplier. Returns the multiplier the house has after them.
+function Stats.shopItemTreatment(repair, houseId, multiplier)
+    local event = {Action = repair and "repair" or "identify", Item = ModRT.Bindings.eventItem, House = houseId}
+    ModRT.Bindings.pricingHouse = houseId
+    ModRT.fire("GetShopItemTreatment", event)
+    ModRT.Bindings.pricingHouse = nil
+    return tonumber(ModRT.Bindings.houseVal(houseId)) or multiplier
+end
+
 function Stats.canWearItem(slot, itemId)
     local event = {PlayerId = slot, ItemId = itemId, Available = true}
     ModRT.fire("CanWearItem", event)

@@ -307,6 +307,18 @@ public:
     // The character may put on the held item, item `itemId`, as far as the game goes (the original's CanWearItem):
     // whether the mod lets it.
     virtual bool canWearItem(const Character &character, uint32_t itemId) = 0;
+    // Whether the party may open chest `chestId` of the map (the original's CanOpenChest), before its trap is
+    // looked at; `trapped`, whether it has one. MAW's Doom locks chests to those without enough Disarm Traps.
+    virtual bool canOpenChest(uint32_t chestId, bool trapped) = 0;
+    // Whether NPC `npcId` will follow the party for hire, asked in house `houseId` (0 outside a house); false with
+    // what the NPC says instead in `refusal`. MAW's Doom: no one but in two houses (its NPCFollowers.lua, a Merge
+    // override the port does not run).
+    virtual bool canHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal) = 0;
+    // The price multiplier of house `houseId` for identifying (`repair` false) or repairing `item` (the original's
+    // GetShopItemTreatment, where a mod sets Game.Houses[house].Val): identifying costs 50 times it, repairing the
+    // item's value divided by 6 less it. MAW's Doom makes identifying cost the item's IdRepSt squared times 50 and
+    // repairing its whole value.
+    virtual float shopItemTreatment(bool repair, uint32_t houseId, const InventoryItem &item, float engineMultiplier) = 0;
     // The party asks a town hall about its bounty hunt: the mod's text, if it runs the hunts itself (MAW's
     // BountyHunt.lua: the hunt, the monster's summoning and the reward are its own).
     virtual bool townHallBounty(std::string &text) = 0;
@@ -344,9 +356,6 @@ public:
     virtual void npcDialogClosed() = 0;
     // The quest log's entries the mod adds that have no quest bit of their own (Merge's AutoQuest).
     virtual void questLog(std::vector<std::string> &texts) = 0;
-    // The difficulties the mod offers (MAW's Easy ... Nightmare), none when it has none; the current one (the
-    // game's being played, else the one a new game would start at); and choosing one, which changes the game being
-    // played, if any, and is the one the next new game starts at.
     // The player answered the question a mod asked (Question; the game's answer prompt, under ModCommandEventId):
     // the text typed, empty when the prompt was left.
     virtual void questionAnswered(const std::string &answer) = 0;
@@ -354,9 +363,17 @@ public:
     // them clicked.
     virtual void hudButtons(std::vector<ModHudButton> &buttons) = 0;
     virtual void hudButtonClicked(int id) = 0;
+    // The difficulties the mod offers (MAW's Easy ... Nightmare), none when it has none; the current one (the
+    // game's being played, else the one a new game would start at); and choosing one, which changes the game being
+    // played, if any, and is the one the next new game starts at.
     virtual std::vector<std::string> difficultyChoices() = 0;
     virtual std::string difficulty() = 0;
     virtual void setDifficulty(const std::string &name) = 0;
+    // The game modes the mod offers (MAW's Normal, Doom, Road to Insanity, Beyond Madness, Austerity), none when it
+    // has none; the one the next new game starts in; and choosing it. A game keeps the mode it began in.
+    virtual std::vector<std::string> gameModeChoices() = 0;
+    virtual std::string gameMode() = 0;
+    virtual void setGameMode(const std::string &name) = 0;
     // The game's global events the same way (the original's evt.global[id] handlers and
     // Game.GlobalEvtLines:RemoveEvent(id)), with the events the original raises around them: whether the mod has
     // anything for global event `eventId`.
@@ -466,6 +483,13 @@ void modMonsterInformationBox(ModMonsterInfoBox &box);
 // Runs the mod's CanWearItem event for the held item the game would let the character put on: whether the mod lets
 // it too (true without a mod).
 bool modCanWearItem(const Character &character, uint32_t itemId);
+// Whether the party may open the chest (true without a mod); see IModHooks::canOpenChest.
+bool modCanOpenChest(uint32_t chestId, bool trapped);
+// Whether the NPC will follow the party for hire (true without a mod); see IModHooks::canHireNpcFollower.
+bool modCanHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal);
+// The house's price multiplier for identifying or repairing the item (the engine's without a mod); see
+// IModHooks::shopItemTreatment.
+float modShopItemTreatment(bool repair, uint32_t houseId, const InventoryItem &item, float engineMultiplier);
 
 // Runs the mod's CanLearnSpell event and returns the mastery the spell takes, `engineMastery` without a mod.
 int modCanLearnSpell(const Character &character, uint32_t spellId, int engineMastery);
@@ -482,8 +506,6 @@ ModPlayerActionResult modPlayerActionWithHeldItem(int action, InventoryItem &hel
 // runtime.
 MonsterTable::LootPrototype modCorpseLoot(size_t actorIndex, const MonsterTable::LootPrototype &engineLoot);
 
-// The difficulties the mod offers (none without a mod or when it has none), the current one, and choosing one; see
-// IModHooks::difficultyChoices.
 // The buttons a mod shows on the screen open now (none without a mod); a click on one.
 std::vector<ModHudButton> modHudButtons();
 void modHudButtonClicked(int id);
@@ -500,9 +522,15 @@ std::vector<ModDrawnHudButton> &modDrawnHudButtons();
 
 // Hands the mod the answer to its question (see IModHooks::questionAnswered).
 void modQuestionAnswered(const std::string &answer);
+// The difficulties the mod offers (none without a mod or when it has none), the current one, and choosing one; see
+// IModHooks::difficultyChoices.
 std::vector<std::string> modDifficultyChoices();
 std::string modDifficulty();
 void modSetDifficulty(const std::string &name);
+// The same for the game modes; see IModHooks::gameModeChoices.
+std::vector<std::string> modGameModeChoices();
+std::string modGameMode();
+void modSetGameMode(const std::string &name);
 
 // The topics a mod sets for NPC `npcId`'s dialog (none without a mod); see IModHooks::npcTopics.
 std::vector<ModNpcTopic> modNpcTopics(uint32_t npcId);

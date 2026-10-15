@@ -1,4 +1,5 @@
 #include "game/gameplay/HouseServiceRuntime.h"
+#include "game/mod/ModHooks.h"
 
 #include "game/gameplay/NpcFollowerRuntime.h"
 #include "game/gameplay/StealingRuntime.h"
@@ -1118,7 +1119,7 @@ std::string buildIdentifyPhrase(
         pActiveMember,
         item,
         itemDefinition,
-        houseEntry.priceMultiplier,
+        modShopItemTreatment(false, houseEntry.id, item, houseEntry.priceMultiplier),
         pStandardItemEnchantTable,
         pSpecialItemEnchantTable,
         effectiveReputation);
@@ -1151,7 +1152,7 @@ std::string buildRepairPhrase(
         pActiveMember,
         item,
         itemDefinition,
-        houseEntry.priceMultiplier,
+        modShopItemTreatment(true, houseEntry.id, item, houseEntry.priceMultiplier),
         pStandardItemEnchantTable,
         pSpecialItemEnchantTable,
         effectiveReputation);
@@ -1955,7 +1956,7 @@ bool HouseServiceRuntime::tryIdentifyInventoryItem(
         partyMerchantMember(party),
         *pItem,
         *pItemDefinition,
-        houseEntry.priceMultiplier,
+        modShopItemTreatment(false, houseEntry.id, *pItem, houseEntry.priceMultiplier),
         &standardItemEnchantTable,
         &specialItemEnchantTable,
         effectiveReputation);
@@ -2080,7 +2081,7 @@ bool HouseServiceRuntime::tryRepairInventoryItem(
         partyMerchantMember(party),
         *pItem,
         *pItemDefinition,
-        houseEntry.priceMultiplier,
+        modShopItemTreatment(true, houseEntry.id, *pItem, houseEntry.priceMultiplier),
         &standardItemEnchantTable,
         &specialItemEnchantTable,
         effectiveReputation);

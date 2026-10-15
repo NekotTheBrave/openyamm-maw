@@ -148,6 +148,8 @@ public:
     void confirmCreation();
     // The difficulty the new game starts at, by the active mod's name for it; empty until the screen asks the mod.
     std::string m_difficulty;
+    // The game mode the new game starts in, by the active mod's name for it.
+    std::string m_gameMode;
     void cancelCreation();
     Character buildVoicePreviewCharacter() const;
     void showCreationCompletionError();

@@ -3553,6 +3553,12 @@ GameplayDialogController::Result GameplayDialogController::executeActiveDialogAc
         {
             context.eventRuntimeState.messages.push_back(pNpc->name + " is already following you.");
         }
+        else if (std::string refusal; !modCanHireNpcFollower(
+                     offer.npcId, currentDialogueHostHouseId(context.eventRuntimeState), refusal))
+        {
+            context.eventRuntimeState.messages.push_back(
+                refusal.empty() ? std::string("That follower is not available.") : refusal);
+        }
         else if (context.eventRuntimeState.hiredNpcFollowers.size() >= MaxNpcFollowerCount
             || hiredNpcFollowerFeePercent(context.eventRuntimeState) >= MaxNpcFollowerFeePercent)
         {

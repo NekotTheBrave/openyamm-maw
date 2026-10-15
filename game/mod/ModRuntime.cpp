@@ -1913,6 +1913,86 @@ bool ModRuntime::canWearItem(const Character &character, uint32_t itemId)
     return available;
 }
 
+bool ModRuntime::canOpenChest(uint32_t chestId, bool trapped)
+{
+    if (!m_active || !beginDispatch("canOpenChest"))
+    {
+        return true;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(chestId));
+    lua_pushboolean(m_pLuaState, trapped);
+    bool canOpen = true;
+
+    if (endDispatch(2, 1))
+    {
+        canOpen = lua_toboolean(m_pLuaState, -1) != 0;
+        lua_pop(m_pLuaState, 1);
+    }
+
+    return canOpen;
+}
+
+bool ModRuntime::canHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal)
+{
+    if (!m_active || !beginDispatch("canHireNpcFollower"))
+    {
+        return true;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(npcId));
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(houseId));
+    bool allow = true;
+
+    if (endDispatch(2, 2))
+    {
+        allow = lua_isnil(m_pLuaState, -2) || lua_toboolean(m_pLuaState, -2) != 0;
+
+        if (lua_type(m_pLuaState, -1) == LUA_TSTRING)
+        {
+            refusal = lua_tostring(m_pLuaState, -1);
+        }
+
+        lua_pop(m_pLuaState, 2);
+    }
+
+    return allow;
+}
+
+float ModRuntime::shopItemTreatment(bool repair, uint32_t houseId, const InventoryItem &item, float engineMultiplier)
+{
+    if (!m_active || !beginDispatch("shopItemTreatment"))
+    {
+        return engineMultiplier;
+    }
+
+    // The handlers look at the item (MAW: its kind's IdRepSt); they see a copy.
+    InventoryItem eventItem = item;
+    InventoryItem *pPreviousEventItem = setModEventItem(&eventItem);
+    lua_pushboolean(m_pLuaState, repair);
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(houseId));
+    lua_pushnumber(m_pLuaState, engineMultiplier);
+    float multiplier = engineMultiplier;
+
+    if (endDispatch(3, 1))
+    {
+        if (lua_isnumber(m_pLuaState, -1))
+        {
+            const float value = static_cast<float>(lua_tonumber(m_pLuaState, -1));
+
+            if (std::isfinite(value))
+            {
+                multiplier = value;
+            }
+        }
+
+        lua_pop(m_pLuaState, 1);
+    }
+
+    setModEventItem(pPreviousEventItem);
+    return multiplier;
+}
+
 bool ModRuntime::hasMapEvent(uint16_t eventId)
 {
     if (!m_active || !beginDispatch("hasMapEvent"))
@@ -2018,9 +2098,39 @@ void ModRuntime::questionAnswered(const std::string &answer)
 
 std::vector<std::string> ModRuntime::difficultyChoices()
 {
+    return dispatchChoices("difficultyChoices");
+}
+
+std::string ModRuntime::difficulty()
+{
+    return dispatchChoice("difficultyGet");
+}
+
+void ModRuntime::setDifficulty(const std::string &name)
+{
+    dispatchChoose("difficultySet", name);
+}
+
+std::vector<std::string> ModRuntime::gameModeChoices()
+{
+    return dispatchChoices("gameModeChoices");
+}
+
+std::string ModRuntime::gameMode()
+{
+    return dispatchChoice("gameModeGet");
+}
+
+void ModRuntime::setGameMode(const std::string &name)
+{
+    dispatchChoose("gameModeSet", name);
+}
+
+std::vector<std::string> ModRuntime::dispatchChoices(const char *pKind)
+{
     std::vector<std::string> choices;
 
-    if (!m_active || !beginDispatch("difficultyChoices"))
+    if (!m_active || !beginDispatch(pKind))
     {
         return choices;
     }
@@ -2050,11 +2160,11 @@ std::vector<std::string> ModRuntime::difficultyChoices()
     return choices;
 }
 
-std::string ModRuntime::difficulty()
+std::string ModRuntime::dispatchChoice(const char *pKind)
 {
     std::string name;
 
-    if (!m_active || !beginDispatch("difficultyGet"))
+    if (!m_active || !beginDispatch(pKind))
     {
         return name;
     }
@@ -2072,9 +2182,9 @@ std::string ModRuntime::difficulty()
     return name;
 }
 
-void ModRuntime::setDifficulty(const std::string &name)
+void ModRuntime::dispatchChoose(const char *pKind, const std::string &name)
 {
-    if (!m_active || !beginDispatch("difficultySet"))
+    if (!m_active || !beginDispatch(pKind))
     {
         return;
     }

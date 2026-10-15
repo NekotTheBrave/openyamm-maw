@@ -327,19 +327,23 @@ local function dispatchKind(kind, ...)
         return ModRT.HudButtons.click(...)
     elseif kind == "questionAnswered" then
         return ModRT.MapEvents.questionAnswered(...)
-    elseif kind == "difficultyChoices" or kind == "difficultyGet" or kind == "difficultySet" then
-        -- A mod that has difficulties registers them as ModRT.Difficulty = {choices = f, get = f, set = f}.
-        local provider = ModRT.Difficulty
+    elseif kind == "difficultyChoices" or kind == "difficultyGet" or kind == "difficultySet"
+        or kind == "gameModeChoices" or kind == "gameModeGet" or kind == "gameModeSet" then
+        -- A mod that has difficulties registers them as ModRT.Difficulty = {choices = f, get = f, set = f}, and its
+        -- game modes the same way as ModRT.GameMode.
+        local isMode = kind:sub(1, 8) == "gameMode"
+        local provider = isMode and ModRT.GameMode or ModRT.Difficulty
 
         if not provider then
             return nil
         end
 
         ModRT.ensureSession()
+        local action = kind:sub(isMode and 9 or 11)
 
-        if kind == "difficultyChoices" then
+        if action == "Choices" then
             return provider.choices()
-        elseif kind == "difficultyGet" then
+        elseif action == "Get" then
             return provider.get()
         end
 
@@ -364,6 +368,12 @@ local function dispatchKind(kind, ...)
         return ModRT.Stats.monsterInformationBox(...)
     elseif kind == "canWearItem" then
         return ModRT.Stats.canWearItem(...)
+    elseif kind == "canOpenChest" then
+        return ModRT.Stats.canOpenChest(...)
+    elseif kind == "canHireNpcFollower" then
+        return ModRT.Stats.canHireNpcFollower(...)
+    elseif kind == "shopItemTreatment" then
+        return ModRT.Stats.shopItemTreatment(...)
     elseif kind == "hasMapEvent" then
         return ModRT.MapEvents.has(...)
     elseif kind == "mapEvent" then

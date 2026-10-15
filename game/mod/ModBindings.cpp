@@ -2209,36 +2209,6 @@ auto monsterNumberField(StatsType &stats, const std::string &field) -> decltype(
     return nullptr;
 }
 
-int monsterBonusNumber(MonsterSpecialAttackKind kind)
-{
-    switch (kind)
-    {
-        case MonsterSpecialAttackKind::Curse: return 1;
-        case MonsterSpecialAttackKind::Weak: return 2;
-        case MonsterSpecialAttackKind::Sleep: return 3;
-        case MonsterSpecialAttackKind::Drunk: return 4;
-        case MonsterSpecialAttackKind::Insane: return 5;
-        case MonsterSpecialAttackKind::PoisonWeak: return 6;
-        case MonsterSpecialAttackKind::PoisonMedium: return 7;
-        case MonsterSpecialAttackKind::PoisonSevere: return 8;
-        case MonsterSpecialAttackKind::DiseaseWeak: return 9;
-        case MonsterSpecialAttackKind::DiseaseMedium: return 10;
-        case MonsterSpecialAttackKind::DiseaseSevere: return 11;
-        case MonsterSpecialAttackKind::Paralyze: return 12;
-        case MonsterSpecialAttackKind::Unconscious: return 13;
-        case MonsterSpecialAttackKind::Dead: return 14;
-        case MonsterSpecialAttackKind::Petrify: return 15;
-        case MonsterSpecialAttackKind::Eradicate: return 16;
-        case MonsterSpecialAttackKind::BreakAny: return 17;
-        case MonsterSpecialAttackKind::BreakArmor: return 18;
-        case MonsterSpecialAttackKind::BreakWeapon: return 19;
-        case MonsterSpecialAttackKind::Aging: return 21;
-        case MonsterSpecialAttackKind::ManaDrain: return 22;
-        case MonsterSpecialAttackKind::Fear: return 23;
-        default: return 0;
-    }
-}
-
 int nativeMonsterTxtGet(lua_State *pLuaState)
 {
     const GameDataLoader *pData = dataFromHost(pLuaState);
@@ -2311,7 +2281,7 @@ int nativeMonsterTxtGet(lua_State *pLuaState)
     }
     else if (field == "Bonus")
     {
-        lua_pushinteger(pLuaState, monsterBonusNumber(pStats->specialAttackKind));
+        lua_pushinteger(pLuaState, mm8MonsterBonusNumber(pStats->specialAttackKind));
     }
     else if (field == "Attack1Type")
     {
@@ -3864,6 +3834,8 @@ std::optional<GameplayModActorField> actorFieldFromName(const std::string &field
         {"Velocity", GameplayModActorField::MoveSpeed},
         {"AIType", GameplayModActorField::AiType},
         {"Item", GameplayModActorField::CarriedItem},
+        {"Bonus", GameplayModActorField::SpecialAttack},
+        {"BonusMul", GameplayModActorField::SpecialAttackLevel},
     };
     const std::unordered_map<std::string, GameplayModActorField>::const_iterator it = fields.find(field);
 
@@ -4466,6 +4438,47 @@ int nativeMapMonstersResetSpeed(lua_State *pLuaState)
 
 // --- game ------------------------------------------------------------------------------------------------------------
 
+// modrt.houseGet(id, field): a house of the house table. "Val" its price multiplier (the original's Val), "Name".
+int nativeHouseGet(lua_State *pLuaState)
+{
+    const GameDataLoader *pData = dataFromHost(pLuaState);
+    const HouseEntry *pHouse =
+        pData != nullptr ? pData->getHouseTable().get(clampedInteger<uint32_t>(integerArgument(pLuaState, 1))) : nullptr;
+    const std::string field = luaL_checkstring(pLuaState, 2);
+
+    if (pHouse == nullptr)
+    {
+        return 0;
+    }
+
+    if (field == "Val")
+    {
+        lua_pushnumber(pLuaState, pHouse->priceMultiplier);
+        return 1;
+    }
+
+    if (field == "Name")
+    {
+        pushString(pLuaState, pHouse->name);
+        return 1;
+    }
+
+    return 0;
+}
+
+// modrt.turnBasedEndWalk(): ends the party's turn-based walk (Game.TurnBasedPhase set away from 3).
+int nativeTurnBasedEndWalk(lua_State *pLuaState)
+{
+    const ModHost *pHost = hostFromUpvalue(pLuaState);
+
+    if (pHost != nullptr && pHost->endTurnBasedWalk)
+    {
+        pHost->endTurnBasedWalk();
+    }
+
+    return 0;
+}
+
 int nativeGameGet(lua_State *pLuaState)
 {
     const ModHost *pHost = hostFromUpvalue(pLuaState);
@@ -4501,6 +4514,20 @@ int nativeGameGet(lua_State *pLuaState)
     if (field == "CurrentScreen")
     {
         lua_pushinteger(pLuaState, pHost->currentScreen ? pHost->currentScreen() : 0);
+        return 1;
+    }
+
+    if (field == "CurrentHouse")
+    {
+        IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+        const EventRuntimeState *pState = pWorld != nullptr ? pWorld->eventRuntimeState() : nullptr;
+        lua_pushinteger(pLuaState, pState != nullptr ? static_cast<lua_Integer>(pState->dialogueState.hostHouseId) : 0);
+        return 1;
+    }
+
+    if (field == "TurnBasedPhase")
+    {
+        lua_pushinteger(pLuaState, pHost->turnBasedPhase ? pHost->turnBasedPhase() : 0);
         return 1;
     }
 
@@ -4704,6 +4731,8 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"spellTxtSet", nativeSpellTxtSet},
         {"mapPointInfo", nativeMapPointInfo},
         {"gameGet", nativeGameGet},
+        {"turnBasedEndWalk", nativeTurnBasedEndWalk},
+        {"houseGet", nativeHouseGet},
         {"castSpell", nativeCastSpell},
         {"showStatusText", nativeShowStatusText},
         {"statisticEffect", nativeStatisticEffect},

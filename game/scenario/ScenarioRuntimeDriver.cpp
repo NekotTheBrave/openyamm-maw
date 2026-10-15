@@ -253,6 +253,12 @@ struct ScenarioGameApplicationAccess
         return application.m_modRuntime.executeConsole(code, output);
     }
 
+    // A new game starts the mods' state afresh, as the live new session does.
+    static void resetModState(GameApplication &application)
+    {
+        application.m_modRuntime.restoreState({});
+    }
+
     static bool quickLoadFromPath(GameApplication &application, const std::filesystem::path &path)
     {
         return application.quickLoadFromPath(path, true);
@@ -424,6 +430,7 @@ bool ScenarioRuntimeDriver::startNewGame(
     session.gameplayScreenRuntime().clearSharedUiRuntime();
     ScenarioGameApplicationAccess::shutdownRenderer(m_application);
     session.clear();
+    ScenarioGameApplicationAccess::resetModState(m_application);
     Party party;
     if (pSeed != nullptr)
     {

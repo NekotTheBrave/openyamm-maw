@@ -145,7 +145,67 @@ enum class GameplayModActorField : uint8_t
     Level,
     Resistance0,
     Resistance10 = Resistance0 + 10,
+    // The actor's own special attack (the original's Bonus, by its numbers: 1 curse ... 23 fear, 0 none) and its
+    // strength (BonusMul), its kind's until a mod sets them (MAW's Doom gives monsters one on arriving at a map).
+    SpecialAttack,
+    SpecialAttackLevel,
 };
+
+// The original's number of a monster special attack (Bonus), 0 for none.
+inline int mm8MonsterBonusNumber(MonsterSpecialAttackKind kind)
+{
+    switch (kind)
+    {
+        case MonsterSpecialAttackKind::Curse: return 1;
+        case MonsterSpecialAttackKind::Weak: return 2;
+        case MonsterSpecialAttackKind::Sleep: return 3;
+        case MonsterSpecialAttackKind::Drunk: return 4;
+        case MonsterSpecialAttackKind::Insane: return 5;
+        case MonsterSpecialAttackKind::PoisonWeak: return 6;
+        case MonsterSpecialAttackKind::PoisonMedium: return 7;
+        case MonsterSpecialAttackKind::PoisonSevere: return 8;
+        case MonsterSpecialAttackKind::DiseaseWeak: return 9;
+        case MonsterSpecialAttackKind::DiseaseMedium: return 10;
+        case MonsterSpecialAttackKind::DiseaseSevere: return 11;
+        case MonsterSpecialAttackKind::Paralyze: return 12;
+        case MonsterSpecialAttackKind::Unconscious: return 13;
+        case MonsterSpecialAttackKind::Dead: return 14;
+        case MonsterSpecialAttackKind::Petrify: return 15;
+        case MonsterSpecialAttackKind::Eradicate: return 16;
+        case MonsterSpecialAttackKind::BreakAny: return 17;
+        case MonsterSpecialAttackKind::BreakArmor: return 18;
+        case MonsterSpecialAttackKind::BreakWeapon: return 19;
+        case MonsterSpecialAttackKind::Aging: return 21;
+        case MonsterSpecialAttackKind::ManaDrain: return 22;
+        case MonsterSpecialAttackKind::Fear: return 23;
+        default: return 0;
+    }
+}
+
+// The special attack of the original's number `bonus`; none for 0 and numbers it does not have.
+inline MonsterSpecialAttackKind monsterSpecialAttackFromMm8Bonus(int bonus)
+{
+    constexpr MonsterSpecialAttackKind kinds[] = {
+        MonsterSpecialAttackKind::Curse, MonsterSpecialAttackKind::Weak, MonsterSpecialAttackKind::Sleep,
+        MonsterSpecialAttackKind::Drunk, MonsterSpecialAttackKind::Insane, MonsterSpecialAttackKind::PoisonWeak,
+        MonsterSpecialAttackKind::PoisonMedium, MonsterSpecialAttackKind::PoisonSevere,
+        MonsterSpecialAttackKind::DiseaseWeak, MonsterSpecialAttackKind::DiseaseMedium,
+        MonsterSpecialAttackKind::DiseaseSevere, MonsterSpecialAttackKind::Paralyze,
+        MonsterSpecialAttackKind::Unconscious, MonsterSpecialAttackKind::Dead, MonsterSpecialAttackKind::Petrify,
+        MonsterSpecialAttackKind::Eradicate, MonsterSpecialAttackKind::BreakAny, MonsterSpecialAttackKind::BreakArmor,
+        MonsterSpecialAttackKind::BreakWeapon, MonsterSpecialAttackKind::Aging, MonsterSpecialAttackKind::ManaDrain,
+        MonsterSpecialAttackKind::Fear};
+
+    for (MonsterSpecialAttackKind kind : kinds)
+    {
+        if (mm8MonsterBonusNumber(kind) == bonus)
+        {
+            return kind;
+        }
+    }
+
+    return MonsterSpecialAttackKind::None;
+}
 
 // The const.Damage number of a damage type (0 fire, 1 air, 2 water, 3 earth, 4 physical, 6 spirit, 7 mind, 8 body,
 // 9 light, 10 dark); none for those the original's monsters have no resistance to.
@@ -185,10 +245,52 @@ struct ModActorStatOverrides
 {
     std::optional<int> level;
     std::array<std::optional<int>, 11> resistances = {};
+    // The special attack by the original's number (Bonus) and its strength (BonusMul).
+    std::optional<int> specialAttack;
+    std::optional<int> specialAttackLevel;
 
     int levelOr(int kindLevel) const
     {
         return level.value_or(kindLevel);
+    }
+
+    MonsterSpecialAttackKind specialAttackOr(MonsterSpecialAttackKind kindSpecialAttack) const
+    {
+        return specialAttack ? monsterSpecialAttackFromMm8Bonus(*specialAttack) : kindSpecialAttack;
+    }
+
+    int specialAttackLevelOr(int kindSpecialAttackLevel) const
+    {
+        return specialAttackLevel.value_or(kindSpecialAttackLevel);
+    }
+
+    // Reads (`set` false) or sets the special attack or its strength; false for another field.
+    bool accessSpecialAttack(
+        GameplayModActorField field,
+        int64_t &value,
+        bool set,
+        MonsterSpecialAttackKind kindSpecialAttack,
+        int kindSpecialAttackLevel)
+    {
+        if (field != GameplayModActorField::SpecialAttack && field != GameplayModActorField::SpecialAttackLevel)
+        {
+            return false;
+        }
+
+        std::optional<int> &stored = field == GameplayModActorField::SpecialAttack ? specialAttack : specialAttackLevel;
+
+        if (set)
+        {
+            stored = static_cast<int>(std::clamp<int64_t>(value, 0, INT32_MAX));
+        }
+        else
+        {
+            value = field == GameplayModActorField::SpecialAttack
+                ? (stored ? *stored : mm8MonsterBonusNumber(kindSpecialAttack))
+                : stored.value_or(kindSpecialAttackLevel);
+        }
+
+        return true;
     }
 
     int resistanceOr(CombatDamageType damageType, int kindResistance) const

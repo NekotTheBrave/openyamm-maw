@@ -10992,7 +10992,7 @@ bool IndoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField 
     const MapDeltaActor &actor = pMapDeltaData->actors[actorIndex];
 
     if (field == GameplayModActorField::Level
-        || (field >= GameplayModActorField::Resistance0 && field <= GameplayModActorField::Resistance10))
+        || (field >= GameplayModActorField::Resistance0 && field <= GameplayModActorField::SpecialAttackLevel))
     {
         const MonsterTable::MonsterStatsEntry *pStats = findIndoorActorStats(m_pMonsterTable, actor);
 
@@ -11003,6 +11003,13 @@ bool IndoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField 
 
         ModActorStatOverrides overrides =
             actorIndex < m_mapActorAiStates.size() ? m_mapActorAiStates[actorIndex].modStats : ModActorStatOverrides {};
+
+        if (overrides.accessSpecialAttack(
+                field, value, false, pStats->specialAttackKind, pStats->specialAttackLevel))
+        {
+            return true;
+        }
+
         return overrides.access(
             field,
             value,
@@ -11097,11 +11104,13 @@ bool IndoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFie
     MapDeltaActor &actor = pMapDeltaData->actors[actorIndex];
 
     if (field == GameplayModActorField::Level
-        || (field >= GameplayModActorField::Resistance0 && field <= GameplayModActorField::Resistance10))
+        || (field >= GameplayModActorField::Resistance0 && field <= GameplayModActorField::SpecialAttackLevel))
     {
         return actorIndex < m_mapActorAiStates.size()
-            && m_mapActorAiStates[actorIndex].modStats.access(
-                field, value, true, 0, [](CombatDamageType) { return 0; });
+            && (m_mapActorAiStates[actorIndex].modStats.access(
+                    field, value, true, 0, [](CombatDamageType) { return 0; })
+                || m_mapActorAiStates[actorIndex].modStats.accessSpecialAttack(
+                    field, value, true, MonsterSpecialAttackKind::None, 0));
     }
 
     // An actor's position is also kept, with its sector, in the AI state that movement and targeting work from;
@@ -11873,11 +11882,14 @@ std::optional<GameplayCombatActorInfo> IndoorWorldRuntime::combatActorInfoById(u
                 },
                 *pStats,
                 pMonsterEntry);
-        info.monsterLevel = pStats->level;
+        // The monster's own level and special attack where a mod set them (MAW's bosses, Doom's monsters).
+        const ModActorStatOverrides overrides =
+            actorIndex < m_mapActorAiStates.size() ? m_mapActorAiStates[actorIndex].modStats : ModActorStatOverrides {};
+        info.monsterLevel = overrides.levelOr(pStats->level);
         info.attackPreferences = pStats->attackPreferences;
         info.bolsterAffectsPlayerArmorClass = bolster.statsEnabled;
-        info.specialAttackKind = pStats->specialAttackKind;
-        info.specialAttackLevel = pStats->specialAttackLevel;
+        info.specialAttackKind = overrides.specialAttackOr(pStats->specialAttackKind);
+        info.specialAttackLevel = overrides.specialAttackLevelOr(pStats->specialAttackLevel);
     }
 
     return info;
@@ -17292,6 +17304,13 @@ bool IndoorWorldRuntime::attemptOpenChest(uint32_t chestId, bool openedByTelekin
     }
 
     MapDeltaChest &chest = pMapDeltaData->chests[chestId];
+
+    // A mod may keep the chest shut (MAW's Doom: not without enough Disarm Traps); it says why itself.
+    if (!modCanOpenChest(chestId, (chest.flags & static_cast<uint16_t>(EvtChestFlag::Trapped)) != 0))
+    {
+        return false;
+    }
+
     const GameplayWorldPoint sourcePoint = chestTrapSourcePoint();
     const GameplayWorldPoint visualPoint = chestTrapVisualPoint(sourcePoint);
     ChestTrapOpenContext trapContext = {};

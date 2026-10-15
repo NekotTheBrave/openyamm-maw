@@ -46,5 +46,10 @@ struct ModHost
     std::function<void()> handOverEventItems;
     // The difficulty the game's settings name for a new game ("" for the mod's own default).
     std::function<std::string()> difficultySetting;
+    // Turn-based combat's phase in the original's numbers (Game.TurnBasedPhase): 0 not in turn-based combat, 1 the
+    // monsters' turn (and the wait between), 2 the party's attacks, 3 the party walking.
+    std::function<int()> turnBasedPhase;
+    // Ends the party's turn-based walk, as the original does when its phase is set away from 3.
+    std::function<void()> endTurnBasedWalk;
 };
 }

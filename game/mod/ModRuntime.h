@@ -97,6 +97,9 @@ public:
     bool useMouseItem(size_t memberIndex) override;
     bool potionEffect(uint32_t potionId, int power) override;
     bool canWearItem(const Character &character, uint32_t itemId) override;
+    bool canOpenChest(uint32_t chestId, bool trapped) override;
+    bool canHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal) override;
+    float shopItemTreatment(bool repair, uint32_t houseId, const InventoryItem &item, float engineMultiplier) override;
     void monsterInformationBox(ModMonsterInfoBox &box) override;
     bool townHallBounty(std::string &text) override;
     void mercenaryItemGenerated(InventoryItem &item) override;
@@ -108,6 +111,9 @@ public:
     std::vector<std::string> difficultyChoices() override;
     std::string difficulty() override;
     void setDifficulty(const std::string &name) override;
+    std::vector<std::string> gameModeChoices() override;
+    std::string gameMode() override;
+    void setGameMode(const std::string &name) override;
     bool npcGreeting(uint32_t npcId, bool seen, std::string &text) override;
     void npcDialogClosed() override;
     void questLog(std::vector<std::string> &texts) override;
@@ -152,6 +158,10 @@ private:
     void pushConfig();
     bool runAssetChunk(const std::string &virtualPath);
     bool beginDispatch(const char *pKind);
+    // A mod's list of choices (its difficulties, its game modes): the names, the current one, choosing one.
+    std::vector<std::string> dispatchChoices(const char *pKind);
+    std::string dispatchChoice(const char *pKind);
+    void dispatchChoose(const char *pKind, const std::string &name);
     bool endDispatch(int argumentCount, int resultCount);
 
     lua_State *m_pLuaState = nullptr;

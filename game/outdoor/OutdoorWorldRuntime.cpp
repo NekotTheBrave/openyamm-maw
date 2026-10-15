@@ -4683,6 +4683,13 @@ bool OutdoorWorldRuntime::attemptOpenChest(uint32_t chestId, bool openedByTeleki
     }
 
     MapDeltaChest &chest = m_chests[chestId];
+
+    // A mod may keep the chest shut (MAW's Doom: not without enough Disarm Traps); it says why itself.
+    if (!modCanOpenChest(chestId, (chest.flags & static_cast<uint16_t>(EvtChestFlag::Trapped)) != 0))
+    {
+        return false;
+    }
+
     const GameplayWorldPoint sourcePoint = chestTrapSourcePoint();
     const GameplayWorldPoint visualPoint = chestTrapVisualPoint(sourcePoint);
     ChestTrapOpenContext trapContext = {};
@@ -14038,7 +14045,7 @@ bool OutdoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField
     }
 
     if (field == GameplayModActorField::Level
-        || (field >= GameplayModActorField::Resistance0 && field <= GameplayModActorField::Resistance10))
+        || (field >= GameplayModActorField::Resistance0 && field <= GameplayModActorField::SpecialAttackLevel))
     {
         const MonsterTable::MonsterStatsEntry *pStats =
             m_pMonsterTable != nullptr ? m_pMonsterTable->findStatsById(pActor->monsterId) : nullptr;
@@ -14049,6 +14056,13 @@ bool OutdoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField
         }
 
         ModActorStatOverrides overrides = pActor->modStats;
+
+        if (overrides.accessSpecialAttack(
+                field, value, false, pStats->specialAttackKind, pStats->specialAttackLevel))
+        {
+            return true;
+        }
+
         return overrides.access(
             field,
             value,
@@ -14105,7 +14119,8 @@ bool OutdoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFi
 
     MapActorState &actor = m_mapActors[actorIndex];
 
-    if (actor.modStats.access(field, value, true, 0, [](CombatDamageType) { return 0; }))
+    if (actor.modStats.access(field, value, true, 0, [](CombatDamageType) { return 0; })
+        || actor.modStats.accessSpecialAttack(field, value, true, MonsterSpecialAttackKind::None, 0))
     {
         return true;
     }
@@ -14991,11 +15006,12 @@ std::optional<GameplayCombatActorInfo> OutdoorWorldRuntime::combatActorInfoById(
                     },
                     *pStats,
                     pMonsterEntry);
-            info.monsterLevel = pStats->level;
+            // The monster's own level and special attack where a mod set them (MAW's bosses, Doom's monsters).
+            info.monsterLevel = actor.modStats.levelOr(pStats->level);
             info.attackPreferences = pStats->attackPreferences;
             info.bolsterAffectsPlayerArmorClass = bolster.statsEnabled;
-            info.specialAttackKind = pStats->specialAttackKind;
-            info.specialAttackLevel = pStats->specialAttackLevel;
+            info.specialAttackKind = actor.modStats.specialAttackOr(pStats->specialAttackKind);
+            info.specialAttackLevel = actor.modStats.specialAttackLevelOr(pStats->specialAttackLevel);
         }
 
         return info;

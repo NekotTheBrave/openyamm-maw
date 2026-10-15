@@ -2954,6 +2954,34 @@ GameApplication::GameApplication(const Engine::ApplicationConfig &config)
             screen.ensurePendingEventDialogPresented(true);
         }
     };
+    modHost.turnBasedPhase = [this]()
+    {
+        const TurnBasedCombatRuntime &turnBased = m_gameSession.turnBasedCombatRuntime();
+
+        if (!turnBased.active())
+        {
+            return 0;
+        }
+
+        switch (turnBased.stage())
+        {
+            case TurnBasedCombatStage::Attack:
+                return 2;
+            case TurnBasedCombatStage::Movement:
+                return 3;
+            default:
+                return 1;
+        }
+    };
+    modHost.endTurnBasedWalk = [this]()
+    {
+        TurnBasedCombatRuntime &turnBased = m_gameSession.turnBasedCombatRuntime();
+
+        if (turnBased.active() && turnBased.stage() == TurnBasedCombatStage::Movement)
+        {
+            turnBased.finishMovementPhase();
+        }
+    };
     modHost.currentCharScreen = [this]()
     {
         switch (m_gameSession.gameplayScreenRuntime().characterScreenReadOnly().page)
