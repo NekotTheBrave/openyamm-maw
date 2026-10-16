@@ -515,6 +515,13 @@ bool ModRuntime::loadConfig(const std::filesystem::path &configPath, std::string
         if (root["merge_base"] && root["merge_base"].IsScalar())
         {
             m_mergeBasePath = pathFromUtf8(root["merge_base"].as<std::string>());
+
+            // Relative to mods.yml, as the mods' own paths are (a packaged game keeps them beside it).
+            if (m_mergeBasePath.is_relative())
+            {
+                m_mergeBasePath = configPath.parent_path() / m_mergeBasePath;
+            }
+
             m_readRoots.push_back(m_mergeBasePath);
         }
 
