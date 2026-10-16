@@ -569,6 +569,12 @@ AlchemyMixOutcome AlchemyBenchRuntime::mix(Party &party, const AlchemyRecipe &re
             targetLocation->gridY,
             removedItem);
     }
+    else if (outcome.result.targetItemChanged)
+    {
+        // The target became another kind in its place (a reagent the potion): it takes that kind's cells.
+        InventoryItemMixingRuntime::refitInventoryItem(
+            party, targetLocation->memberIndex, targetLocation->gridX, targetLocation->gridY, tables.itemTable);
+    }
 
     if (outcome.result.returnsBottle)
     {

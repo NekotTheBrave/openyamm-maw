@@ -46,6 +46,15 @@ class InventoryItemMixingRuntime
 public:
     static bool isWandItem(const ItemDefinition &itemDefinition);
     static InventoryItem makeBottleItem(const ItemTable &itemTable, uint32_t bottleItemId);
+    // A mix that made the item at (gridX, gridY) of a member's backpack into another kind (a bottle dropped on a
+    // reagent makes the reagent the potion) leaves it with the old kind's cells: it is taken out and put back at the
+    // new kind's size, where it was if that fits, else elsewhere in that backpack, else as it was.
+    static void refitInventoryItem(
+        Party &party,
+        size_t memberIndex,
+        uint8_t gridX,
+        uint8_t gridY,
+        const ItemTable &itemTable);
     // The power a reagent adds to the alchemist's skill level when it fills a bottle.
     static uint16_t reagentPower(const ItemDefinition &itemDefinition);
 

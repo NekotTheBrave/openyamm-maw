@@ -331,6 +331,50 @@ InventoryItemMixResult InventoryItemMixingRuntime::mixItems(
     return result;
 }
 
+void InventoryItemMixingRuntime::refitInventoryItem(
+    Party &party,
+    size_t memberIndex,
+    uint8_t gridX,
+    uint8_t gridY,
+    const ItemTable &itemTable)
+{
+    const InventoryItem *pItem = party.memberInventoryItemMutable(memberIndex, gridX, gridY);
+    const ItemDefinition *pDefinition = pItem != nullptr ? itemTable.get(pItem->objectDescriptionId) : nullptr;
+    Character *pMember = party.member(memberIndex);
+
+    if (pDefinition == nullptr || pMember == nullptr)
+    {
+        return;
+    }
+
+    const uint8_t width = std::max<uint8_t>(1, pDefinition->inventoryWidth);
+    const uint8_t height = std::max<uint8_t>(1, pDefinition->inventoryHeight);
+
+    if (pItem->width == width && pItem->height == height)
+    {
+        return;
+    }
+
+    const uint8_t itemX = pItem->gridX;
+    const uint8_t itemY = pItem->gridY;
+    InventoryItem item = {};
+
+    if (!party.takeItemFromMemberInventoryCell(memberIndex, itemX, itemY, item))
+    {
+        return;
+    }
+
+    InventoryItem refitted = item;
+    refitted.width = width;
+    refitted.height = height;
+
+    if (!pMember->addInventoryItemAt(refitted, itemX, itemY)
+        && !party.tryAutoPlaceItemInMemberInventory(memberIndex, refitted))
+    {
+        pMember->addInventoryItemAt(item, itemX, itemY);
+    }
+}
+
 InventoryItemMixResult InventoryItemMixingRuntime::tryApplyHeldItemToInventoryItem(
     Party &party,
     size_t memberIndex,
@@ -370,6 +414,10 @@ InventoryItemMixResult InventoryItemMixingRuntime::tryApplyHeldItemToInventoryIt
     {
         InventoryItem removedItem = {};
         party.takeItemFromMemberInventoryCell(memberIndex, pTargetItem->gridX, pTargetItem->gridY, removedItem);
+    }
+    else if (result.targetItemChanged)
+    {
+        refitInventoryItem(party, memberIndex, pTargetItem->gridX, pTargetItem->gridY, itemTable);
     }
 
     if (result.failureDamageLevel != 0)
