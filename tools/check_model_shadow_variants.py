@@ -10,8 +10,7 @@ def main():
     parser.add_argument("directory", type=Path, help="compiled GLSL directory, e.g. build/runtime/shaders/glsl")
     args = parser.parse_args()
     names = (
-        "fs_outdoor_textured_fog", "fs_outdoor_terrain_fog", "fs_outdoor_bmodel_baked",
-        "fs_outdoor_terrain_baked", "fs_terrain_decoration", "fs_terrain_decoration_baked",
+        "fs_outdoor_textured_fog", "fs_outdoor_bmodel_baked", "fs_terrain_decoration", "fs_terrain_decoration_baked",
     )
     for name in names:
         ordinary = (args.directory / f"{name}.bin").read_bytes()

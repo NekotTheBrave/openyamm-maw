@@ -1,0 +1,89 @@
+--- a/include/bgfx/defines.h
++++ b/include/bgfx/defines.h
+@@ -442,6 +442,11 @@
+ #define BGFX_RESET_FULLSCREEN_SHIFT               0
+ #define BGFX_RESET_FULLSCREEN_MASK                UINT32_C(0x00000001)
+ 
++/// Anisotropy limit applied with `BGFX_RESET_MAXANISOTROPY`; 0 keeps the device maximum.
++#define BGFX_RESET_MAXANISOTROPY_LEVEL_SHIFT      24
++#define BGFX_RESET_MAXANISOTROPY_LEVEL_MASK       UINT32_C(0x1f000000)
++#define BGFX_RESET_MAXANISOTROPY_LEVEL(_level) ( ( (uint32_t)(_level)<<BGFX_RESET_MAXANISOTROPY_LEVEL_SHIFT)&BGFX_RESET_MAXANISOTROPY_LEVEL_MASK)
++
+ #define BGFX_RESET_RESERVED_SHIFT                 31                   //!< Internal bit shift
+ #define BGFX_RESET_RESERVED_MASK                  UINT32_C(0x80000000) //!< Internal bit mask
+ 
+--- a/src/renderer_gl.cpp
++++ b/src/renderer_gl.cpp
+@@ -3773,6 +3773,14 @@
+ 				: 0.0f
+ 				;
+ 
++			const uint32_t anisotropyLevel = (_resolution.reset & BGFX_RESET_MAXANISOTROPY_LEVEL_MASK)
++				>> BGFX_RESET_MAXANISOTROPY_LEVEL_SHIFT
++				;
++			if (0 != anisotropyLevel)
++			{
++				maxAnisotropy = bx::min(maxAnisotropy, float(anisotropyLevel) );
++			}
++
+ 			if (m_maxAnisotropy != maxAnisotropy)
+ 			{
+ 				m_maxAnisotropy = maxAnisotropy;
+@@ -3793,6 +3801,7 @@
+ 
+ 			const uint32_t maskFlags = ~(0
+ 				| BGFX_RESET_MAXANISOTROPY
++				| BGFX_RESET_MAXANISOTROPY_LEVEL_MASK
+ 				| BGFX_RESET_DEPTH_CLAMP
+ 				| BGFX_RESET_SUSPEND
+ 				);
+--- a/src/renderer_vk.cpp
++++ b/src/renderer_vk.cpp
+@@ -2947,6 +2947,14 @@
+ 			if (!!(_resolution.reset & BGFX_RESET_MAXANISOTROPY) )
+ 			{
+ 				maxAnisotropy = m_deviceProperties.limits.maxSamplerAnisotropy;
++
++				const uint32_t anisotropyLevel = (_resolution.reset & BGFX_RESET_MAXANISOTROPY_LEVEL_MASK)
++					>> BGFX_RESET_MAXANISOTROPY_LEVEL_SHIFT
++					;
++				if (0 != anisotropyLevel)
++				{
++					maxAnisotropy = bx::min(maxAnisotropy, float(anisotropyLevel) );
++				}
+ 			}
+ 
+ 			if (m_maxAnisotropy != maxAnisotropy)
+@@ -2972,6 +2980,7 @@
+ 			uint32_t flags = _resolution.reset & ~(0
+ 				| BGFX_RESET_SUSPEND
+ 				| BGFX_RESET_MAXANISOTROPY
++				| BGFX_RESET_MAXANISOTROPY_LEVEL_MASK
+ 				| BGFX_RESET_DEPTH_CLAMP
+ 				);
+ 
+--- a/src/renderer_d3d11.cpp
++++ b/src/renderer_d3d11.cpp
+@@ -2514,6 +2514,14 @@
+ 								? D3D_FL9_1_DEFAULT_MAX_ANISOTROPY
+ 								: D3D11_REQ_MAXANISOTROPY
+ 								;
++
++				const uint32_t anisotropyLevel = (_resolution.reset & BGFX_RESET_MAXANISOTROPY_LEVEL_MASK)
++					>> BGFX_RESET_MAXANISOTROPY_LEVEL_SHIFT
++					;
++				if (0 != anisotropyLevel)
++				{
++					maxAnisotropy = bx::min(maxAnisotropy, anisotropyLevel);
++				}
+ 			}
+ 
+ 			if (m_maxAnisotropy != maxAnisotropy)
+@@ -2535,6 +2543,7 @@
+ 
+ 			const uint32_t maskFlags = ~(0
+ 				| BGFX_RESET_MAXANISOTROPY
++				| BGFX_RESET_MAXANISOTROPY_LEVEL_MASK
+ 				| BGFX_RESET_DEPTH_CLAMP
+ 				| BGFX_RESET_SUSPEND
+ 				);

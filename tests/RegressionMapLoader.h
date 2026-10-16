@@ -18,6 +18,9 @@ struct RegressionMapLoader
 // releases the loader before any other test starts, and the next suite test loads it again.
 constexpr const char *SharedRegressionMapSuite = "shared regression map";
 
+// The development tree's surface tiers (cooked x4 surface textures, x2 terrain; the x1 originals are source art).
+Engine::AssetScaleProfile developmentAssetScaleProfile();
+
 bool regressionMapLoaderLoaded();
 const std::string &regressionMapLoaderFailure();
 const RegressionMapLoader &regressionMapLoader();

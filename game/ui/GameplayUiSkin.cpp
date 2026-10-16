@@ -220,7 +220,28 @@ void renderButton(GameplayScreenRuntime &context, const std::string &id, int wid
     }
 }
 
-void renderSurface(GameplayScreenRuntime &context, const GameplayResolvedHudLayoutElement &rect, uint8_t alpha)
+namespace
+{
+void appendQuad(std::vector<GameplayHudBatchQuad> &quads, bgfx::TextureHandle texture,
+    float x, float y, float width, float height, float u1 = 1.0f, float v1 = 1.0f)
+{
+    if (!bgfx::isValid(texture) || width <= 0.0f || height <= 0.0f)
+    {
+        return;
+    }
+    GameplayHudBatchQuad quad;
+    quad.textureHandle = texture;
+    quad.x = x;
+    quad.y = y;
+    quad.width = width;
+    quad.height = height;
+    quad.u1 = u1;
+    quad.v1 = v1;
+    quads.push_back(quad);
+}
+
+void appendSurface(GameplayScreenRuntime &context, std::vector<GameplayHudBatchQuad> &quads,
+    const GameplayResolvedHudLayoutElement &rect, uint8_t alpha)
 {
     const std::optional<GameplayHudTextureHandle> texture =
         context.gameplayUiRuntime().ensureHudTextureLoaded("obsidian_reading_surface");
@@ -238,54 +259,65 @@ void renderSurface(GameplayScreenRuntime &context, const GameplayResolvedHudLayo
         {
             const float w = std::min(tileWidth, rect.width - x);
             const float h = std::min(tileHeight, rect.height - y);
-            context.gameplayUiRuntime().submitHudTexturedQuad(surfaceTexture,
-                rect.x + x, rect.y + y, w, h, 0, 0, w / tileWidth, h / tileHeight);
+            appendQuad(quads, surfaceTexture, rect.x + x, rect.y + y, w, h, w / tileWidth, h / tileHeight);
         }
     }
+}
+}
+
+void renderSurface(GameplayScreenRuntime &context, const GameplayResolvedHudLayoutElement &rect, uint8_t alpha)
+{
+    std::vector<GameplayHudBatchQuad> quads;
+    appendSurface(context, quads, rect, alpha);
+    context.gameplayUiRuntime().submitHudQuadBatch(quads);
 }
 
 void renderPanel(GameplayScreenRuntime &context, const GameplayResolvedHudLayoutElement &rect,
     bool openBottom, float borderScale, uint8_t surfaceAlpha)
 {
+    // One batch: the surface tiles and frame pieces draw in order, one draw per run of a texture.
     const float corner = 30.933333f * rect.scale * borderScale;
     const float tile = 48.286179f * rect.scale * borderScale;
     const float inset = 8.533333f * rect.scale * borderScale;
-    renderSurface(context, {rect.x + inset, rect.y + inset,
-        rect.width - 2 * inset, rect.height - inset - (openBottom ? 1.6f * rect.scale : inset), rect.scale}, surfaceAlpha);
+    std::vector<GameplayHudBatchQuad> quads;
+    appendSurface(context, quads, {rect.x + inset, rect.y + inset, rect.width - 2 * inset,
+        rect.height - inset - (openBottom ? 1.6f * rect.scale : inset), rect.scale}, surfaceAlpha);
+    GameplayUiRuntime &runtime = context.gameplayUiRuntime();
+    const auto textureOf = [&](const char *pAsset) -> bgfx::TextureHandle
+    {
+        const std::optional<GameplayHudTextureHandle> texture = runtime.ensureHudTextureLoaded(pAsset);
+        return texture ? texture->textureHandle : bgfx::TextureHandle(BGFX_INVALID_HANDLE);
+    };
     const auto edge = [&](const char *pAsset, float x, float y, float length, bool vertical)
     {
-        const std::optional<GameplayHudTextureHandle> texture =
-            context.gameplayUiRuntime().ensureHudTextureLoaded(pAsset);
-        if (!texture)
-        {
-            return;
-        }
+        const bgfx::TextureHandle texture = textureOf(pAsset);
         for (float offset = 0; offset < length; offset += tile)
         {
             const float segment = std::min(tile, length - offset);
-            context.gameplayUiRuntime().submitHudTexturedQuad(texture->textureHandle,
-                x + (vertical ? 0 : offset), y + (vertical ? offset : 0),
+            appendQuad(quads, texture, x + (vertical ? 0 : offset), y + (vertical ? offset : 0),
                 vertical ? corner : segment, vertical ? segment : corner,
-                0, 0, vertical ? 1 : segment / tile, vertical ? segment / tile : 1);
+                vertical ? 1 : segment / tile, vertical ? segment / tile : 1);
         }
+    };
+    const auto cornerPiece = [&](const char *pAsset, float x, float y)
+    {
+        appendQuad(quads, textureOf(pAsset), x, y, corner, corner);
     };
     edge("obsidian_frame_top", rect.x + corner, rect.y, rect.width - 2 * corner, false);
     edge("obsidian_frame_left", rect.x, rect.y + corner,
         rect.height - (openBottom ? corner : 2 * corner), true);
     edge("obsidian_frame_right", rect.x + rect.width - corner, rect.y + corner,
         rect.height - (openBottom ? corner : 2 * corner), true);
-    renderTexture(context, "obsidian_frame_tl", {rect.x, rect.y, corner, corner, rect.scale});
-    renderTexture(context, "obsidian_frame_tr",
-        {rect.x + rect.width - corner, rect.y, corner, corner, rect.scale});
+    cornerPiece("obsidian_frame_tl", rect.x, rect.y);
+    cornerPiece("obsidian_frame_tr", rect.x + rect.width - corner, rect.y);
     if (!openBottom)
     {
         edge("obsidian_frame_bottom", rect.x + corner, rect.y + rect.height - corner,
             rect.width - 2 * corner, false);
-        renderTexture(context, "obsidian_frame_bl",
-            {rect.x, rect.y + rect.height - corner, corner, corner, rect.scale});
-        renderTexture(context, "obsidian_frame_br",
-            {rect.x + rect.width - corner, rect.y + rect.height - corner, corner, corner, rect.scale});
+        cornerPiece("obsidian_frame_bl", rect.x, rect.y + rect.height - corner);
+        cornerPiece("obsidian_frame_br", rect.x + rect.width - corner, rect.y + rect.height - corner);
     }
+    runtime.submitHudQuadBatch(quads);
 }
 
 void renderPartyBasebar(GameplayScreenRuntime &context, const GameplayResolvedHudLayoutElement &rect)
@@ -306,9 +338,22 @@ void renderPartyBasebar(GameplayScreenRuntime &context, const GameplayResolvedHu
     constexpr float U1 = 722.0f / 992;
     constexpr float V0 = 103.0f / 1585;
     constexpr float V1 = 1429.0f / 1585;
-    context.gameplayUiRuntime().submitHudTexturedQuad(ornament->textureHandle,
-        rect.x + inset - width, y, width, height, U0, V0, U1, V1);
-    context.gameplayUiRuntime().submitHudTexturedQuad(ornament->textureHandle,
-        rect.x + rect.width - inset, y, width, height, U1, V0, U0, V1);
+    std::vector<GameplayHudBatchQuad> ornaments(2);
+    for (GameplayHudBatchQuad &quad : ornaments)
+    {
+        quad.textureHandle = ornament->textureHandle;
+        quad.y = y;
+        quad.width = width;
+        quad.height = height;
+        quad.v0 = V0;
+        quad.v1 = V1;
+    }
+    ornaments[0].x = rect.x + inset - width;
+    ornaments[0].u0 = U0;
+    ornaments[0].u1 = U1;
+    ornaments[1].x = rect.x + rect.width - inset;
+    ornaments[1].u0 = U1;
+    ornaments[1].u1 = U0;
+    context.gameplayUiRuntime().submitHudQuadBatch(ornaments);
 }
 }

@@ -26,7 +26,9 @@ struct DecorationBillboardSet;
 // (outdoor maps) or indoor_decorations.yml (BLV maps; apart because decorations.yml is an outdoor bake dependency).
 // A decoration keeps its native data (collision, events, picking); the sprite it currently shows selects the model, so
 // an event SetSprite to another bound decoration (a picked food tree) switches models, and a switch to an unbound
-// sprite draws that sprite instead.
+// sprite draws that sprite instead. worlds/<world>/models/decoration_overlays.yml adds state overlays: one more model
+// drawn with a bound decoration's placement, chosen by its interactive state (the liquid of a stat barrel, gone once
+// it is drunk).
 class DecorationModelSet
 {
 public:
@@ -41,10 +43,11 @@ public:
     {
         return m_bindings.empty();
     }
-    // Event state of every decoration billboard: the sprite it shows now (0 = none) and whether it is hidden.
-    // Moves placements between models when the shown sprite changes and sets placement visibility.
-    void update(const std::vector<DecorationBillboard> &billboards,
-        const std::function<uint16_t(size_t billboardIndex, bool &hidden)> &shownSprite);
+    // Event state of every decoration billboard: the sprite it shows now (0 = none), whether it is hidden and its
+    // interactive decoration state (-1 = none). Moves placements between models when the shown sprite or state
+    // changes and sets placement visibility.
+    using ShownSprite = std::function<uint16_t(size_t billboardIndex, bool &hidden, int &state)>;
+    void update(const std::vector<DecorationBillboard> &billboards, const ShownSprite &shownSprite);
     // True when a model draws this sprite (its billboard must not be drawn).
     bool modelsSprite(uint16_t spriteId) const
     {
@@ -81,6 +84,11 @@ public:
     {
         return m_billboardIndices[group];
     }
+    // Whether a group draws state overlays (never picked or outlined; the decoration's own model is).
+    bool overlayGroup(size_t group) const
+    {
+        return m_bindings[group].overlay;
+    }
 
 private:
     struct Binding
@@ -99,6 +107,10 @@ private:
         // swing: [angle degrees, period seconds] about the asset x axis through the model's top.
         float swingRadians = 0.0f;
         float swingPeriod = 0.0f;
+        // State overlays: the overlay binding drawn for each interactive state (-1 = none). An overlay binding is
+        // authored in its decoration's asset space and takes the decoration's placement matrix.
+        std::vector<int32_t> stateOverlays;
+        bool overlay = false;
         // Pick triangles in asset space (three corners each), from LOD1 or LOD0; camera-facing cards apart.
         std::vector<std::array<float, 3>> pickTriangles;
         std::vector<std::array<float, 3>> billboardPickTriangles;
@@ -111,6 +123,9 @@ private:
         int32_t binding = -1;
         uint32_t index = 0;
         uint16_t sprite = 0;
+        int32_t overlayGroup = -1;
+        uint32_t overlayIndex = 0;
+        int32_t state = -1;
     };
 
     // Ray against the placement's rigid (not camera-facing) triangles; lowers best on a nearer hit.
@@ -121,6 +136,13 @@ private:
     static float heightJitter(const Binding &binding, const DecorationBillboard &billboard);
     void place(size_t billboardIndex, const DecorationBillboard &billboard, uint32_t binding);
     void unplace(size_t billboardIndex);
+    bool loadStateOverlays(const Engine::AssetFileSystem &assets, const std::string &worldId,
+        const std::unordered_map<std::string, uint32_t> &bindingByName, std::string &error);
+    // Places or removes the billboard's state overlay to match its binding and state.
+    void placeOverlay(size_t billboardIndex);
+    void unplaceOverlay(size_t billboardIndex);
+    // Swap-removes a placement from a group; returns the billboard whose placement moved into its index, if any.
+    std::optional<size_t> removePlacement(size_t group, uint32_t index);
 
     Engine::ModelAssetCache m_assets;
     // Binding i draws into group i.

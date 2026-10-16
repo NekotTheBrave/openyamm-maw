@@ -397,7 +397,8 @@ GameplayChestViewState buildMaterializedChestView(
     uint32_t sessionChestSeed,
     const ChestTable *pChestTable,
     const ItemTable *pItemTable,
-    Party *pParty)
+    Party *pParty,
+    const std::string &worldId)
 {
     GameplayChestViewState view = {};
     view.chestId = chestId;
@@ -529,10 +530,12 @@ GameplayChestViewState buildMaterializedChestView(
                         *pStandardItemEnchantTable,
                         *pSpecialItemEnchantTable,
                         ItemGenerationRequest{
-                            SpawnableItemTreasureLevels,
-                            ItemGenerationMode::ChestLoot,
-                            true,
-                            true},
+                            .treasureLevel = SpawnableItemTreasureLevels,
+                            .mode = ItemGenerationMode::ChestLoot,
+                            .allowRareItems = true,
+                            .rareItemsOnly = true,
+                            .worldId = worldId,
+                        },
                         pParty,
                         rng);
 
@@ -590,8 +593,10 @@ GameplayChestViewState buildMaterializedChestView(
                             *pStandardItemEnchantTable,
                             *pSpecialItemEnchantTable,
                             ItemGenerationRequest{
-                                std::min(resolvedTreasureLevel, SpawnableItemTreasureLevels),
-                                ItemGenerationMode::ChestLoot},
+                                .treasureLevel = std::min(resolvedTreasureLevel, SpawnableItemTreasureLevels),
+                                .mode = ItemGenerationMode::ChestLoot,
+                                .worldId = worldId,
+                            },
                             pParty,
                             rng);
 

@@ -432,13 +432,21 @@ GameSettings GameSettings::createDefault()
 {
     GameSettings settings;
     settings.keyboard.restoreDefaults(settings.controlScheme);
+    // The surface texture tier the development tree and packages carry: one cooked tier per platform
+    // (tools/cook_surface_textures.py), x4 on desktop and x2 on Android.
+#if defined(__ANDROID__)
+    settings.assetScaleProfile.textures = Engine::AssetScaleTier::X2;
+#else
+    settings.assetScaleProfile.textures = Engine::AssetScaleTier::X4;
+#endif
     return settings;
 }
 
 bool migrateLegacyAndroidSettings(GameSettings &settings)
 {
     constexpr uint32_t InitialAndroidSettingsProfileVersion = 1;
-    constexpr uint32_t CurrentAndroidSettingsProfileVersion = 2;
+    constexpr uint32_t CharacterCreationAndroidSettingsProfileVersion = 2;
+    constexpr uint32_t CurrentAndroidSettingsProfileVersion = 3;
 
     if (settings.settingsProfileName == "android"
         && settings.settingsProfileVersion >= CurrentAndroidSettingsProfileVersion)
@@ -476,11 +484,26 @@ bool migrateLegacyAndroidSettings(GameSettings &settings)
         settings.debugConsole = true;
     }
 
-    if (settings.settingsProfileVersion < CurrentAndroidSettingsProfileVersion)
+    if (settings.settingsProfileVersion < CharacterCreationAndroidSettingsProfileVersion)
     {
         settings.preseedParty = false;
         settings.newGameGodLich = false;
         settings.allowIncompleteCharacterCreation = false;
+        settings.settingsProfileVersion = CharacterCreationAndroidSettingsProfileVersion;
+    }
+
+    if (settings.settingsProfileVersion < CurrentAndroidSettingsProfileVersion)
+    {
+        // The ground materials terrain is the only one: on phones it takes lighter anisotropic filtering and smaller
+        // water reflections (which redraw it). Values a player changed from the earlier defaults stay.
+        if (settings.terrainAnisotropy == "4x")
+        {
+            settings.terrainAnisotropy = "2x";
+        }
+        if (settings.waterReflectionSize == 512)
+        {
+            settings.waterReflectionSize = 256;
+        }
         settings.settingsProfileVersion = CurrentAndroidSettingsProfileVersion;
     }
 
@@ -509,6 +532,18 @@ float resolveViewDistanceSetting(const std::string &value, float defaultDistance
     }
 
     return std::clamp(parsed, MinimumViewDistance, UnlimitedViewDistance);
+}
+
+uint8_t textureAnisotropyLevel(const GameSettings &settings)
+{
+    for (const uint8_t level : {2, 8, 16})
+    {
+        if (settings.terrainAnisotropy == std::to_string(level) + "x")
+        {
+            return level;
+        }
+    }
+    return 4;
 }
 
 CharacterAttackTuning characterAttackTuningFromSettings(const GameSettings &settings)
@@ -577,28 +612,28 @@ bool setBakedLightingSetting(
     return false;
 }
 
-bool parseSkyStyleValue(const std::string &value, SkyStyle &result)
+bool parseProjectileStyleValue(const std::string &value, ProjectileStyle &result)
 {
     const std::string normalized = toLowerCopy(trimCopy(value));
 
     if (normalized == "enhanced")
     {
-        result = SkyStyle::Enhanced;
+        result = ProjectileStyle::Enhanced;
         return true;
     }
 
     if (normalized == "classic")
     {
-        result = SkyStyle::Classic;
+        result = ProjectileStyle::Classic;
         return true;
     }
 
     return false;
 }
 
-std::string skyStyleValue(SkyStyle style)
+std::string projectileStyleValue(ProjectileStyle style)
 {
-    return style == SkyStyle::Classic ? "classic" : "enhanced";
+    return style == ProjectileStyle::Classic ? "classic" : "enhanced";
 }
 
 bool parseCorpseStyleValue(const std::string &value, CorpseStyle &result)
@@ -913,6 +948,46 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         }
     }
 
+    if (const std::optional<std::string> value = getIniValue(document, "gameplay", "melee_hit_feedback"))
+    {
+        bool parsed = settings.meleeHitFeedback;
+
+        if (parseBoolValue(*value, parsed))
+        {
+            settings.meleeHitFeedback = parsed;
+        }
+    }
+
+    if (const std::optional<std::string> value = getIniValue(document, "gameplay", "melee_hit_effects"))
+    {
+        bool parsed = settings.meleeHitEffects;
+
+        if (parseBoolValue(*value, parsed))
+        {
+            settings.meleeHitEffects = parsed;
+        }
+    }
+
+    if (const std::optional<std::string> value = getIniValue(document, "gameplay", "melee_hit_flash"))
+    {
+        bool parsed = settings.meleeHitFlash;
+
+        if (parseBoolValue(*value, parsed))
+        {
+            settings.meleeHitFlash = parsed;
+        }
+    }
+
+    if (const std::optional<std::string> value = getIniValue(document, "gameplay", "melee_camera_kick"))
+    {
+        bool parsed = settings.meleeCameraKick;
+
+        if (parseBoolValue(*value, parsed))
+        {
+            settings.meleeCameraKick = parsed;
+        }
+    }
+
     if (const std::optional<std::string> value = getIniValue(document, "gameplay", "corpses"))
     {
         parseCorpseStyleValue(*value, settings.corpseStyle);
@@ -974,6 +1049,14 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
             settings.modelLods = parsed;
         }
     }
+    if (const std::optional<std::string> value = getIniValue(document, "video", "creature_outlines"))
+    {
+        bool parsed = settings.creatureOutlines;
+        if (parseBoolValue(*value, parsed))
+        {
+            settings.creatureOutlines = parsed;
+        }
+    }
     if (const std::optional<std::string> value = getIniValue(document, "debug", "model_lod"))
     {
         int parsed = settings.modelLodOverride;
@@ -1018,10 +1101,6 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
     {
         parseBoolValue(*value, settings.cinematicGrading);
     }
-    if (const std::optional<std::string> value = getIniValue(document, "video", "water_shader"))
-    {
-        parseBoolValue(*value, settings.waterShader);
-    }
     if (const std::optional<std::string> value = getIniValue(document, "video", "water_reflections"))
     {
         parseBoolValue(*value, settings.waterReflections);
@@ -1042,9 +1121,21 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
     {
         parseBoolValue(*value, settings.waterSpriteReflections);
     }
-    if (const std::optional<std::string> value = getIniValue(document, "video", "sky_style"))
+    if (const std::optional<std::string> value = getIniValue(document, "video", "terrain_subdivision"))
     {
-        parseSkyStyleValue(*value, settings.skyStyle);
+        int parsed = settings.terrainSubdivision;
+        if (parseIntValue(*value, parsed) && (parsed == 1 || parsed == 2 || parsed == 4))
+        {
+            settings.terrainSubdivision = parsed;
+        }
+    }
+    if (const std::optional<std::string> value = getIniValue(document, "video", "terrain_antitiling"))
+    {
+        parseBoolValue(*value, settings.terrainAntiTiling);
+    }
+    if (const std::optional<std::string> value = getIniValue(document, "video", "projectile_style"))
+    {
+        parseProjectileStyleValue(*value, settings.projectileStyle);
     }
     if (const std::optional<std::string> value = getIniValue(document, "video", "weather_quality"))
     {
@@ -1072,6 +1163,14 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         if (parseIntValue(*value, parsed))
         {
             settings.cinematicStrength = std::clamp(parsed, 0, 100);
+        }
+    }
+    if (const std::optional<std::string> value = getIniValue(document, "video", "sharpening"))
+    {
+        int parsed = settings.sharpening;
+        if (parseIntValue(*value, parsed))
+        {
+            settings.sharpening = std::clamp(parsed, 0, 100);
         }
     }
 
@@ -1155,27 +1254,6 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         }
     }
 
-    if (const std::optional<std::string> value = getIniValue(document, "fonts", "prefer_ttf"))
-    {
-        parseBoolValue(*value, settings.fonts.preferTtf);
-    }
-    if (const std::optional<std::string> value = getIniValue(document, "fonts", "ttf_fonts"))
-    {
-        settings.fonts.ttfFonts.clear();
-        std::istringstream names(*value);
-        std::string name;
-        while (std::getline(names, name, ','))
-        {
-            name = toLowerCopy(trimCopy(name));
-            if (!name.empty()
-                && std::find(settings.fonts.ttfFonts.begin(), settings.fonts.ttfFonts.end(), name)
-                    == settings.fonts.ttfFonts.end())
-            {
-                settings.fonts.ttfFonts.push_back(name);
-            }
-        }
-    }
-
     // Retired by the shared Obsidian HUD. Legacy INI values are omitted on the next save.
 
     if (const std::optional<std::string> value = getIniValue(document, "video", "window_mode"))
@@ -1212,29 +1290,9 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
 
     parseAssetScaleProfileValue(
         document,
-        "texture",
-        settings.assetScaleProfile,
-        Engine::AssetScaleCategory::Textures);
-    parseAssetScaleProfileValue(
-        document,
-        "textures",
-        settings.assetScaleProfile,
-        Engine::AssetScaleCategory::Textures);
-    parseAssetScaleProfileValue(
-        document,
-        "terrain",
-        settings.assetScaleProfile,
-        Engine::AssetScaleCategory::Terrain);
-    parseAssetScaleProfileValue(
-        document,
         "sky",
         settings.assetScaleProfile,
         Engine::AssetScaleCategory::Sky);
-    parseAssetScaleProfileValue(
-        document,
-        "sprites",
-        settings.assetScaleProfile,
-        Engine::AssetScaleCategory::Sprites);
     parseAssetScaleProfileValue(
         document,
         "decorations",
@@ -1245,21 +1303,6 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         "icons",
         settings.assetScaleProfile,
         Engine::AssetScaleCategory::Icons);
-    parseAssetScaleProfileValue(
-        document,
-        "ui",
-        settings.assetScaleProfile,
-        Engine::AssetScaleCategory::Ui);
-    parseAssetScaleProfileValue(
-        document,
-        "effects",
-        settings.assetScaleProfile,
-        Engine::AssetScaleCategory::Effects);
-    parseAssetScaleProfileValue(
-        document,
-        "fonts",
-        settings.assetScaleProfile,
-        Engine::AssetScaleCategory::Fonts);
 
     if (const std::optional<std::string> value = getIniValue(document, "startup", "save_file"))
     {
@@ -1685,6 +1728,17 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         settings.screenshotTourPath = trimCopy(*value);
     }
 
+    if (const std::optional<std::string> value = getIniValue(document, "debug", "time_scale"))
+    {
+        float parsed = 1.0f;
+        if (!parseFloatValue(*value, parsed) || !std::isfinite(parsed) || parsed < 0.05f || parsed > 4.0f)
+        {
+            error = "time_scale must be finite in [0.05, 4].";
+            return std::nullopt;
+        }
+        settings.timeScale = parsed;
+    }
+
     if (const std::optional<std::string> value = getIniValue(document, "debug", "effect_spawn_id"))
     {
         settings.effectSpawnId = trimCopy(*value);
@@ -1874,15 +1928,6 @@ bool saveGameSettings(const std::filesystem::path &path, const GameSettings &set
             << "version=" << settings.settingsProfileVersion << "\n\n";
     }
 
-    std::string ttfFontNames;
-    for (const std::string &name : settings.fonts.ttfFonts)
-    {
-        if (!ttfFontNames.empty())
-        {
-            ttfFontNames += ',';
-        }
-        ttfFontNames += name;
-    }
 
     output
         << "[assets]\n"
@@ -1909,6 +1954,10 @@ bool saveGameSettings(const std::filesystem::path &path, const GameSettings &set
         << "enemy_health_bar_damage_trail=" << (settings.enemyHealthBarDamageTrail ? "true" : "false") << '\n'
         << "quest_markers=" << (settings.questMarkers ? "true" : "false") << '\n'
         << "melee_hit_blood_effects=" << (settings.meleeHitBloodEffects ? "true" : "false") << '\n'
+        << "melee_hit_feedback=" << (settings.meleeHitFeedback ? "true" : "false") << '\n'
+        << "melee_hit_effects=" << (settings.meleeHitEffects ? "true" : "false") << '\n'
+        << "melee_hit_flash=" << (settings.meleeHitFlash ? "true" : "false") << '\n'
+        << "melee_camera_kick=" << (settings.meleeCameraKick ? "true" : "false") << '\n'
         << "corpses=" << corpseStyleValue(settings.corpseStyle) << '\n'
         << "context_action_popup=" << (settings.contextActionPopup ? "true" : "false") << "\n\n"
         << "[startup]\n"
@@ -1954,24 +2003,27 @@ bool saveGameSettings(const std::filesystem::path &path, const GameSettings &set
         << "shadows=" << (settings.shadows ? "true" : "false") << '\n'
         << "model_shadow_quality=" << std::clamp(settings.modelShadowQuality, 0, 3) << '\n'
         << "model_lods=" << (settings.modelLods ? "true" : "false") << '\n'
+        << "creature_outlines=" << (settings.creatureOutlines ? "true" : "false") << '\n'
         << "sprite_outline=" << (settings.spriteOutline ? "true" : "false") << '\n'
         << "texture_filtering=" << (settings.textureFiltering ? "true" : "false") << '\n'
         << "ambient_occlusion=" << (settings.ambientOcclusion ? "true" : "false") << '\n'
         << "ambient_occlusion_strength=" << settings.ambientOcclusionStrength << '\n'
         << "cinematic_grading=" << (settings.cinematicGrading ? "true" : "false") << '\n'
         << "cinematic_strength=" << settings.cinematicStrength << '\n'
+        << "sharpening=" << settings.sharpening << '\n'
         << "lightmaps=" << (settings.lightmaps ? "true" : "false") << '\n'
         << "baked_sun_strength=" << *getBakedLightingSetting(settings, "baked_sun_strength") << '\n'
         << "baked_sky_strength=" << *getBakedLightingSetting(settings, "baked_sky_strength") << '\n'
         << "baked_sun_color=" << *getBakedLightingSetting(settings, "baked_sun_color") << '\n'
         << "baked_sky_color=" << *getBakedLightingSetting(settings, "baked_sky_color") << '\n'
         << "terrain_decorations=" << (settings.terrainDecorations ? "true" : "false") << '\n'
-        << "water_shader=" << (settings.waterShader ? "true" : "false") << '\n'
         << "water_reflections=" << (settings.waterReflections ? "true" : "false") << '\n'
         << "water_movement_ripples=" << (settings.waterMovementRipples ? "true" : "false") << '\n'
         << "water_sprite_reflections=" << (settings.waterSpriteReflections ? "true" : "false") << '\n'
         << "water_reflection_size=" << std::clamp(settings.waterReflectionSize, 128, 2048) << '\n'
-        << "sky_style=" << skyStyleValue(settings.skyStyle) << '\n'
+        << "terrain_subdivision=" << settings.terrainSubdivision << '\n'
+        << "terrain_antitiling=" << (settings.terrainAntiTiling ? "true" : "false") << '\n'
+        << "projectile_style=" << projectileStyleValue(settings.projectileStyle) << '\n'
         << "sky_resolution_scale=" << std::clamp(settings.skyResolutionScale, 0.25f, 1.0f) << '\n'
         << "weather_quality=" << weatherQualityValue(settings.weatherQuality) << '\n'
         << "rain_ripples=" << (settings.rainRipples ? "true" : "false") << '\n'
@@ -1994,19 +2046,10 @@ bool saveGameSettings(const std::filesystem::path &path, const GameSettings &set
         << "vsync=" << (settings.verticalSync ? "true" : "false") << '\n'
         << '\n'
         << "[video_quality]\n"
-        << "texture=" << Engine::assetScaleTierToString(settings.assetScaleProfile.textures) << '\n'
-        << "terrain=" << Engine::assetScaleTierToString(settings.assetScaleProfile.terrain) << '\n'
         << "sky=" << Engine::assetScaleTierToString(settings.assetScaleProfile.sky) << '\n'
-        << "sprites=" << Engine::assetScaleTierToString(settings.assetScaleProfile.sprites) << '\n'
         << "decorations=" << Engine::assetScaleTierToString(settings.assetScaleProfile.decorations) << '\n'
         << "prefer_restored_icons=" << (settings.assetScaleProfile.preferRestoredIcons ? "true" : "false") << '\n'
-        << "icons=" << Engine::assetScaleTierToString(settings.assetScaleProfile.icons) << '\n'
-        << "ui=" << Engine::assetScaleTierToString(settings.assetScaleProfile.ui) << '\n'
-        << "effects=" << Engine::assetScaleTierToString(settings.assetScaleProfile.effects) << '\n'
-        << "fonts=" << Engine::assetScaleTierToString(settings.assetScaleProfile.fonts) << "\n\n"
-        << "[fonts]\n"
-        << "prefer_ttf=" << (settings.fonts.preferTtf ? "true" : "false") << '\n'
-        << "ttf_fonts=" << ttfFontNames << "\n\n"
+        << "icons=" << Engine::assetScaleTierToString(settings.assetScaleProfile.icons) << "\n\n"
         << "[debug]\n"
         << "preseed_party=" << (settings.preseedParty ? "true" : "false") << '\n'
         << "party_seed_roster_id=" << settings.partySeedRosterId << '\n'

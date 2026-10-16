@@ -122,8 +122,7 @@ AssetScaleTier assetScaleTierFromResolvedPath(const std::string &path)
         {
             return static_cast<char>(std::tolower(character));
         });
-        for (const char *pDirectory : {"icons", "ui", "hud", "textures", "bitmaps", "terrain", "sky",
-                                      "sprites", "decorations", "effects", "fonts"})
+        for (const char *pDirectory : {"icons", "hud", "textures", "bitmaps", "sky", "decorations"})
         {
             if (component == std::string(pDirectory) + "_x2")
             {
@@ -143,14 +142,9 @@ AssetScaleProfile createUniformAssetScaleProfile(AssetScaleTier assetScaleTier)
 {
     AssetScaleProfile assetScaleProfile;
     assetScaleProfile.textures = assetScaleTier;
-    assetScaleProfile.terrain = assetScaleTier;
     assetScaleProfile.sky = assetScaleTier;
-    assetScaleProfile.sprites = assetScaleTier;
     assetScaleProfile.decorations = assetScaleTier;
     assetScaleProfile.icons = assetScaleTier;
-    assetScaleProfile.ui = assetScaleTier;
-    assetScaleProfile.effects = assetScaleTier;
-    assetScaleProfile.fonts = assetScaleTier;
     return assetScaleProfile;
 }
 
@@ -163,29 +157,14 @@ AssetScaleTier assetScaleTierForCategory(
         case AssetScaleCategory::Textures:
             return assetScaleProfile.textures;
 
-        case AssetScaleCategory::Terrain:
-            return assetScaleProfile.terrain;
-
         case AssetScaleCategory::Sky:
             return assetScaleProfile.sky;
-
-        case AssetScaleCategory::Sprites:
-            return assetScaleProfile.sprites;
 
         case AssetScaleCategory::Decorations:
             return assetScaleProfile.decorations;
 
         case AssetScaleCategory::Icons:
             return assetScaleProfile.preferRestoredIcons ? AssetScaleTier::X2 : assetScaleProfile.icons;
-
-        case AssetScaleCategory::Ui:
-            return assetScaleProfile.ui;
-
-        case AssetScaleCategory::Effects:
-            return assetScaleProfile.effects;
-
-        case AssetScaleCategory::Fonts:
-            return assetScaleProfile.fonts;
     }
 
     return AssetScaleTier::X1;
@@ -202,16 +181,8 @@ void setAssetScaleTierForCategory(
             assetScaleProfile.textures = assetScaleTier;
             return;
 
-        case AssetScaleCategory::Terrain:
-            assetScaleProfile.terrain = assetScaleTier;
-            return;
-
         case AssetScaleCategory::Sky:
             assetScaleProfile.sky = assetScaleTier;
-            return;
-
-        case AssetScaleCategory::Sprites:
-            assetScaleProfile.sprites = assetScaleTier;
             return;
 
         case AssetScaleCategory::Decorations:
@@ -220,18 +191,6 @@ void setAssetScaleTierForCategory(
 
         case AssetScaleCategory::Icons:
             assetScaleProfile.icons = assetScaleTier;
-            return;
-
-        case AssetScaleCategory::Ui:
-            assetScaleProfile.ui = assetScaleTier;
-            return;
-
-        case AssetScaleCategory::Effects:
-            assetScaleProfile.effects = assetScaleTier;
-            return;
-
-        case AssetScaleCategory::Fonts:
-            assetScaleProfile.fonts = assetScaleTier;
             return;
     }
 }

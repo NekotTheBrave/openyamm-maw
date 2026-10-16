@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace OpenYAMM::Game
@@ -57,7 +58,8 @@ GameplayChestViewState buildMaterializedChestView(
     uint32_t sessionChestSeed,
     const ChestTable *pChestTable,
     const ItemTable *pItemTable,
-    Party *pParty);
+    Party *pParty,
+    const std::string &worldId);
 
 bool takeChestItem(GameplayChestViewState &view, size_t itemIndex, GameplayChestItemState &item);
 bool takeChestItemAt(GameplayChestViewState &view, uint8_t gridX, uint8_t gridY, GameplayChestItemState &item);

@@ -206,3 +206,29 @@ TEST_CASE("ambient occlusion is optional and its intensity validates and persist
     CHECK(bounded->ambientOcclusionStrength == 100);
     std::filesystem::remove(path);
 }
+
+TEST_CASE("sharpening is off by default and its strength validates and persists")
+{
+    GameSettings settings = GameSettings::createDefault();
+    CHECK(settings.sharpening == 0);
+    REQUIRE(setMenuSettingValue(settings, "sharpening", "40"));
+    for (const std::string value : {"-1", "101", "40junk", ""})
+    {
+        CHECK_FALSE(setMenuSettingValue(settings, "sharpening", value));
+    }
+    CHECK(menuSettingValue(settings, "sharpening") == "40");
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "openyamm-sharpening-settings.ini";
+    std::string error;
+    REQUIRE(saveGameSettings(path, settings, error));
+    const std::optional<GameSettings> loaded = loadGameSettings(path, error);
+    REQUIRE_MESSAGE(loaded, error);
+    CHECK(loaded->sharpening == 40);
+    {
+        std::ofstream file(path);
+        file << "[video]\nsharpening=250\n";
+    }
+    const std::optional<GameSettings> bounded = loadGameSettings(path, error);
+    REQUIRE_MESSAGE(bounded, error);
+    CHECK(bounded->sharpening == 100);
+    std::filesystem::remove(path);
+}

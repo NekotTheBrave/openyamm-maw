@@ -1,4 +1,4 @@
-$input v_texcoord0, v_color0, v_depth, v_worldPosition
+$input v_texcoord0, v_color0, v_depth, v_worldPosition, v_texcoord1
 
 #include "common.sh"
 #include "sky_common.sh"

@@ -21,7 +21,7 @@ namespace OpenYAMM::Game
 {
 namespace
 {
-constexpr uint32_t SaveVersion = 85;
+constexpr uint32_t SaveVersion = 88;
 constexpr uint32_t SaveVersionAttackSpell = 19;
 constexpr uint32_t SaveVersionIndoorCorpseViews = 21;
 constexpr uint32_t SaveVersionIndoorChestViews = 22;
@@ -91,6 +91,9 @@ constexpr uint32_t SaveVersionConsumedCorpseMarkers = 83;
 constexpr uint32_t SaveVersionIndoorCamera = 84;
 // Weather comes from the game-time weather model; the outdoor rain-intensity override is no longer saved.
 constexpr uint32_t SaveVersionWeatherModel = 85;
+constexpr uint32_t SaveVersionActorBehaviors = 86;
+constexpr uint32_t SaveVersionActorBehaviorWardVisuals = 87;
+constexpr uint32_t SaveVersionPartyExplosiveMixes = 88;
 constexpr char SaveMagic[8] = {'O', 'Y', 'S', 'A', 'V', 'E', '1', '\0'};
 
 // Mod runtime additions to the save format. They are numbered separately from SaveVersion, in the top byte of the
@@ -240,6 +243,8 @@ void writeValue(BinaryWriter &writer, const HiredNpcFollower &value);
 bool readValue(BinaryReader &reader, HiredNpcFollower &value);
 void writeValue(BinaryWriter &writer, const GameplayProjectileService::Snapshot &value);
 bool readValue(BinaryReader &reader, GameplayProjectileService::Snapshot &value);
+void writeValue(BinaryWriter &writer, const ActorBehaviorRuntime::Snapshot &value);
+bool readValue(BinaryReader &reader, ActorBehaviorRuntime::Snapshot &value);
 
 bool canReadSerializedElementCount(const BinaryReader &reader, uint64_t count)
 {
@@ -1093,6 +1098,7 @@ void writeValue(BinaryWriter &writer, const Party::Snapshot &value)
     writeValue(writer, value.npcItemOverrides);
     writeValue(writer, value.unavailableNpcIds);
     writeValue(writer, value.hiredNpcFollowers);
+    writeValue(writer, value.explosiveMixes);
 }
 
 bool readValue(BinaryReader &reader, Party::Snapshot &value)
@@ -1135,7 +1141,8 @@ bool readValue(BinaryReader &reader, Party::Snapshot &value)
         && (reader.version() < SaveVersionGlobalNpcState || readValue(reader, value.npcHouseOverrides))
         && (reader.version() < SaveVersionGlobalNpcState || readValue(reader, value.npcItemOverrides))
         && (reader.version() < SaveVersionGlobalNpcState || readValue(reader, value.unavailableNpcIds))
-        && (reader.version() < SaveVersionPartyHiredNpcFollowers || readValue(reader, value.hiredNpcFollowers));
+        && (reader.version() < SaveVersionPartyHiredNpcFollowers || readValue(reader, value.hiredNpcFollowers))
+        && (reader.version() < SaveVersionPartyExplosiveMixes || readValue(reader, value.explosiveMixes));
 }
 
 void writeValue(BinaryWriter &writer, const OutdoorMoveState &value)
@@ -1504,6 +1511,153 @@ bool readValue(BinaryReader &reader, IndoorWorldRuntime::MapActorAiState &value)
         && (reader.version() < SaveVersionOutdoorRuntimeSaveParity || readValue(reader, value.suppressLowHealthFlee));
 }
 
+void writeValue(BinaryWriter &writer, const ActorBehaviorSpell &value)
+{
+    writeValue(writer, value.spellId);
+    writeValue(writer, value.skillLevel);
+    writeValue(writer, value.skillMastery);
+    writeValue(writer, value.useChance);
+}
+
+bool readValue(BinaryReader &reader, ActorBehaviorSpell &value)
+{
+    return readValue(reader, value.spellId)
+        && readValue(reader, value.skillLevel)
+        && readValue(reader, value.skillMastery)
+        && readValue(reader, value.useChance);
+}
+
+void writeValue(BinaryWriter &writer, const ActorBehaviorTimer &value)
+{
+    writeValue(writer, value.name);
+    writeValue(writer, value.remainingSeconds);
+}
+
+bool readValue(BinaryReader &reader, ActorBehaviorTimer &value)
+{
+    return readValue(reader, value.name) && readValue(reader, value.remainingSeconds);
+}
+
+void writeValue(BinaryWriter &writer, const ActorBehaviorWardVisual &value)
+{
+    writeValue(writer, value.dome);
+    writeValue(writer, value.color);
+    writeValue(writer, value.intensity);
+    writeValue(writer, value.rimPower);
+    writeValue(writer, value.noise);
+}
+
+bool readValue(BinaryReader &reader, ActorBehaviorWardVisual &value)
+{
+    return readValue(reader, value.dome)
+        && readValue(reader, value.color)
+        && readValue(reader, value.intensity)
+        && readValue(reader, value.rimPower)
+        && readValue(reader, value.noise);
+}
+
+void writeValue(BinaryWriter &writer, const ActorBehaviorWard &value)
+{
+    writeValue(writer, value.id);
+    writeValue(writer, value.radius);
+    writeValue(writer, value.remainingSeconds);
+    writeValue(writer, value.effectId);
+    writeValue(writer, value.effectScale);
+    writeValue(writer, value.effectIntervalSeconds);
+    writeValue(writer, value.effectCooldownSeconds);
+    writeValue(writer, value.ageSeconds);
+    writeValue(writer, value.visual);
+}
+
+bool readValue(BinaryReader &reader, ActorBehaviorWard &value)
+{
+    return readValue(reader, value.id)
+        && readValue(reader, value.radius)
+        && readValue(reader, value.remainingSeconds)
+        && readValue(reader, value.effectId)
+        && readValue(reader, value.effectScale)
+        && readValue(reader, value.effectIntervalSeconds)
+        && readValue(reader, value.effectCooldownSeconds)
+        && (reader.version() < SaveVersionActorBehaviorWardVisuals
+            || (readValue(reader, value.ageSeconds) && readValue(reader, value.visual)));
+}
+
+void writeValue(BinaryWriter &writer, const ActorBehaviorPerform &value)
+{
+    writeValue(writer, value.clip);
+    writeValue(writer, value.fallbackAnimation);
+    writeValue(writer, value.durationSeconds);
+    writeValue(writer, value.elapsedSeconds);
+    writeValue(writer, value.started);
+}
+
+bool readValue(BinaryReader &reader, ActorBehaviorPerform &value)
+{
+    return readValue(reader, value.clip)
+        && readValue(reader, value.fallbackAnimation)
+        && readValue(reader, value.durationSeconds)
+        && readValue(reader, value.elapsedSeconds)
+        && readValue(reader, value.started);
+}
+
+void writeValue(BinaryWriter &writer, const ActorBehaviorInstanceState &value)
+{
+    writeValue(writer, static_cast<uint64_t>(value.actorIndex));
+    writeValue(writer, value.actorId);
+    writeValue(writer, value.behaviorId);
+    writeValue(writer, value.started);
+    writeValue(writer, value.deathHandled);
+    writeValue(writer, value.lastHp);
+    writeValue(writer, value.ageSeconds);
+    writeValue(writer, value.thinkCooldownSeconds);
+    writeValue(writer, value.randomState);
+    writeValue(writer, value.scriptState);
+    writeValue(writer, value.firedHealthThresholds);
+    writeValue(writer, value.timers);
+    writeValue(writer, value.wards);
+    writeValue(writer, value.perform);
+    writeValue(writer, value.spellOverride);
+    writeValue(writer, value.nextCast);
+    writeValue(writer, value.aiTypeOverride);
+    writeValue(writer, value.suppressFlee);
+}
+
+bool readValue(BinaryReader &reader, ActorBehaviorInstanceState &value)
+{
+    uint64_t actorIndex = 0;
+    const bool loaded = readValue(reader, actorIndex)
+        && readValue(reader, value.actorId)
+        && readValue(reader, value.behaviorId)
+        && readValue(reader, value.started)
+        && readValue(reader, value.deathHandled)
+        && readValue(reader, value.lastHp)
+        && readValue(reader, value.ageSeconds)
+        && readValue(reader, value.thinkCooldownSeconds)
+        && readValue(reader, value.randomState)
+        && readValue(reader, value.scriptState)
+        && readValue(reader, value.firedHealthThresholds)
+        && readValue(reader, value.timers)
+        && readValue(reader, value.wards)
+        && readValue(reader, value.perform)
+        && readValue(reader, value.spellOverride)
+        && readValue(reader, value.nextCast)
+        && readValue(reader, value.aiTypeOverride)
+        && readValue(reader, value.suppressFlee);
+    value.actorIndex = static_cast<size_t>(actorIndex);
+    return loaded;
+}
+
+void writeValue(BinaryWriter &writer, const ActorBehaviorRuntime::Snapshot &value)
+{
+    writeValue(writer, value.instances);
+    writeValue(writer, value.scannedActorCount);
+}
+
+bool readValue(BinaryReader &reader, ActorBehaviorRuntime::Snapshot &value)
+{
+    return readValue(reader, value.instances) && readValue(reader, value.scannedActorCount);
+}
+
 void writeValue(BinaryWriter &writer, const IndoorWorldRuntime::Snapshot &value)
 {
     writeValue(writer, value.gameMinutes);
@@ -1519,6 +1673,7 @@ void writeValue(BinaryWriter &writer, const IndoorWorldRuntime::Snapshot &value)
     writeValue(writer, value.actorUpdateAccumulatorSeconds);
     writeValue(writer, value.projectileState);
     writeValue(writer, value.searchedLootPropSourceIds);
+    writeValue(writer, value.actorBehaviors);
 }
 
 bool readValue(BinaryReader &reader, IndoorWorldRuntime::Snapshot &value)
@@ -1540,7 +1695,8 @@ bool readValue(BinaryReader &reader, IndoorWorldRuntime::Snapshot &value)
             || readValue(reader, value.actorUpdateAccumulatorSeconds))
         && (reader.version() < SaveVersionFullProjectileState || readValue(reader, value.projectileState))
         && (reader.version() < SaveVersionMm9ItemSourceState
-            || readValue(reader, value.searchedLootPropSourceIds));
+            || readValue(reader, value.searchedLootPropSourceIds))
+        && (reader.version() < SaveVersionActorBehaviors || readValue(reader, value.actorBehaviors));
 }
 
 void writeValue(BinaryWriter &writer, const OutdoorPartyRuntime::Snapshot &value)
@@ -3559,6 +3715,7 @@ void writeValue(BinaryWriter &writer, const OutdoorWorldRuntime::Snapshot &value
     writeValue(writer, value.bloodSplats);
     writeValue(writer, value.faceAttributes);
     writeValue(writer, value.searchedLootPropSourceIds);
+    writeValue(writer, value.actorBehaviors);
 }
 
 bool readValue(BinaryReader &reader, OutdoorWorldRuntime::Snapshot &value)
@@ -3603,7 +3760,8 @@ bool readValue(BinaryReader &reader, OutdoorWorldRuntime::Snapshot &value)
         && (reader.version() < SaveVersionOutdoorFaceAttributes
             || readValue(reader, value.faceAttributes))
         && (reader.version() < SaveVersionMm9ItemSourceState
-            || readValue(reader, value.searchedLootPropSourceIds));
+            || readValue(reader, value.searchedLootPropSourceIds))
+        && (reader.version() < SaveVersionActorBehaviors || readValue(reader, value.actorBehaviors));
 
     if (loaded && reader.version() >= SaveVersionOutdoorRuntimeSaveParity)
     {

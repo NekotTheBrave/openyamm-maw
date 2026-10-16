@@ -15,6 +15,7 @@ import struct
 
 import yaml
 
+from bake_assets import dependency_file
 from bake_decorations import sprite_states
 from convert_lighting_v3 import fnv
 
@@ -118,7 +119,7 @@ def main():
             raise ValueError(f'{path}: dependency does not match the supplied original snapshot')
         for name, value, _ in deps:
             if name not in cached_hashes:
-                cached_hashes[name] = fnv((args.assets_root/name).read_bytes())
+                cached_hashes[name] = fnv(dependency_file(args.assets_root, name).read_bytes())
             if cached_hashes[name] != value:
                 raise ValueError(f'{path}: another dependency changed: {name}; rebake required')
         script_directory = path.parent.parent / 'events/maps'

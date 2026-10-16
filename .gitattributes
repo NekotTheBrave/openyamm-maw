@@ -1,20 +1,8 @@
-# Optional authoring binaries use LFS only when explicitly added to Git.
-# Source banks remain ignored by default; this does not enroll existing local art.
-/assets_source/**/*.png filter=lfs diff=lfs merge=lfs -text
-/assets_source/**/*.bmp filter=lfs diff=lfs merge=lfs -text
-/assets_source/**/*.tif filter=lfs diff=lfs merge=lfs -text
-/assets_source/**/*.tiff filter=lfs diff=lfs merge=lfs -text
-/assets_source/**/*.exr filter=lfs diff=lfs merge=lfs -text
-/assets_source/**/*.psd filter=lfs diff=lfs merge=lfs -text
-/assets_source/**/*.kra filter=lfs diff=lfs merge=lfs -text
-/assets_source/**/*.blend filter=lfs diff=lfs merge=lfs -text
-/assets_source/**/*.rgba32f filter=lfs diff=lfs merge=lfs -text
-/assets_source/**/*.zip filter=lfs diff=lfs merge=lfs -text
-/assets_source/**/*.7z filter=lfs diff=lfs merge=lfs -text
-
 # Both prebuilt runtime profiles must work without Git LFS.
 /assets_dev/** -filter !diff !merge !text
 /assets_cooked/** -filter !diff !merge !text
+# Cooked sprite atlas test fixtures: their pages hash the manifest bytes.
+/tests/fixtures/sprite_atlas/** -filter !diff !merge !text
 
 # Unified patch context prefixes precede the upstream file's indentation.
 *.patch whitespace=-space-before-tab

@@ -28,6 +28,7 @@ const std::vector<std::string> GameplayLayoutFiles = {
     "Data/ui/gameplay/load_game.yml",
     "Data/ui/gameplay/journal.yml",
     "Data/ui/gameplay/quick_reference.yml",
+    "Data/ui/gameplay/alchemy_bench.yml",
     "Data/ui/gameplay/town_portal.yml",
     "Data/ui/gameplay/lloyds_beacon.yml",
     "Data/ui/gameplay/context_actions.yml",
@@ -38,6 +39,11 @@ const std::vector<std::string> GameplayLayoutFiles = {
     "Data/ui/gameplay/actor_inspect.yml",
     "Data/ui/gameplay/spell_inspect.yml"
 };
+}
+
+bool GameplayUiController::alchemyBenchSearchActive(const CharacterScreenState &screen)
+{
+    return screen.open && screen.alchemyBench.active && screen.alchemyBench.recipeSearchActive;
 }
 
 bool GameplayUiController::characterScreenSupportsInspection(const CharacterScreenState &screen)

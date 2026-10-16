@@ -65,15 +65,20 @@ public:
 
     // Sets u_skyFog for the following draws; pass nullptr for Classic flat fog.
     void applyFogUniform(const SkyFrameState *pFrame, const SkySurroundings &surroundings = {}) const;
-    // Draws the sky into viewId with the view and projection used for the world in that view.
-    void render(uint16_t viewId, const float *pView, const float *pProjection, const SkySurroundings &surroundings);
+    // Draws the sky into viewId with the view and projection used for the world in that view. behindScene: drawn
+    // after the opaque scene at the far plane with the depth test, so only the pixels it left uncovered are shaded.
+    void render(uint16_t viewId, const float *pView, const float *pProjection, const SkySurroundings &surroundings,
+        bool behindScene = false);
     // Renders the sky at scale x the target size in imageViewId, then upscales it into viewId. The sky is mostly
     // smooth gradient and cloud, so a reduced resolution keeps its look on mobile GPUs at a fraction of the cost.
     void renderScaled(uint16_t viewId, uint16_t imageViewId, uint16_t width, uint16_t height, float scale,
-        const float *pView, const float *pProjection, const SkySurroundings &surroundings);
+        const float *pView, const float *pProjection, const SkySurroundings &surroundings, bool behindScene = false);
 
 private:
-    bgfx::TextureHandle texture(const std::string &name, bool mipmaps);
+    // Loads engine/rendering/sky/<name>.oytex (tools/cook_sky_textures.py) on first use.
+    bgfx::TextureHandle texture(const std::string &name, bool cloudLayer);
+    // A panorama (horizon ring, night sky, moon) while the frame draws it; released while it does not.
+    bgfx::TextureHandle panorama(const std::string &name, bool visible);
     void releaseUnusedCloudTextures(const SkyFrameState &frame);
     void prepareEnvironmentSource(const Engine::AssetFileSystem &assets);
 

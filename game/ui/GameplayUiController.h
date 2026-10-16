@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace OpenYAMM::Game
@@ -367,6 +368,51 @@ public:
         bool active = false;
     };
 
+    enum class AlchemyIngredientFilter : uint8_t
+    {
+        All = 0,
+        Potions,
+        Reagents
+    };
+
+    struct AlchemyBenchState
+    {
+        bool active = false;
+        // The held item is poured into the target item, as when dropping one item onto another in a pack.
+        uint32_t targetItemId = 0;
+        uint32_t heldItemId = 0;
+        uint32_t selectedResultItemId = 0;
+        bool showAllRecipes = false;
+        std::string recipeSearch;
+        bool recipeSearchActive = false;
+        AlchemyIngredientFilter ingredientFilter = AlchemyIngredientFilter::All;
+        float recipeScrollOffset = 0;
+        size_t ingredientScrollRow = 0;
+        // What the last Mix produced, shown in the result slot until a slot changes.
+        uint32_t brewedItemId = 0;
+        uint16_t brewedPower = 0;
+        uint32_t brewedCount = 0;
+        bool brewedDiscovery = false;
+        bool brewedExploded = false;
+        uint64_t brewedTicks = 0;
+        // The ingredient grid scrolls the brewed potion into view on the next input frame.
+        bool brewedScrollPending = false;
+        // Recipes discovered during this visit, tagged NEW in the book.
+        std::vector<uint32_t> newRecipeResultIds;
+        // Potions per recipe brewable by chaining, recomputed only when ingredients or known recipes change.
+        uint64_t chainCountsKey = 0;
+        std::vector<std::pair<uint32_t, uint32_t>> chainCounts;
+
+        void clearBrewResult()
+        {
+            brewedItemId = 0;
+            brewedPower = 0;
+            brewedCount = 0;
+            brewedDiscovery = false;
+            brewedExploded = false;
+        }
+    };
+
     struct CharacterScreenState
     {
         bool open = false;
@@ -381,9 +427,12 @@ public:
         float skillScrollOffset = 0;
         std::optional<float> scrollDragOffset;
         size_t adventurersInnScrollOffset = 0;
+        AlchemyBenchState alchemyBench = {};
     };
 
     static bool characterScreenSupportsInspection(const CharacterScreenState &screen);
+    // Typing goes to the alchemy bench's recipe search instead of hotkeys.
+    static bool alchemyBenchSearchActive(const CharacterScreenState &screen);
 
     struct InventoryNestedOverlayState
     {

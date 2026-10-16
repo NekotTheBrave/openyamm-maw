@@ -459,24 +459,25 @@ std::optional<std::string> findAssetPathCaseInsensitive(
     return std::nullopt;
 }
 
-std::optional<std::string> findImageAssetPath(
+namespace
+{
+// The first candidate in the preferred scale tier wins; otherwise the first candidate found in any tier.
+std::optional<std::string> findTieredAssetPath(
     const AssetFileSystem &assetFileSystem,
     const std::string &directoryPath,
-    const std::string &textureName,
+    const std::string &stem,
+    std::span<const std::string> candidateFileNames,
+    const std::string &cacheKey,
     DirectoryAssetPathCache &directoryAssetPathsByPath,
     AssetPathLookupCache &assetPathByKey
 )
 {
-    const std::string cacheKey = directoryPath + "|image|" + toLowerCopy(textureName);
     const auto cachedPathIt = assetPathByKey.find(cacheKey);
 
     if (cachedPathIt != assetPathByKey.end())
     {
         return cachedPathIt->second;
     }
-
-    const std::string stem = stripKnownImageExtension(textureName);
-    const std::array<std::string, 3> candidateFileNames = {stem + ".png", stem + ".bmp", stem + ".pcx"};
 
     std::optional<std::string> fallbackPath;
     const AssetScaleTier preferredTier = assetFileSystem.getAssetScaleTierForVirtualPath(directoryPath + "/" + stem);
@@ -510,6 +511,36 @@ std::optional<std::string> findImageAssetPath(
 
     assetPathByKey[cacheKey] = fallbackPath;
     return fallbackPath;
+}
+}
+
+std::optional<std::string> findImageAssetPath(
+    const AssetFileSystem &assetFileSystem,
+    const std::string &directoryPath,
+    const std::string &textureName,
+    DirectoryAssetPathCache &directoryAssetPathsByPath,
+    AssetPathLookupCache &assetPathByKey
+)
+{
+    const std::string stem = stripKnownImageExtension(textureName);
+    const std::array<std::string, 3> candidateFileNames = {stem + ".png", stem + ".bmp", stem + ".pcx"};
+    return findTieredAssetPath(assetFileSystem, directoryPath, stem, candidateFileNames,
+        directoryPath + "|image|" + toLowerCopy(textureName), directoryAssetPathsByPath, assetPathByKey);
+}
+
+std::optional<std::string> findCookedOrImageAssetPath(
+    const AssetFileSystem &assetFileSystem,
+    const std::string &directoryPath,
+    const std::string &textureName,
+    DirectoryAssetPathCache &directoryAssetPathsByPath,
+    AssetPathLookupCache &assetPathByKey
+)
+{
+    const std::string stem = stripKnownImageExtension(textureName);
+    const std::array<std::string, 4> candidateFileNames = {
+        stem + ".oytex", stem + ".png", stem + ".bmp", stem + ".pcx"};
+    return findTieredAssetPath(assetFileSystem, directoryPath, stem, candidateFileNames,
+        directoryPath + "|cooked-image|" + toLowerCopy(textureName), directoryAssetPathsByPath, assetPathByKey);
 }
 
 std::optional<ImageDimensions> readImageDimensions(std::span<const uint8_t> header)

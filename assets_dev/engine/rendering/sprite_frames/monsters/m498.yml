@@ -115,7 +115,7 @@ sprites:
     sprite_name: "m498x"
     animation_length_raw: 2
     frames:
-      - texture_name: "atlas:mm6_wdm/m496xa"
+      - texture_name: "m496xa"
         frame_length_raw: 2
         flags: [First, Center, Mirror5, Mirror6, Mirror7]
         scale: 1.75

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <exception>
 #include <limits>
@@ -892,6 +893,129 @@ std::vector<std::string> SpriteFrameTable::collectTextureNames(uint16_t spriteId
     }
 
     return textureNames;
+}
+
+bool SpriteFrameTable::loadAttackTimingFromYaml(const std::string &yamlText, std::string &errorMessage)
+{
+    YAML::Node root;
+
+    try
+    {
+        root = YAML::Load(yamlText);
+    }
+    catch (const std::exception &exception)
+    {
+        errorMessage = exception.what();
+        return false;
+    }
+
+    const YAML::Node spritesNode = root["sprites"];
+
+    if (!spritesNode || !spritesNode.IsMap())
+    {
+        errorMessage = "sprites must be a map of sprite name to attack timing";
+        return false;
+    }
+
+    std::unordered_map<std::string, AttackTiming> timings;
+
+    for (const auto &sprite : spritesNode)
+    {
+        const std::string spriteName = toLowerCopy(trimCopy(sprite.first.as<std::string>()));
+
+        if (spriteName.empty() || !sprite.second.IsMap() || sprite.second.size() == 0)
+        {
+            errorMessage = "attack timing of sprite " + spriteName + " must be a map";
+            return false;
+        }
+
+        AttackTiming timing = {};
+
+        for (const auto &field : sprite.second)
+        {
+            const std::string key = field.first.as<std::string>();
+
+            if (key == "contact_frame")
+            {
+                // Frame 0 would apply the attack as it starts; the contact is always drawn after a wind-up.
+                const int frame = field.second.as<int>(-1);
+
+                if (frame < 1)
+                {
+                    errorMessage = "invalid contact_frame for sprite " + spriteName;
+                    return false;
+                }
+
+                timing.contactFrame = static_cast<uint32_t>(frame);
+            }
+            else if (key == "sound_delay")
+            {
+                const float delay = field.second.as<float>(-1.0f);
+
+                if (!std::isfinite(delay) || delay < 0.0f)
+                {
+                    errorMessage = "invalid sound_delay for sprite " + spriteName;
+                    return false;
+                }
+
+                timing.soundDelaySeconds = delay;
+            }
+            else
+            {
+                errorMessage = "unknown attack timing field " + key + " for sprite " + spriteName;
+                return false;
+            }
+        }
+
+        timings[spriteName] = timing;
+    }
+
+    m_attackTimings = std::move(timings);
+    return true;
+}
+
+const SpriteFrameTable::AttackTiming *SpriteFrameTable::findAttackTiming(uint16_t spriteId) const
+{
+    if (spriteId >= m_frames.size() || spriteId >= m_framePresent.size() || !m_framePresent[spriteId])
+    {
+        return nullptr;
+    }
+
+    const auto timing = m_attackTimings.find(m_frames[spriteId].spriteName);
+    return timing != m_attackTimings.end() ? &timing->second : nullptr;
+}
+
+std::optional<int32_t> SpriteFrameTable::attackImpactTicks(uint16_t spriteId) const
+{
+    const AttackTiming *pTiming = findAttackTiming(spriteId);
+
+    if (pTiming == nullptr || pTiming->contactFrame == 0)
+    {
+        return std::nullopt;
+    }
+
+    int32_t ticks = 0;
+    size_t frameIndex = spriteId;
+
+    for (uint32_t frame = 0; frame < pTiming->contactFrame; ++frame, ++frameIndex)
+    {
+        if (frameIndex >= m_frames.size() || !m_framePresent[frameIndex]
+            || !hasFlag(m_frames[frameIndex].flags, SpriteFrameFlag::HasMore))
+        {
+            // The contact frame lies past the animation's last frame.
+            return std::nullopt;
+        }
+
+        ticks += m_frames[frameIndex].frameLengthTicks;
+    }
+
+    return ticks;
+}
+
+float SpriteFrameTable::attackSoundDelaySeconds(uint16_t spriteId) const
+{
+    const AttackTiming *pTiming = findAttackTiming(spriteId);
+    return pTiming != nullptr ? pTiming->soundDelaySeconds : 0.0f;
 }
 
 std::optional<uint16_t> SpriteFrameTable::findFrameIndexBySpriteName(const std::string &spriteName) const

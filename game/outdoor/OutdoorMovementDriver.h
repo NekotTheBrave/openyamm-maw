@@ -124,6 +124,7 @@ public:
     const OutdoorMovementEvents &lastEvents() const;
     const OutdoorMovementConsequences &lastConsequences() const;
     const OutdoorPartyMovementState &partyMovementState() const;
+    bool isRunningMovement(const OutdoorMovementInput &input) const;
     const OutdoorMovementTuning &tuning() const;
     const OutdoorMovementEffects &pendingEffects() const;
     OutdoorMovementEffects consumePendingEffects();
@@ -144,6 +145,7 @@ public:
 
 private:
     bool canActivateFlying() const;
+    bool isEffectiveRunning(const OutdoorMovementInput &input) const;
 
     OutdoorMovementController m_movementController;
     OutdoorMoveState m_state;

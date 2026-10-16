@@ -325,7 +325,7 @@
 323	21	Temple	0	212	Holy Ground	Belle	Healer	0510	0	0	0	1.5	1		0			1	24	0	0	0	0
 324	22	Temple	0	212	Healer's Tent	Heather	Healer	0510	0	0	0	1.5	1		0			1	24	0	0	0	0
 325	23	Temple	151	401	New Sorpigal Temple	Joshua	Healer	1035	0	0	0	10	2		0			5	1	0	0	0	
-326	24	Temple	144	401	Temple Stone	Nelson	Healer	1035	0	0	0	40	2.5		0	Temples Get:		5	1	0	0	0	
+326	24	Temple	144	401	Temple Stone	Nelson	Healer	1035	0	0	0	40	2		0	Temples Get:		5	1	0	0	0	
 327	25	Temple	141	400	Blackshire Temple	Saul	Healer	1034	0	0	0	99.99	2.5		0	"""Heal (cost)"""	Restrict (A)	5	1	0	0	0	
 328	26	Temple	149	399	Abdul's Discount House of Worship	Arnold	Healer	1033	0	0	0	50	1.5		0	"""Donate (cost)"""		5	1	0	0	0	
 329	27	Temple	143	401	White Cap Temple	Henry	Healer	1035	0	0	0	30	1.5		0			5	1	0	0	0	

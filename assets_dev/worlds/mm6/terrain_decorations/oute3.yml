@@ -1,153 +1,111 @@
-version: 1
+version: 2
+families_file: families_v2.yml
 seed: 6127
-distance: 6144
-minimum_normal_z: 0.88
+near_distance: 3072
+minimum_normal_z: 0.62
 density_variation: 0.8
 patch_size: 768
-tall_grass_chance: 0.08
+tall_grass_chance: 0.12
 tall_grass_scale: 1.8
-tuft_texture: grass_variants.png
-tuft_atlas_grid:
-- 2
-- 2
-tuft_variants:
-- weight: 45
-  width_scale: 1.0
-  height_scale: 1.0
-- weight: 35
-  width_scale: 1.0
-  height_scale: 0.9
-- weight: 15
-  width_scale: 1.0
-  height_scale: 1.35
-- weight: 5
-  width_scale: 0.85
-  height_scale: 0.85
 rules:
 - texture: 6grastyl
-  kind: grass
-  candidates: 50
-  width: 80
-  height: 60
+  family: meadow
+  density: 1.0
   tint:
   - 0.82
   - 0.98
   - 0.78
 - texture: 6grdrte
-  kind: grass
-  candidates: 50
-  width: 80
-  height: 60
+  family: meadow
+  density: 1.0
   tint:
   - 0.82
   - 0.98
   - 0.78
   mask: masks/6grdrte.png
 - texture: 6grdrtn
-  kind: grass
-  candidates: 50
-  width: 80
-  height: 60
+  family: meadow
+  density: 1.0
   tint:
   - 0.82
   - 0.98
   - 0.78
   mask: masks/6grdrtn.png
 - texture: 6grdrtne
-  kind: grass
-  candidates: 50
-  width: 80
-  height: 60
+  family: meadow
+  density: 1.0
   tint:
   - 0.82
   - 0.98
   - 0.78
   mask: masks/6grdrtne.png
 - texture: 6grdrtnw
-  kind: grass
-  candidates: 50
-  width: 80
-  height: 60
+  family: meadow
+  density: 1.0
   tint:
   - 0.82
   - 0.98
   - 0.78
   mask: masks/6grdrtnw.png
 - texture: 6grdrts
-  kind: grass
-  candidates: 50
-  width: 80
-  height: 60
+  family: meadow
+  density: 1.0
   tint:
   - 0.82
   - 0.98
   - 0.78
   mask: masks/6grdrts.png
 - texture: 6grdrtse
-  kind: grass
-  candidates: 50
-  width: 80
-  height: 60
+  family: meadow
+  density: 1.0
   tint:
   - 0.82
   - 0.98
   - 0.78
   mask: masks/6grdrtse.png
 - texture: 6grdrtsw
-  kind: grass
-  candidates: 50
-  width: 80
-  height: 60
+  family: meadow
+  density: 1.0
   tint:
   - 0.82
   - 0.98
   - 0.78
   mask: masks/6grdrtsw.png
 - texture: 6grdrtw
-  kind: grass
-  candidates: 50
-  width: 80
-  height: 60
+  family: meadow
+  density: 1.0
   tint:
   - 0.82
   - 0.98
   - 0.78
   mask: masks/6grdrtw.png
 - texture: 6grdrtxne
-  kind: grass
-  candidates: 50
-  width: 80
-  height: 60
+  family: meadow
+  density: 1.0
   tint:
   - 0.82
   - 0.98
   - 0.78
   mask: masks/6grdrtxne.png
 - texture: 6grdrtxnw
-  kind: grass
-  candidates: 50
-  width: 80
-  height: 60
+  family: meadow
+  density: 1.0
   tint:
   - 0.82
   - 0.98
   - 0.78
   mask: masks/6grdrtxnw.png
 - texture: 6grdrtxse
-  kind: grass
-  candidates: 50
-  width: 80
-  height: 60
+  family: meadow
+  density: 1.0
   tint:
   - 0.82
   - 0.98
   - 0.78
   mask: masks/6grdrtxse.png
 - texture: 6grdrtxsw
-  kind: grass
-  candidates: 50
-  width: 80
-  height: 60
+  family: meadow
+  density: 1.0
   tint:
   - 0.82
   - 0.98

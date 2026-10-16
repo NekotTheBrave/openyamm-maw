@@ -8,7 +8,7 @@ namespace OpenYAMM::Engine
 {
 namespace
 {
-constexpr std::array<std::pair<TextureBlockCodec, std::string_view>, 8> CodecNames = {{
+constexpr std::array<std::pair<TextureBlockCodec, std::string_view>, 9> CodecNames = {{
     {TextureBlockCodec::Bc7, "bc7"},
     {TextureBlockCodec::Bc4, "bc4"},
     {TextureBlockCodec::Bc5, "bc5"},
@@ -17,6 +17,7 @@ constexpr std::array<std::pair<TextureBlockCodec, std::string_view>, 8> CodecNam
     {TextureBlockCodec::EacRg, "eac_rg"},
     {TextureBlockCodec::Bc1, "bc1"},
     {TextureBlockCodec::Etc2Rgb, "etc2_rgb"},
+    {TextureBlockCodec::Astc4x4, "astc_4x4"},
 }};
 }
 
@@ -32,6 +33,7 @@ bgfx::TextureFormat::Enum textureBlockFormat(TextureBlockCodec codec)
     case TextureBlockCodec::EacRg: return bgfx::TextureFormat::EACRG11;
     case TextureBlockCodec::Bc1: return bgfx::TextureFormat::BC1;
     case TextureBlockCodec::Etc2Rgb: return bgfx::TextureFormat::ETC2;
+    case TextureBlockCodec::Astc4x4: return bgfx::TextureFormat::ASTC4x4;
     }
     throw std::runtime_error("Unknown texture block codec");
 }

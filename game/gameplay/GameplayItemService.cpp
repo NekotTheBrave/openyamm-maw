@@ -5,6 +5,7 @@
 #include "game/events/EventRuntime.h"
 #include "game/gameplay/GameMechanics.h"
 #include "game/mod/ModHooks.h"
+#include "game/items/AlchemyBenchRuntime.h"
 #include "game/items/ItemRuntime.h"
 #include "game/gameplay/GameplayScreenRuntime.h"
 #include "game/items/InventoryItemMixingRuntime.h"
@@ -13,6 +14,8 @@
 #include "game/tables/MergedBaseTables.h"
 #include "game/tables/ObjectTable.h"
 #include "game/tables/PotionNoteTable.h"
+
+#include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <cctype>
@@ -845,6 +848,17 @@ bool GameplayItemService::tryUseHeldItemOnInventoryItem(
         pParty->clearHeldItemForQueries();
     }
 
+    applyMixResultEffects(runtime, *pParty, memberIndex, mixResult, false);
+    return true;
+}
+
+void GameplayItemService::applyMixResultEffects(
+    GameplayScreenRuntime &runtime,
+    Party &party,
+    size_t memberIndex,
+    const InventoryItemMixResult &mixResult,
+    bool keepInventoryOpen)
+{
     if (mixResult.unlockedAutonoteId != 0)
     {
         IGameplayWorldRuntime *pWorldRuntime = runtime.worldRuntime();
@@ -856,7 +870,7 @@ bool GameplayItemService::tryUseHeldItemOnInventoryItem(
             const uint32_t rawId = (mixResult.unlockedAutonoteId << 16) | AutoNoteVariableTag;
             const EventRuntime::VariableRef variable = EventRuntime::decodeVariable(rawId);
             const std::vector<size_t> targetMemberIndices = {memberIndex};
-            EventRuntime::setVariableValue(*pEventRuntimeState, variable, 1, pParty, targetMemberIndices);
+            EventRuntime::setVariableValue(*pEventRuntimeState, variable, 1, &party, targetMemberIndices);
         }
     }
 
@@ -867,8 +881,13 @@ bool GameplayItemService::tryUseHeldItemOnInventoryItem(
 
     if (potionExplosion)
     {
-        pParty->applyPotionExplosionToMember(memberIndex, mixResult.failureDamageLevel);
-        closeCharacterInventoryAfterPotionExplosion(runtime);
+        party.applyPotionExplosionToMember(memberIndex, mixResult.failureDamageLevel);
+
+        if (!keepInventoryOpen)
+        {
+            closeCharacterInventoryAfterPotionExplosion(runtime);
+        }
+
         spawnPotionExplosionImpactVisual(m_session, runtime);
     }
 
@@ -891,7 +910,7 @@ bool GameplayItemService::tryUseHeldItemOnInventoryItem(
     if (mixResult.action == InventoryItemMixAction::PotionMix
         || mixResult.action == InventoryItemMixAction::ReagentBottleMix)
     {
-        Character *pMember = pParty->member(memberIndex);
+        Character *pMember = party.member(memberIndex);
         const bool canPlayPotionReaction =
             mixResult.success
             || !potionExplosion
@@ -917,8 +936,257 @@ bool GameplayItemService::tryUseHeldItemOnInventoryItem(
     {
         runtime.setStatusBarEvent(mixResult.statusText);
     }
+}
 
+bool GameplayItemService::mixAlchemyBench(GameplayScreenRuntime &runtime, bool mixAll)
+{
+    Party *pParty = runtime.party();
+
+    if (pParty == nullptr || !m_session.hasDataRepository())
+    {
+        return false;
+    }
+
+    const GameDataRepository &data = m_session.data();
+    const AlchemyBenchTables tables = {
+        data.itemTable(),
+        data.potionMixingTable(),
+        data.potionNoteTable(),
+        data.mergedPotionSettingTable(),
+        data.mergedReagentSettingTable()};
+    GameplayUiController::AlchemyBenchState &bench = runtime.characterScreen().alchemyBench;
+    const AlchemistInfo alchemist = AlchemyBenchRuntime::resolveAlchemist(*pParty);
+    const size_t alchemistIndex = alchemist.memberIndex.value_or(pParty->activeMemberIndex());
+    const uint32_t bottleItemId = tables.potionSettingTable.emptyBottleItemId();
+    AlchemyRecipe recipe = {bench.targetItemId, bench.heldItemId};
+    // A mix the party had not tried, that records a potion note, is a discovery.
+    const bool untried = AlchemyBenchRuntime::preview(*pParty, recipe, tables,
+        [&runtime](uint32_t autonoteId)
+        {
+            return runtime.isAutonoteUnlocked(autonoteId);
+        }).outcome == AlchemyPreviewOutcome::Unknown;
+    InventoryItemMixResult lastResult = {};
+    InventoryItem brewedItem = {};
+    uint32_t mixedCount = 0;
+    bool bottleOverflow = false;
+
+    while (true)
+    {
+        const AlchemyMixOutcome outcome = AlchemyBenchRuntime::mix(*pParty, recipe, tables);
+
+        if (!outcome.result.handled)
+        {
+            break;
+        }
+
+        lastResult = outcome.result;
+        brewedItem = outcome.resultItem;
+
+        if (outcome.overflowItem.has_value())
+        {
+            // No pack had room for the empty bottle; hand it to the cursor and step back to the pack.
+            GameplayUiController::HeldInventoryItemState &heldItem = runtime.heldInventoryItem();
+            heldItem = {};
+            heldItem.active = true;
+            heldItem.item = *outcome.overflowItem;
+            pParty->setHeldItemForQueries(heldItem.item);
+            bench.active = false;
+            bottleOverflow = true;
+        }
+
+        if (!outcome.result.success)
+        {
+            break;
+        }
+
+        ++mixedCount;
+
+        if (!mixAll || bottleOverflow)
+        {
+            break;
+        }
+
+        const std::vector<AlchemyIngredient> ingredients = AlchemyBenchRuntime::collectIngredients(*pParty, tables);
+
+        if (AlchemyBenchRuntime::brewableCount(recipe, ingredients) > 0)
+        {
+            continue;
+        }
+
+        // Filling bottles moves on to the next reagent that makes the same potion.
+        const std::optional<uint32_t> reagentResult =
+            tables.reagentSettingTable.resultItemIdForReagent(recipe.heldItemId);
+
+        if (recipe.targetItemId != bottleItemId || !reagentResult.has_value())
+        {
+            break;
+        }
+
+        AlchemyBookEntry reagents = {};
+        reagents.reagentRecipe = true;
+
+        for (const MergedReagentSettingEntry &reagent : tables.reagentSettingTable.entries())
+        {
+            if (reagent.resultItemId == *reagentResult)
+            {
+                reagents.recipes.push_back({bottleItemId, reagent.itemId});
+            }
+        }
+
+        const std::optional<AlchemyRecipe> nextRecipe = AlchemyBenchRuntime::pickRecipe(reagents, ingredients);
+
+        if (!nextRecipe.has_value() || AlchemyBenchRuntime::brewableCount(*nextRecipe, ingredients) == 0)
+        {
+            break;
+        }
+
+        recipe = *nextRecipe;
+    }
+
+    if (!lastResult.handled)
+    {
+        runtime.setStatusBarEvent("Nothing happens.");
+
+        if (runtime.audioSystem() != nullptr)
+        {
+            runtime.audioSystem()->playCommonSound(SoundId::Error, GameAudioSystem::PlaybackGroup::Ui);
+        }
+
+        return false;
+    }
+
+    const ItemDefinition *pBrewed = tables.itemTable.get(brewedItem.objectDescriptionId);
+    const std::string brewedName = pBrewed != nullptr ? pBrewed->name : "potion";
+    const bool discovery = untried && lastResult.success && lastResult.unlockedAutonoteId != 0;
+
+    if (bottleOverflow)
+    {
+        lastResult.statusText = "No room for the empty bottle.";
+    }
+    else if (discovery)
+    {
+        lastResult.statusText = "Discovered: " + brewedName + "!";
+    }
+    else if (mixedCount > 1)
+    {
+        lastResult.statusText = "Brewed " + std::to_string(mixedCount) + " x " + brewedName;
+    }
+    else if (lastResult.success)
+    {
+        lastResult.statusText = "Brewed " + brewedName + " (power " + std::to_string(brewedItem.standardEnchantPower)
+            + ")";
+    }
+
+    // The slots keep the mixed pair, faded once the party runs out, and the result slot shows what was brewed.
+    bench.targetItemId = recipe.targetItemId;
+    bench.heldItemId = recipe.heldItemId;
+    bench.clearBrewResult();
+    bench.brewedTicks = SDL_GetTicks();
+    bench.brewedExploded = lastResult.failureDamageLevel != 0;
+
+    if (lastResult.success)
+    {
+        bench.brewedItemId = brewedItem.objectDescriptionId;
+        bench.brewedPower = brewedItem.standardEnchantPower;
+        bench.brewedCount = mixedCount;
+        bench.brewedDiscovery = discovery;
+        bench.selectedResultItemId = brewedItem.objectDescriptionId;
+        bench.brewedScrollPending = true;
+    }
+
+    if (discovery)
+    {
+        bench.newRecipeResultIds.push_back(brewedItem.objectDescriptionId);
+
+        if (runtime.audioSystem() != nullptr)
+        {
+            runtime.audioSystem()->playCommonSound(SoundId::Quest, GameAudioSystem::PlaybackGroup::Ui);
+        }
+    }
+
+    applyMixResultEffects(runtime, *pParty, alchemistIndex, lastResult, true);
     return true;
+}
+
+bool GameplayItemService::brewAlchemyChain(GameplayScreenRuntime &runtime, bool brewAll)
+{
+    constexpr uint32_t MaxChainBrews = 99;
+    Party *pParty = runtime.party();
+
+    if (pParty == nullptr || !m_session.hasDataRepository())
+    {
+        return false;
+    }
+
+    const GameDataRepository &data = m_session.data();
+    const AlchemyBenchTables tables = {
+        data.itemTable(),
+        data.potionMixingTable(),
+        data.potionNoteTable(),
+        data.mergedPotionSettingTable(),
+        data.mergedReagentSettingTable()};
+    GameplayUiController::AlchemyBenchState &bench = runtime.characterScreen().alchemyBench;
+    const AlchemistInfo alchemist = AlchemyBenchRuntime::resolveAlchemist(*pParty);
+    const AlchemyBook book = AlchemyBenchRuntime::buildBook(
+        tables,
+        AlchemyBenchRuntime::collectIngredients(*pParty, tables),
+        alchemist.mastery,
+        [&runtime](uint32_t autonoteId)
+        {
+            return runtime.isAutonoteUnlocked(autonoteId);
+        });
+    const AlchemyChainPlan plan = AlchemyChainPlanner(*pParty, book, alchemist.level, tables)
+        .plan(bench.selectedResultItemId, brewAll ? MaxChainBrews : 1);
+
+    if (plan.brewCount == 0)
+    {
+        return false;
+    }
+
+    const AlchemyChainOutcome outcome = AlchemyBenchRuntime::brewChain(*pParty, plan, tables);
+    InventoryItemMixResult result = outcome.lastMix.result;
+    const ItemDefinition *pBrewed = tables.itemTable.get(outcome.lastBrewed.objectDescriptionId);
+    const std::string brewedName = pBrewed != nullptr ? pBrewed->name : "potion";
+    const std::string steps = std::to_string(outcome.stepsDone) + (outcome.stepsDone == 1 ? " step" : " steps");
+
+    if (outcome.lastMix.overflowItem.has_value())
+    {
+        // No pack had room for an empty bottle; hand it to the cursor and step back to the pack.
+        GameplayUiController::HeldInventoryItemState &heldItem = runtime.heldInventoryItem();
+        heldItem = {};
+        heldItem.active = true;
+        heldItem.item = *outcome.lastMix.overflowItem;
+        pParty->setHeldItemForQueries(heldItem.item);
+        bench.active = false;
+        result.statusText = "No room for the empty bottle.";
+    }
+    else if (outcome.brewedCount == 0)
+    {
+        result.statusText = "Brewing stopped after " + steps + ".";
+    }
+    else if (outcome.brewedCount > 1)
+    {
+        result.statusText = "Brewed " + std::to_string(outcome.brewedCount) + " x " + brewedName + " (" + steps + ")";
+    }
+    else
+    {
+        result.statusText = "Brewed " + brewedName + " (power "
+            + std::to_string(outcome.lastBrewed.standardEnchantPower) + ", " + steps + ")";
+    }
+
+    bench.clearBrewResult();
+    bench.brewedTicks = SDL_GetTicks();
+
+    if (outcome.brewedCount > 0)
+    {
+        bench.brewedItemId = outcome.lastBrewed.objectDescriptionId;
+        bench.brewedPower = outcome.lastBrewed.standardEnchantPower;
+        bench.brewedCount = outcome.brewedCount;
+        bench.brewedScrollPending = true;
+    }
+
+    applyMixResultEffects(runtime, *pParty, alchemist.memberIndex.value_or(pParty->activeMemberIndex()), result, true);
+    return outcome.brewedCount > 0;
 }
 
 void GameplayItemService::updateReadableScrollOverlayForHeldItem(

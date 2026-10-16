@@ -3,6 +3,7 @@
 #include "game/gameplay/GameplayRuntimeInterfaces.h"
 #include "game/party/SkillData.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -136,10 +137,19 @@ struct ActorRuntimeFacts
     ActorAiAnimationState animationState = ActorAiAnimationState::Standing;
     GameplayActorAttackAbility queuedAttackAbility = GameplayActorAttackAbility::Attack1;
     float animationTimeTicks = 0.0f;
+    // A party hit's hitstop (GameplayActorHitFeedback) holds the animation clock still; action timing still runs.
+    bool hitstopActive = false;
     float recoverySeconds = 0.0f;
     float attackAnimationSeconds = 0.0f;
     float meleeAttackAnimationSeconds = 0.0f;
     float rangedAttackAnimationSeconds = 0.0f;
+    // Time from the start of the attack to its sprite's contact frame (rendering/sprite_attack_timing.yml); 0 applies
+    // the attack when the action ends, as MM8 does.
+    float meleeAttackImpactSeconds = 0.0f;
+    float rangedAttackImpactSeconds = 0.0f;
+    // Delay of the attack sound after the attack starts (sprite_attack_timing.yml); 0 plays it as the attack starts.
+    float meleeAttackSoundDelaySeconds = 0.0f;
+    float rangedAttackSoundDelaySeconds = 0.0f;
     float boredAnimationSeconds = 2.0f;
     float attackCooldownSeconds = 0.0f;
     float idleDecisionSeconds = 0.0f;
@@ -159,6 +169,14 @@ struct ActorRuntimeFacts
     int8_t crowdSideSign = 0;
     bool attackImpactTriggered = false;
 };
+
+// Action time left when an attack applies at its contact time (seconds from the attack's start); 0 applies it when
+// the action ends. The action lasts the attack sprite's animation (startAttack: at least 0.1 s).
+inline float actorAttackImpactLeadSeconds(float attackAnimationSeconds, float impactSeconds)
+{
+    const float actionSeconds = std::max(0.1f, attackAnimationSeconds);
+    return impactSeconds > 0.0f && impactSeconds < actionSeconds ? actionSeconds - impactSeconds : 0.0f;
+}
 
 struct ActorStatusFacts
 {
@@ -245,6 +263,15 @@ struct ActorWorldFacts
     bool portalPathToParty = false;
 };
 
+// Directives from an actor behaviour script (ActorBehaviorRuntime). Absent scripts leave these at defaults.
+struct ActorBehaviorFacts
+{
+    // A scripted action is playing: the actor stands, faces its target and shows holdAnimation.
+    bool holdActive = false;
+    bool holdRestartAnimation = false;
+    ActorAiAnimationState holdAnimation = ActorAiAnimationState::Standing;
+};
+
 struct ActorAiFacts
 {
     size_t actorIndex = static_cast<size_t>(-1);
@@ -257,6 +284,7 @@ struct ActorAiFacts
     ActorTargetFacts target = {};
     ActorMovementFacts movement = {};
     ActorWorldFacts world = {};
+    ActorBehaviorFacts behavior = {};
 };
 
 struct ActorStateUpdate
@@ -383,11 +411,19 @@ struct ActorAiUpdate
     std::vector<ActorFxRequest> fxRequests;
 };
 
+struct ActorTurnBasedFrameFacts
+{
+    ActorTurnBasedMode mode = ActorTurnBasedMode::RealTime;
+    // Actors the turn engine lets take their queued action in this step, by actor index.
+    std::vector<size_t> actionGrantActorIndices;
+};
+
 struct ActorAiFrameFacts
 {
     float deltaSeconds = 0.0f;
     float fixedStepSeconds = 0.0f;
     ActorPartyFacts party = {};
+    ActorTurnBasedFrameFacts turnBased = {};
     std::vector<ActorAiFacts> backgroundActors;
     std::vector<ActorAiFacts> activeActors;
 };

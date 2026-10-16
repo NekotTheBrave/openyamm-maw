@@ -1,6 +1,7 @@
 #include "engine/render/ModelEnvironment.h"
 
 #include "engine/ImageMipmaps.h"
+#include "engine/ParallelFor.h"
 
 #include <bx/math.h>
 #include <bx/uint32_t.h>
@@ -105,6 +106,7 @@ std::vector<ModelEnvironmentMip> prepareModelSkyEnvironment(const ModelSkyEnviro
     // Probe irradiance supplies scene brightness; normalize the cloud pattern once without losing its colour.
     const float luminance = std::max(average[0] * 0.2126f + average[1] * 0.7152f + average[2] * 0.0722f, 0.01f);
     std::vector<ModelEnvironmentMip> mips;
+    std::vector<std::vector<bx::Vec3>> halfDirectionsByMip;
     for (uint16_t size = EnvironmentSize; size > 0; size /= 2)
     {
         ModelEnvironmentMip mip;
@@ -116,59 +118,68 @@ std::vector<ModelEnvironmentMip> prepareModelSkyEnvironment(const ModelSkyEnviro
         {
             halfDirections.push_back(sampleHalfDirection(sample, roughness));
         }
-        for (uint8_t face = 0; face < 6; ++face)
+        for (std::vector<uint16_t> &pixels : mip.rgbaHalfFaces)
         {
-            std::vector<uint16_t> &pixels = mip.rgbaHalfFaces[face];
             pixels.resize(size_t(size) * size * 4);
-            for (uint16_t row = 0; row < size; ++row)
-            {
-                for (uint16_t column = 0; column < size; ++column)
-                {
-                    const bx::Vec3 normal = cubeDirection(face,
-                        2.0f * (column + 0.5f) / size - 1.0f, 2.0f * (row + 0.5f) / size - 1.0f);
-                    std::array<float, 3> color = {};
-                    if (mips.empty())
-                    {
-                        color = sampleCloudPlane(sky, linearPixels, average, normal);
-                    }
-                    else
-                    {
-                        const bx::Vec3 up = std::abs(normal.z) < 0.999f ? bx::Vec3{0, 0, 1} : bx::Vec3{1, 0, 0};
-                        const bx::Vec3 tangent = bx::normalize(bx::cross(up, normal));
-                        const bx::Vec3 bitangent = bx::cross(normal, tangent);
-                        float weight = 0;
-                        for (const bx::Vec3 &sample : halfDirections)
-                        {
-                            const bx::Vec3 half = bx::add(bx::add(bx::mul(tangent, sample.x),
-                                bx::mul(bitangent, sample.y)), bx::mul(normal, sample.z));
-                            const bx::Vec3 light = bx::sub(bx::mul(half, 2.0f * bx::dot(normal, half)), normal);
-                            const float cosine = std::max(bx::dot(normal, light), 0.0f);
-                            if (cosine > 0)
-                            {
-                                const std::array<float, 3> radiance = sampleCloudPlane(sky, linearPixels, average, light);
-                                for (size_t channel = 0; channel < 3; ++channel)
-                                {
-                                    color[channel] += radiance[channel] * cosine;
-                                }
-                                weight += cosine;
-                            }
-                        }
-                        for (float &channel : color)
-                        {
-                            channel /= std::max(weight, 0.0001f);
-                        }
-                    }
-                    const size_t offset = (size_t(row) * size + column) * 4;
-                    for (size_t channel = 0; channel < 3; ++channel)
-                    {
-                        pixels[offset + channel] = bx::halfFromFloat(color[channel] / luminance);
-                    }
-                    pixels[offset + 3] = bx::halfFromFloat(1.0f);
-                }
-            }
         }
         mips.push_back(std::move(mip));
+        halfDirectionsByMip.push_back(std::move(halfDirections));
     }
+    // Every face of every mip is independent: filter them on the load workers.
+    parallelFor(mips.size() * 6, [&](size_t task)
+    {
+        const size_t mipIndex = task / 6;
+        const uint8_t face = uint8_t(task % 6);
+        const uint16_t size = mips[mipIndex].size;
+        const std::vector<bx::Vec3> &halfDirections = halfDirectionsByMip[mipIndex];
+        std::vector<uint16_t> &pixels = mips[mipIndex].rgbaHalfFaces[face];
+        for (uint16_t row = 0; row < size; ++row)
+        {
+            for (uint16_t column = 0; column < size; ++column)
+            {
+                const bx::Vec3 normal = cubeDirection(face,
+                    2.0f * (column + 0.5f) / size - 1.0f, 2.0f * (row + 0.5f) / size - 1.0f);
+                std::array<float, 3> color = {};
+                if (mipIndex == 0)
+                {
+                    color = sampleCloudPlane(sky, linearPixels, average, normal);
+                }
+                else
+                {
+                    const bx::Vec3 up = std::abs(normal.z) < 0.999f ? bx::Vec3{0, 0, 1} : bx::Vec3{1, 0, 0};
+                    const bx::Vec3 tangent = bx::normalize(bx::cross(up, normal));
+                    const bx::Vec3 bitangent = bx::cross(normal, tangent);
+                    float weight = 0;
+                    for (const bx::Vec3 &sample : halfDirections)
+                    {
+                        const bx::Vec3 half = bx::add(bx::add(bx::mul(tangent, sample.x),
+                            bx::mul(bitangent, sample.y)), bx::mul(normal, sample.z));
+                        const bx::Vec3 light = bx::sub(bx::mul(half, 2.0f * bx::dot(normal, half)), normal);
+                        const float cosine = std::max(bx::dot(normal, light), 0.0f);
+                        if (cosine > 0)
+                        {
+                            const std::array<float, 3> radiance = sampleCloudPlane(sky, linearPixels, average, light);
+                            for (size_t channel = 0; channel < 3; ++channel)
+                            {
+                                color[channel] += radiance[channel] * cosine;
+                            }
+                            weight += cosine;
+                        }
+                    }
+                    for (float &channel : color)
+                    {
+                        channel /= std::max(weight, 0.0001f);
+                    }
+                }
+                const size_t offset = (size_t(row) * size + column) * 4;
+                for (size_t channel = 0; channel < 3; ++channel)
+                {
+                    pixels[offset + channel] = bx::halfFromFloat(color[channel] / luminance);
+                }
+                pixels[offset + 3] = bx::halfFromFloat(1.0f);
+            }
+        }
+    });
     return mips;
 }
 

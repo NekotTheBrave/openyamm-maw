@@ -207,6 +207,24 @@ struct GameplayHudBatchQuad
     uint16_t scissorY = 0;
     uint16_t scissorWidth = 0;
     uint16_t scissorHeight = 0;
+    // Multiplies the texture; runs of quads with a tint draw with the HUD tint program.
+    uint32_t tintAbgr = 0xffffffffu;
+};
+
+// One layer of HUD text: a font atlas and the colour its glyphs are multiplied by at draw time.
+struct GameplayHudFontLayer
+{
+    bgfx::TextureHandle textureHandle = BGFX_INVALID_HANDLE;
+    uint32_t tintAbgr = 0xffffffffu;
+
+    GameplayHudFontLayer() = default;
+
+    // An atlas drawn in its own colours, such as a font's shadow layer.
+    GameplayHudFontLayer(bgfx::TextureHandle handle, uint32_t tint = 0xffffffffu)
+        : textureHandle(handle)
+        , tintAbgr(tint)
+    {
+    }
 };
 
 enum class GameplayMinimapMarkerType
@@ -279,6 +297,7 @@ struct GameplayDialoguePointerTarget
 enum class GameplayChestPointerTargetType
 {
     None,
+    TakeAllButton,
     CloseButton
 };
 
@@ -358,6 +377,8 @@ enum class GameplayCharacterPointerTargetType
     AwardsButton,
     ExitButton,
     DismissButton,
+    AlchemyButton,
+    InventorySortButton,
     MagnifyButton,
     AdventurersInnHireButton,
     AdventurersInnScrollUpButton,
@@ -386,6 +407,33 @@ struct GameplayCharacterPointerTarget
     int modButtonId = 0;
 
     bool operator==(const GameplayCharacterPointerTarget &other) const = default;
+};
+
+enum class GameplayAlchemyBenchPointerTargetType
+{
+    None,
+    CloseButton,
+    MixButton,
+    MixAllButton,
+    ClearButton,
+    TargetSlot,
+    HeldSlot,
+    RecipeFilterBrewable,
+    RecipeFilterAll,
+    IngredientFilterAll,
+    IngredientFilterPotions,
+    IngredientFilterReagents,
+    RecipeRow,
+    RecipeSearch,
+    Ingredient
+};
+
+struct GameplayAlchemyBenchPointerTarget
+{
+    GameplayAlchemyBenchPointerTargetType type = GameplayAlchemyBenchPointerTargetType::None;
+    uint32_t itemId = 0;
+
+    bool operator==(const GameplayAlchemyBenchPointerTarget &other) const = default;
 };
 
 enum class GameplayJournalPointerTargetType
@@ -674,6 +722,16 @@ struct GameplayOverlayInteractionState
     bool characterTouchItemDragActive = false;
     bool characterMemberCycleLatch = false;
     std::optional<size_t> pendingCharacterDismissMemberIndex = std::nullopt;
+    bool alchemyBenchClickLatch = false;
+    bool alchemyBenchEscapeLatch = false;
+    // An ingredient or slot item follows the pointer once a press moves far enough.
+    bool alchemyBenchDragging = false;
+    float alchemyBenchPressX = 0.0f;
+    float alchemyBenchPressY = 0.0f;
+    // 0: none, 1: recipe list, 2: ingredient grid. The grab keeps the thumb under the pointer.
+    uint8_t alchemyBenchScrollDrag = 0;
+    float alchemyBenchScrollGrab = 0.0f;
+    GameplayAlchemyBenchPointerTarget alchemyBenchPressedTarget = {};
     uint64_t pendingCharacterDismissExpiresTicks = 0;
     bool spellbookClickLatch = false;
     GameplaySpellbookPointerTarget spellbookPressedTarget = {};

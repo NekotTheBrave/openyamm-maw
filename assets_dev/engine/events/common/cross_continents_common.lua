@@ -12,10 +12,6 @@ CrossContinents.Config = CrossContinents.Config or {
     IntroTopicId = 1778,
     DimensionalTravelTopicId = 10000,
     ConnectorTopicId = 1788,
-    FinishTopicId = 1787,
-    FinalQuestTopicId = 1785,
-    BreachTopicId = 1786,
-    FinalQuestQBit = 1713,
     CompleteQBits = {
         [1] = 228, -- Jadame
         [2] = 783, -- Antagarich
@@ -131,11 +127,7 @@ function CrossContinents.UpdateVerdantTopics()
     evt.SetNPCTopic(npcId, 3, CrossContinents.Config.DimensionalTravelTopicId)
     evt.SetNPCTopic(npcId, 0, topicId or 0)
 
-    if CrossContinents.GetVar("AllStoriesFinished", 0) ~= 0 then
-        evt.SetNPCTopic(npcId, 0, CrossContinents.Config.FinishTopicId)
-        evt.SetNPCTopic(npcId, 1, CrossContinents.Config.FinalQuestTopicId)
-        evt.SetNPCTopic(npcId, 2, CrossContinents.Config.BreachTopicId)
-    elseif CrossContinents.GetVar("GotConnectorStone", 0) ~= 0 then
+    if CrossContinents.GetVar("GotConnectorStone", 0) ~= 0 then
         evt.SetNPCTopic(npcId, 2, CrossContinents.Config.ConnectorTopicId)
     end
 end
@@ -269,27 +261,6 @@ function CrossContinents.HandleConnectorStone()
     CrossContinents.UpdateVerdantTopics()
 end
 
-function CrossContinents.ExplainRunawayChaos()
-    SetQBit(QBit(CrossContinents.Config.FinalQuestQBit))
-    CrossContinents.SetVar("FinalQuestStarted", 1)
-    evt.SimpleMessage("Verdant says the timeline damage has a source: a Runaway Chaos that must be contained.")
-    CrossContinents.UpdateVerdantTopics()
-end
-
-function CrossContinents.ExplainControlledBreach()
-    SetQBit(QBit(CrossContinents.Config.FinalQuestQBit))
-    CrossContinents.SetVar("FinalQuestStarted", 1)
-    evt.SimpleMessage("The Controlled Breach is Verdant's safe arena for reaching and containing the Runaway Chaos.")
-    CrossContinents.UpdateVerdantTopics()
-end
-
-function CrossContinents.ExplainNextStep()
-    SetQBit(QBit(CrossContinents.Config.FinalQuestQBit))
-    CrossContinents.SetVar("FinalQuestStarted", 1)
-    evt.SimpleMessage("Verdant has another anomaly to investigate and asks you to keep helping her.")
-    CrossContinents.UpdateVerdantTopics()
-end
-
 function CrossContinents.ApplyCompletionReward(continent)
     if CrossContinents.GetVar("Reward." .. tostring(continent), 0) ~= 0 then
         return false
@@ -303,7 +274,6 @@ function CrossContinents.ApplyCompletionReward(continent)
         end
     else
         CrossContinents.SetVar("ImprovedConnector", 1)
-        CrossContinents.SetVar("AllStoriesFinished", 1)
     end
 
     CrossContinents.SetVar("Reward." .. tostring(continent), 1)
@@ -459,18 +429,6 @@ end)
 
 RegisterGlobalEvent(1784, "MMMerge Verdant Enroth", function()
     CrossContinents.ExplainCurrentContinent(3)
-end)
-
-RegisterGlobalEvent(1785, "MMMerge Verdant Runaway Chaos", function()
-    CrossContinents.ExplainRunawayChaos()
-end)
-
-RegisterGlobalEvent(1786, "MMMerge Verdant Controlled Breach", function()
-    CrossContinents.ExplainControlledBreach()
-end)
-
-RegisterGlobalEvent(1787, "MMMerge Verdant next step", function()
-    CrossContinents.ExplainNextStep()
 end)
 
 RegisterGlobalEvent(1788, "MMMerge Verdant connector stone", function()

@@ -96,6 +96,7 @@ bool TerrainDecorationRenderer::initialize(
     const uint16_t cellHeight = uint16_t(texture->height / rows);
     // bgfx uses a 2D target for one layer; reserve a spare layer to keep the array sampler valid.
     const uint16_t arrayLayers = uint16_t(std::max(2, columns * rows));
+    std::vector<TerrainFoliageLayer> foliageLayers(size_t(columns * rows));
     m_texture = bgfx::createTexture2D(cellWidth, cellHeight, true, arrayLayers,
         bgraTextureUploadFormat(), BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
     // Store atlas cells as array layers: independent edge bleed, alpha coverage and complete mip chains.
@@ -111,10 +112,24 @@ bool TerrainDecorationRenderer::initialize(
         }
         // Card outline from the cell's alpha; a low threshold keeps the soft fringe the mips spread outward.
         std::vector<uint8_t> alpha(size_t(cellWidth) * cellHeight);
+        TerrainFoliageLayer &foliage = foliageLayers[size_t(layer)];
         for (size_t texel = 0; texel < alpha.size(); ++texel)
         {
             alpha[texel] = pixels[texel * 4 + 3];
+            // Texels the grass shader keeps at full coverage (alpha cutoff 0.4); pixels are BGRA.
+            if (alpha[texel] >= 102)
+            {
+                foliage.color[0] += pixels[texel * 4 + 2];
+                foliage.color[1] += pixels[texel * 4 + 1];
+                foliage.color[2] += pixels[texel * 4];
+                foliage.fill += 1.0f;
+            }
         }
+        for (float &channel : foliage.color)
+        {
+            channel /= std::max(foliage.fill, 1.0f) * 255.0f;
+        }
+        foliage.fill /= float(alpha.size());
         const std::array<std::array<float, 2>, TerrainDecorationCutoutVertices> cutout =
             terrainDecorationCutout(alpha, cellWidth, cellHeight, 26);
         for (size_t slot = 0; slot < cutout.size(); ++slot)
@@ -148,21 +163,47 @@ bool TerrainDecorationRenderer::initialize(
         uint32_t(placement.instances.size() * sizeof(TerrainDecorationInstance))), instanceLayout);
     m_sampler = bgfx::createUniform("s_texColor", bgfx::UniformType::Sampler);
     m_params = bgfx::createUniform("u_terrainDecorationParams", bgfx::UniformType::Vec4);
+    m_lodUniform = bgfx::createUniform("u_terrainDecorationLod", bgfx::UniformType::Vec4);
+    const std::vector<float> foliage = buildTerrainFoliageMap(placement, foliageLayers);
+    const bgfx::Memory *pFoliage = bgfx::alloc(uint32_t(foliage.size() * sizeof(uint16_t)));
+    for (size_t index = 0; index < foliage.size(); ++index)
+    {
+        reinterpret_cast<uint16_t *>(pFoliage->data)[index] = bx::halfFromFloat(foliage[index]);
+    }
+    m_foliageMap = bgfx::createTexture2D(TerrainFoliageMapSize, TerrainFoliageMapSize, false, 1,
+        bgfx::TextureFormat::RGBA16F, BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP, pFoliage);
     m_cutoutUniform = bgfx::createUniform("u_terrainDecorationCutout", bgfx::UniformType::Vec4,
         uint16_t(m_cutouts.size()));
     if (!bgfx::isValid(m_texture) || !bgfx::isValid(m_instances) || !bgfx::isValid(m_grassMesh) ||
         !bgfx::isValid(m_grassIndices) || !bgfx::isValid(m_cutoutUniform) ||
-        !bgfx::isValid(m_stoneMesh) || !bgfx::isValid(m_sampler) || !bgfx::isValid(m_params))
+        !bgfx::isValid(m_stoneMesh) || !bgfx::isValid(m_sampler) || !bgfx::isValid(m_params) ||
+        !bgfx::isValid(m_lodUniform) || !bgfx::isValid(m_foliageMap))
     {
         shutdown(true);
         return false;
     }
-    m_distance = config.distance;
-    m_patches = std::move(placement.patches);
-    std::cout << "Terrain decorations: " << placement.instances.size() << " instances, " << m_patches.size()
-              << " patches, " << placement.instances.size() * sizeof(TerrainDecorationInstance)
-              << " instance bytes, " << m_distance << " world-unit range.\n";
+    const size_t instanceCount = placement.instances.size();
+    setPlacement(config, std::move(placement));
+    std::cout << "Terrain decorations: " << instanceCount << " instances, " << m_nodes.size() << " nodes, "
+              << instanceCount * sizeof(TerrainDecorationInstance) << " instance bytes, full density to "
+              << m_lod.nearDistance << ", range " << m_lod.farDistance << " world units.\n";
     return true;
+}
+
+void TerrainDecorationRenderer::setPlacement(const TerrainDecorationConfig &config,
+    TerrainDecorationPlacement placement)
+{
+    m_lod = config.lod;
+    m_stoneDistance = config.stoneDistance;
+    m_foliageTint = config.foliageTint;
+    m_ranks.clear();
+    m_ranks.reserve(placement.instances.size());
+    for (const TerrainDecorationInstance &instance : placement.instances)
+    {
+        m_ranks.push_back(instance.sizeWindRank[3]);
+    }
+    m_nodes = std::move(placement.nodes);
+    m_roots = std::move(placement.roots);
 }
 
 void TerrainDecorationRenderer::shutdown(bool destroyResources)
@@ -209,6 +250,14 @@ void TerrainDecorationRenderer::shutdown(bool destroyResources)
         {
             bgfx::destroy(m_params);
         }
+        if (bgfx::isValid(m_lodUniform))
+        {
+            bgfx::destroy(m_lodUniform);
+        }
+        if (bgfx::isValid(m_foliageMap))
+        {
+            bgfx::destroy(m_foliageMap);
+        }
     }
     m_program = BGFX_INVALID_HANDLE;
     m_shadowProgram = BGFX_INVALID_HANDLE;
@@ -220,7 +269,12 @@ void TerrainDecorationRenderer::shutdown(bool destroyResources)
     m_texture = BGFX_INVALID_HANDLE;
     m_sampler = BGFX_INVALID_HANDLE;
     m_params = BGFX_INVALID_HANDLE;
-    m_patches.clear();
+    m_lodUniform = BGFX_INVALID_HANDLE;
+    m_foliageMap = BGFX_INVALID_HANDLE;
+    m_nodes.clear();
+    m_roots.clear();
+    m_ranks.clear();
+    m_foliageTint = 0.0f;
     m_viewValid = false;
 }
 
@@ -251,24 +305,78 @@ bool TerrainDecorationRenderer::setView(
     return true;
 }
 
-bool TerrainDecorationRenderer::visible(const TerrainDecorationPatch &patch) const
+float TerrainDecorationRenderer::distanceTo(const std::array<float, 3> &min, const std::array<float, 3> &max) const
 {
-    const bx::Vec3 center = {(patch.min[0] + patch.max[0]) * 0.5f, (patch.min[1] + patch.max[1]) * 0.5f,
-                            (patch.min[2] + patch.max[2]) * 0.5f};
-    const bx::Vec3 extent = {(patch.max[0] - patch.min[0]) * 0.5f, (patch.max[1] - patch.min[1]) * 0.5f,
-                            (patch.max[2] - patch.min[2]) * 0.5f};
-    const float radius = bx::length(extent);
-    const bx::Vec3 delta = bx::sub(center, m_camera);
-    const float detailDistance = patch.stone ? std::min(m_distance, 2048.0f) : m_distance;
-    const float maximumDistance = detailDistance + radius;
-    if (bx::dot(delta, delta) > maximumDistance * maximumDistance)
+    const float dx = std::max({min[0] - m_camera.x, 0.0f, m_camera.x - max[0]});
+    const float dy = std::max({min[1] - m_camera.y, 0.0f, m_camera.y - max[1]});
+    const float dz = std::max({min[2] - m_camera.z, 0.0f, m_camera.z - max[2]});
+    return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+bool TerrainDecorationRenderer::visible(const std::array<float, 3> &min, const std::array<float, 3> &max,
+    float maximumDistance) const
+{
+    if (distanceTo(min, max) > maximumDistance)
     {
         return false;
     }
+    const bx::Vec3 center = {(min[0] + max[0]) * 0.5f, (min[1] + max[1]) * 0.5f, (min[2] + max[2]) * 0.5f};
+    const bx::Vec3 extent = {(max[0] - min[0]) * 0.5f, (max[1] - min[1]) * 0.5f, (max[2] - min[2]) * 0.5f};
+    const float radius = bx::length(extent);
+    const bx::Vec3 delta = bx::sub(center, m_camera);
     const float depth = bx::dot(delta, m_forward);
     return depth >= -radius &&
         std::abs(bx::dot(delta, m_right)) <= depth * m_tanX + radius * m_radiusScaleX &&
         std::abs(bx::dot(delta, m_up)) <= depth * m_tanY + radius * m_radiusScaleY;
+}
+
+TerrainDecorationLod TerrainDecorationRenderer::lod(bool stone) const
+{
+    // Stones keep their count and size to their own distance, then fade.
+    return stone ? TerrainDecorationLod{m_stoneDistance, m_stoneDistance, 1.0f} : m_lod;
+}
+
+void TerrainDecorationRenderer::collectDraws(std::vector<TerrainDecorationPatch> &draws) const
+{
+    for (uint32_t root : m_roots)
+    {
+        collectNode(root, draws);
+    }
+}
+
+void TerrainDecorationRenderer::collectNode(uint32_t index, std::vector<TerrainDecorationPatch> &draws) const
+{
+    const TerrainDecorationNode &node = m_nodes[index];
+    const TerrainDecorationLod nodeLod = lod(node.range.stone);
+    if (!visible(node.regionMin, node.regionMax, nodeLod.farDistance))
+    {
+        return;
+    }
+    // The subtree's best case: no instance in it can have a rank below its nearest point's keep.
+    const float best = terrainDecorationKeep(nodeLod, distanceTo(node.regionMin, node.regionMax));
+    if (best <= node.rankBegin)
+    {
+        return;
+    }
+    if (node.range.count > 0 && visible(node.range.min, node.range.max, nodeLod.farDistance))
+    {
+        // The vertex shader thins the prefix further by each instance's own distance.
+        const float keep = terrainDecorationKeep(nodeLod, distanceTo(node.range.min, node.range.max));
+        const uint32_t count = terrainDecorationPrefix(m_ranks, node.range, keep);
+        if (count > 0)
+        {
+            TerrainDecorationPatch draw = node.range;
+            draw.count = count;
+            draws.push_back(draw);
+        }
+    }
+    if (best > node.rankEnd)
+    {
+        for (uint32_t child = 0; child < node.childCount; ++child)
+        {
+            collectNode(node.children[child], draws);
+        }
+    }
 }
 
 bool TerrainDecorationRenderer::canMerge(
@@ -283,10 +391,12 @@ bool TerrainDecorationRenderer::canMerge(
 void TerrainDecorationRenderer::submit(uint16_t viewId, const TerrainDecorationPatch &patch, float elapsedTime,
     bool sunShadows)
 {
-    const float detailDistance = patch.stone ? std::min(m_distance, 2048.0f) : m_distance;
+    const TerrainDecorationLod patchLod = lod(patch.stone);
     // w: 1 = grass cards cut to their layer's outline, 0 = stones (plain mesh).
-    const float params[4] = {elapsedTime, detailDistance * 0.5f, detailDistance, patch.stone ? 0.0f : 1.0f};
+    const float params[4] = {elapsedTime, patchLod.nearDistance, patchLod.farDistance, patch.stone ? 0.0f : 1.0f};
+    const float lodParams[4] = {patchLod.maxScale, 0.0f, 0.0f, 0.0f};
     bgfx::setUniform(m_params, params);
+    bgfx::setUniform(m_lodUniform, lodParams);
     if (patch.stone)
     {
         bgfx::setVertexBuffer(0, m_stoneMesh);

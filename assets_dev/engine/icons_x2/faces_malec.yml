@@ -1,0 +1,9 @@
+schema_version: 1
+frame_width: 118
+frame_height: 158
+columns: 8
+frames: [malec01, malec02, malec03, malec04, malec05, malec06, malec07, malec08, malec09, malec10, malec11, malec12, malec13,
+  malec14, malec15, malec16, malec17, malec18, malec19, malec20, malec21, malec22, malec23, malec24, malec25, malec26, malec27,
+  malec28, malec29, malec30, malec31, malec32, malec33, malec34, malec35, malec36, malec37, malec38, malec39, malec40, malec41,
+  malec42, malec43, malec44, malec45, malec46, malec47, malec48, malec49, malec50, malec51, malec52, malec53, malec54, malec55,
+  malec56]

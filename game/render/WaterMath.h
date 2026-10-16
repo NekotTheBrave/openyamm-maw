@@ -16,6 +16,9 @@ constexpr uint16_t FirstWaterReflectionView = 234;
 constexpr size_t MaxWaterReflections = 2;
 // Reduced-resolution Enhanced sky, rendered before the main sky view upscales it.
 constexpr uint16_t SkyImageView = 238;
+// Offscreen actor inspect portrait (ActorModelPreview), rendered before the HUD view that draws it.
+constexpr uint16_t ActorPortraitView = 239;
+constexpr uint16_t AmbientOcclusionDepthView = 244;
 constexpr uint16_t AmbientOcclusionView = 245;
 constexpr uint16_t AmbientOcclusionBlurView = 246;
 constexpr uint16_t AmbientOcclusionCompositeView = 247;
@@ -164,11 +167,12 @@ constexpr std::array<uint16_t, WorldGradingView + 1> worldRenderViewOrder(bool g
         order[index++] = view;
     }
     order[index++] = SkyImageView;
+    order[index++] = ActorPortraitView;
     order[index++] = 0;
     order[index++] = 1;
     if (ambientOcclusion)
     {
-        for (uint16_t view = AmbientOcclusionView; view <= WorldTransparentView; ++view)
+        for (uint16_t view = AmbientOcclusionDepthView; view <= WorldTransparentView; ++view)
         {
             order[index++] = view;
         }
@@ -182,8 +186,9 @@ constexpr std::array<uint16_t, WorldGradingView + 1> worldRenderViewOrder(bool g
         if ((view < FirstSunShadowView || view >= FirstSunShadowView + SunShadowViews)
             && (view < FirstWaterReflectionView || view >= FirstWaterReflectionView + MaxWaterReflections * 2)
             && view != SkyImageView
+            && view != ActorPortraitView
             && (!grading || view != WorldGradingView)
-            && (!ambientOcclusion || view < AmbientOcclusionView || view > WorldTransparentView))
+            && (!ambientOcclusion || view < AmbientOcclusionDepthView || view > WorldTransparentView))
         {
             order[index++] = view;
         }

@@ -1,16 +1,5883 @@
+# Shared geometry/rig/LODs; skin is resolved once when an actor is created.
 actors:
-  - descriptor: Demon A
-    model: worlds/mm6/models/mm6_demon.glb
-    # Match the descriptor's 179-unit collision height; glTF stands 1.707 units tall.
-    scale: 104.8623316
-    # Authoring faces glTF +Z; native actor yaw zero faces world +X.
-    yaw_offset: -1.570796327
-    clips:
-      standing: Standing
-      walking: Walk_Native
-      attack_melee: Attack
-      attack_ranged: Attack
-      hit: Hit
-      dying: Death
-      dead: Ash_Remains
-      fidget: Fidget
+- descriptor: Demon A
+  model: worlds/mm6/models/mm6_demon.glb
+  death_effect:
+    # Engine burn from the moment of death (user: gone in about a second, then 25 % slower): the arms fling out over
+    # 0.31 s while the body burns inward from the hands, feet, head and tail tip in the variant's colour
+    # (green: grey skin, green harness).
+    # A NoCorpse actor that leaves the game first keeps its model until the fire is out (burningRemains).
+    type: burn
+    start: 0.0
+    end: 0.9375
+    char_width: 0.16
+    edge_width: 0.035
+    fire_width: 0.3
+    color: [0.3, 1.0, 0.35]
+    brightness: 2.4
+    flames_per_second: 220
+    flame_size: 22
+    flame_color: [90, 255, 110]
+    light: {color: [110, 255, 120], radius: 450}
+  scale: 104.8623316
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast_FireBolt
+    run: Running
+    stride_length: 1.5
+    upper_body_root: mixamorig:Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [mixamorig:Neck, mixamorig:Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    eye_color:
+    - 231
+    - 156
+    - 156
+    # The authored cast thrusts the hands apart at 0.92 s of its 1.0 s: the game releases the spell there; the
+    # thrust finishes during the recovery.
+    events:
+      attack_melee: {impact: 0.5}
+      attack_ranged:
+        impact: 0.5
+        glow: [palm_right]
+        effects:
+          Fire: openyamm:fx/creature_fire_hand
+      cast: {impact: 0.87, glow: [palm_left, palm_right]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: demon_a
+- descriptor: Demon B
+  model: worlds/mm6/models/mm6_demon.glb
+  death_effect:
+    # Engine burn from the moment of death (user: gone in about a second, then 25 % slower): the arms fling out over
+    # 0.31 s while the body burns inward from the hands, feet, head and tail tip in the variant's colour
+    # (yellow-gold: green skin, olive harness).
+    # A NoCorpse actor that leaves the game first keeps its model until the fire is out (burningRemains).
+    type: burn
+    start: 0.0
+    end: 0.9375
+    char_width: 0.16
+    edge_width: 0.035
+    fire_width: 0.3
+    color: [1.0, 0.78, 0.12]
+    brightness: 2.4
+    flames_per_second: 220
+    flame_size: 22
+    flame_color: [255, 205, 60]
+    light: {color: [255, 210, 90], radius: 450}
+  scale: 104.8623316
+  scale_reference: Demon A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast_FireBolt
+    run: Running
+    stride_length: 1.5
+    upper_body_root: mixamorig:Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [mixamorig:Neck, mixamorig:Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    eye_color:
+    - 250
+    - 102
+    - 102
+    # The authored cast thrusts the hands apart at 0.92 s of its 1.0 s: the game releases the spell there; the
+    # thrust finishes during the recovery.
+    events:
+      attack_melee: {impact: 0.5}
+      attack_ranged:
+        impact: 0.5
+        glow: [palm_right]
+        effects:
+          Fire: openyamm:fx/creature_fire_hand
+      cast: {impact: 0.87, glow: [palm_left, palm_right]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: demon_b
+- descriptor: Demon C
+  model: worlds/mm6/models/mm6_demon.glb
+  death_effect:
+    # Engine burn from the moment of death (user: gone in about a second, then 25 % slower): the arms fling out over
+    # 0.31 s while the body burns inward from the hands, feet, head and tail tip in the variant's colour
+    # (red-orange: red skin, red harness).
+    # A NoCorpse actor that leaves the game first keeps its model until the fire is out (burningRemains).
+    type: burn
+    start: 0.0
+    end: 0.9375
+    char_width: 0.16
+    edge_width: 0.035
+    fire_width: 0.3
+    color: [1.0, 0.22, 0.03]
+    brightness: 2.4
+    flames_per_second: 220
+    flame_size: 22
+    flame_color: [255, 110, 40]
+    light: {color: [255, 130, 60], radius: 450}
+  scale: 104.8623316
+  scale_reference: Demon A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast_FireBolt
+    run: Running
+    stride_length: 1.5
+    upper_body_root: mixamorig:Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [mixamorig:Neck, mixamorig:Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    eye_color:
+    - 250
+    - 176
+    - 62
+    # The authored cast thrusts the hands apart at 0.92 s of its 1.0 s: the game releases the spell there; the
+    # thrust finishes during the recovery.
+    events:
+      attack_melee: {impact: 0.5}
+      attack_ranged:
+        impact: 0.5
+        glow: [palm_right]
+        effects:
+          Fire: openyamm:fx/creature_fire_hand
+      cast: {impact: 0.87, glow: [palm_left, palm_right]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: demon_c
+# MM6 female peasant (pfem), original Claude model restored for review; palettes 786/787/788.
+- descriptor: PeasantF1 A
+  model: worlds/mm6/models/mm6_pfem.glb
+  scale: 111.6
+  z_offset: 0.07
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walking
+    stride_length: 1.31
+    upper_body_root: mixamorig:Spine
+    look:
+      nodes: [mixamorig:Neck, mixamorig:Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: pfem_a
+- descriptor: PeasantF1 B
+  model: worlds/mm6/models/mm6_pfem.glb
+  scale: 111.6
+  scale_reference: PeasantF1 A
+  z_offset: 0.07
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walking
+    stride_length: 1.31
+    upper_body_root: mixamorig:Spine
+    look:
+      nodes: [mixamorig:Neck, mixamorig:Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: pfem_b
+- descriptor: Peasantf1 C
+  model: worlds/mm6/models/mm6_pfem.glb
+  scale: 111.6
+  scale_reference: PeasantF1 A
+  z_offset: 0.07
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walking
+    stride_length: 1.31
+    upper_body_root: mixamorig:Spine
+    look:
+      nodes: [mixamorig:Neck, mixamorig:Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: pfem_c
+# MM6 Apprentice/Journeyman/Mage (pmn2), Meshy Smart Topology + Meshy rig, staff in the right fist; the spell's
+# element-coloured charge glow forms at the staff head (the events' glow), where bolts and spells leave.
+# Skins pmn2_a/b/c share one texture set; red/green/blue cloth comes from the material tint and mask.
+- descriptor: PeasantM2 A
+  model: worlds/mm6/models/mm6_pmn2.glb
+  scale: 105.8
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.2
+    upper_body_root: mixamorig:Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [mixamorig:Neck, mixamorig:Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+      staff_head: Socket_Staff_Head
+    # The staff comes down from overhead 0.979 s into Attack/Cast (draw-up at a uniform ~1.3x of the Mixamo clip);
+    # bolts and spells leave the staff head.
+    events:
+      attack_melee: {impact: 0.98}
+      attack_ranged: {impact: 0.98, glow: [staff_head]}
+      cast: {impact: 0.979, glow: [staff_head], glow_scale: 0.6}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Standing
+  skin: pmn2_a
+  attachments:
+    - model: worlds/mm6/models/mm6_pmn2_staff.glb
+      node: Staff
+- descriptor: PeasantM2 B
+  model: worlds/mm6/models/mm6_pmn2.glb
+  scale: 105.8
+  scale_reference: PeasantM2 A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.2
+    upper_body_root: mixamorig:Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [mixamorig:Neck, mixamorig:Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+      staff_head: Socket_Staff_Head
+    # The staff comes down from overhead 0.979 s into Attack/Cast (draw-up at a uniform ~1.3x of the Mixamo clip);
+    # bolts and spells leave the staff head.
+    events:
+      attack_melee: {impact: 0.98}
+      attack_ranged: {impact: 0.98, glow: [staff_head]}
+      cast: {impact: 0.979, glow: [staff_head], glow_scale: 0.6}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Standing
+  skin: pmn2_b
+  attachments:
+    - model: worlds/mm6/models/mm6_pmn2_staff.glb
+      node: Staff
+- descriptor: PeasantM2 C
+  model: worlds/mm6/models/mm6_pmn2.glb
+  scale: 105.8
+  scale_reference: PeasantM2 A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.2
+    upper_body_root: mixamorig:Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [mixamorig:Neck, mixamorig:Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+      staff_head: Socket_Staff_Head
+    # The staff comes down from overhead 0.979 s into Attack/Cast (draw-up at a uniform ~1.3x of the Mixamo clip);
+    # bolts and spells leave the staff head.
+    events:
+      attack_melee: {impact: 0.98}
+      attack_ranged: {impact: 0.98, glow: [staff_head]}
+      cast: {impact: 0.979, glow: [staff_head], glow_scale: 0.6}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Standing
+  skin: pmn2_c
+  attachments:
+    - model: worlds/mm6/models/mm6_pmn2_staff.glb
+      node: Staff
+# Boss mage demo (2026-10-08): the pmn2 body 1.3x larger in the dark violet pmn2_d tier, carrying the artifact staff
+# (ebony, gold claws, glowing crystal on Socket_Staff_Head) instead of the plain one. The cast charge is violet
+# whatever the spell (its native spell is Toxic Cloud), and its Dark missile attacks gather violet sparks at the
+# crystal. Necromancer A appears on no MM6 map; spawn it with `actor spawn 307 1 <x> <y> <z>`.
+- descriptor: Necromancer A
+  model: worlds/mm6/models/mm6_pmn2.glb
+  scale: 140
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.2
+    upper_body_root: mixamorig:Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [mixamorig:Neck, mixamorig:Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+      staff_head: Socket_Staff_Head
+    # The staff comes down from overhead 0.979 s into Attack/Cast (draw-up at a uniform ~1.3x of the Mixamo clip);
+    # bolts and spells leave the staff head.
+    events:
+      attack_melee: {impact: 0.98}
+      attack_ranged:
+        impact: 0.98
+        glow: [staff_head]
+        effects:
+          Dark: openyamm:fx/creature_dark_staff
+      cast: {impact: 0.979, glow: [staff_head], glow_scale: 1.1, color: [176, 70, 255]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Standing
+  # Clip roles its behaviour script (engine/behaviors/bosses/necro_mage.lua) plays through self:perform.
+  script_clips:
+    cast_ward: Cast
+    cast_summon: Cast
+  skin: pmn2_d
+  attachments:
+    - model: worlds/mm6/models/mm6_pmn2_artifact_staff.glb
+      node: Staff
+# MM6 New Sorpigal guard / lieutenant / captain (gua), Meshy Smart Topology + Meshy rig, halberd in the right fist.
+# Skins gua_a/b/c share one texture set; sleeves, trousers and mail follow palettes 748/749/750 (region ramps).
+- descriptor: Guard A
+  model: worlds/mm6/models/mm6_gua.glb
+  scale: 127.2
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.13
+    upper_body_root: Spine02
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [neck, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.438}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Standing
+  skin: gua_a
+  attachments:
+    - model: worlds/mm6/models/mm6_gua_halberd.glb
+      node: Halberd
+- descriptor: Guard B
+  model: worlds/mm6/models/mm6_gua.glb
+  scale: 127.2
+  scale_reference: Guard A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.13
+    upper_body_root: Spine02
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [neck, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.438}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Standing
+  skin: gua_b
+  attachments:
+    - model: worlds/mm6/models/mm6_gua_halberd.glb
+      node: Halberd
+- descriptor: Guard C
+  model: worlds/mm6/models/mm6_gua.glb
+  scale: 127.2
+  scale_reference: Guard A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.13
+    upper_body_root: Spine02
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [neck, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.438}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Standing
+  skin: gua_c
+  attachments:
+    - model: worlds/mm6/models/mm6_gua_halberd.glb
+      node: Halberd
+# MM6 male peasant rebuild (mm6_pman_claude_20261013): source-frame B rig, library civilian clips, no attack.
+# Shared tunic region follows native palettes 798/799/800; scale follows the 253 px standing sprite.
+- descriptor: PeasantM1 A
+  model: worlds/mm6/models/mm6_pman_v2.glb
+  scale: 104.502737
+  z_offset: 0.0
+  yaw_offset: -1.570796327
+  animation:
+    cast: Standing
+    run: Walking
+    stride_length: 1.864216
+    upper_body_root: B_Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Standing
+    attack_ranged: Standing
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: pman_a
+- descriptor: PeasantM1 B
+  model: worlds/mm6/models/mm6_pman_v2.glb
+  scale: 104.502737
+  scale_reference: PeasantM1 A
+  z_offset: 0.0
+  yaw_offset: -1.570796327
+  animation:
+    cast: Standing
+    run: Walking
+    stride_length: 1.864216
+    upper_body_root: B_Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Standing
+    attack_ranged: Standing
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: pman_b
+- descriptor: PeasantM1 C
+  model: worlds/mm6/models/mm6_pman_v2.glb
+  scale: 104.502737
+  scale_reference: PeasantM1 A
+  z_offset: 0.0
+  yaw_offset: -1.570796327
+  animation:
+    cast: Standing
+    run: Walking
+    stride_length: 1.864216
+    upper_body_root: B_Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Standing
+    attack_ranged: Standing
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: pman_c
+# MM6 goblin (gob2, replaced the first goblin model on 2026-10-10; mm6_gob2_claude): rig-first gated route (cloned source frames, mesh-measured hands
+# and fingers, rule-based weights with bracer-aware twist bones, solved scimitar fist), humanoid-set clips. Skins
+# gob2_a/b/c share one texture set; the skin follows palettes 745/746/747. Scale: native stand 256 px x 0.65 over the
+# upright walk height 1.713 m; the walk covers 1.30 m per cycle (158 units/s at this scale; goblins move at 160).
+- descriptor: BGoblin A
+  model: worlds/mm6/models/mm6_gob2.glb
+  scale: 97.1
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.30
+    upper_body_root: B_Spine
+    # The neck and head share a turn toward the party over every clip but the death (the source idle looks down).
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+    # Picked by eye in level_generation/creatures/timing_review (2026-10-14): the blow 0.775 s into Attack, the Fire
+    # Bolt leaving the left palm 1.0 s into Cast; both play when the billboard's contact frame (4, 0.5 s) appears.
+    events:
+      attack_melee: {impact: 0.775}
+      cast: {impact: 1, glow: [palm_left]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: gob2_a
+  attachments:
+    - model: worlds/mm6/models/mm6_gob2_sword.glb
+      node: Sword
+- descriptor: BGoblin B
+  model: worlds/mm6/models/mm6_gob2.glb
+  scale: 97.1
+  scale_reference: BGoblin A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.30
+    upper_body_root: B_Spine
+    # The neck and head share a turn toward the party over every clip but the death (the source idle looks down).
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+    # Picked by eye in level_generation/creatures/timing_review (2026-10-14): the blow 0.775 s into Attack, the Fire
+    # Bolt leaving the left palm 1.0 s into Cast; both play when the billboard's contact frame (4, 0.5 s) appears.
+    events:
+      attack_melee: {impact: 0.775}
+      cast: {impact: 1, glow: [palm_left]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: gob2_b
+  attachments:
+    - model: worlds/mm6/models/mm6_gob2_sword.glb
+      node: Sword
+- descriptor: BGoblin C
+  model: worlds/mm6/models/mm6_gob2.glb
+  scale: 97.1
+  scale_reference: BGoblin A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.30
+    upper_body_root: B_Spine
+    # The neck and head share a turn toward the party over every clip but the death (the source idle looks down).
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+    # Picked by eye in level_generation/creatures/timing_review (2026-10-14): the blow 0.775 s into Attack, the Fire
+    # Bolt leaving the left palm 1.0 s into Cast; both play when the billboard's contact frame (4, 0.5 s) appears.
+    events:
+      attack_melee: {impact: 0.775}
+      cast: {impact: 1, glow: [palm_left]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: gob2_c
+  attachments:
+    - model: worlds/mm6/models/mm6_gob2_sword.glb
+      node: Sword
+# MM6 rat (rat), pilot: Meshy Smart Topology + quadruped rig with automatic weights + procedural clips;
+# skins follow palettes 807/808/809.
+- descriptor: BRat A
+  model: worlds/mm6/models/mm6_rat.glb
+  scale: 234.0
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.28
+    upper_body_root: Spine2
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [Neck1, Head]
+      max_yaw_degrees: 45
+      max_pitch_degrees: 30
+    sockets: {}
+    events:
+      attack_melee: {impact: 0.451}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: rat_a
+- descriptor: BRat B
+  model: worlds/mm6/models/mm6_rat.glb
+  scale: 234.0
+  scale_reference: BRat A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.28
+    upper_body_root: Spine2
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [Neck1, Head]
+      max_yaw_degrees: 45
+      max_pitch_degrees: 30
+    sockets: {}
+    events:
+      attack_melee: {impact: 0.451}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: rat_b
+- descriptor: BRat C
+  model: worlds/mm6/models/mm6_rat.glb
+  scale: 234.0
+  scale_reference: BRat A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.28
+    upper_body_root: Spine2
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [Neck1, Head]
+      max_yaw_degrees: 45
+      max_pitch_degrees: 30
+    sockets: {}
+    events:
+      attack_melee: {impact: 0.451}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: rat_c
+# MM6 spider (spi1): Codex HD masters -> Meshy Smart Topology + retexture; rigid exoskeleton rig (one bone per
+# piece) + procedural tetrapod clips; one shared skin, tiers by region ramps from palettes 822/823/824.
+- descriptor: BSpider A
+  model: worlds/mm6/models/mm6_spi1.glb
+  scale: 130.0
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.26
+    upper_body_root: Thorax
+    sockets:
+      fang_l: {node: Fang_L, offset: [-0.0066, 0.0953, 0.0031]}
+      fang_r: {node: Fang_R, offset: [0.0037, 0.0947, 0.0032]}
+    events:
+      attack_melee: {impact: 0.442}
+      attack_ranged: {glow: [fang_r, fang_l], glow_scale: 0.3}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: spi1_a
+- descriptor: BSpider B
+  model: worlds/mm6/models/mm6_spi1.glb
+  scale: 130.0
+  scale_reference: BSpider A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.26
+    upper_body_root: Thorax
+    sockets:
+      fang_l: {node: Fang_L, offset: [-0.0066, 0.0953, 0.0031]}
+      fang_r: {node: Fang_R, offset: [0.0037, 0.0947, 0.0032]}
+    events:
+      attack_melee: {impact: 0.442}
+      attack_ranged: {impact: 0.442, glow: [fang_r, fang_l], glow_scale: 0.3}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: spi1_b
+- descriptor: BSpider C
+  model: worlds/mm6/models/mm6_spi1.glb
+  scale: 130.0
+  scale_reference: BSpider A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.26
+    upper_body_root: Thorax
+    sockets:
+      fang_l: {node: Fang_L, offset: [-0.0066, 0.0953, 0.0031]}
+      fang_r: {node: Fang_R, offset: [0.0037, 0.0947, 0.0032]}
+    events:
+      attack_melee: {impact: 0.442}
+      attack_ranged: {impact: 0.442, glow: [fang_r, fang_l], glow_scale: 0.3}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: spi1_c
+# MM6 Flying Eye (bh): Codex HD masters -> Meshy Smart Topology + retexture; head rig (Body, Head, Jaw, EyeBall,
+# Tendrils) + procedural hover clips; one shared skin, tiers by region ramps (skin, face, iris) from palettes 669-671.
+- descriptor: BBeholder A
+  model: worlds/mm6/models/mm6_bh.glb
+  death_effect: disintegration
+  scale: 121.0
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 0.5
+    upper_body_root: Head
+    # The whole eye (the Head joint: eyeball, jaw, tendrils) turns toward the party over every clip but the death.
+    look:
+      nodes: [Head]
+      max_yaw_degrees: 45
+      max_pitch_degrees: 30
+    sockets:
+      head: {node: Head, offset: [-0.0081, 0.2761, -0.1613]}
+    events:
+      attack_ranged: {impact: 0.421, glow: [head], release: head, glow_scale: 1.2}
+      cast: {glow: [head], release: head, glow_scale: 1.2}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: bh_a
+- descriptor: BBeholder B
+  model: worlds/mm6/models/mm6_bh.glb
+  death_effect: disintegration
+  scale: 121.0
+  scale_reference: BBeholder A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 0.5
+    upper_body_root: Head
+    # The whole eye (the Head joint: eyeball, jaw, tendrils) turns toward the party over every clip but the death.
+    look:
+      nodes: [Head]
+      max_yaw_degrees: 45
+      max_pitch_degrees: 30
+    sockets:
+      head: {node: Head, offset: [-0.0081, 0.2761, -0.1613]}
+    events:
+      attack_ranged: {impact: 0.421, glow: [head], release: head, glow_scale: 1.2}
+      cast: {impact: 0.411, glow: [head], release: head, glow_scale: 1.2}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: bh_b
+- descriptor: BBeholder C
+  model: worlds/mm6/models/mm6_bh.glb
+  death_effect: disintegration
+  scale: 121.0
+  scale_reference: BBeholder A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 0.5
+    upper_body_root: Head
+    # The whole eye (the Head joint: eyeball, jaw, tendrils) turns toward the party over every clip but the death.
+    look:
+      nodes: [Head]
+      max_yaw_degrees: 45
+      max_pitch_degrees: 30
+    sockets:
+      head: {node: Head, offset: [-0.0081, 0.2761, -0.1613]}
+    events:
+      attack_ranged: {impact: 0.421, glow: [head], release: head, glow_scale: 1.2}
+      cast: {impact: 0.411, glow: [head], release: head, glow_scale: 1.2}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: bh_c
+# MM6 bat (bat), pilot: Meshy Smart Topology + own wing rig with automatic weights + procedural flap clips;
+# wing membrane colour follows palettes 666/667/668.
+- descriptor: BBat A
+  model: worlds/mm6/models/mm6_bat.glb
+  scale: 155.0
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Fly
+    stride_length: 0.53
+    upper_body_root: Spine2
+    sockets: {}
+    events:
+      attack_melee: {impact: 0.393}
+  clips:
+    standing: Fly
+    walking: Fly
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fly
+  skin: bat_a
+- descriptor: BBat B
+  model: worlds/mm6/models/mm6_bat.glb
+  scale: 155.0
+  scale_reference: BBat A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Fly
+    stride_length: 0.53
+    upper_body_root: Spine2
+    sockets: {}
+    events:
+      attack_melee: {impact: 0.393}
+  clips:
+    standing: Fly
+    walking: Fly
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fly
+  skin: bat_b
+- descriptor: BBat C
+  model: worlds/mm6/models/mm6_bat.glb
+  scale: 155.0
+  scale_reference: BBat A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Fly
+    stride_length: 0.53
+    upper_body_root: Spine2
+    sockets: {}
+    events:
+      attack_melee: {impact: 0.393}
+  clips:
+    standing: Fly
+    walking: Fly
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fly
+  skin: bat_c
+# MM6 bloodsucker (level_generation/creatures/mm6_bld_claude): one rigged GLB with procedural flap clips; body,
+# membrane and maw colours follow palettes 162/672/673.
+- descriptor: Bloodsucker A
+  model: worlds/mm6/models/mm6_bld.glb
+  scale: 160.0
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Fly
+    stride_length: 0.66
+    upper_body_root: Spine2
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [Neck1, Neck2, Head]
+      max_yaw_degrees: 50
+      max_pitch_degrees: 30
+    sockets: {}
+    events:
+      attack_melee: {impact: 0.325}
+  clips:
+    standing: Fly
+    walking: Fly
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: bld_a
+- descriptor: Bloodsucker B
+  model: worlds/mm6/models/mm6_bld.glb
+  scale: 160.0
+  scale_reference: Bloodsucker A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Fly
+    stride_length: 0.66
+    upper_body_root: Spine2
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [Neck1, Neck2, Head]
+      max_yaw_degrees: 50
+      max_pitch_degrees: 30
+    sockets: {}
+    events:
+      attack_melee: {impact: 0.325}
+  clips:
+    standing: Fly
+    walking: Fly
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: bld_b
+- descriptor: Bloodsucker C
+  model: worlds/mm6/models/mm6_bld.glb
+  scale: 160.0
+  scale_reference: Bloodsucker A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Fly
+    stride_length: 0.66
+    upper_body_root: Spine2
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [Neck1, Neck2, Head]
+      max_yaw_degrees: 50
+      max_pitch_degrees: 30
+    sockets: {}
+    events:
+      attack_melee: {impact: 0.325}
+  clips:
+    standing: Fly
+    walking: Fly
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: bld_c
+# MM6 flying demon (level_generation/creatures/mm6_wdm_claude): Meshy four-view HD model (reduced and baked) with
+# 3D wings and a grafted HD head, own rig (mixamorig body + wing bones), Mixamo body clips + procedural wing flap; one
+# skin, tiers by region mask + ramps. Scale: front-view silhouette area of the Flight wingbeat matches the native fly
+# frames (285 logical px tall x frame scale 0.70 = 200 units for A); B/C follow their frame scales (0.75, 0.80).
+- descriptor: DemonFly A
+  model: worlds/mm6/models/mm6_wdm.glb
+  death_effect:
+    # Engine burn from the moment of death, as the ground demon but 25 % slower (user 2026-10-13): Death flings the
+    # arms and wings out over 0.52 s and holds the pose (Dead) while the body burns inward from the hands, feet, head,
+    # wing rims and wing tips in the variant's colour (violet: purple skin); gone in about 1.2 s.
+    type: burn
+    start: 0.0
+    end: 0.9375
+    char_width: 0.16
+    edge_width: 0.035
+    fire_width: 0.3
+    color: [0.75, 0.3, 1.0]
+    brightness: 2.4
+    flames_per_second: 220
+    flame_size: 24
+    flame_color: [185, 95, 255]
+    light: {color: [190, 120, 255], radius: 450}
+  scale: 130.0
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Flight
+    stride_length: 5.6
+    upper_body_root: mixamorig:Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [mixamorig:Neck, mixamorig:Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    # Source-speed Mixamo clips: the claw swipe lands 0.646 s into Attack (ranged fire leaves the right palm, where
+    # its hand flame burns); the cast flings the arms widest 0.75 s into Cast (after a 0.15 s ready pause).
+    events:
+      attack_melee: {impact: 0.774}
+      attack_ranged:
+        impact: 0.774
+        glow: [palm_right]
+        effects:
+          Fire: openyamm:fx/creature_fire_hand
+      cast: {impact: 0.961, glow: [palm_left, palm_right]}
+  clips:
+    standing: Flight
+    walking: Flight
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Flight
+  skin: wdm_a
+- descriptor: DemonFly B
+  model: worlds/mm6/models/mm6_wdm.glb
+  death_effect:
+    # Engine burn from the moment of death, as the ground demon but 25 % slower (user 2026-10-13): Death flings the
+    # arms and wings out over 0.52 s and holds the pose (Dead) while the body burns inward from the hands, feet, head,
+    # wing rims and wing tips in the variant's colour (yellow-gold: olive-gold skin); gone in about 1.2 s.
+    type: burn
+    start: 0.0
+    end: 0.9375
+    char_width: 0.16
+    edge_width: 0.035
+    fire_width: 0.3
+    color: [1.0, 0.78, 0.12]
+    brightness: 2.4
+    flames_per_second: 220
+    flame_size: 24
+    flame_color: [255, 205, 60]
+    light: {color: [255, 210, 90], radius: 450}
+  scale: 130.0
+  scale_reference: DemonFly A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Flight
+    stride_length: 5.6
+    upper_body_root: mixamorig:Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [mixamorig:Neck, mixamorig:Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    # Source-speed Mixamo clips: the claw swipe lands 0.646 s into Attack (ranged fire leaves the right palm, where
+    # its hand flame burns); the cast flings the arms widest 0.75 s into Cast (after a 0.15 s ready pause).
+    events:
+      attack_melee: {impact: 0.774}
+      attack_ranged:
+        impact: 0.774
+        glow: [palm_right]
+        effects:
+          Fire: openyamm:fx/creature_fire_hand
+      cast: {impact: 0.961, glow: [palm_left, palm_right]}
+  clips:
+    standing: Flight
+    walking: Flight
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Flight
+  skin: wdm_b
+- descriptor: DemonFly C
+  model: worlds/mm6/models/mm6_wdm.glb
+  death_effect:
+    # Engine burn from the moment of death, as the ground demon but 25 % slower (user 2026-10-13): Death flings the
+    # arms and wings out over 0.52 s and holds the pose (Dead) while the body burns inward from the hands, feet, head,
+    # wing rims and wing tips in the variant's colour (crimson: dark red skin); gone in about 1.2 s.
+    type: burn
+    start: 0.0
+    end: 0.9375
+    char_width: 0.16
+    edge_width: 0.035
+    fire_width: 0.3
+    color: [1.0, 0.12, 0.06]
+    brightness: 2.4
+    flames_per_second: 220
+    flame_size: 24
+    flame_color: [255, 70, 50]
+    light: {color: [255, 90, 70], radius: 450}
+  scale: 130.0
+  scale_reference: DemonFly A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Flight
+    stride_length: 5.6
+    upper_body_root: mixamorig:Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [mixamorig:Neck, mixamorig:Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    # Source-speed Mixamo clips: the claw swipe lands 0.646 s into Attack (ranged fire leaves the right palm, where
+    # its hand flame burns); the cast flings the arms widest 0.75 s into Cast (after a 0.15 s ready pause).
+    events:
+      attack_melee: {impact: 0.774}
+      attack_ranged:
+        impact: 0.774
+        glow: [palm_right]
+        effects:
+          Fire: openyamm:fx/creature_fire_hand
+      cast: {impact: 0.961, glow: [palm_left, palm_right]}
+  clips:
+    standing: Flight
+    walking: Flight
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Flight
+  skin: wdm_c
+# MM6 cobra (level_generation/creatures/mm6_cob_claude): Meshy four-view HD model (bent-pose reduction + bake),
+# spine-chain rig fitted to the centreline, procedural curve clips (coil, serpentine walk, strike); one skin, tiers by
+# region mask (body, hood front, spectacle) + ramps from palettes 677/678/679. Scale: native side frame 203 x 495
+# logical px x frame scale 0.65 against the 1.0 x 2.49 m model; origin at the neck base (front-view sprite centre).
+- descriptor: Cobra A
+  model: worlds/mm6/models/mm6_cob.glb
+  scale: 130.0
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walk
+    stride_length: 0.75
+    upper_body_root: Spine_01
+    # The raised hood (top two spine joints) and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [Spine_04, Spine_05, Head]
+      max_yaw_degrees: 50
+      max_pitch_degrees: 30
+    sockets: {}
+    events:
+      attack_melee: {impact: 0.383}
+  clips:
+    standing: Standing
+    walking: Walk
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: cob_a
+- descriptor: Cobra B
+  model: worlds/mm6/models/mm6_cob.glb
+  scale: 130.0
+  scale_reference: Cobra A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walk
+    stride_length: 0.75
+    upper_body_root: Spine_01
+    # The raised hood (top two spine joints) and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [Spine_04, Spine_05, Head]
+      max_yaw_degrees: 50
+      max_pitch_degrees: 30
+    sockets: {}
+    events:
+      attack_melee: {impact: 0.383}
+  clips:
+    standing: Standing
+    walking: Walk
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: cob_b
+- descriptor: Cobra C
+  model: worlds/mm6/models/mm6_cob.glb
+  scale: 130.0
+  scale_reference: Cobra A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walk
+    stride_length: 0.75
+    upper_body_root: Spine_01
+    # The raised hood (top two spine joints) and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [Spine_04, Spine_05, Head]
+      max_yaw_degrees: 50
+      max_pitch_degrees: 30
+    sockets: {}
+    events:
+      attack_melee: {impact: 0.383}
+  clips:
+    standing: Standing
+    walking: Walk
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: cob_c
+# MM6 Patrol Unit (rob1): Codex HD masters -> Meshy Smart Topology (rings rebuilt with front-only notches) +
+# retexture; rigid rig (one bone per part) + procedural hover clips; explodes on death like the native sprite (no
+# corpse); eye glow on the belt lens; one shared skin, tiers by region ramps from palettes 810/811/812.
+- descriptor: BRobot A
+  model: worlds/mm6/models/mm6_rob1.glb
+  death_effect: explosion
+  scale: 111.0
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walking
+    stride_length: 0.9
+    upper_body_root: Body
+    sockets:
+      eye_left: Socket_Eye
+      sensor: {node: Sensor, offset: [0.0067, 0.2002, 0.1714]}
+    eye_color:
+    - 255
+    - 196
+    - 64
+    events:
+      attack_ranged: {impact: 0.46, glow: [sensor], glow_scale: 0.5}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: rob1_a
+- descriptor: BRobot B
+  model: worlds/mm6/models/mm6_rob1.glb
+  death_effect: explosion
+  scale: 111.0
+  scale_reference: BRobot A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walking
+    stride_length: 0.9
+    upper_body_root: Body
+    sockets:
+      eye_left: Socket_Eye
+      sensor: {node: Sensor, offset: [0.0067, 0.2002, 0.1714]}
+    eye_color:
+    - 244
+    - 48
+    - 240
+    events:
+      attack_ranged: {impact: 0.46, glow: [sensor], glow_scale: 0.5}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: rob1_b
+- descriptor: BRobot C
+  model: worlds/mm6/models/mm6_rob1.glb
+  death_effect: explosion
+  scale: 111.0
+  scale_reference: BRobot A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walking
+    stride_length: 0.9
+    upper_body_root: Body
+    sockets:
+      eye_left: Socket_Eye
+      sensor: {node: Sensor, offset: [0.0067, 0.2002, 0.1714]}
+    eye_color:
+    - 252
+    - 40
+    - 222
+    events:
+      attack_ranged: {impact: 0.46, glow: [sensor], glow_scale: 0.5}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: rob1_c
+# MM6 sea serpent (level_generation/creatures/mm6_seas_claude): Meshy four-view HD model (bent-pose reduction + bake),
+# spine rig traced up the column, procedural curve clips, foam collar (own cut-out mesh 'Foam' on an unparented bone
+# at the waterline); tiers by region mask (scales, crest, belly; foam) + ramps from palettes 813/814/815. Scale: native
+# stand frame 240 native px x frame scale 2.2 = 528 units against the 1.0 m tall model: scale 528; C via
+# scale_reference (frame scale 2.8). No corpse: Death sinks below the water.
+- descriptor: SeaSerpent A
+  model: worlds/mm6/models/mm6_seas.glb
+  scale: 528.0
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walk
+    stride_length: 0.6
+    upper_body_root: Spine_06
+    # The top of the arch and the head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [Spine_13, Spine_14, Head]
+      max_yaw_degrees: 45
+      max_pitch_degrees: 30
+    sockets:
+      head: {node: Head, offset: [-0.0381, 0.1244, -0.0032]}
+    events:
+      attack_ranged: {impact: 0.555, glow: [head], glow_scale: 2}
+  clips:
+    standing: Standing
+    walking: Walk
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: seas_a
+- descriptor: SeaSerpent B
+  model: worlds/mm6/models/mm6_seas.glb
+  scale: 528.0
+  scale_reference: SeaSerpent A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walk
+    stride_length: 0.6
+    upper_body_root: Spine_06
+    # The top of the arch and the head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [Spine_13, Spine_14, Head]
+      max_yaw_degrees: 45
+      max_pitch_degrees: 30
+    sockets:
+      head: {node: Head, offset: [-0.0381, 0.1244, -0.0032]}
+    events:
+      attack_ranged: {impact: 0.555, glow: [head], glow_scale: 2}
+  clips:
+    standing: Standing
+    walking: Walk
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: seas_b
+- descriptor: SeaSerpent C
+  model: worlds/mm6/models/mm6_seas.glb
+  scale: 528.0
+  scale_reference: SeaSerpent A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walk
+    stride_length: 0.6
+    upper_body_root: Spine_06
+    # The top of the arch and the head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [Spine_13, Spine_14, Head]
+      max_yaw_degrees: 45
+      max_pitch_degrees: 30
+    sockets:
+      head: {node: Head, offset: [-0.0381, 0.1244, -0.0032]}
+    events:
+      attack_ranged: {impact: 0.555, glow: [head], glow_scale: 2}
+  clips:
+    standing: Standing
+    walking: Walk
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: seas_c
+# MM6 hydra (level_generation/creatures/mm6_hyd_claude): Meshy four-view body (second tail removed, bent-pose reduction)
+# with five separate head models grafted on (Codex head masters -> Smart Topology -> retexture on clean UVs); body set
+# 2048, head set 1536x1024 (one 512 tile per head); body chain + five neck chains, procedural chain clips; tiers by
+# region masks over five materials (body, necks, skulls, stubs, head 4's fins) + ramps from palettes 754/755/756.
+# Scale: native stand frame 210 native px x frame scale 1.3 = 273 units against the 1.0 m tall model; B and C via
+# scale_reference (frame scales 1.45, 1.6).
+- descriptor: BHydra A
+  model: worlds/mm6/models/mm6_hyd.glb
+  scale: 273.0
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walk
+    stride_length: 0.5
+    upper_body_root: Body_Root
+    sockets:
+      head1: {node: Head1, offset: [-0.0508, 0.0663, -0.0012]}
+      head2: {node: Head2, offset: [-0.0568, 0.1003, 0.0041]}
+      head3: {node: Head3, offset: [-0.0537, 0.0794, 0.0119]}
+      head4: {node: Head4, offset: [-0.0617, 0.0977, -0.0029]}
+      head5: {node: Head5, offset: [-0.052, 0.0912, -0.0069]}
+    events:
+      attack_melee: {impact: 0.459}
+      attack_ranged: {impact: 0.459, glow: [head1, head2, head3, head4], release: head3}
+  clips:
+    standing: Standing
+    walking: Walk
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: hyd_a
+- descriptor: BHydra B
+  model: worlds/mm6/models/mm6_hyd.glb
+  scale: 273.0
+  scale_reference: BHydra A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walk
+    stride_length: 0.5
+    upper_body_root: Body_Root
+    sockets:
+      head1: {node: Head1, offset: [-0.0508, 0.0663, -0.0012]}
+      head2: {node: Head2, offset: [-0.0568, 0.1003, 0.0041]}
+      head3: {node: Head3, offset: [-0.0537, 0.0794, 0.0119]}
+      head4: {node: Head4, offset: [-0.0617, 0.0977, -0.0029]}
+      head5: {node: Head5, offset: [-0.052, 0.0912, -0.0069]}
+    events:
+      attack_melee: {impact: 0.459}
+      attack_ranged: {impact: 0.459, glow: [head1, head2, head3, head4], release: head3}
+  clips:
+    standing: Standing
+    walking: Walk
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: hyd_b
+- descriptor: BHydra C
+  model: worlds/mm6/models/mm6_hyd.glb
+  scale: 273.0
+  scale_reference: BHydra A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walk
+    stride_length: 0.5
+    upper_body_root: Body_Root
+    sockets:
+      head1: {node: Head1, offset: [-0.0508, 0.0663, -0.0012]}
+      head2: {node: Head2, offset: [-0.0568, 0.1003, 0.0041]}
+      head3: {node: Head3, offset: [-0.0537, 0.0794, 0.0119]}
+      head4: {node: Head4, offset: [-0.0617, 0.0977, -0.0029]}
+      head5: {node: Head5, offset: [-0.052, 0.0912, -0.0069]}
+    events:
+      attack_melee: {impact: 0.459}
+      attack_ranged: {impact: 0.459, glow: [head1, head2, head3, head4], release: head3}
+  clips:
+    standing: Standing
+    walking: Walk
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: hyd_c
+# MM6 Ooze (ooz), Meshy Smart Topology + own lump rig (no skeleton: pulsing and sliding, a pseudopod grows for the
+# attack). Skins ooz_a/b/c share one texture set; the slime follows palettes 780/781/782. Wet slime keeps specular.
+- descriptor: BOoze A
+  model: worlds/mm6/models/mm6_ooz.glb
+  scale: 206.5
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 0.5
+    upper_body_root: Body
+    sockets:
+      pod6: {node: Pod6, offset: [0.0027, 0.0748, -0.0461]}
+    events:
+      attack_melee: {impact: 0.394}
+      cast: {impact: 0.394, glow: [pod6], release: pod6, glow_scale: 0.8}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: ooz_a
+- descriptor: BOoze B
+  model: worlds/mm6/models/mm6_ooz.glb
+  scale: 206.5
+  scale_reference: BOoze A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 0.5
+    upper_body_root: Body
+    sockets:
+      pod6: {node: Pod6, offset: [0.0027, 0.0748, -0.0461]}
+    events:
+      attack_melee: {impact: 0.394}
+      cast: {impact: 0.394, glow: [pod6], release: pod6, glow_scale: 0.8}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: ooz_b
+- descriptor: BOoze C
+  model: worlds/mm6/models/mm6_ooz.glb
+  scale: 206.5
+  scale_reference: BOoze A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 0.5
+    upper_body_root: Body
+    sockets:
+      pod6: {node: Pod6, offset: [0.0027, 0.0748, -0.0461]}
+    events:
+      attack_melee: {impact: 0.394}
+      cast: {impact: 0.394, glow: [pod6], release: pod6, glow_scale: 0.8}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: ooz_c
+# MM6 cockatrice (ckt): Codex HD masters -> Meshy Smart Topology + retexture; own rig (bat-style wings, bird legs on
+# IK, tail chain) with heat weights solved on a voxel proxy; procedural clips; flies like the native (Fly Y), walks
+# with wing beats; casts Mind Blast from the head; one shared skin, wing membrane ramps from palettes 680/681/682.
+# Scale 428: native standing height 245 px x SFT scale 0.8 (52428/65536, equal for all three tiers) = 196 units over
+# the 0.458 m mean Standing height; B/C follow A through scale_reference (same frame scale).
+- descriptor: Cockatrice A
+  model: worlds/mm6/models/mm6_ckt.glb
+  scale: 428.0
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Walking
+    stride_length: 0.3
+    upper_body_root: Chest
+    # The neck and head share a turn toward the party over every clip but the death (the cast follows it).
+    look:
+      nodes: [Neck1, Neck2, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      head: {node: Head, offset: [0.0089, 0.0502, 0.0009]}
+    events:
+      attack_melee: {impact: 0.417}
+      cast: {impact: 0.375, glow: [head], release: head, glow_scale: 0.8}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: ckt_a
+- descriptor: Cockatrice B
+  model: worlds/mm6/models/mm6_ckt.glb
+  scale: 428.0
+  scale_reference: Cockatrice A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Walking
+    stride_length: 0.3
+    upper_body_root: Chest
+    # The neck and head share a turn toward the party over every clip but the death (the cast follows it).
+    look:
+      nodes: [Neck1, Neck2, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      head: {node: Head, offset: [0.0089, 0.0502, 0.0009]}
+    events:
+      attack_melee: {impact: 0.417}
+      cast: {impact: 0.375, glow: [head], release: head, glow_scale: 0.8}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: ckt_b
+- descriptor: Cockatrice C
+  model: worlds/mm6/models/mm6_ckt.glb
+  scale: 428.0
+  scale_reference: Cockatrice A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Walking
+    stride_length: 0.3
+    upper_body_root: Chest
+    # The neck and head share a turn toward the party over every clip but the death (the cast follows it).
+    look:
+      nodes: [Neck1, Neck2, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      head: {node: Head, offset: [0.0089, 0.0502, 0.0009]}
+    events:
+      attack_melee: {impact: 0.417}
+      cast: {impact: 0.375, glow: [head], release: head, glow_scale: 0.8}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: ckt_c
+# MM6 Titan / Noble Titan / Supreme Titan (ttn1), Meshy Smart Topology + Meshy rig and library clips.
+# Skins ttn_a/b/c share one texture set and a head set; armour, trim and crest follow palettes 828/829/830 (region
+# ramps). Scale: native stand frame 374 px x frame scale 1.4 = 524 units against the 1.578 m model (all tiers 1.4).
+# Melee: a right hook (Attack); ranged: a one-handed thrust (Ranged); spells: a two-handed push (Cast, glow between palms).
+- descriptor: BTitan A
+  model: worlds/mm6/models/mm6_ttn.glb
+  scale: 331.8
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.07
+    upper_body_root: Spine02
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [neck, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    # Source-speed clips after ready pauses: the hook lands 0.604 s into Attack, the one-hand thrust releases 0.729 s
+    # into Ranged (from the right palm) and the two-handed push 0.771 s into Cast.
+    events:
+      attack_melee: {impact: 0.604}
+      attack_ranged: {impact: 0.946, glow: [palm_right], glow_scale: 2}
+      cast: {impact: 0.87, glow: [palm_left, palm_right], glow_scale: 2}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Ranged
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: ttn_a
+- descriptor: BTitan B
+  model: worlds/mm6/models/mm6_ttn.glb
+  scale: 331.8
+  scale_reference: BTitan A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.07
+    upper_body_root: Spine02
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [neck, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    # Source-speed clips after ready pauses: the hook lands 0.604 s into Attack, the one-hand thrust releases 0.729 s
+    # into Ranged (from the right palm) and the two-handed push 0.771 s into Cast.
+    events:
+      attack_melee: {impact: 0.604}
+      attack_ranged: {impact: 0.946, glow: [palm_right], glow_scale: 2}
+      cast: {impact: 0.87, glow: [palm_left, palm_right], glow_scale: 2}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Ranged
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: ttn_b
+- descriptor: BTitan C
+  model: worlds/mm6/models/mm6_ttn.glb
+  scale: 331.8
+  scale_reference: BTitan A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.07
+    upper_body_root: Spine02
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [neck, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    # Source-speed clips after ready pauses: the hook lands 0.604 s into Attack, the one-hand thrust releases 0.729 s
+    # into Ranged (from the right palm) and the two-handed push 0.771 s into Cast.
+    events:
+      attack_melee: {impact: 0.604}
+      attack_ranged: {impact: 0.946, glow: [palm_right], glow_scale: 2}
+      cast: {impact: 0.87, glow: [palm_left, palm_right], glow_scale: 2}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Ranged
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: ttn_c
+# MM6 Wolfman / Werewolf / Greater Werewolf (wfigt1), Meshy Smart Topology + Meshy rig (with a jaw bone) and Mixamo
+# Mutant clips. Skins wwf_a/b/c share one texture set and a head set; shorts and pendant gem follow palettes
+# 831/832/833 (region ramps). Scale: native stand frame 246 px x frame scale 0.9 = 221 units against the 1.526 m
+# posed Standing height. Melee only (bite: rears up, claws raised, lunges with the jaws open).
+# MM6 thief / burglar / rogue (thf), Meshy Smart Topology + Meshy rig with cloak chains (baked verlet), finger rig and
+# two daggers in the skinned mesh (shown only in the attack). Skins thf_a/b/c share one texture set; the cloak, hood
+# and undershirt follow palettes 825/826/827 (region ramps).
+- descriptor: BThief A
+  model: worlds/mm6/models/mm6_thf.glb
+  scale: 108.68
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.16
+    upper_body_root: Spine02
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [neck, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.403}
+      attack_ranged: {impact: 0.403}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: thf_a
+- descriptor: BThief B
+  model: worlds/mm6/models/mm6_thf.glb
+  scale: 108.68
+  scale_reference: BThief A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.16
+    upper_body_root: Spine02
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [neck, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.403}
+      attack_ranged: {impact: 0.403}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: thf_b
+- descriptor: BThief C
+  model: worlds/mm6/models/mm6_thf.glb
+  scale: 108.68
+  scale_reference: BThief A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.16
+    upper_body_root: Spine02
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [neck, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.403}
+      attack_ranged: {impact: 0.403}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: thf_c
+- descriptor: Werewolf A
+  model: worlds/mm6/models/mm6_wwf.glb
+  scale: 145.1
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.71
+    upper_body_root: Spine02
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [neck, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.331}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: wwf_a
+- descriptor: Werewolf B
+  model: worlds/mm6/models/mm6_wwf.glb
+  scale: 145.1
+  scale_reference: Werewolf A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.71
+    upper_body_root: Spine02
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [neck, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.331}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: wwf_b
+- descriptor: Werewolf C
+  model: worlds/mm6/models/mm6_wwf.glb
+  scale: 145.1
+  scale_reference: Werewolf A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.71
+    upper_body_root: Spine02
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [neck, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.331}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: wwf_c
+# MM6 skeleton (ske), Meshy Smart Topology body of separate rigid bones + skull-only model, own Mixamo-named rig
+# (every bone piece 100 % on one joint), Mixamo sword-and-shield clips planted in the native stooped stance, cutlass
+# attachment on the Sword joint. Skins ske_a/b/c share one texture set; all bone follows palettes 816/817/818 (region
+# ramps); eyes and cutlass keep their colours. Scale: native stand 273 px x 0.7 = 191 units over the 1.546 m Standing pose.
+- descriptor: Skeleton A
+  model: worlds/mm6/models/mm6_ske.glb
+  scale: 123.6
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.028
+    upper_body_root: mixamorig:Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [mixamorig:Neck, mixamorig:Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    # A 0.2 s ready pause, then the source slash at its own speed: the blow (peak sword-tip speed) lands 0.771 s into
+    # the 1.5 s Attack when the game strikes; the rest follows during the recovery.
+    events:
+      attack_melee: {impact: 0.912}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: ske_a
+  attachments:
+    - model: worlds/mm6/models/mm6_ske_sword.glb
+      node: Sword
+- descriptor: Skeleton B
+  model: worlds/mm6/models/mm6_ske.glb
+  scale: 123.6
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.028
+    upper_body_root: mixamorig:Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [mixamorig:Neck, mixamorig:Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    # A 0.2 s ready pause, then the source slash at its own speed: the blow (peak sword-tip speed) lands 0.771 s into
+    # the 1.5 s Attack when the game strikes; the rest follows during the recovery.
+    events:
+      attack_melee: {impact: 0.912}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: ske_b
+  attachments:
+    - model: worlds/mm6/models/mm6_ske_sword.glb
+      node: Sword
+- descriptor: Skeleton C
+  model: worlds/mm6/models/mm6_ske.glb
+  scale: 123.6
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.028
+    upper_body_root: mixamorig:Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [mixamorig:Neck, mixamorig:Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    # A 0.2 s ready pause, then the source slash at its own speed: the blow (peak sword-tip speed) lands 0.771 s into
+    # the 1.5 s Attack when the game strikes; the rest follows during the recovery.
+    events:
+      attack_melee: {impact: 0.912}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: ske_c
+  attachments:
+    - model: worlds/mm6/models/mm6_ske_sword.glb
+      node: Sword
+# MM6 Acolyte / Cleric / Priest of Baa (cle), Meshy Smart Topology + Meshy rig with baked cloak chains, the ankh staff
+# (from the native sprite) in the left fist as an attachment. Skins cle_a/b/c share one texture set; tunic, trousers
+# (with the trim) and cloak follow palettes 674/675/676 (region ramps). Scale: native stand 248 px x 0.7 / 1.578 m.
+# Cleric B and C cast (Harm, Flying Fist) with the attack motion; the charge glows at the staff ring, as the mage's.
+# The Air bolt's wind-up lights the staff ring (creature_air_staff) until the release.
+- descriptor: Cleric A
+  model: worlds/mm6/models/mm6_cle.glb
+  scale: 110.0
+  yaw_offset: -1.570796327
+  animation:
+    sockets:
+      palm_right: Socket_Palm_R
+      staff_head: Socket_Staff_Head
+    cast: Cast
+    run: Walking
+    stride_length: 1.2
+    upper_body_root: Spine02
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [neck, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    # The release (0.54 s into the 1.125 s library Attack/Cast: the staff thrust, the right-palm thrust) is when the
+    # game fires; the rest of the clip is the recovery. Bolts leave the staff ring, spells the right palm.
+    events:
+      attack_melee: {impact: 0.541}
+      attack_ranged:
+        impact: 0.541
+        glow: [staff_head]
+        effects:
+          Air: openyamm:fx/creature_air_staff
+      cast: {impact: 0.541, glow: [palm_right], release: palm_right, glow_scale: 0.6}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: cle_a
+  attachments:
+    - model: worlds/mm6/models/mm6_cle_staff.glb
+      node: Staff
+- descriptor: Cleric B
+  model: worlds/mm6/models/mm6_cle.glb
+  scale: 110.0
+  scale_reference: Cleric A
+  yaw_offset: -1.570796327
+  animation:
+    sockets:
+      palm_right: Socket_Palm_R
+      staff_head: Socket_Staff_Head
+    cast: Cast
+    run: Walking
+    stride_length: 1.2
+    upper_body_root: Spine02
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [neck, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    # The release (0.54 s into the 1.125 s library Attack/Cast: the staff thrust, the right-palm thrust) is when the
+    # game fires; the rest of the clip is the recovery. Bolts leave the staff ring, spells the right palm.
+    events:
+      attack_melee: {impact: 0.541}
+      attack_ranged:
+        impact: 0.541
+        glow: [staff_head]
+        effects:
+          Air: openyamm:fx/creature_air_staff
+      cast: {impact: 0.541, glow: [palm_right], release: palm_right, glow_scale: 0.6}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: cle_b
+  attachments:
+    - model: worlds/mm6/models/mm6_cle_staff.glb
+      node: Staff
+- descriptor: Cleric C
+  model: worlds/mm6/models/mm6_cle.glb
+  scale: 110.0
+  scale_reference: Cleric A
+  yaw_offset: -1.570796327
+  animation:
+    sockets:
+      palm_right: Socket_Palm_R
+      staff_head: Socket_Staff_Head
+    cast: Cast
+    run: Walking
+    stride_length: 1.2
+    upper_body_root: Spine02
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [neck, Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    # The release (0.54 s into the 1.125 s library Attack/Cast: the staff thrust, the right-palm thrust) is when the
+    # game fires; the rest of the clip is the recovery. Bolts leave the staff ring, spells the right palm.
+    events:
+      attack_melee: {impact: 0.541}
+      attack_ranged:
+        impact: 0.541
+        glow: [staff_head]
+        effects:
+          Air: openyamm:fx/creature_air_staff
+      cast: {impact: 0.541, glow: [palm_right], release: palm_right, glow_scale: 0.6}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: cle_c
+  attachments:
+    - model: worlds/mm6/models/mm6_cle_staff.glb
+      node: Staff
+# MM6 barbarian (bar1, Magyar / Magyar Soldier / Magyar Matron), rig-first test drive (mm6_bar1_claude/TEST_DRIVE.md):
+# Meshy Smart Topology, source-frame rig (cloned B_* frames, mesh-measured hands and fingers), rule-based weights with
+# twist bones, solved sword fist; upright clips (2026-10-11): walk, run, hit and death from the local humanoid set
+# (world-rotation copy), idle, attack and battle-cry fidget from Mixamo (rest-delta copy, attack and fidget planted on
+# the idle stance), 30 fps keys. Longsword attachment on Sword. Skins bar1_a/b/c share one texture set; armour and
+# leather follow palettes 663/664/665. Scale: native stand 236 px x 0.7 = 165 units over the upright walk height 1.669 m.
+- descriptor: Barbarian A
+  model: worlds/mm6/models/mm6_bar1.glb
+  scale: 98.9
+  yaw_offset: -1.570796327
+  animation:
+    sockets:
+      l_finger2: {node: B_L_Finger2, offset: [0.0045, -0.0025, -0.0071]}
+      r_hand: {node: B_R_Hand, offset: [-0.0002, 0.0612, 0.0051]}
+    cast: Attack
+    run: Running
+    stride_length: 1.032258
+    upper_body_root: B_Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    # The blow (the slice: fastest sword-tip motion with the blade pointing at the target, 0.75 s into the 1.53 s
+    # Attack: a 0.15 s ready pause, then the source slash at its own speed) lands when the game strikes.
+    events:
+      attack_melee: {impact: 0.87}
+      attack_ranged: {glow: [l_finger2, r_hand], release: r_hand}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: bar1_a
+  attachments:
+    - model: worlds/mm6/models/mm6_bar1_sword.glb
+      node: Sword
+- descriptor: Barbarian B
+  model: worlds/mm6/models/mm6_bar1.glb
+  scale: 98.9
+  yaw_offset: -1.570796327
+  animation:
+    sockets:
+      l_finger2: {node: B_L_Finger2, offset: [0.0045, -0.0025, -0.0071]}
+      r_hand: {node: B_R_Hand, offset: [-0.0002, 0.0612, 0.0051]}
+    cast: Attack
+    run: Running
+    stride_length: 1.032258
+    upper_body_root: B_Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    # The blow (the slice: fastest sword-tip motion with the blade pointing at the target, 0.75 s into the 1.53 s
+    # Attack: a 0.15 s ready pause, then the source slash at its own speed) lands when the game strikes.
+    events:
+      attack_melee: {impact: 0.87}
+      attack_ranged: {glow: [l_finger2, r_hand], release: r_hand}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: bar1_b
+  attachments:
+    - model: worlds/mm6/models/mm6_bar1_sword.glb
+      node: Sword
+- descriptor: Barbarian C
+  model: worlds/mm6/models/mm6_bar1.glb
+  scale: 98.9
+  yaw_offset: -1.570796327
+  animation:
+    sockets:
+      l_finger2: {node: B_L_Finger2, offset: [0.0045, -0.0025, -0.0071]}
+      r_hand: {node: B_R_Hand, offset: [-0.0002, 0.0612, 0.0051]}
+    cast: Attack
+    run: Running
+    stride_length: 1.032258
+    upper_body_root: B_Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    # The blow (the slice: fastest sword-tip motion with the blade pointing at the target, 0.75 s into the 1.53 s
+    # Attack: a 0.15 s ready pause, then the source slash at its own speed) lands when the game strikes.
+    events:
+      attack_melee: {impact: 0.87}
+      attack_ranged: {impact: 0.87, glow: [l_finger2, r_hand], release: r_hand}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: bar1_c
+  attachments:
+    - model: worlds/mm6/models/mm6_bar1_sword.glb
+      node: Sword
+
+# MM6 Swordsman / Expert / Master (nobl, monster IDs 586–588).
+# Source-frame rig, native palette ramps 777/778/779, shared body/head maps and Sword attachment.
+# Native height 269 px x 0.7, calibrated against the upright walk (1.713772 m).
+
+- descriptor: Nobleman A
+  model: worlds/mm6/models/mm6_nobl.glb
+  scale: 109.874099
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.2
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.599}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: nobl_a
+  attachments:
+    - model: worlds/mm6/models/mm6_nobl_sword.glb
+      node: Sword
+
+
+- descriptor: Nobleman B
+  model: worlds/mm6/models/mm6_nobl.glb
+  scale: 109.874099
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.2
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.599}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: nobl_b
+  attachments:
+    - model: worlds/mm6/models/mm6_nobl_sword.glb
+      node: Sword
+
+
+- descriptor: Nobleman C
+  model: worlds/mm6/models/mm6_nobl.glb
+  scale: 109.874099
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.2
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.599}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: nobl_c
+  attachments:
+    - model: worlds/mm6/models/mm6_nobl_sword.glb
+      node: Sword
+# MM6 Druid / Great Druid / Grand Druid (dru1; level_generation/creatures/mm6_dru1_claude): rig-first gated route
+# (cloned humanoid-set frames, mesh-measured hands and fingers, rule-based weights with twist bones), hooded cloak on
+# 15 verlet chains baked into every clip, open hands. Skins dru1_a/b/c share one texture set and a head set; only the
+# hood and cloak change colour (one cloth region, ramps from palettes 722/723/194). Scale: native stand 266 px x frame
+# scale 0.7 = 186 units over the 1.686 m standing height (hood included; the walk height read 5 % tall indoors). Speeds
+# 160-200 stay under the run threshold: run plays the walk.
+# Attack: both arms swept overhead, then a two-palm thrust (the missile leaves the right palm at 0.65 s); Cast: the palms
+# clap forward (glow between the palms, release 0.717 s after a 0.25 s ready hold).
+- descriptor: Druidess A
+  model: worlds/mm6/models/mm6_dru1.glb
+  scale: 110.4
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Walking
+    stride_length: 1.25
+    upper_body_root: B_Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.847}
+      attack_ranged: {impact: 0.847, glow: [palm_right, palm_left]}
+      cast: {impact: 0.845, glow: [palm_left, palm_right]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: dru1_a
+- descriptor: Druidess B
+  model: worlds/mm6/models/mm6_dru1.glb
+  scale: 110.4
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Walking
+    stride_length: 1.25
+    upper_body_root: B_Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.847}
+      attack_ranged: {impact: 0.847, glow: [palm_right, palm_left]}
+      cast: {impact: 0.845, glow: [palm_left, palm_right]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: dru1_b
+- descriptor: Druidess C
+  model: worlds/mm6/models/mm6_dru1.glb
+  scale: 110.4
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Walking
+    stride_length: 1.25
+    upper_body_root: B_Spine
+    # The neck and head share a turn toward the party over every clip but the death.
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.847}
+      attack_ranged: {impact: 0.847, glow: [palm_right, palm_left]}
+      cast: {impact: 0.845, glow: [palm_left, palm_right]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: dru1_c
+
+# MM6 Ogre: native 248-pixel silhouette x 0.799988 / 1.721017 m library standing pose.
+# All tiers share geometry; palettes 783/784/785 recolour only the spikes.
+- descriptor: Ogre A
+  model: worlds/mm6/models/mm6_ogr.glb
+  scale: 115.279
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.25
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.9}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: ogr_a
+  attachments:
+    - model: worlds/mm6/models/mm6_ogr_sword.glb
+      node: Sword
+- descriptor: Ogre B
+  model: worlds/mm6/models/mm6_ogr.glb
+  scale: 115.279
+  scale_reference: Ogre A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.25
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.9}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: ogr_b
+  attachments:
+    - model: worlds/mm6/models/mm6_ogr_sword.glb
+      node: Sword
+- descriptor: Ogre C
+  model: worlds/mm6/models/mm6_ogr.glb
+  scale: 115.279
+  scale_reference: Ogre A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 1.25
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.9}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: ogr_c
+  attachments:
+    - model: worlds/mm6/models/mm6_ogr_sword.glb
+      node: Sword
+
+# MM6 leather fighters: Thug / Ruffian / Brigand; source-frame rig, native backhand and dropped mace.
+# Shared palettes 733/734/735; 261 visible native pixels x 0.8 / 1.7 m = 122.8 game units per metre.
+- descriptor: FighterLeath A
+  model: worlds/mm6/models/mm6_fgt.glb
+  scale: 122.8
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.93
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee:
+        impact: 0.853
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: fgt_a
+  attachments:
+  - model: worlds/mm6/models/mm6_fgt_mace.glb
+    node: Mace
+- descriptor: FighterLeath B
+  model: worlds/mm6/models/mm6_fgt.glb
+  scale: 122.8
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.93
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee:
+        impact: 0.853
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: fgt_b
+  attachments:
+  - model: worlds/mm6/models/mm6_fgt_mace.glb
+    node: Mace
+- descriptor: FighterLeath C
+  model: worlds/mm6/models/mm6_fgt.glb
+  scale: 122.8
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.93
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee:
+        impact: 0.853
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: fgt_c
+  attachments:
+  - model: worlds/mm6/models/mm6_fgt_mace.glb
+    node: Mace
+
+# MM6 Lich / Greater Lich / Power Lich (lch, monster IDs 568-570), Codex batch (mm6_lch_codex/HANDOFF.md):
+# armoured skeleton with tatters and crown, rigid bone pieces on a source-frame rig, local humanoid clips; palm
+# sockets for ranged and Dispel Magic. Native stand 285 px x 0.7 = 199.5 units over the 1.786 m Standing height.
+- descriptor: BLich A
+  model: worlds/mm6/models/mm6_lch.glb
+  scale: 111.6
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Walking
+    stride_length: 1.284
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.765}
+      attack_ranged: {impact: 0.765, glow: [palm_right, palm_left]}
+      cast: {impact: 0.723, glow: [palm_left, palm_right], release: palm_left}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: lch_a
+
+- descriptor: BLich B
+  model: worlds/mm6/models/mm6_lch.glb
+  scale: 111.6
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Walking
+    stride_length: 1.284
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.765}
+      attack_ranged: {impact: 0.765, glow: [palm_right, palm_left]}
+      cast: {impact: 0.723, glow: [palm_left, palm_right], release: palm_left}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: lch_b
+
+- descriptor: BLich C
+  model: worlds/mm6/models/mm6_lch.glb
+  scale: 111.6
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Walking
+    stride_length: 1.284
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.765}
+      attack_ranged: {impact: 0.765, glow: [palm_right, palm_left]}
+      cast: {impact: 0.723, glow: [palm_left, palm_right], release: palm_left}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: lch_c
+
+# MM6 Fighter / Soldier / Veteran (figc, monster IDs 535-537), Codex batch (mm6_figc_codex/HANDOFF.md): chain mail,
+# source-frame rig, axe and shield attachments. Native stand 247 px x 0.9 = 222.3 units over the 1.764 m Standing height.
+- descriptor: FighterChain A
+  model: worlds/mm6/models/mm6_figc.glb
+  scale: 126.027899
+  z_offset: -1.512415
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walking
+    stride_length: 1.2
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 45
+      max_pitch_degrees: 25
+    events:
+      attack_melee:
+        impact: 0.85
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: figc_a
+  attachments:
+  - model: worlds/mm6/models/mm6_figc_axe.glb
+    node: Axe
+  - model: worlds/mm6/models/mm6_figc_shield.glb
+    node: Shield
+- descriptor: FighterChain B
+  model: worlds/mm6/models/mm6_figc.glb
+  scale: 126.027899
+  z_offset: -1.512415
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walking
+    stride_length: 1.2
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 45
+      max_pitch_degrees: 25
+    events:
+      attack_melee:
+        impact: 0.85
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: figc_b
+  attachments:
+  - model: worlds/mm6/models/mm6_figc_axe.glb
+    node: Axe
+  - model: worlds/mm6/models/mm6_figc_shield.glb
+    node: Shield
+- descriptor: FighterChain C
+  model: worlds/mm6/models/mm6_figc.glb
+  scale: 126.027899
+  z_offset: -1.512415
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Walking
+    stride_length: 1.2
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 45
+      max_pitch_degrees: 25
+    events:
+      attack_melee:
+        impact: 0.85
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: figc_c
+  attachments:
+  - model: worlds/mm6/models/mm6_figc_axe.glb
+    node: Axe
+  - model: worlds/mm6/models/mm6_figc_shield.glb
+    node: Shield
+
+# MM6 Death Knight / Doom Knight / Cuisinart (kni, monster IDs 565-567), Codex batch (mm6_kni_codex/HANDOFF.md): plate
+# armour and sword on a source-frame rig. Native stand 255 px x 0.8/0.9/1.05 frame scales (B/C via scale_reference).
+- descriptor: KnightPlate A
+  model: worlds/mm6/models/mm6_kni.glb
+  scale: 106.671451
+  yaw_offset: -1.570796327
+  animation:
+    sockets:
+      sword_tip: SwordTip
+    cast: Attack
+    run: Running
+    stride_length: 1.35
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 35
+      max_pitch_degrees: 20
+    events:
+      attack_melee:
+        impact: 0.854
+      attack_ranged: {impact: 0.854, glow: [sword_tip], glow_scale: 0.8}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: kni_a
+  attachments:
+  - model: worlds/mm6/models/mm6_kni_sword.glb
+    node: Sword
+- descriptor: KnightPlate B
+  model: worlds/mm6/models/mm6_kni.glb
+  scale: 106.671451
+  scale_reference: KnightPlate A
+  yaw_offset: -1.570796327
+  animation:
+    sockets:
+      sword_tip: SwordTip
+    cast: Attack
+    run: Running
+    stride_length: 1.35
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 35
+      max_pitch_degrees: 20
+    events:
+      attack_melee:
+        impact: 0.854
+      attack_ranged: {impact: 0.854, glow: [sword_tip], glow_scale: 0.8}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: kni_b
+  attachments:
+  - model: worlds/mm6/models/mm6_kni_sword.glb
+    node: Sword
+- descriptor: KnightPlate C
+  model: worlds/mm6/models/mm6_kni.glb
+  scale: 106.671451
+  scale_reference: KnightPlate A
+  yaw_offset: -1.570796327
+  animation:
+    sockets:
+      sword_tip: SwordTip
+    cast: Attack
+    run: Running
+    stride_length: 1.35
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 35
+      max_pitch_degrees: 20
+    events:
+      attack_melee:
+        impact: 0.854
+      attack_ranged: {impact: 0.854, glow: [sword_tip], glow_scale: 0.8}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: kni_c
+  attachments:
+  - model: worlds/mm6/models/mm6_kni_sword.glb
+    node: Sword
+
+# MM6 Novice / Initiate / Master Monk (mnk1, monster IDs 583-585), Codex batch (mm6_mnk1_codex/HANDOFF.md): hooded
+# robe, unarmed elemental attacks from palm sockets. Native stand 179.9 units over the Standing height.
+- descriptor: BMonk A
+  model: worlds/mm6/models/mm6_mnk1.glb
+  scale: 105.142549
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Walking
+    stride_length: 1.57
+    upper_body_root: B_Spine
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.757}
+      attack_ranged: {impact: 0.757, glow: [palm_right, palm_left]}
+      cast: {impact: 0.502, glow: [palm_left, palm_right]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: mnk1_a
+- descriptor: BMonk B
+  model: worlds/mm6/models/mm6_mnk1.glb
+  scale: 105.142549
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Walking
+    stride_length: 1.57
+    upper_body_root: B_Spine
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.757}
+      attack_ranged: {impact: 0.757, glow: [palm_right, palm_left]}
+      cast: {impact: 0.502, glow: [palm_left, palm_right]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: mnk1_b
+- descriptor: BMonk C
+  model: worlds/mm6/models/mm6_mnk1.glb
+  scale: 105.142549
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Walking
+    stride_length: 1.57
+    upper_body_root: B_Spine
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.757}
+      attack_ranged: {impact: 0.757, glow: [palm_right, palm_left]}
+      cast: {impact: 0.502, glow: [palm_left, palm_right]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: mnk1_c
+
+# MM6 Sorcerer / Magician / Warlock (sor1, monster IDs 631-633), Codex batch (mm6_sor1_codex/HANDOFF.md): robed
+# caster with a staff attachment. Native stand 179.9 units over the Standing body height (staff excluded).
+- descriptor: Sorcerer A
+  model: worlds/mm6/models/mm6_sor1.glb
+  scale: 106.121
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Walking
+    stride_length: 1.25
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+      staff_head: Socket_Staff_Head
+    events:
+      attack_melee: {impact: 1.43}
+      attack_ranged: {impact: 1.43, glow: [staff_head]}
+      cast: {impact: 1, glow: [staff_head, palm_left, palm_right], glow_scale: 0.6}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: sor1_a
+  attachments:
+    - model: worlds/mm6/models/mm6_sor1_staff.glb
+      node: B_Staff
+- descriptor: Sorcerer B
+  model: worlds/mm6/models/mm6_sor1.glb
+  scale: 106.121
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Walking
+    stride_length: 1.25
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+      staff_head: Socket_Staff_Head
+    events:
+      attack_melee: {impact: 1.43}
+      attack_ranged: {impact: 1.43, glow: [staff_head]}
+      cast: {impact: 1, glow: [staff_head, palm_left, palm_right], glow_scale: 0.6}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: sor1_b
+  attachments:
+    - model: worlds/mm6/models/mm6_sor1_staff.glb
+      node: B_Staff
+- descriptor: Sorcerer C
+  model: worlds/mm6/models/mm6_sor1.glb
+  scale: 106.121
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Walking
+    stride_length: 1.25
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+      staff_head: Socket_Staff_Head
+    events:
+      attack_melee: {impact: 1.43}
+      attack_ranged: {impact: 1.43, glow: [staff_head]}
+      cast: {impact: 1, glow: [staff_head, palm_left, palm_right], glow_scale: 0.6}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: sor1_c
+  attachments:
+    - model: worlds/mm6/models/mm6_sor1_staff.glb
+      node: B_Staff
+
+# MM6 Medusa: native palette tiers, serpent rig and gaze/cast release at 0.75 s.
+- descriptor: BMedusa A
+  model: worlds/mm6/models/mm6_med.glb
+  scale: 90.1
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 0.75
+    upper_body_root: B_Pelvis
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 30
+      max_pitch_degrees: 20
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      gaze: Socket_Gaze
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    eye_color: [231, 205, 105]
+    events:
+      attack_melee: {impact: 0.75}
+      attack_ranged: {impact: 0.75, glow: [gaze]}
+      cast: {impact: 0.749, glow: [eye_left, eye_right], glow_scale: 0.2}
+  clips:
+    standing: Standing
+    walking: Walk
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: med_a
+- descriptor: BMedusa B
+  model: worlds/mm6/models/mm6_med.glb
+  scale: 90.1
+  scale_reference: BMedusa A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 0.75
+    upper_body_root: B_Pelvis
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 30
+      max_pitch_degrees: 20
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      gaze: Socket_Gaze
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    eye_color: [231, 205, 105]
+    events:
+      attack_melee: {impact: 0.75}
+      attack_ranged: {impact: 0.75, glow: [gaze]}
+      cast: {impact: 0.749, glow: [eye_left, eye_right], glow_scale: 0.2}
+  clips:
+    standing: Standing
+    walking: Walk
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: med_b
+- descriptor: BMedusa C
+  model: worlds/mm6/models/mm6_med.glb
+  scale: 90.1
+  scale_reference: BMedusa A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 0.75
+    upper_body_root: B_Pelvis
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 30
+      max_pitch_degrees: 20
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      gaze: Socket_Gaze
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    eye_color: [231, 205, 105]
+    events:
+      attack_melee: {impact: 0.75}
+      attack_ranged: {impact: 0.75, glow: [gaze]}
+      cast: {impact: 0.749, glow: [eye_left, eye_right], glow_scale: 0.2}
+  clips:
+    standing: Standing
+    walking: Walk
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: med_c
+
+# MM6 Archer / Master Archer / Sniper (arc1, monster IDs 475-477), Codex batch (mm6_arc1_codex/HANDOFF.md): bow and
+# nocked-arrow attachments, arrows launch from Socket_Arrow_Release. Native stand 256 px x 0.7 = 179.2 units.
+- descriptor: BArcher A
+  model: worlds/mm6/models/mm6_arc1.glb
+  scale: 106.382287
+  yaw_offset: -1.570796327
+  animation:
+    sockets:
+      arrow_release: Socket_Arrow_Release
+    cast: Cast
+    run: Walking
+    stride_length: 1.02417324
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.8}
+      attack_ranged: {impact: 0.8, glow: [arrow_release]}
+      cast: {impact: 0.8, glow: [arrow_release], release: arrow_release}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: arc1_a
+  attachments:
+  - model: worlds/mm6/models/mm6_arc1_bow.glb
+    node: Bow
+  - model: worlds/mm6/models/mm6_arc1_arrow.glb
+    node: Arrow
+
+- descriptor: BArcher B
+  model: worlds/mm6/models/mm6_arc1.glb
+  scale: 106.382287
+  yaw_offset: -1.570796327
+  animation:
+    sockets:
+      arrow_release: Socket_Arrow_Release
+    cast: Cast
+    run: Walking
+    stride_length: 1.02417324
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.8}
+      attack_ranged: {impact: 0.8, glow: [arrow_release]}
+      cast: {impact: 0.8, glow: [arrow_release], release: arrow_release}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: arc1_b
+  attachments:
+  - model: worlds/mm6/models/mm6_arc1_bow.glb
+    node: Bow
+  - model: worlds/mm6/models/mm6_arc1_arrow.glb
+    node: Arrow
+
+- descriptor: BArcher C
+  model: worlds/mm6/models/mm6_arc1.glb
+  scale: 106.382287
+  yaw_offset: -1.570796327
+  animation:
+    sockets:
+      arrow_release: Socket_Arrow_Release
+    cast: Cast
+    run: Walking
+    stride_length: 1.02417324
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.8}
+      attack_ranged: {impact: 0.8, glow: [arrow_release]}
+      cast: {impact: 0.8, glow: [arrow_release], release: arrow_release}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: arc1_c
+  attachments:
+  - model: worlds/mm6/models/mm6_arc1_bow.glb
+    node: Bow
+  - model: worlds/mm6/models/mm6_arc1_arrow.glb
+    node: Arrow
+# MM6 Dwarf / Dwarf Warrior / Dwarf Lord (dwa1, monster IDs 520-522), Codex batch (mm6_dwa1_codex/HANDOFF.md): short
+# body, axe attachment from an image-generated design. Native stand 222 px x 0.65 = 144.3 units; B/C via scale_reference.
+- descriptor: BDwarf A
+  model: worlds/mm6/models/mm6_dwa1.glb
+  scale: 101.657985
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.89
+    run_stride_length: 0.706
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 25
+      max_pitch_degrees: 12
+    events:
+      attack_melee:
+        impact: 0.836
+      attack_ranged:
+        impact: 0.836
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: dwa1_a
+  attachments:
+  - model: worlds/mm6/models/mm6_dwa1_axe.glb
+    node: Axe
+- descriptor: BDwarf B
+  model: worlds/mm6/models/mm6_dwa1.glb
+  scale: 101.657985
+  scale_reference: BDwarf A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.89
+    run_stride_length: 0.706
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 25
+      max_pitch_degrees: 12
+    events:
+      attack_melee:
+        impact: 0.836
+      attack_ranged:
+        impact: 0.836
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: dwa1_b
+  attachments:
+  - model: worlds/mm6/models/mm6_dwa1_axe.glb
+    node: Axe
+- descriptor: BDwarf C
+  model: worlds/mm6/models/mm6_dwa1.glb
+  scale: 101.657985
+  scale_reference: BDwarf A
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.89
+    run_stride_length: 0.706
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 25
+      max_pitch_degrees: 12
+    events:
+      attack_melee:
+        impact: 0.836
+      attack_ranged:
+        impact: 0.836
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: dwa1_c
+  attachments:
+  - model: worlds/mm6/models/mm6_dwa1_axe.glb
+    node: Axe
+
+# MM6 Gargoyle: 398 native pixels x 0.70 / 2.9547 m = 94.29 units/m; native B/C scales 0.75/0.80.
+# Local wing rig, native right-hand swipe and 36-piece stone collapse; shared palette-ramp material.
+- descriptor: BGargoyle A
+  model: worlds/mm6/models/mm6_gar.glb
+  scale: 94.29
+  yaw_offset: -1.570796327
+  skin: gar_a
+  animation:
+    cast: Attack
+    run: Flight
+    stride_length: 2.4
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 40
+      max_pitch_degrees: 25
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.75}
+  clips:
+    standing: Flight
+    walking: Flight
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Attack
+- descriptor: BGargoyle B
+  model: worlds/mm6/models/mm6_gar.glb
+  scale: 94.29
+  scale_reference: BGargoyle A
+  yaw_offset: -1.570796327
+  skin: gar_b
+  animation:
+    cast: Attack
+    run: Flight
+    stride_length: 2.4
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 40
+      max_pitch_degrees: 25
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.75}
+  clips:
+    standing: Flight
+    walking: Flight
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Attack
+- descriptor: BGargoyle C
+  model: worlds/mm6/models/mm6_gar.glb
+  scale: 94.29
+  scale_reference: BGargoyle A
+  yaw_offset: -1.570796327
+  skin: gar_c
+  animation:
+    cast: Attack
+    run: Flight
+    stride_length: 2.4
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 40
+      max_pitch_degrees: 25
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.75}
+  clips:
+    standing: Flight
+    walking: Flight
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Attack
+
+
+# MM6 Defender / Sentinel / Guardian of VARN (jak1, monster IDs 562-564), Codex batch (mm6_jak1_codex/HANDOFF.md):
+# jackal-headed guard with a staff attachment; Psychic Shock casts from StaffTip. Melee basic attack, so the ranged
+# role aliases Attack (spellcasters need a distinct Cast clip). Native stand 205.8 units (tier A).
+- descriptor: Jackalman A
+  model: worlds/mm6/models/mm6_jak1.glb
+  scale: 109.233628
+  yaw_offset: -1.570796327
+  skin: jak1_a
+  animation:
+    sockets:
+      l_hand: {node: B_L_Hand, offset: [0.0135, 0.0851, 0.0238]}
+      staff_tip: StaffTip
+    cast: Cast
+    run: Walking
+    stride_length: 1.253289580
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 25
+      max_pitch_degrees: 12
+    events:
+      attack_melee: {impact: 1.121}
+      attack_ranged: {impact: 1.121, glow: [staff_tip], release: staff_tip}
+      cast: {impact: 0.974, glow: [l_hand]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_jak1_staff.glb
+    node: Staff
+
+- descriptor: Jackalman B
+  model: worlds/mm6/models/mm6_jak1.glb
+  scale: 109.233628
+  scale_reference: Jackalman A
+  yaw_offset: -1.570796327
+  skin: jak1_b
+  animation:
+    sockets:
+      l_hand: {node: B_L_Hand, offset: [0.0135, 0.0851, 0.0238]}
+      staff_tip: StaffTip
+    cast: Cast
+    run: Walking
+    stride_length: 1.253289580
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 25
+      max_pitch_degrees: 12
+    events:
+      attack_melee: {impact: 1.121}
+      attack_ranged: {impact: 1.121, glow: [staff_tip], release: staff_tip}
+      cast: {impact: 0.974, glow: [l_hand]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_jak1_staff.glb
+    node: Staff
+
+- descriptor: Jackalman C
+  model: worlds/mm6/models/mm6_jak1.glb
+  scale: 109.233628
+  scale_reference: Jackalman A
+  yaw_offset: -1.570796327
+  skin: jak1_c
+  animation:
+    sockets:
+      l_hand: {node: B_L_Hand, offset: [0.0135, 0.0851, 0.0238]}
+      staff_tip: StaffTip
+    cast: Cast
+    run: Walking
+    stride_length: 1.253289580
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 25
+      max_pitch_degrees: 12
+    events:
+      attack_melee: {impact: 1.121}
+      attack_ranged: {impact: 1.121, glow: [staff_tip], release: staff_tip}
+      cast: {impact: 0.974, glow: [l_hand]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_jak1_staff.glb
+    node: Staff
+# MM6 Minotaur / Minotaur Mage / Minotaur King (min1, monster IDs 580-582), Codex batch (mm6_min1_codex/HANDOFF.md):
+# bull-headed body with an axe attachment; B/C spells cast from Socket_Axe_Head. Melee basic attack, so the ranged
+# role aliases Attack. Cast is a copy of Attack in the GLB (2026-10-15), with the same impact.
+- descriptor: BMinotaur A
+  model: worlds/mm6/models/mm6_min1.glb
+  scale: 100.92261513
+  yaw_offset: -1.570796327
+  animation:
+    sockets:
+      axe_head: Socket_Axe_Head
+    cast: Cast
+    run: Running
+    stride_length: 1.398605
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 35
+      max_pitch_degrees: 20
+    events:
+      attack_melee: {impact: 0.537}
+      attack_ranged: {impact: 0.537}
+      cast: {impact: 0.536, glow: [axe_head]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: min1_a
+  attachments:
+    - model: worlds/mm6/models/mm6_min1_axe.glb
+      node: Axe
+- descriptor: BMinotaur B
+  model: worlds/mm6/models/mm6_min1.glb
+  scale: 100.92261513
+  scale_reference: BMinotaur A
+  yaw_offset: -1.570796327
+  animation:
+    sockets:
+      axe_head: Socket_Axe_Head
+    cast: Cast
+    run: Running
+    stride_length: 1.398605
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 35
+      max_pitch_degrees: 20
+    events:
+      attack_melee: {impact: 0.537}
+      attack_ranged: {impact: 0.537}
+      cast: {impact: 0.536, glow: [axe_head]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: min1_b
+  attachments:
+    - model: worlds/mm6/models/mm6_min1_axe.glb
+      node: Axe
+- descriptor: BMinotaur C
+  model: worlds/mm6/models/mm6_min1.glb
+  scale: 100.92261513
+  scale_reference: BMinotaur A
+  yaw_offset: -1.570796327
+  animation:
+    sockets:
+      axe_head: Socket_Axe_Head
+    cast: Cast
+    run: Running
+    stride_length: 1.398605
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 35
+      max_pitch_degrees: 20
+    events:
+      attack_melee: {impact: 0.537}
+      attack_ranged: {impact: 0.537}
+      cast: {impact: 0.536, glow: [axe_head]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: min1_c
+  attachments:
+    - model: worlds/mm6/models/mm6_min1_axe.glb
+      node: Axe
+# MM6 Lizard Man / Lizard Archer / Lizard Wizard (lzd, monster IDs 571-573), Codex batch (mm6_lzd_codex/HANDOFF.md):
+# lizard body with tail, bow attachment, arrows from Socket_Arrow, distinct Cast for the Lizard Wizard. Native stand
+# 256 px x 0.7 = 179.2 units (tier A).
+- descriptor: LizardArch A
+  model: worlds/mm6/models/mm6_lzd.glb
+  scale: 105.473370075
+  yaw_offset: -1.570796327
+  skin: lzd_a
+  animation:
+    sockets:
+      arrow: Socket_Arrow
+    cast: Cast
+    run: Running
+    stride_length: 1.365689918
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 35
+      max_pitch_degrees: 20
+    events:
+      attack_melee:
+        impact: 0.489583333333
+      attack_ranged: {impact: 0.489583333333}
+      cast: {impact: 0.489583333333, glow: [arrow]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_lzd_bow.glb
+    node: Bow
+- descriptor: LizardArch B
+  model: worlds/mm6/models/mm6_lzd.glb
+  scale: 105.473370075
+  scale_reference: LizardArch A
+  yaw_offset: -1.570796327
+  skin: lzd_b
+  animation:
+    sockets:
+      arrow: Socket_Arrow
+    cast: Cast
+    run: Running
+    stride_length: 1.365689918
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 35
+      max_pitch_degrees: 20
+    events:
+      attack_melee:
+        impact: 0.489583333333
+      attack_ranged: {impact: 0.489583333333}
+      cast: {impact: 0.489583333333, glow: [arrow]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_lzd_bow.glb
+    node: Bow
+- descriptor: LizardArch C
+  model: worlds/mm6/models/mm6_lzd.glb
+  scale: 105.473370075
+  scale_reference: LizardArch A
+  yaw_offset: -1.570796327
+  skin: lzd_c
+  animation:
+    sockets:
+      arrow: Socket_Arrow
+    cast: Cast
+    run: Running
+    stride_length: 1.365689918
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 35
+      max_pitch_degrees: 20
+    events:
+      attack_melee:
+        impact: 0.489583333333
+      attack_ranged: {impact: 0.489583333333}
+      cast: {impact: 0.489583333333, glow: [arrow]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_lzd_bow.glb
+    node: Bow
+# MM6 Harpy: three separate texture sets, native palette tiers and a two-foot talon strike.
+- descriptor: BHarpy A
+  model: worlds/mm6/models/mm6_hrp.glb
+  scale: 100.0
+  yaw_offset: -1.570796327
+  skin: hrp_a
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 2.2
+    upper_body_root: Root
+    look:
+      nodes: [Neck, Head]
+      max_yaw_degrees: 30
+      max_pitch_degrees: 20
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 1.181}
+      attack_ranged: {impact: 1.181, glow: [palm_right]}
+      cast: {impact: 1.09, glow: [palm_left, palm_right]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+- descriptor: BHarpy B
+  model: worlds/mm6/models/mm6_hrp.glb
+  scale: 100.0
+  scale_reference: BHarpy A
+  yaw_offset: -1.570796327
+  skin: hrp_b
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 2.2
+    upper_body_root: Root
+    look:
+      nodes: [Neck, Head]
+      max_yaw_degrees: 30
+      max_pitch_degrees: 20
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 1.181}
+      attack_ranged: {impact: 1.181, glow: [palm_right]}
+      cast: {impact: 1.09, glow: [palm_left, palm_right]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+- descriptor: BHarpy C
+  model: worlds/mm6/models/mm6_hrp.glb
+  scale: 100.0
+  scale_reference: BHarpy A
+  yaw_offset: -1.570796327
+  skin: hrp_c
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 2.2
+    upper_body_root: Root
+    look:
+      nodes: [Neck, Head]
+      max_yaw_degrees: 30
+      max_pitch_degrees: 20
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 1.181}
+      attack_ranged: {impact: 1.181, glow: [palm_right]}
+      cast: {impact: 1.09, glow: [palm_left, palm_right]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+
+# MM6 Earth Elemental: shared native palette ramps, rigid fists and a left-fist rock launch.
+- descriptor: ElemEarth A
+  model: worlds/mm6/models/mm6_ert.glb
+  scale: 82.270811351
+  yaw_offset: -1.570796327
+  skin: ert_a
+  animation:
+    run: Walking
+    cast: Attack
+    stride_length: 2.675389974
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 35
+      max_pitch_degrees: 20
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.915}
+      attack_ranged: {impact: 0.915, glow: [palm_left], release: palm_left, color: [104, 100, 100]}
+      cast: {impact: 0.915, glow: [palm_left, palm_right], release: palm_left}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+- descriptor: ElemEarth B
+  model: worlds/mm6/models/mm6_ert.glb
+  scale: 82.270811351
+  scale_reference: ElemEarth A
+  yaw_offset: -1.570796327
+  skin: ert_b
+  animation:
+    run: Walking
+    cast: Attack
+    stride_length: 2.675389974
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 35
+      max_pitch_degrees: 20
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.915}
+      attack_ranged: {impact: 0.915, glow: [palm_left], release: palm_left, color: [104, 100, 100]}
+      cast: {impact: 0.915, glow: [palm_left, palm_right], release: palm_left}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+- descriptor: ElemEarth C
+  model: worlds/mm6/models/mm6_ert.glb
+  scale: 82.270811351
+  scale_reference: ElemEarth A
+  yaw_offset: -1.570796327
+  skin: ert_c
+  animation:
+    run: Walking
+    cast: Attack
+    stride_length: 2.675389974
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 35
+      max_pitch_degrees: 20
+    sockets:
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.915}
+      attack_ranged: {impact: 0.915, glow: [palm_left], release: palm_left, color: [104, 100, 100]}
+      cast: {impact: 0.915, glow: [palm_left, palm_right], release: palm_left}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+
+# MM6 Cannibal / Head Hunter / Witch Doctor, female (natf, monster IDs 604-606), Codex batch (mm6_natf_codex/HANDOFF.md):
+# modest in-style costume adaptation (moderation), forearm blade and shield. Native stand 253 px x 0.7 = 177.1 units.
+- descriptor: PeasantF4 A
+  model: worlds/mm6/models/mm6_natf.glb
+  scale: 107.88625268173915
+  yaw_offset: -1.570796327
+  skin: natf_a
+  animation:
+    sockets:
+      hand_right: B_R_Hand
+    cast: Cast
+    run: Running
+    stride_length: 1.199315994977951
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 25
+      max_pitch_degrees: 12
+    events:
+      attack_melee:
+        impact: 0.543
+      attack_ranged:
+        impact: 0.543
+      cast: {impact: 0.43, glow: [hand_right]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_natf_blade.glb
+    node: ForearmBlade
+  - model: worlds/mm6/models/mm6_natf_shield.glb
+    node: LeafShield
+- descriptor: PeasantF4 B
+  model: worlds/mm6/models/mm6_natf.glb
+  scale: 107.88625268173915
+  yaw_offset: -1.570796327
+  skin: natf_b
+  animation:
+    sockets:
+      hand_right: B_R_Hand
+    cast: Cast
+    run: Running
+    stride_length: 1.199315994977951
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 25
+      max_pitch_degrees: 12
+    events:
+      attack_melee:
+        impact: 0.543
+      attack_ranged:
+        impact: 0.543
+      cast: {impact: 0.43, glow: [hand_right]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_natf_blade.glb
+    node: ForearmBlade
+  - model: worlds/mm6/models/mm6_natf_shield.glb
+    node: LeafShield
+  scale_reference: PeasantF4 A
+- descriptor: PeasantF4 C
+  model: worlds/mm6/models/mm6_natf.glb
+  scale: 107.88625268173915
+  yaw_offset: -1.570796327
+  skin: natf_c
+  animation:
+    sockets:
+      hand_right: B_R_Hand
+    cast: Cast
+    run: Running
+    stride_length: 1.199315994977951
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 25
+      max_pitch_degrees: 12
+    events:
+      attack_melee:
+        impact: 0.543
+      attack_ranged:
+        impact: 0.543
+      cast: {impact: 0.43, glow: [hand_right]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_natf_blade.glb
+    node: ForearmBlade
+  - model: worlds/mm6/models/mm6_natf_shield.glb
+    node: LeafShield
+  scale_reference: PeasantF4 A
+# MM6 Follower / Mystic / Fanatic of Baa (mep, monster IDs 613-615), Codex batch (mm6_mep_codex/HANDOFF.md): robed
+# cultist with a staff; the Mystic casts Mind Blast from the staff head. Native stand 175 units.
+- descriptor: PeasantM3 A
+  model: worlds/mm6/models/mm6_mep.glb
+  scale: 103.127492
+  yaw_offset: -1.570796327
+  skin: mep_a
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 0.618182
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+      staff_head: Socket_Staff_Head
+    events:
+      attack_melee:
+        impact: 1.053
+      attack_ranged: {impact: 1.053, glow: [staff_head]}
+      cast: {impact: 1.055, glow: [staff_head], glow_scale: 0.6}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_mep_staff.glb
+    node: Staff
+- descriptor: PeasantM3 B
+  model: worlds/mm6/models/mm6_mep.glb
+  scale: 103.127492
+  yaw_offset: -1.570796327
+  skin: mep_b
+  scale_reference: PeasantM3 A
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 0.618182
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+      staff_head: Socket_Staff_Head
+    events:
+      attack_melee:
+        impact: 1.053
+      attack_ranged: {impact: 1.053, glow: [staff_head]}
+      cast: {impact: 1.055, glow: [staff_head], glow_scale: 0.6}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_mep_staff.glb
+    node: Staff
+- descriptor: PeasantM3 C
+  model: worlds/mm6/models/mm6_mep.glb
+  scale: 103.127492
+  yaw_offset: -1.570796327
+  skin: mep_c
+  scale_reference: PeasantM3 A
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 0.618182
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+      staff_head: Socket_Staff_Head
+    events:
+      attack_melee:
+        impact: 1.053
+      attack_ranged: {impact: 1.053, glow: [staff_head]}
+      cast: {impact: 1.055, glow: [staff_head], glow_scale: 0.6}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_mep_staff.glb
+    node: Staff
+# MM6 Cutpurse / Bounty Hunter / Assassin (mfp, monster IDs 601-603), Codex batch (mm6_mfp_codex/HANDOFF.md): female
+# rogue with a knife attachment. Native stand 253 px x 0.7 = 177.1 units.
+- descriptor: PeasantF3 A
+  model: worlds/mm6/models/mm6_mfp.glb
+  scale: 107.495710585
+  yaw_offset: -1.570796327
+  skin: mfp_a
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.9
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.929}
+      attack_ranged: {impact: 0.929}
+      cast: {impact: 0.929}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_mfp_knife.glb
+    node: Knife
+
+- descriptor: PeasantF3 B
+  model: worlds/mm6/models/mm6_mfp.glb
+  scale: 107.495710585
+  yaw_offset: -1.570796327
+  skin: mfp_b
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.9
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.929}
+      attack_ranged: {impact: 0.929}
+      cast: {impact: 0.929}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_mfp_knife.glb
+    node: Knife
+
+- descriptor: PeasantF3 C
+  model: worlds/mm6/models/mm6_mfp.glb
+  scale: 107.495710585
+  yaw_offset: -1.570796327
+  skin: mfp_c
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.9
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+    events:
+      attack_melee: {impact: 0.929}
+      attack_ranged: {impact: 0.929}
+      cast: {impact: 0.929}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_mfp_knife.glb
+    node: Knife
+# MM6 PeasantF2 A/B/C (fmp, IDs 598-600): Wimp AI; no attack clip or weapon.
+- descriptor: PeasantF2 A
+  model: worlds/mm6/models/mm6_fmp.glb
+  scale: 105.656395358897
+  yaw_offset: -1.570796327
+  skin: fmp_a
+  animation:
+    cast: Standing
+    run: Run
+    stride_length: 0.804319130253
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Standing
+    attack_ranged: Standing
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+
+- descriptor: PeasantF2 B
+  model: worlds/mm6/models/mm6_fmp.glb
+  scale: 105.656395358897
+  yaw_offset: -1.570796327
+  skin: fmp_b
+  animation:
+    cast: Standing
+    run: Run
+    stride_length: 0.804319130253
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Standing
+    attack_ranged: Standing
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+
+- descriptor: PeasantF2 C
+  model: worlds/mm6/models/mm6_fmp.glb
+  scale: 105.656395358897
+  yaw_offset: -1.570796327
+  skin: fmp_c
+  animation:
+    cast: Standing
+    run: Run
+    stride_length: 0.804319130253
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 35
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Standing
+    attack_ranged: Standing
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+
+# MM6 Peasant Merchant (mer1, monster IDs 577-579), Codex batch (mm6_mer1_codex/HANDOFF.md): town merchant with a club.
+# Native stand 177.1 units.
+- descriptor: Merchant A
+  model: worlds/mm6/models/mm6_mer1.glb
+  scale: 103.944653064
+  yaw_offset: -1.570796327
+  z_offset: -0.103944653
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.84
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 25
+      max_pitch_degrees: 12
+    events:
+      attack_melee:
+        impact: 0.882
+      attack_ranged:
+        impact: 0.882
+      cast:
+        impact: 0.882
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: mer1_a
+  attachments:
+  - model: worlds/mm6/models/mm6_mer1_club.glb
+    node: Club
+- descriptor: Merchant B
+  model: worlds/mm6/models/mm6_mer1.glb
+  scale: 103.944653064
+  yaw_offset: -1.570796327
+  z_offset: -0.103944653
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.84
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 25
+      max_pitch_degrees: 12
+    events:
+      attack_melee:
+        impact: 0.882
+      attack_ranged:
+        impact: 0.882
+      cast:
+        impact: 0.882
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: mer1_b
+  attachments:
+  - model: worlds/mm6/models/mm6_mer1_club.glb
+    node: Club
+  scale_reference: Merchant A
+- descriptor: Merchant C
+  model: worlds/mm6/models/mm6_mer1.glb
+  scale: 103.944653064
+  yaw_offset: -1.570796327
+  z_offset: -0.103944653
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.84
+    upper_body_root: B_Spine
+    look:
+      nodes:
+      - B_Neck
+      - B_Head
+      max_yaw_degrees: 25
+      max_pitch_degrees: 12
+    events:
+      attack_melee:
+        impact: 0.882
+      attack_ranged:
+        impact: 0.882
+      cast:
+        impact: 0.882
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  skin: mer1_c
+  attachments:
+  - model: worlds/mm6/models/mm6_mer1_club.glb
+    node: Club
+  scale_reference: Merchant A
+# MM6 Genie: native 199 px stand x 0.8 / 2.208 m; shared palette ramps and floating vortex.
+- descriptor: BGenie A
+  model: worlds/mm6/models/mm6_djn.glb
+  scale: 72.1
+  yaw_offset: -1.570796327
+  skin: djn_a
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.65
+    upper_body_root: B_Pelvis
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 35
+      max_pitch_degrees: 25
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.78}
+      attack_ranged:
+        impact: 0.78
+        glow: [palm_left, palm_right]
+        effects:
+          Water: openyamm:fx/creature_air_staff
+          Air: openyamm:fx/creature_air_staff
+          Fire: openyamm:fx/creature_air_staff
+      cast: {impact: 0.78, glow: [palm_left, palm_right], glow_scale: 0.3, color: [235, 245, 255]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+- descriptor: BGenie B
+  model: worlds/mm6/models/mm6_djn.glb
+  scale: 72.1
+  scale_reference: BGenie A
+  yaw_offset: -1.570796327
+  skin: djn_b
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.65
+    upper_body_root: B_Pelvis
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 35
+      max_pitch_degrees: 25
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.78}
+      attack_ranged:
+        impact: 0.78
+        glow: [palm_left, palm_right]
+        effects:
+          Water: openyamm:fx/creature_air_staff
+          Air: openyamm:fx/creature_air_staff
+          Fire: openyamm:fx/creature_air_staff
+      cast: {impact: 0.78, glow: [palm_left, palm_right], glow_scale: 0.3, color: [235, 245, 255]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+- descriptor: BGenie C
+  model: worlds/mm6/models/mm6_djn.glb
+  scale: 72.1
+  scale_reference: BGenie A
+  yaw_offset: -1.570796327
+  skin: djn_c
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.65
+    upper_body_root: B_Pelvis
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 35
+      max_pitch_degrees: 25
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.78}
+      attack_ranged:
+        impact: 0.78
+        glow: [palm_left, palm_right]
+        effects:
+          Water: openyamm:fx/creature_air_staff
+          Air: openyamm:fx/creature_air_staff
+          Fire: openyamm:fx/creature_air_staff
+      cast: {impact: 0.78, glow: [palm_left, palm_right], glow_scale: 0.3, color: [235, 245, 255]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+
+# MM6 Cannibal / Head Hunter / Witch Doctor, male (natm, monster IDs 616-618), Claude rig-first project
+# (level_generation/creatures/mm6_natm_claude/README.md): underhand spear thrust authored over mocap, carried spear,
+# strapped buckler; the Witch Doctor casts Fire Bolt from the left palm. Native stand 177.8 units.
+# Attack baked 1.5x faster (1.0 s, blow 0.419 s) and Death 2x faster (1.8 s), user 2026-10-14.
+- descriptor: PeasantM4 A
+  model: worlds/mm6/models/mm6_natm.glb
+  scale: 105.2
+  yaw_offset: -1.570796327
+  skin: natm_a
+  animation:
+    sockets:
+      palm_left: Socket_LeftPalm
+    cast: Cast
+    run: Running
+    stride_length: 1.692
+    run_stride_length: 1.8
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 45
+      max_pitch_degrees: 25
+    events:
+      attack_melee: {impact: 0.437}
+      attack_ranged: {impact: 0.437}
+      cast: {impact: 0.731, glow: [palm_left]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_natm_spear.glb
+    node: Spear
+  - model: worlds/mm6/models/mm6_natm_buckler.glb
+    node: Buckler
+
+- descriptor: PeasantM4 B
+  model: worlds/mm6/models/mm6_natm.glb
+  scale: 105.2
+  scale_reference: PeasantM4 A
+  yaw_offset: -1.570796327
+  skin: natm_b
+  animation:
+    sockets:
+      palm_left: Socket_LeftPalm
+    cast: Cast
+    run: Running
+    stride_length: 1.692
+    run_stride_length: 1.8
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 45
+      max_pitch_degrees: 25
+    events:
+      attack_melee: {impact: 0.437}
+      attack_ranged: {impact: 0.437}
+      cast: {impact: 0.731, glow: [palm_left]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_natm_spear.glb
+    node: Spear
+  - model: worlds/mm6/models/mm6_natm_buckler.glb
+    node: Buckler
+
+- descriptor: PeasantM4 C
+  model: worlds/mm6/models/mm6_natm.glb
+  scale: 105.2
+  scale_reference: PeasantM4 A
+  yaw_offset: -1.570796327
+  skin: natm_c
+  animation:
+    sockets:
+      palm_left: Socket_LeftPalm
+    cast: Cast
+    run: Running
+    stride_length: 1.692
+    run_stride_length: 1.8
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 45
+      max_pitch_degrees: 25
+    events:
+      attack_melee: {impact: 0.437}
+      attack_ranged: {impact: 0.437}
+      cast: {impact: 0.731, glow: [palm_left]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_natm_spear.glb
+    node: Spear
+  - model: worlds/mm6/models/mm6_natm_buckler.glb
+    node: Buckler
+# MM6 Flying Drake: front-flight silhouette area fit; separate head/body/wing maps and shared tier ramps.
+- descriptor: BDragonFly A
+  model: worlds/mm6/models/mm6_drg1.glb
+  scale: 348.995968
+  yaw_offset: -1.570796327
+  skin: drg1_a
+  death_effect:
+    # Engine burn over the Death clip's recoil (seconds from the start of dying): the outline catches first, the
+    # body chars and burns inward along the burn maps, then remains a shape of fire for a moment.
+    type: burn
+    start: 0.08
+    end: 1.5
+    char_width: 0.16
+    edge_width: 0.035
+    fire_width: 0.35
+    color: [1.0, 0.18, 0.02]
+    brightness: 2.4
+    flames_per_second: 150
+    flame_size: 40
+    light: {color: [255, 150, 70], radius: 700}
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.0
+    upper_body_root: Spine1
+    # Forward flight and the upright hover differ by most of the body's height: ease between them.
+    blend_seconds: 0.4
+    death_blend_seconds: 0.3
+    sockets:
+      jaw: {node: Jaw, offset: [0.0043, 0.0672, -0.0122]}
+    events:
+      attack_melee: {impact: 0.801}
+      attack_ranged: {impact: 0.801, glow: [jaw], release: jaw, glow_scale: 1.2}
+      cast: {impact: 0.9375}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+- descriptor: BDragonFly B
+  model: worlds/mm6/models/mm6_drg1.glb
+  scale: 348.995968
+  yaw_offset: -1.570796327
+  skin: drg1_b
+  death_effect:
+    # Engine burn over the Death clip's recoil (seconds from the start of dying): the outline catches first, the
+    # body chars and burns inward along the burn maps, then remains a shape of fire for a moment.
+    type: burn
+    start: 0.08
+    end: 1.5
+    char_width: 0.16
+    edge_width: 0.035
+    fire_width: 0.35
+    color: [1.0, 0.18, 0.02]
+    brightness: 2.4
+    flames_per_second: 150
+    flame_size: 40
+    light: {color: [255, 150, 70], radius: 700}
+  scale_reference: BDragonFly A
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.0
+    upper_body_root: Spine1
+    # Forward flight and the upright hover differ by most of the body's height: ease between them.
+    blend_seconds: 0.4
+    death_blend_seconds: 0.3
+    sockets:
+      jaw: {node: Jaw, offset: [0.0043, 0.0672, -0.0122]}
+    events:
+      attack_melee: {impact: 0.801}
+      attack_ranged: {impact: 0.801, glow: [jaw], release: jaw, glow_scale: 1.2}
+      cast: {impact: 0.9375}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+- descriptor: BDragonFly C
+  model: worlds/mm6/models/mm6_drg1.glb
+  scale: 348.995968
+  yaw_offset: -1.570796327
+  skin: drg1_c
+  death_effect:
+    # Engine burn over the Death clip's recoil (seconds from the start of dying): the outline catches first, the
+    # body chars and burns inward along the burn maps, then remains a shape of fire for a moment.
+    type: burn
+    start: 0.08
+    end: 1.5
+    char_width: 0.16
+    edge_width: 0.035
+    fire_width: 0.35
+    color: [1.0, 0.18, 0.02]
+    brightness: 2.4
+    flames_per_second: 150
+    flame_size: 40
+    light: {color: [255, 150, 70], radius: 700}
+  scale_reference: BDragonFly A
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.0
+    upper_body_root: Spine1
+    # Forward flight and the upright hover differ by most of the body's height: ease between them.
+    blend_seconds: 0.4
+    death_blend_seconds: 0.3
+    sockets:
+      jaw: {node: Jaw, offset: [0.0043, 0.0672, -0.0122]}
+    events:
+      attack_melee: {impact: 0.801}
+      attack_ranged: {impact: 0.801, glow: [jaw], release: jaw, glow_scale: 1.2}
+      cast: {impact: 0.9375}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+
+# MM6 Ghost: native 241 visible px x 0.7; shared tabard/bone/eye palette ramps.
+- descriptor: BGhost A
+  model: worlds/mm6/models/mm6_gst.glb
+  scale: 75.7268261
+  yaw_offset: -1.570796327
+  skin: gst_a
+  animation:
+    cast: Attack
+    eye_color: [165, 248, 99]
+    run: Running
+    stride_length: 2.05
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 35
+      max_pitch_degrees: 25
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.9}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+- descriptor: BGhost B
+  model: worlds/mm6/models/mm6_gst.glb
+  scale: 75.7268261
+  scale_reference: BGhost A
+  yaw_offset: -1.570796327
+  skin: gst_b
+  animation:
+    cast: Attack
+    eye_color: [13, 70, 186]
+    run: Running
+    stride_length: 2.05
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 35
+      max_pitch_degrees: 25
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.9}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+- descriptor: BGhost C
+  model: worlds/mm6/models/mm6_gst.glb
+  scale: 75.7268261
+  scale_reference: BGhost A
+  yaw_offset: -1.570796327
+  skin: gst_c
+  animation:
+    cast: Attack
+    eye_color: [248, 1, 0]
+    run: Running
+    stride_length: 2.05
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 35
+      max_pitch_degrees: 25
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+    events:
+      attack_melee: {impact: 0.9}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+
+# MM6 Water Beast / Water Spirit / Water Elemental: 216 native visible pixels x 0.9.
+- descriptor: ElemWater A
+  model: worlds/mm6/models/mm6_wel.glb
+  scale: 98.1871159
+  yaw_offset: -1.570796327
+  skin: wel_a
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 2.72914563
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 30
+      max_pitch_degrees: 18
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+      trident_head: Socket_Trident_Head
+    events:
+      attack_melee: {impact: 0.836}
+      attack_ranged: {impact: 0.836, glow: [trident_head]}
+      cast: {impact: 1.02, glow: [trident_head]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_wel_trident.glb
+    node: Trident
+- descriptor: ElemWater B
+  model: worlds/mm6/models/mm6_wel.glb
+  scale: 98.1871159
+  scale_reference: ElemWater A
+  yaw_offset: -1.570796327
+  skin: wel_b
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 2.72914563
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 30
+      max_pitch_degrees: 18
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+      trident_head: Socket_Trident_Head
+    events:
+      attack_melee: {impact: 0.836}
+      attack_ranged: {impact: 0.836, glow: [trident_head]}
+      cast: {impact: 1.02, glow: [trident_head]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_wel_trident.glb
+    node: Trident
+- descriptor: ElemWater C
+  model: worlds/mm6/models/mm6_wel.glb
+  scale: 98.1871159
+  scale_reference: ElemWater A
+  yaw_offset: -1.570796327
+  skin: wel_c
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 2.72914563
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Neck, B_Head]
+      max_yaw_degrees: 30
+      max_pitch_degrees: 18
+    sockets:
+      eye_left: Socket_Eye_Left
+      eye_right: Socket_Eye_Right
+      palm_left: Socket_Palm_Left
+      palm_right: Socket_Palm_Right
+      trident_head: Socket_Trident_Head
+    events:
+      attack_melee: {impact: 0.836}
+      attack_ranged: {impact: 0.836, glow: [trident_head]}
+      cast: {impact: 1.02, glow: [trident_head]}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+  attachments:
+  - model: worlds/mm6/models/mm6_wel_trident.glb
+    node: Trident
+
+# MM6 Red/Blue/Gold Dragon: native flight-area scale, separate 2K body/head/wings.
+# Burning death as the native dragon: recoil and thrash aloft, then the burning body collapses flat to the ground.
+- descriptor: DragonCover A
+  model: worlds/mm6/models/mm6_cdr1.glb
+  scale: 230.636368
+  yaw_offset: -1.570796327
+  skin: cdr1_a
+  death_effect:
+    # Engine burn over the Death clip (seconds from the start of dying): head, wing rims and tail tip catch first,
+    # the body burns last, and the fire shape lingers while the body collapses to the ground.
+    type: burn
+    start: 0.05
+    end: 1.75
+    char_width: 0.16
+    edge_width: 0.035
+    fire_width: 0.45
+    color: [1.0, 0.26, 0.03]
+    brightness: 2.4
+    flames_per_second: 170
+    flame_size: 34
+    light: {color: [255, 160, 70], radius: 650}
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.0
+    upper_body_root: Spine1
+    blend_seconds: 0.125
+    death_blend_seconds: 0.2
+    sockets:
+      jaw: {node: Jaw, offset: [-0.0022, 0.1014, 0.0164]}
+    events:
+      attack_melee: {impact: 0.382}
+      attack_ranged: {impact: 0.382, glow: [jaw], release: jaw, glow_scale: 2}
+      cast: {impact: 0.75}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+- descriptor: DragonCover B
+  model: worlds/mm6/models/mm6_cdr1.glb
+  scale: 230.636368
+  yaw_offset: -1.570796327
+  skin: cdr1_b
+  death_effect:
+    # Engine burn over the Death clip (seconds from the start of dying): head, wing rims and tail tip catch first,
+    # the body burns last, and the fire shape lingers while the body collapses to the ground.
+    type: burn
+    start: 0.05
+    end: 1.75
+    char_width: 0.16
+    edge_width: 0.035
+    fire_width: 0.45
+    color: [1.0, 0.26, 0.03]
+    brightness: 2.4
+    flames_per_second: 170
+    flame_size: 34
+    light: {color: [255, 160, 70], radius: 650}
+  scale_reference: DragonCover A
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.0
+    upper_body_root: Spine1
+    blend_seconds: 0.125
+    death_blend_seconds: 0.2
+    sockets:
+      jaw: {node: Jaw, offset: [-0.0022, 0.1014, 0.0164]}
+    events:
+      attack_melee: {impact: 0.382}
+      attack_ranged: {impact: 0.382, glow: [jaw], release: jaw, glow_scale: 2}
+      cast: {impact: 0.75}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+- descriptor: DragonCover C
+  model: worlds/mm6/models/mm6_cdr1.glb
+  scale: 230.636368
+  yaw_offset: -1.570796327
+  skin: cdr1_c
+  death_effect:
+    # Engine burn over the Death clip (seconds from the start of dying): head, wing rims and tail tip catch first,
+    # the body burns last, and the fire shape lingers while the body collapses to the ground.
+    type: burn
+    start: 0.05
+    end: 1.75
+    char_width: 0.16
+    edge_width: 0.035
+    fire_width: 0.45
+    color: [1.0, 0.26, 0.03]
+    brightness: 2.4
+    flames_per_second: 170
+    flame_size: 34
+    light: {color: [255, 160, 70], radius: 650}
+  scale_reference: DragonCover A
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 1.0
+    upper_body_root: Spine1
+    blend_seconds: 0.125
+    death_blend_seconds: 0.2
+    sockets:
+      jaw: {node: Jaw, offset: [-0.0022, 0.1014, 0.0164]}
+    events:
+      attack_melee: {impact: 0.382}
+      attack_ranged: {impact: 0.382, glow: [jaw], release: jaw, glow_scale: 2}
+      cast: {impact: 0.75}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+# MM6 Reactor (rea, descriptors 647/648/652, The Hive): hand-built hard-surface model (surfaces of revolution measured
+# from the native front frame, 1 logical px = 1 cm), rigid rig with one bone per part, procedural clips; screens, arcs,
+# lamps, glows and the wreck switch by STEP bone scale. Scale = native frame scale 2.0 x 100. The ranged discharge
+# leaves the arc between the electrodes at the charge flash. Project: level_generation/creatures/mm6_rea_claude/.
+- descriptor: zReactor
+  model: worlds/mm6/models/mm6_rea.glb
+  scale: 200.0
+  yaw_offset: -1.570796327
+  animation:
+    cast: Attack
+    run: Standing
+    stride_length: 1.0
+    upper_body_root: Body
+    sockets:
+      arc: Socket_Arc
+    events:
+      attack_melee: {impact: 1.9}
+      attack_ranged: {impact: 1.9, glow: [arc]}
+  clips:
+    standing: Standing
+    walking: Standing
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Standing
+
+- descriptor: DragonCave A
+  model: worlds/mm6/models/mm6_drag.glb
+  scale: 328.0
+  yaw_offset: -1.570796327
+  skin: drag_a
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 0.23
+    upper_body_root: Spine1
+    blend_seconds: 0.2
+    death_blend_seconds: 0.1
+    sockets:
+      jaw: {node: Jaw, offset: [0.0019, 0.0943, 0.006]}
+    events:
+      attack_melee: {impact: 0.773}
+      attack_ranged: {impact: 0.773, glow: [jaw], release: jaw}
+      cast: {impact: 0.75}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+
+- descriptor: DragonCave B
+  model: worlds/mm6/models/mm6_drag.glb
+  scale: 328.0
+  yaw_offset: -1.570796327
+  skin: drag_b
+  scale_reference: DragonCave A
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 0.23
+    upper_body_root: Spine1
+    blend_seconds: 0.2
+    death_blend_seconds: 0.1
+    sockets:
+      jaw: {node: Jaw, offset: [0.0019, 0.0943, 0.006]}
+    events:
+      attack_melee: {impact: 0.773}
+      attack_ranged: {impact: 0.773, glow: [jaw], release: jaw}
+      cast: {impact: 0.75}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+
+- descriptor: DragonCave C
+  model: worlds/mm6/models/mm6_drag.glb
+  scale: 328.0
+  yaw_offset: -1.570796327
+  skin: drag_c
+  scale_reference: DragonCave A
+  animation:
+    cast: Cast
+    run: Running
+    stride_length: 0.23
+    upper_body_root: Spine1
+    blend_seconds: 0.2
+    death_blend_seconds: 0.1
+    sockets:
+      jaw: {node: Jaw, offset: [0.0019, 0.0943, 0.006]}
+    events:
+      attack_melee: {impact: 0.773}
+      attack_ranged: {impact: 0.773, glow: [jaw], release: jaw}
+      cast: {impact: 0.75}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+
+# MM6 air elemental (aie1): alpha-blended wind shells, dust rings and lightning shells revolved from the restored x2
+# silhouette (level_generation/creatures/mm6_aie1_claude), spinning by texture scroll; a vertical bone chain sways,
+# leans into the attack, pinches (hit) and unravels (death). One shared atlas; tiers by region ramps fitted to the
+# restored recolour of palettes 198/199/724.
+- descriptor: ElemAir A
+  model: worlds/mm6/models/mm6_aie1.glb
+  scale: 59.9991
+  yaw_offset: -1.570796327
+  skin: aie1_a
+  animation:
+    cast: Attack
+    run: Standing
+    stride_length: 1.0
+    upper_body_root: Funnel1
+    sockets: {}
+    # The discharge peaks at 0.33 s of the 0.75 s attack: the blow lands there.
+    events:
+      attack_melee: {impact: 0.463}
+      attack_ranged: {impact: 0.463}
+  clips:
+    standing: Standing
+    walking: Standing
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Standing
+- descriptor: ElemAir B
+  model: worlds/mm6/models/mm6_aie1.glb
+  scale: 59.9991
+  scale_reference: ElemAir A
+  yaw_offset: -1.570796327
+  skin: aie1_b
+  animation:
+    cast: Attack
+    run: Standing
+    stride_length: 1.0
+    upper_body_root: Funnel1
+    sockets: {}
+    # The discharge peaks at 0.33 s of the 0.75 s attack: the blow lands there.
+    events:
+      attack_melee: {impact: 0.463}
+      attack_ranged: {impact: 0.463}
+  clips:
+    standing: Standing
+    walking: Standing
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Standing
+- descriptor: ElemAir C
+  model: worlds/mm6/models/mm6_aie1.glb
+  scale: 59.9991
+  scale_reference: ElemAir A
+  yaw_offset: -1.570796327
+  skin: aie1_c
+  animation:
+    cast: Attack
+    run: Standing
+    stride_length: 1.0
+    upper_body_root: Funnel1
+    sockets: {}
+    # The discharge peaks at 0.33 s of the 0.75 s attack: the blow lands there.
+    events:
+      attack_melee: {impact: 0.463}
+      attack_ranged: {impact: 0.463}
+  clips:
+    standing: Standing
+    walking: Standing
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Standing
+
+# MM6 Wyrm: 210 native silhouette pixels at 2x / 0.432092 m; shared green/blue/red ramps.
+- descriptor: DragonLand A
+  model: worlds/mm6/models/mm6_wyrm.glb
+  scale: 972.014591
+  yaw_offset: -1.570796327
+  skin: wyrm_a
+  attachments:
+    - model: worlds/mm6/models/mm6_wyrm_remains.glb
+      node: Socket_Remains
+  death_effect:
+    type: burn
+    start: 0.08
+    end: 0.875
+    char_width: 0.16
+    edge_width: 0.035
+    fire_width: 0.35
+    color: [1.0, 0.18, 0.02]
+    brightness: 2.4
+    flames_per_second: 130
+    flame_size: 30
+    light: {color: [255, 150, 70], radius: 550}
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.12
+    run_stride_length: 0.19
+    upper_body_root: Neck1
+    blend_seconds: 0.15
+    death_blend_seconds: 0.08
+    sockets:
+      jaw: {node: Jaw, offset: [0.0064, 0.0336, 0.0016]}
+    events:
+      attack_melee: {impact: 0.626}
+      attack_ranged: {impact: 0.626, glow: [jaw], glow_scale: 1.5}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+- descriptor: DragonLand B
+  model: worlds/mm6/models/mm6_wyrm.glb
+  scale: 972.014591
+  yaw_offset: -1.570796327
+  skin: wyrm_b
+  scale_reference: DragonLand A
+  attachments:
+    - model: worlds/mm6/models/mm6_wyrm_remains.glb
+      node: Socket_Remains
+  death_effect:
+    type: burn
+    start: 0.08
+    end: 0.875
+    char_width: 0.16
+    edge_width: 0.035
+    fire_width: 0.35
+    color: [1.0, 0.18, 0.02]
+    brightness: 2.4
+    flames_per_second: 130
+    flame_size: 30
+    light: {color: [255, 150, 70], radius: 550}
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.12
+    run_stride_length: 0.19
+    upper_body_root: Neck1
+    blend_seconds: 0.15
+    death_blend_seconds: 0.08
+    sockets:
+      jaw: {node: Jaw, offset: [0.0064, 0.0336, 0.0016]}
+    events:
+      attack_melee: {impact: 0.626}
+      attack_ranged: {impact: 0.626, glow: [jaw], glow_scale: 1.5}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+- descriptor: DragonLand C
+  model: worlds/mm6/models/mm6_wyrm.glb
+  scale: 972.014591
+  yaw_offset: -1.570796327
+  skin: wyrm_c
+  scale_reference: DragonLand A
+  attachments:
+    - model: worlds/mm6/models/mm6_wyrm_remains.glb
+      node: Socket_Remains
+  death_effect:
+    type: burn
+    start: 0.08
+    end: 0.875
+    char_width: 0.16
+    edge_width: 0.035
+    fire_width: 0.35
+    color: [1.0, 0.18, 0.02]
+    brightness: 2.4
+    flames_per_second: 130
+    flame_size: 30
+    light: {color: [255, 150, 70], radius: 550}
+  animation:
+    cast: Attack
+    run: Running
+    stride_length: 0.12
+    run_stride_length: 0.19
+    upper_body_root: Neck1
+    blend_seconds: 0.15
+    death_blend_seconds: 0.08
+    sockets:
+      jaw: {node: Jaw, offset: [0.0064, 0.0336, 0.0016]}
+    events:
+      attack_melee: {impact: 0.626}
+      attack_ranged: {impact: 0.626, glow: [jaw], glow_scale: 1.5}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Fidget
+
+# MM6 fire elemental (fie1): an MPFB figure on library clips inside an alpha-blended flame cage, outer flame fins and
+# hand bursts / death effects on quads, all from the restored x2 frames (level_generation/creatures/mm6_fie1_claude).
+# The cage and fins scroll upward by texture scroll. One shared texture set; the tiers recolour only the figure,
+# by ramps fitted to the restored recolour of palettes 204/728/729 (the flames are the same in every tier).
+- descriptor: ElemFire A
+  model: worlds/mm6/models/mm6_fie1.glb
+  scale: 69.9997
+  yaw_offset: -1.570796327
+  skin: fie1_a
+  animation:
+    cast: Attack
+    run: Walking
+    stride_length: 1.0
+    upper_body_root: Spine
+    # The flight lean (the restored side views tilt about 20 degrees) eases in and out.
+    blend_seconds: 0.3
+    sockets: {}
+    # The library area attack throws the hands apart at about 0.65 s; the bursts are full at 0.75 s.
+    events:
+      attack_melee: {impact: 0.303}
+      attack_ranged: {impact: 0.303}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Standing
+- descriptor: ElemFire B
+  model: worlds/mm6/models/mm6_fie1.glb
+  scale: 69.9997
+  scale_reference: ElemFire A
+  yaw_offset: -1.570796327
+  skin: fie1_b
+  animation:
+    cast: Attack
+    run: Walking
+    stride_length: 1.0
+    upper_body_root: Spine
+    # The flight lean (the restored side views tilt about 20 degrees) eases in and out.
+    blend_seconds: 0.3
+    sockets: {}
+    # The library area attack throws the hands apart at about 0.65 s; the bursts are full at 0.75 s.
+    events:
+      attack_melee: {impact: 0.303}
+      attack_ranged: {impact: 0.303}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Standing
+- descriptor: ElemFire C
+  model: worlds/mm6/models/mm6_fie1.glb
+  scale: 69.9997
+  scale_reference: ElemFire A
+  yaw_offset: -1.570796327
+  skin: fie1_c
+  animation:
+    cast: Attack
+    run: Walking
+    stride_length: 1.0
+    upper_body_root: Spine
+    # The flight lean (the restored side views tilt about 20 degrees) eases in and out.
+    blend_seconds: 0.3
+    sockets: {}
+    # The library area attack throws the hands apart at about 0.65 s; the bursts are full at 0.75 s.
+    events:
+      attack_melee: {impact: 0.303}
+      attack_ranged: {impact: 0.303}
+  clips:
+    standing: Standing
+    walking: Walking
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Standing
+
+# MM6 Demon Queen (qfi): Meshy queen (head-only graft) on a local hybrid rig (source-frame upper body on a six-bone
+# abdomen) and the Meshy rock alcove on its own Rock bone, one actor (level_generation/creatures/mm6_qfi_claude).
+# 393 native units / 2.4 m model. The rock stands against the end wall of her Hive room, so the model keeps a fixed
+# facing (east, as placed) and her spine, neck and head turn toward the party instead. Death: the rock collapses
+# while she sinks into it (native qdea0-qdef0).
+- descriptor: zDemonQueen
+  model: worlds/mm6/models/mm6_qfi.glb
+  scale: 163.75
+  yaw_offset: -1.570796327
+  fixed_yaw_degrees: 0
+  animation:
+    cast: Cast
+    run: Standing
+    stride_length: 1.0
+    upper_body_root: B_Spine
+    look:
+      nodes: [B_Spine1, B_Spine2, B_Neck, B_Head]
+      max_yaw_degrees: 60
+      max_pitch_degrees: 30
+    # one-handed caster: only the casting palm is bound (the charge glows at the bound palms' midpoint)
+    sockets:
+      palm_right: Socket_Palm_R
+    # The claw blow lands at 1.05 s of the Attack (source peak after a 0.25 s ease from Standing); Incinerate leaves
+    # the right palm at 1.02 s of the Cast.
+    events:
+      attack_melee: {impact: 1.164}
+      cast: {impact: 1.203, glow: [palm_right]}
+      attack_ranged:
+        impact: 1.164
+        glow: [palm_right]
+        effects:
+          Fire: openyamm:fx/creature_fire_hand
+  clips:
+    standing: Standing
+    walking: Standing
+    attack_melee: Attack
+    attack_ranged: Attack
+    hit: Hit
+    dying: Death
+    dead: Dead
+    fidget: Standing

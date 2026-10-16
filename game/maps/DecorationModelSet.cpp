@@ -1,5 +1,6 @@
 #include "game/maps/DecorationModelSet.h"
 
+#include "game/maps/DecorationModelManifest.h"
 #include "game/maps/DecorationModelPlacement.h"
 
 #include "engine/AssetFileSystem.h"
@@ -286,47 +287,91 @@ void DecorationModelSet::place(size_t billboardIndex, const DecorationBillboard 
     m_slots[billboardIndex].index = uint32_t(group.placements.size() - 1);
 }
 
+std::optional<size_t> DecorationModelSet::removePlacement(size_t group, uint32_t index)
+{
+    // Swap-remove, keeping the renderer's per-placement LOD and crossfade state aligned.
+    Engine::ModelStaticGroup &placements = m_groups[group];
+    std::vector<size_t> &indices = m_billboardIndices[group];
+    const size_t last = placements.placements.size() - 1;
+    const auto swapRemove = [&](auto &values)
+    {
+        if (values.size() == placements.placements.size())
+        {
+            values[index] = values[last];
+            values.pop_back();
+        }
+    };
+    swapRemove(placements.lodLevels);
+    swapRemove(placements.fades);
+    swapRemove(placements.bounds);
+    swapRemove(m_restMatrices[group]);
+    swapRemove(indices);
+    placements.placements[index] = placements.placements[last];
+    placements.placements.pop_back();
+    return index < indices.size() ? std::optional<size_t>(indices[index]) : std::nullopt;
+}
+
 void DecorationModelSet::unplace(size_t billboardIndex)
 {
+    unplaceOverlay(billboardIndex);
     Slot &slot = m_slots[billboardIndex];
     if (slot.group < 0)
     {
         return;
     }
-    // Swap-remove, keeping the renderer's per-placement LOD and crossfade state aligned.
-    Engine::ModelStaticGroup &group = m_groups[size_t(slot.group)];
-    std::vector<size_t> &indices = m_billboardIndices[size_t(slot.group)];
-    const size_t last = group.placements.size() - 1;
-    const auto swapRemove = [&](auto &values)
+    if (const std::optional<size_t> moved = removePlacement(size_t(slot.group), slot.index))
     {
-        if (values.size() == group.placements.size())
-        {
-            values[slot.index] = values[last];
-            values.pop_back();
-        }
-    };
-    swapRemove(group.lodLevels);
-    swapRemove(group.fades);
-    swapRemove(group.bounds);
-    swapRemove(m_restMatrices[size_t(slot.group)]);
-    swapRemove(indices);
-    group.placements[slot.index] = group.placements[last];
-    group.placements.pop_back();
-    if (slot.index < indices.size())
-    {
-        m_slots[indices[slot.index]].index = slot.index;
+        m_slots[*moved].index = slot.index;
     }
     slot.group = -1;
     slot.binding = -1;
 }
 
-void DecorationModelSet::update(const std::vector<DecorationBillboard> &billboards,
-    const std::function<uint16_t(size_t billboardIndex, bool &hidden)> &shownSprite)
+void DecorationModelSet::placeOverlay(size_t billboardIndex)
+{
+    Slot &slot = m_slots[billboardIndex];
+    if (slot.group < 0 || slot.binding < 0 || slot.state < 0)
+    {
+        return;
+    }
+    const std::vector<int32_t> &overlays = m_bindings[size_t(slot.binding)].stateOverlays;
+    if (size_t(slot.state) >= overlays.size() || overlays[size_t(slot.state)] < 0)
+    {
+        return;
+    }
+    const size_t overlay = size_t(overlays[size_t(slot.state)]);
+    Engine::ModelStaticGroup &group = m_groups[overlay];
+    Engine::ModelStaticPlacement placement;
+    placement.matrix = m_groups[size_t(slot.group)].placements[slot.index].matrix;
+    group.placements.push_back(placement);
+    m_restMatrices[overlay].push_back(placement.matrix);
+    group.bounds.push_back(group.placementBounds(placement));
+    m_billboardIndices[overlay].push_back(billboardIndex);
+    slot.overlayGroup = int32_t(overlay);
+    slot.overlayIndex = uint32_t(group.placements.size() - 1);
+}
+
+void DecorationModelSet::unplaceOverlay(size_t billboardIndex)
+{
+    Slot &slot = m_slots[billboardIndex];
+    if (slot.overlayGroup < 0)
+    {
+        return;
+    }
+    if (const std::optional<size_t> moved = removePlacement(size_t(slot.overlayGroup), slot.overlayIndex))
+    {
+        m_slots[*moved].overlayIndex = slot.overlayIndex;
+    }
+    slot.overlayGroup = -1;
+}
+
+void DecorationModelSet::update(const std::vector<DecorationBillboard> &billboards, const ShownSprite &shownSprite)
 {
     for (size_t index = 0; index < billboards.size() && index < m_slots.size(); ++index)
     {
         bool hidden = false;
-        const uint16_t sprite = shownSprite(index, hidden);
+        int state = -1;
+        const uint16_t sprite = shownSprite(index, hidden, state);
         Slot &slot = m_slots[index];
         if (sprite != slot.sprite)
         {
@@ -339,12 +384,23 @@ void DecorationModelSet::update(const std::vector<DecorationBillboard> &billboar
                 if (target >= 0)
                 {
                     place(index, billboards[index], uint32_t(target));
+                    placeOverlay(index);
                 }
             }
+        }
+        if (state != slot.state)
+        {
+            slot.state = state;
+            unplaceOverlay(index);
+            placeOverlay(index);
         }
         if (slot.group >= 0)
         {
             m_groups[size_t(slot.group)].placements[slot.index].visible = !hidden;
+        }
+        if (slot.overlayGroup >= 0)
+        {
+            m_groups[size_t(slot.overlayGroup)].placements[slot.overlayIndex].visible = !hidden;
         }
     }
 }
@@ -371,16 +427,83 @@ void DecorationModelSet::animate(float timeSeconds)
     }
 }
 
+bool DecorationModelSet::loadStateOverlays(const Engine::AssetFileSystem &assets, const std::string &worldId,
+    const std::unordered_map<std::string, uint32_t> &bindingByName, std::string &error)
+{
+    // Apart from decorations.yml, a dependency of every baked outdoor map: overlays cast no baked shadow.
+    const std::string manifestPath = "worlds/" + worldId + "/models/decoration_overlays.yml";
+    const std::optional<std::string> text = assets.readTextFile(manifestPath);
+    if (!text)
+    {
+        return true;
+    }
+    try
+    {
+        const YAML::Node document = YAML::Load(*text);
+        if (!document["overlays"].IsSequence())
+        {
+            error = "decoration overlay manifest requires an overlays sequence: " + manifestPath;
+            return false;
+        }
+        for (const YAML::Node &entry : document["overlays"])
+        {
+            const std::string name = lowercase(entry["name"].as<std::string>());
+            const auto bound = bindingByName.find(name);
+            if (bound == bindingByName.end())
+            {
+                // The decoration has no model on this map.
+                continue;
+            }
+            const uint32_t served = bound->second;
+            if (!entry["states"].IsSequence() || m_bindings[served].swingPeriod > 0.0f
+                || !m_bindings[served].stateOverlays.empty())
+            {
+                error = "decoration overlay needs a states sequence, a still binding and one entry: " + name;
+                return false;
+            }
+            // One overlay binding (and group) per state that shows one; null states show none.
+            std::vector<int32_t> stateOverlays;
+            for (const YAML::Node &state : entry["states"])
+            {
+                if (state.IsNull())
+                {
+                    stateOverlays.push_back(-1);
+                    continue;
+                }
+                const Engine::ModelLoadResult loaded = m_assets.load(assets, state.as<std::string>());
+                if (!loaded || !loaded.asset->skins.empty() || !loaded.asset->clips.empty()
+                    || !loaded.asset->staticBounds.valid)
+                {
+                    error = !loaded ? loaded.error : "invalid or animated decoration overlay: " + name;
+                    return false;
+                }
+                stateOverlays.push_back(int32_t(m_bindings.size()));
+                Binding overlay;
+                overlay.asset = loaded.asset;
+                overlay.lodPixels = m_bindings[served].lodPixels;
+                overlay.overlay = true;
+                m_bindings.push_back(std::move(overlay));
+                m_groups.push_back({loaded.asset, 0, m_bindings.back().lodPixels, {}, {}, {}, {}});
+                m_billboardIndices.emplace_back();
+                m_restMatrices.emplace_back();
+            }
+            m_bindings[served].stateOverlays = std::move(stateOverlays);
+        }
+    }
+    catch (const YAML::Exception &exception)
+    {
+        error = manifestPath + ": " + exception.what();
+        return false;
+    }
+    return true;
+}
+
 bool DecorationModelSet::load(const Engine::AssetFileSystem &assets, const std::string &worldId,
     const std::string &mapFile, const DecorationBillboardSet &decorations, std::string &error, WallFinder wallFinder)
 {
     clear();
     m_wallFinder = std::move(wallFinder);
-    // Indoor bindings live apart: decorations.yml is a dependency of every baked outdoor map.
-    const std::string lowerMap = lowercase(mapFile);
-    const bool indoor = lowerMap.size() > 4 && lowerMap.ends_with(".blv");
-    const std::string manifestPath =
-        "worlds/" + worldId + "/models/" + (indoor ? "indoor_decorations.yml" : "decorations.yml");
+    const std::string manifestPath = decorationModelManifestPath(worldId, mapFile);
     const std::optional<std::string> text = assets.readTextFile(manifestPath);
     if (!text)
     {
@@ -398,14 +521,9 @@ bool DecorationModelSet::load(const Engine::AssetFileSystem &assets, const std::
         for (const YAML::Node &entry : document["decorations"])
         {
             const std::string name = lowercase(entry["name"].as<std::string>());
-            if (entry["maps"])
+            if (!decorationModelBindsOnMap(entry, mapFile))
             {
-                const std::vector<std::string> maps = entry["maps"].as<std::vector<std::string>>();
-                if (std::none_of(maps.begin(), maps.end(),
-                        [&](const std::string &map) { return lowercase(map) == lowercase(mapFile); }))
-                {
-                    continue;
-                }
+                continue;
             }
             const DecorationEntry *pDecoration = decorations.decorationTable.findByInternalName(name);
             if (bindingByName.contains(name) || pDecoration == nullptr || pDecoration->spriteId == 0)
@@ -530,6 +648,10 @@ bool DecorationModelSet::load(const Engine::AssetFileSystem &assets, const std::
     catch (const YAML::Exception &exception)
     {
         error = manifestPath + ": " + exception.what();
+        return false;
+    }
+    if (!loadStateOverlays(assets, worldId, bindingByName, error))
+    {
         return false;
     }
 

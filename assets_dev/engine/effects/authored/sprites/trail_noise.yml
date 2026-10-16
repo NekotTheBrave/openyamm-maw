@@ -1,0 +1,7 @@
+schema: openyamm.effectSprite.v2
+id: openyamm:effect-sprite/trail_noise
+framesPerSecond: 1
+logicalWidth: 256
+logicalHeight: 64
+frames:
+- openyamm:texture/fx/trail_noise_00

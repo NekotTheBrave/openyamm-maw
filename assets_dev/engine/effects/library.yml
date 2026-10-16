@@ -2,4 +2,6 @@ schema: openyamm.effectLibrary.v1
 imports:
   - engine/effects/mm9/library.yml
   - engine/effects/authored/library.yml
+  - engine/effects/authored/projectile_library.yml
+  - engine/effects/authored/melee_library.yml
 effects: []

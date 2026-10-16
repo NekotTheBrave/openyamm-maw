@@ -1,5 +1,7 @@
 #include "game/app/GameApplication.h"
 #include "game/mod/ModHooks.h"
+
+#include "game/gameplay/ActorBehaviorRuntime.h"
 #include "game/gameplay/SavePreviewImage.h"
 
 #include "game/StringUtils.h"
@@ -11,6 +13,7 @@
 #include "game/scene/IndoorSceneRuntime.h"
 #include "game/scene/OutdoorSceneRuntime.h"
 #include "game/items/ItemGenerator.h"
+#include "game/party/PartySpellSystem.h"
 #include "game/party/SkillData.h"
 #include "game/party/SpellIds.h"
 #include "game/party/SpellSchool.h"
@@ -128,8 +131,6 @@ const char *gameplayUiAssetLoadKindName(GameplayUiAssetLoadKind kind)
             return "hud_texture_color";
         case GameplayUiAssetLoadKind::HudTextureColorModulated:
             return "hud_texture_color_modulated";
-        case GameplayUiAssetLoadKind::HudFontColor:
-            return "hud_font_color";
     }
 
     return "unknown";
@@ -1275,34 +1276,6 @@ constexpr std::array<uint32_t, 18> DebugUnlockedTownPortalQBits = {{
     301, 302, 303, 304, 305, 306,
     310, 311, 312, 313, 314, 315,
     718, 719, 720, 721, 722, 723}};
-constexpr int32_t DebugBreachEntryMapId = 205;
-constexpr std::array<std::pair<std::string_view, int32_t>, 15> DebugBreachEntryGlobals = {{
-    {"MMerge.CrossContinents.GotMainQuest", 1},
-    {"MMerge.CrossContinents.FinalQuestStarted", 1},
-    {"MMerge.CrossContinents.GotFinalQuest", 1},
-    {"MMerge.CrossContinents.GotInstructions", 1},
-    {"MMerge.CrossContinents.QuestFinished", 0},
-    {"MMerge.CrossContinents.GotEndCard", 0},
-    {"MMerge.CrossContinents.EnteredBreach", 0},
-    {"MMerge.CrossContinents.EnteredBasement", 0},
-    {"MMerge.CrossContinents.BreachSplit", 0},
-    {"MMerge.CrossContinents.BrFirstFloor", 0},
-    {"MMerge.CrossContinents.BrSecFloor", 0},
-    {"MMerge.CrossContinents.BrThirdFloor", 0},
-    {"MMerge.CrossContinents.CaughtChaos", 0},
-    {"MMerge.CrossContinents.CoughtChaos", 0},
-    {"MMerge.CrossContinents.GotFQHints", 0},
-}};
-constexpr std::array<std::string_view, 8> DebugBreachEntryClearedGlobals = {{
-    "MMerge.CrossContinents.GotFQHint1",
-    "MMerge.CrossContinents.GotFQHint2",
-    "MMerge.CrossContinents.GotFQHint3",
-    "MMerge.CrossContinents.GotFQHint4",
-    "MMerge.CrossContinents.HintByNPC.772",
-    "MMerge.CrossContinents.HintByNPC.773",
-    "MMerge.CrossContinents.HintByNPC.774",
-    "MMerge.CrossContinents.HintByNPC.775",
-}};
 constexpr float EnterDungeonSpeechDelaySeconds = 2.0f;
 constexpr float GameMinutesPerLocationDay = 24.0f * 60.0f;
 
@@ -2443,28 +2416,6 @@ bool isStarterMagicSkill(const std::string &skillName)
         || canonicalName == "DarkMagic";
 }
 
-std::optional<uint32_t> spellbookItemIdForSpell(
-    const ItemTable &itemTable,
-    uint32_t spellId)
-{
-    constexpr uint32_t FirstSpellbookItemId = 400;
-
-    if (spellId == 0 || spellId > spellIdValue(SpellId::SoulDrinker))
-    {
-        return std::nullopt;
-    }
-
-    const uint32_t itemId = FirstSpellbookItemId + (spellId - spellIdValue(SpellId::TorchLight));
-    const ItemDefinition *pDefinition = itemTable.get(itemId);
-
-    if (pDefinition == nullptr || pDefinition->equipStat != "Book")
-    {
-        return std::nullopt;
-    }
-
-    return itemId;
-}
-
 void addStarterInventoryItem(Character &character, InventoryItem item)
 {
     item.identified = true;
@@ -2520,7 +2471,8 @@ void grantCreatedCharacterStarterItems(
     Character &character,
     const ItemTable &itemTable,
     const StandardItemEnchantTable &standardItemEnchantTable,
-    const SpecialItemEnchantTable &specialItemEnchantTable)
+    const SpecialItemEnchantTable &specialItemEnchantTable,
+    const std::string &worldId)
 {
     addStarterInventoryItem(
         character,
@@ -2563,7 +2515,7 @@ void grantCreatedCharacterStarterItems(
              spellId <= spellRange->second && spellId < spellRange->first + 2;
              ++spellId)
         {
-            const std::optional<uint32_t> spellbookItemId = spellbookItemIdForSpell(itemTable, spellId);
+            const std::optional<uint32_t> spellbookItemId = itemTable.spellbookItemIdForSpell(spellId, worldId);
 
             if (!spellbookItemId)
             {
@@ -2735,6 +2687,7 @@ Character buildFreshCreatedCharacter(
     const ItemTable &itemTable,
     const StandardItemEnchantTable &standardItemEnchantTable,
     const SpecialItemEnchantTable &specialItemEnchantTable,
+    const std::string &worldId,
     bool preserveDebugLoadout)
 {
     Character character = sourceCharacter;
@@ -2794,7 +2747,12 @@ Character buildFreshCreatedCharacter(
 
     if (!preserveDebugLoadout)
     {
-        grantCreatedCharacterStarterItems(character, itemTable, standardItemEnchantTable, specialItemEnchantTable);
+        grantCreatedCharacterStarterItems(
+            character,
+            itemTable,
+            standardItemEnchantTable,
+            specialItemEnchantTable,
+            worldId);
     }
 
     return character;
@@ -2835,6 +2793,8 @@ GameApplication::GameApplication(const Engine::ApplicationConfig &config)
 {
     m_outdoorGameView.setWorldPostProcessing(&m_cinematicGrading);
     m_indoorRenderer.setWorldPostProcessing(&m_cinematicGrading);
+    // One effect texture cache for both scene renderers: each texture loads once, wherever it is first used.
+    m_indoorRenderer.effectRenderer().shareTextureCache(m_outdoorGameView.effectRenderer());
     m_gameSession.setSaveGameToPathCallback(
         [this](
             const std::filesystem::path &path,
@@ -3255,7 +3215,7 @@ void GameApplication::registerDebugConsoleCommands()
         .callback = [this, commandResult](const DebugConsole::CommandContext &)
         {
             std::ostringstream out;
-            out << "Commands: help, cls, map, loc, setup breach, event <id>, "
+            out << "Commands: help, cls, map, loc, event <id>, "
                 << "actor count <monster-id> [monster-id...], "
                 << "time [advance [days]] | time set HH:MM, sky [...], "
                 << "qbit get|set|clear <id> [id...], qbit dump [active|all|filter], "
@@ -3735,9 +3695,238 @@ void GameApplication::registerDebugConsoleCommands()
         }});
 
     m_debugConsole.registerCommand({
+        .name = "projectile",
+        .description = "Fire a spell or an actor's attack at a point, or cast a party spell, for reviewing spell "
+            "visuals.",
+        .usage = "projectile spell <spell-id> <from> <to> [skill] [mastery 1-4]"
+            " | projectile actor <index|last> <attack1|attack2|spell1|spell2> <to>"
+            " | projectile cast <spell-id> [actor-index|nearest] [skill] [mastery 1-4]"
+            " (points: <x y z> | party | ahead <distance>)",
+        .callback = [this, activeGameplayWorld, activeParty, commandResult](const DebugConsole::CommandContext &context)
+        {
+            IGameplayWorldRuntime *pWorld = activeGameplayWorld();
+            if (pWorld == nullptr)
+            {
+                return commandResult(false, "No active map.");
+            }
+            // A point is "x y z", "party" (just in front of the party's eyes) or "ahead <distance>" (in front of the
+            // party, aimed a little below its feet so a shot lands on the ground there). pointWidth gives the number of
+            // arguments each form takes.
+            const auto pointWidth = [&](size_t first) -> size_t
+            {
+                const std::string word = first < context.args.size() ? toLowerCopy(context.args[first]) : "";
+                return word == "party" ? 1 : word == "ahead" ? 2 : 3;
+            };
+            const auto parsePoint = [&](size_t first) -> std::optional<GameplayWorldPoint>
+            {
+                const std::string word = first < context.args.size() ? toLowerCopy(context.args[first]) : "";
+                const float yaw = pWorld->gameplayCameraYawRadians();
+                if (word == "party")
+                {
+                    // Far enough out that a wide projectile does not strike the party itself.
+                    constexpr float EyeHeight = 110.0f;
+                    constexpr float StepOut = 200.0f;
+                    return GameplayWorldPoint{pWorld->partyX() + std::cos(yaw) * StepOut,
+                        pWorld->partyY() + std::sin(yaw) * StepOut, pWorld->partyFootZ() + EyeHeight};
+                }
+                if (word == "ahead")
+                {
+                    const std::optional<float> distance =
+                        first + 1 < context.args.size() ? parseFloatArgument(context.args[first + 1]) : std::nullopt;
+                    if (!distance || !std::isfinite(*distance) || *distance <= 0.0f)
+                    {
+                        return std::nullopt;
+                    }
+                    return GameplayWorldPoint{pWorld->partyX() + std::cos(yaw) * *distance,
+                        pWorld->partyY() + std::sin(yaw) * *distance, pWorld->partyFootZ() - *distance * 0.15f};
+                }
+                if (first + 2 >= context.args.size())
+                {
+                    return std::nullopt;
+                }
+                const std::optional<float> x = parseFloatArgument(context.args[first]);
+                const std::optional<float> y = parseFloatArgument(context.args[first + 1]);
+                const std::optional<float> z = parseFloatArgument(context.args[first + 2]);
+                if (!x || !y || !z || !std::isfinite(*x) || !std::isfinite(*y) || !std::isfinite(*z))
+                {
+                    return std::nullopt;
+                }
+                return GameplayWorldPoint{*x, *y, *z};
+            };
+            const std::string mode = context.args.empty() ? std::string() : toLowerCopy(context.args[0]);
+            if (mode == "spell" && context.args.size() >= 4)
+            {
+                // An event-sourced cast (as traps cast), so it strikes whatever lies in its path, party included.
+                const std::optional<int32_t> spellId = parseInt32Argument(context.args[1]);
+                const size_t targetIndex = 2 + pointWidth(2);
+                const size_t skillIndex = targetIndex + pointWidth(targetIndex);
+                const std::optional<GameplayWorldPoint> source = parsePoint(2);
+                const std::optional<GameplayWorldPoint> target = parsePoint(targetIndex);
+                const std::optional<int32_t> skill = context.args.size() > skillIndex
+                    ? parseInt32Argument(context.args[skillIndex]) : std::optional<int32_t>(10);
+                const std::optional<int32_t> mastery = context.args.size() > skillIndex + 1
+                    ? parseInt32Argument(context.args[skillIndex + 1]) : std::optional<int32_t>(3);
+                if (context.args.size() > skillIndex + 2)
+                {
+                    return commandResult(false, "Too many arguments.");
+                }
+                if (!spellId || *spellId <= 0 || !source || !target || !skill || *skill < 1 || !mastery
+                    || *mastery < 1 || *mastery > 4)
+                {
+                    return commandResult(false, "Invalid spell id, points, skill or mastery.");
+                }
+                const bool cast = pWorld->castEventSpell(
+                    uint32_t(*spellId),
+                    uint32_t(*skill),
+                    uint32_t(*mastery),
+                    int32_t(std::lround(source->x)),
+                    int32_t(std::lround(source->y)),
+                    int32_t(std::lround(source->z)),
+                    int32_t(std::lround(target->x)),
+                    int32_t(std::lround(target->y)),
+                    int32_t(std::lround(target->z)));
+                return commandResult(cast, cast ? "Spell cast." : "Spell cast failed.");
+            }
+            if (mode == "actor" && context.args.size() >= 4 && context.args.size() == 3 + pointWidth(3))
+            {
+                const bool last = toLowerCopy(context.args[1]) == "last";
+                const std::optional<int32_t> index = last
+                    ? std::optional<int32_t>(int32_t(pWorld->mapActorCount()) - 1)
+                    : parseInt32Argument(context.args[1]);
+                const std::string abilityName = toLowerCopy(context.args[2]);
+                const std::optional<GameplayWorldPoint> target = parsePoint(3);
+                std::optional<GameplayActorAttackAbility> ability;
+                if (abilityName == "attack1")
+                {
+                    ability = GameplayActorAttackAbility::Attack1;
+                }
+                else if (abilityName == "attack2")
+                {
+                    ability = GameplayActorAttackAbility::Attack2;
+                }
+                else if (abilityName == "spell1")
+                {
+                    ability = GameplayActorAttackAbility::Spell1;
+                }
+                else if (abilityName == "spell2")
+                {
+                    ability = GameplayActorAttackAbility::Spell2;
+                }
+                if (!index || *index < 0 || size_t(*index) >= pWorld->mapActorCount() || !ability || !target)
+                {
+                    return commandResult(false, "Invalid actor index, ability or target.");
+                }
+                const bool fired = pWorld->debugFireActorProjectile(size_t(*index), *ability, *target);
+                return commandResult(fired, fired ? "Projectile fired." : "The actor has no such projectile.");
+            }
+            if (mode == "cast" && context.args.size() >= 2 && context.args.size() <= 5)
+            {
+                // The first party member casts as a wand would: fixed power, no mana, recovery or mastery gate.
+                Party *pParty = activeParty();
+                const std::optional<int32_t> spellId = parseInt32Argument(context.args[1]);
+                const std::string targetWord = context.args.size() > 2 ? toLowerCopy(context.args[2]) : "nearest";
+                const std::optional<int32_t> skill = context.args.size() > 3
+                    ? parseInt32Argument(context.args[3]) : std::optional<int32_t>(10);
+                const std::optional<int32_t> mastery = context.args.size() > 4
+                    ? parseInt32Argument(context.args[4]) : std::optional<int32_t>(4);
+                if (pParty == nullptr || pParty->members().empty())
+                {
+                    return commandResult(false, "No active party.");
+                }
+                if (!spellId || *spellId <= 0 || !skill || *skill < 1 || !mastery || *mastery < 1 || *mastery > 4)
+                {
+                    return commandResult(false, "Invalid spell id, skill or mastery.");
+                }
+                std::optional<size_t> actorIndex;
+                GameplayRuntimeActorState actorState = {};
+                if (targetWord == "nearest")
+                {
+                    float nearestDistance = std::numeric_limits<float>::max();
+                    for (size_t index = 0; index < pWorld->mapActorCount(); ++index)
+                    {
+                        GameplayRuntimeActorState candidate = {};
+                        if (!pWorld->actorRuntimeState(index, candidate) || candidate.isDead || candidate.currentHp <= 0)
+                        {
+                            continue;
+                        }
+                        const float distance = std::hypot(
+                            candidate.preciseX - pWorld->partyX(),
+                            candidate.preciseY - pWorld->partyY());
+                        if (distance < nearestDistance)
+                        {
+                            nearestDistance = distance;
+                            actorIndex = index;
+                        }
+                    }
+                }
+                else
+                {
+                    const std::optional<int32_t> index = parseInt32Argument(context.args[2]);
+                    if (!index || *index < 0 || size_t(*index) >= pWorld->mapActorCount())
+                    {
+                        return commandResult(false, "Invalid actor index.");
+                    }
+                    actorIndex = size_t(*index);
+                }
+                PartySpellCastRequest request = {};
+                request.casterMemberIndex = 0;
+                request.spellId = uint32_t(*spellId);
+                request.quickCast = true;
+                request.skillLevelOverride = uint32_t(*skill);
+                request.skillMasteryOverride = static_cast<SkillMastery>(*mastery);
+                request.bypassRequiredMastery = true;
+                request.bypassGameplayCasterValidation = true;
+                request.spendMana = false;
+                request.applyRecovery = false;
+                // Spells on a party member (Heal) target the caster.
+                request.targetCharacterIndex = 0;
+                // Spells on the creatures in sight (Souldrinker, Prismatic Light) select them from this view.
+                request.hasViewTransform = true;
+                request.viewX = pWorld->partyX();
+                request.viewY = pWorld->partyY();
+                request.viewZ = pWorld->partyEyeZ();
+                request.viewYawRadians = pWorld->gameplayCameraYawRadians();
+                request.viewPitchRadians = pWorld->gameplayCameraPitchRadians();
+                request.viewAspectRatio = 16.0f / 9.0f;
+                // Only ground-targeted spells take a point; with one, area spells would centre on it instead of the
+                // party.
+                const std::optional<PartySpellDescriptor> descriptor = PartySpellSystem::describeSpell(request.spellId);
+                const bool groundPoint =
+                    descriptor && descriptor->targetKind == PartySpellCastTargetKind::GroundPoint;
+                if (actorIndex && pWorld->actorRuntimeState(*actorIndex, actorState))
+                {
+                    request.targetActorIndex = actorIndex;
+                    request.hasTargetPoint = groundPoint;
+                    request.targetX = actorState.preciseX;
+                    request.targetY = actorState.preciseY;
+                    request.targetZ = actorState.preciseZ + static_cast<float>(actorState.height) * 0.5f;
+                }
+                const PartySpellCastResult result = PartySpellSystem::castSpell(
+                    *pParty,
+                    *pWorld,
+                    m_gameDataLoader.getSpellTable(),
+                    request);
+                if (!result.succeeded())
+                {
+                    return commandResult(false, "Spell cast failed: " + result.statusText);
+                }
+                pWorld->applyPendingSpellCastWorldEffects(result);
+                return commandResult(true, "Spell cast.");
+            }
+            return commandResult(
+                false,
+                "Usage: projectile spell <spell-id> <from> <to> [skill] [mastery 1-4]"
+                " | projectile actor <index|last> <attack1|attack2|spell1|spell2> <to>"
+                " | projectile cast <spell-id> [actor-index|nearest] [skill] [mastery 1-4]"
+                " (points: <x y z> | party | ahead <distance>)");
+        },
+    });
+
+    m_debugConsole.registerCommand({
         .name = "actor",
         .description = "Count or spawn ordinary table-driven monsters on the current map.",
-        .usage = "actor count <id> [ids...] | actor spawn <id> [count] [x y z] [group|friendly] | actor kill <radius>",
+        .usage = "actor count <id> [ids...] | actor spawn <id> [count] [x y z] [group|friendly] | actor kill <radius>"
+            " | actor behavior [<index> <behavior-id>] | actor damage <index|last> <amount>",
         .callback = [this, activeGameplayWorld, commandResult](const DebugConsole::CommandContext &context)
         {
             if (!context.args.empty() && toLowerCopy(context.args[0]) == "spawn")
@@ -3785,6 +3974,67 @@ void GameApplication::registerDebugConsoleCommands()
                     ? pWorld->summonFriendlyMonsterById(int16_t(*id), uint32_t(*count), 3600.0f, *x, *y, *z)
                     : pWorld->summonHostileMonsterById(int16_t(*id), uint32_t(*count), *x, *y, *z, uint32_t(*group)));
                 return commandResult(spawned, spawned ? "Monsters spawned." : "Monster spawn failed.");
+            }
+            if (context.args.size() == 3 && toLowerCopy(context.args[0]) == "damage")
+            {
+                // Party damage through the normal attack path, e.g. to walk a scripted boss through its phases.
+                IGameplayWorldRuntime *pWorld = activeGameplayWorld();
+                if (pWorld == nullptr || pWorld->mapActorCount() == 0)
+                {
+                    return commandResult(false, "No actors on the current map.");
+                }
+                const bool last = toLowerCopy(context.args[1]) == "last";
+                const std::optional<int32_t> parsedIndex = last
+                    ? std::optional<int32_t>(int32_t(pWorld->mapActorCount() - 1))
+                    : parseInt32Argument(context.args[1]);
+                const std::optional<int32_t> amount = parseInt32Argument(context.args[2]);
+                GameplayRuntimeActorState state = {};
+                if (!parsedIndex || *parsedIndex < 0 || !amount || *amount <= 0
+                    || !pWorld->actorRuntimeState(size_t(*parsedIndex), state) || state.isDead)
+                {
+                    return commandResult(false, "Usage: actor damage <index|last> <amount> (living actor)");
+                }
+                const bool damaged = pWorld->applyPartyAttackMeleeDamage(
+                    size_t(*parsedIndex), *amount, {pWorld->partyX(), pWorld->partyY(), pWorld->partyFootZ()});
+                return commandResult(damaged, damaged ? "Actor damaged." : "Actor damage failed.");
+            }
+            if (!context.args.empty() && toLowerCopy(context.args[0]) == "behavior")
+            {
+                IGameplayWorldRuntime *pWorld = activeGameplayWorld();
+                ActorBehaviorRuntime *pBehaviors = pWorld != nullptr ? pWorld->actorBehaviorRuntime() : nullptr;
+                if (pBehaviors == nullptr)
+                {
+                    return commandResult(false, "No active map.");
+                }
+                if (context.args.size() == 3)
+                {
+                    const std::optional<int32_t> actorIndex = parseInt32Argument(context.args[1]);
+                    if (!actorIndex || *actorIndex < 0)
+                    {
+                        return commandResult(false, "Invalid actor index.");
+                    }
+                    std::string error;
+                    const bool attached =
+                        pBehaviors->attachToWorldActor(*pWorld, size_t(*actorIndex), context.args[2], error);
+                    return commandResult(attached, attached ? "Behaviour attached." : error);
+                }
+                if (context.args.size() != 1)
+                {
+                    return commandResult(false, "Usage: actor behavior [<index> <behavior-id>]");
+                }
+                std::ostringstream out;
+                out << "Scripted actors:";
+                for (const ActorBehaviorInstanceState *pInstance : pBehaviors->instances())
+                {
+                    GameplayRuntimeActorState state = {};
+                    pWorld->actorRuntimeState(pInstance->actorIndex, state);
+                    out << "\n  " << pInstance->actorIndex << ' ' << pInstance->behaviorId << " hp=" << state.currentHp
+                        << '/' << state.maxHp << " wards=" << pInstance->wards.size()
+                        << " timers=" << pInstance->timers.size()
+                        << (pInstance->perform ? " performing=" + pInstance->perform->clip : std::string())
+                        << (pInstance->deathHandled ? " dead" : "");
+                }
+                return commandResult(true, out.str());
             }
             if (context.args.size() == 2 && toLowerCopy(context.args[0]) == "kill")
             {
@@ -4118,10 +4368,43 @@ void GameApplication::registerDebugConsoleCommands()
         }});
 
     m_debugConsole.registerCommand({
+        .name = "terrain",
+        .description = "Show the terrain status, set its subdivision (saved) or reload the map's materials.",
+        .usage = "terrain [subdivision <1|2|4> | reload]",
+        .callback = [this, commandResult](const DebugConsole::CommandContext &context)
+        {
+            const std::string action = context.args.empty() ? std::string() : toLowerCopy(context.args[0]);
+            const std::string value = context.args.size() > 1 ? toLowerCopy(context.args[1]) : std::string();
+            if (action == "subdivision")
+            {
+                if (value != "1" && value != "2" && value != "4")
+                {
+                    return commandResult(false, "Usage: terrain subdivision <1|2|4>");
+                }
+                m_settings.terrainSubdivision = std::stoi(value);
+            }
+            else if (!action.empty() && action != "reload")
+            {
+                return commandResult(false, "Unknown terrain command. Type 'help terrain'.");
+            }
+            if (!action.empty())
+            {
+                applyCurrentSettingsToActiveRuntime();
+                m_outdoorGameView.reloadTerrainMaterials();
+                std::string error;
+                if (action != "reload" && !saveGameSettings(settingsFilePath(), m_settings, error))
+                {
+                    return commandResult(false, "Applied, but could not save settings.ini: " + error);
+                }
+            }
+            return commandResult(true, m_outdoorGameView.terrainMaterialsStatus());
+        }});
+
+    m_debugConsole.registerCommand({
         .name = "sky",
         .description = "Show or override outdoor sky and weather visuals (not saved).",
         .usage = "sky [weather <n|auto> | name <texture|auto> | fog <weak> <strong> | fog auto"
-            " | style <enhanced|classic> | preset <name|auto> | theme <name|none|auto> | clear]"
+            " | preset <name|auto> | theme <name|none|auto> | clear]"
             " (rain and snow: see 'weather')",
         .callback = [this, commandResult](const DebugConsole::CommandContext &context)
         {
@@ -4166,22 +4449,13 @@ void GameApplication::registerDebugConsoleCommands()
 
                 overrides.fogDistances = std::pair<int32_t, int32_t>(*weak, *strong);
             }
-            else if (action == "style" && !value.empty())
-            {
-                if (!parseSkyStyleValue(value, m_settings.skyStyle))
-                {
-                    return commandResult(false, "Usage: sky style <enhanced|classic>");
-                }
-
-                applyCurrentSettingsToActiveRuntime();
-            }
             else if (action == "preset" && !value.empty())
             {
                 const SkyPresetLibrary *pLibrary = m_outdoorGameView.skyPresetLibrary();
 
                 if (value != "auto" && (pLibrary == nullptr || pLibrary->find(value) == nullptr))
                 {
-                    return commandResult(false, "Unknown sky preset (Enhanced sky must be active).");
+                    return commandResult(false, "Unknown sky preset.");
                 }
 
                 m_outdoorGameView.setDebugSkyPreset(value == "auto" ? std::string() : value);
@@ -4192,7 +4466,7 @@ void GameApplication::registerDebugConsoleCommands()
 
                 if (value != "auto" && value != "none" && (pLibrary == nullptr || pLibrary->findTheme(value) == nullptr))
                 {
-                    return commandResult(false, "Unknown sky theme (Enhanced sky must be active).");
+                    return commandResult(false, "Unknown sky theme.");
                 }
 
                 m_outdoorGameView.setDebugSkyTheme(value == "auto" ? std::nullopt
@@ -4222,13 +4496,12 @@ void GameApplication::registerDebugConsoleCommands()
             const AtmosphereState &atmosphere = m_pOutdoorWorldRuntime->atmosphereState();
             std::ostringstream out;
             out << "weather_sky=" << atmosphere.weatherSkyTextureName
-                << " classic_sky=" << atmosphere.skyTextureName
+                << " sky_name=" << atmosphere.skyTextureName
                 << " merged_weather=" << atmosphere.mergedWeatherState << "/" << atmosphere.mergedWeatherStateCount
                 << " foggy=" << ((atmosphere.weatherFlags & AtmosphereState::WeatherFoggy) != 0 ? 1 : 0)
                 << " fog=" << atmosphere.fogWeakDistance << ".." << atmosphere.fogStrongDistance
                 << " cloud_cover=" << atmosphere.cloudCover
-                << " night=" << (atmosphere.isNight ? 1 : 0)
-                << " style=" << skyStyleValue(m_settings.skyStyle);
+                << " night=" << (atmosphere.isNight ? 1 : 0);
 
             if (const SkyFrameState *pSky = m_outdoorGameView.enhancedSkyFrame(); pSky != nullptr)
             {
@@ -4256,6 +4529,7 @@ void GameApplication::registerDebugConsoleCommands()
                 {"foliage", &m_renderFoliage}, {"instancing", &m_renderInstancing}, {"shadows", &m_settings.shadows},
                 {"ao", &m_settings.ambientOcclusion}, {"grading", &m_settings.cinematicGrading},
                 {"model_lods", &m_settings.modelLods}, {"lightmaps", &m_settings.lightmaps},
+                {"creature_outlines", &m_settings.creatureOutlines},
                 {"freeze", &m_renderFreezeWorld}};
             const auto describe = [&]()
             {
@@ -4434,63 +4708,6 @@ void GameApplication::registerDebugConsoleCommands()
 
             m_pendingDebugMapJump = pendingJump;
             return commandResult(true, "Queued map jump " + std::to_string(*mapId));
-        }});
-
-    m_debugConsole.registerCommand({
-        .name = "setup",
-        .description = "Apply predefined debug story states.",
-        .usage = "setup breach",
-        .callback = [this, activeParty, activeEventRuntimeState, commandResult](const DebugConsole::CommandContext &context)
-        {
-            if (context.args.size() != 1 || toLowerCopy(context.args[0]) != "breach")
-            {
-                return commandResult(false, "Usage: setup breach");
-            }
-
-            Party *pParty = activeParty();
-
-            if (pParty == nullptr)
-            {
-                return commandResult(false, "No active party.");
-            }
-
-            EventRuntimeState *pRuntimeState = activeEventRuntimeState();
-
-            if (pRuntimeState != nullptr)
-            {
-                m_gameSession.mergeNamedGlobalVarsFromRuntime(*pRuntimeState);
-            }
-
-            for (const std::pair<std::string_view, int32_t> &entry : DebugBreachEntryGlobals)
-            {
-                const std::string name(entry.first);
-                m_gameSession.setNamedGlobalVar(name, entry.second);
-
-                if (pRuntimeState != nullptr)
-                {
-                    pRuntimeState->namedGlobalVars[name] = entry.second;
-                }
-            }
-
-            for (std::string_view globalName : DebugBreachEntryClearedGlobals)
-            {
-                const std::string name(globalName);
-                m_gameSession.clearNamedGlobalVar(name);
-
-                if (pRuntimeState != nullptr)
-                {
-                    pRuntimeState->namedGlobalVars.erase(name);
-                }
-            }
-
-            pParty->setQuestBit(1713, true);  // Enter The Controlled Breach and bring Runaway Chaos back.
-            pParty->setQuestBit(1714, false); // Find your friends.
-            pParty->setQuestBit(1715, false); // Find entrance to the main Breach structure.
-
-            PendingDebugMapJump pendingJump = {};
-            pendingJump.mapId = DebugBreachEntryMapId;
-            m_pendingDebugMapJump = pendingJump;
-            return commandResult(true, "Set clean Breach quest state and queued BrAlvar jump.");
         }});
 
     m_debugConsole.registerCommand({
@@ -6544,7 +6761,8 @@ bool GameApplication::applicationTextInputActive() const
     const GameplayUiController::SaveGameScreenState &saveGameScreen = gameplayScreenRuntime.saveGameScreenState();
 
     return (saveGameScreen.active && saveGameScreen.editActive)
-        || gameplayScreenRuntime.houseBankState().inputActive();
+        || gameplayScreenRuntime.houseBankState().inputActive()
+        || GameplayUiController::alchemyBenchSearchActive(gameplayScreenRuntime.characterScreenReadOnly());
 }
 
 bool GameApplication::handlePendingInputPromptSdlEvent(const SDL_Event &event)
@@ -6941,6 +7159,7 @@ void GameApplication::loadOrCreateSettings()
     m_config.windowHeight = m_settings.resolutionHeight;
     m_config.windowMode = engineWindowModeForSettings(m_settings.windowMode);
     m_config.verticalSync = m_settings.verticalSync;
+    m_config.maxAnisotropy = textureAnisotropyLevel(m_settings);
     m_config.fpsTrace = m_settings.fpsTrace;
     m_config.performanceTrace = m_settings.performanceTrace;
     m_engineApplication.setConfiguration(m_config);
@@ -6948,13 +7167,54 @@ void GameApplication::loadOrCreateSettings()
     configureGameplayCombatTrace(m_settings.combatTrace, m_settings.combatTraceFile, m_settings.combatTraceAppend);
 }
 
+WorldFxSystem &GameApplication::activeWorldFxSystem()
+{
+    return m_pMapSceneRuntime->kind() == SceneKind::Outdoor
+        ? m_outdoorGameView.worldFxSystem() : m_indoorRenderer.worldFxSystem();
+}
+
+bool GameApplication::syncActorModels(IGameplayWorldRuntime &world, float deltaSeconds, float liveDeltaSeconds)
+{
+    if (m_gameDataLoader.actorModelManifest() == nullptr)
+    {
+        return true;
+    }
+    WorldFxSystem &worldFx = activeWorldFxSystem();
+    std::string error;
+    const std::optional<MapAssetInfo> &map = m_gameDataLoader.getSelectedMap();
+    const std::optional<ActorPreviewBillboardSet> *pActors = map
+        ? (m_pMapSceneRuntime->kind() == SceneKind::Outdoor
+            ? &map->outdoorActorPreviewBillboardSet : &map->indoorActorPreviewBillboardSet) : nullptr;
+    const ActorPreviewBillboardSet *pActorSet = pActors != nullptr && *pActors ? &**pActors : nullptr;
+    if (!worldFx.configureActorModels(*m_pAssetFileSystem,
+            m_gameDataLoader.actorModelManifest(),
+            m_gameDataLoader.getMonsterTable(),
+            pActorSet != nullptr ? &pActorSet->spriteFrameTable : nullptr,
+            pActorSet != nullptr ? std::span<const std::string>(pActorSet->modelDescriptors)
+                : std::span<const std::string>(),
+            error))
+    {
+        std::cerr << "Actor model load failed: " << error << '\n';
+        requestApplicationQuit();
+        return false;
+    }
+    worldFx.setActorAnimationLod(m_settings.modelLods);
+    const EventDialogContent &dialog = m_gameSession.gameplayScreenRuntime().activeEventDialog();
+    const std::optional<size_t> dialogueActorIndex = dialog.isActive && dialog.sourceActorIndex
+        ? std::optional<size_t>(*dialog.sourceActorIndex) : std::nullopt;
+    worldFx.syncActorModels(world, deltaSeconds, dialogueActorIndex, liveDeltaSeconds);
+    return true;
+}
+
 void GameApplication::applyCurrentSettingsToActiveRuntime()
 {
-    m_gameSession.gameplayUiRuntime().setFontSettings(m_settings.fonts);
+    m_gameDataLoader.setActorModels(m_settings.actorModels, m_settings.actorModelsManifest);
     m_gameSession.gameplayUiRuntime().bindSpriteAtlasCache(m_spriteAtlasCache);
+    m_gameSession.gameplayUiRuntime().bindActorModelPreview(m_actorModelPreview);
     configureGameplayDebugTrace(m_settings.gameplayTrace, m_settings.gameplayTraceFile, m_settings.gameplayTraceAppend);
     configureGameplayCombatTrace(m_settings.combatTrace, m_settings.combatTraceFile, m_settings.combatTraceAppend);
     setTextureFilteringConfig(textureFilteringConfigFromSettings(m_settings));
+    m_engineApplication.setMaxAnisotropy(textureAnisotropyLevel(m_settings));
     m_gameAudioSystem.setSoundVolume(normalizedVolumeLevel(m_settings.soundVolume));
     m_gameAudioSystem.setMusicVolume(normalizedVolumeLevel(m_settings.musicVolume));
     m_gameAudioSystem.setVoiceVolume(normalizedVolumeLevel(m_settings.voiceVolume));
@@ -7032,6 +7292,8 @@ void GameApplication::shutdownApplication()
     m_pLoadingOverlayScreen.reset();
     m_gameSession.gameplayScreenRuntime().clearSharedUiRuntime();
     shutdownRenderer();
+    // Menu art and the fonts shared with the HUD live for the whole run.
+    MenuScreenBase::shutdownSharedResources();
     m_spriteAtlasCache.clear(Engine::BgfxContext::isBgfxInitialized());
     m_nativeSpriteCache.clear(Engine::BgfxContext::isBgfxInitialized());
     shutdownDebugConsoleRenderer();
@@ -7194,7 +7456,6 @@ void GameApplication::updateDeferredMainMenuChildWarmup()
             []()
             {
             });
-        warmupScreen.setFontSettings(m_settings.fonts);
         warmupScreen.prepareForFirstFrame();
         m_deferredMainMenuChildWarmupStage = 2;
         return;
@@ -7212,7 +7473,6 @@ void GameApplication::updateDeferredMainMenuChildWarmup()
             []()
             {
             });
-        warmupScreen.setFontSettings(m_settings.fonts);
         warmupScreen.prepareForFirstFrame();
         m_mainMenuChildScreensPrepared = true;
         m_deferredMainMenuChildWarmupStage = 0;
@@ -7378,6 +7638,26 @@ bool GameApplication::initializeStartupSession(bool initializeView)
     return initialized;
 }
 
+// Re-read on every map load (a few small files), so edited behaviour scripts apply on the next map load.
+const ActorBehaviorCatalog *GameApplication::reloadActorBehaviorCatalog()
+{
+    if (m_pAssetFileSystem == nullptr)
+    {
+        return nullptr;
+    }
+
+    std::string error;
+
+    if (!m_actorBehaviorCatalog.load(*m_pAssetFileSystem, m_activeWorldManifest.id, error))
+    {
+        std::cerr << "Actor behaviour catalogue load failed: " << error << '\n';
+        m_actorBehaviorCatalog.clear();
+        return nullptr;
+    }
+
+    return &m_actorBehaviorCatalog;
+}
+
 bool GameApplication::initializeSelectedMapRuntime(bool initializeView)
 {
     if (m_pAssetFileSystem != nullptr)
@@ -7437,6 +7717,7 @@ bool GameApplication::initializeSelectedMapRuntime(bool initializeView)
             partyCollisionRadius,
             partyCollisionHeight,
             partyMaxStepHeight);
+        m_pOutdoorPartyRuntime->setEyeHeight(partyEyeHeight);
         bindPartyDependencies(m_pOutdoorPartyRuntime->party());
 
         if (m_gameSession.partyState())
@@ -7522,6 +7803,7 @@ bool GameApplication::initializeSelectedMapRuntime(bool initializeView)
             &m_gameDataLoader.getMergedBolsterMonsterTable(),
             selectedMap->itemSourceData ? &*selectedMap->itemSourceData : nullptr
         );
+        m_pOutdoorWorldRuntime->bindActorBehaviorCatalog(reloadActorBehaviorCatalog());
         timingLogger.stage("outdoor runtime initialized");
 
         if (restoreSavedOutdoorState)
@@ -7634,7 +7916,7 @@ bool GameApplication::initializeSelectedMapRuntime(bool initializeView)
             *selectedMap->outdoorMapData,
             selectedMap->outdoorLandMask,
             selectedMap->outdoorTileColors,
-            selectedMap->outdoorTerrainTextureAtlas,
+            selectedMap->outdoorTerrainTiles,
             selectedMap->outdoorBModelTextureSet,
             selectedMap->outdoorDecorationCollisionSet,
             selectedMap->outdoorActorCollisionSet,
@@ -7762,6 +8044,7 @@ bool GameApplication::initializeSelectedMapRuntime(bool initializeView)
             &m_gameDataLoader.getMm9MapTransitionTable(),
             &m_gameDataLoader.getMm9TeacherScheduleTable()
         );
+        pIndoorSceneRuntime->worldRuntime().bindActorBehaviorCatalog(reloadActorBehaviorCatalog());
         timingLogger.stage("indoor runtime initialized");
 
         if (restoreSavedIndoorState && pSavedIndoorState != nullptr)
@@ -8181,7 +8464,6 @@ void GameApplication::beginLoadingOverlay(LoadingOverlayScreen::Presentation pre
         m_pLoadingOverlayScreen = std::make_unique<LoadingOverlayScreen>(*m_pAssetFileSystem);
     }
 
-    m_pLoadingOverlayScreen->setFontSettings(m_settings.fonts);
     m_pLoadingOverlayScreen->setPresentation(presentation);
     m_loadingOverlayPresentation = presentation;
     m_loadingOverlayCurrentProgressPercent = 0;
@@ -8728,6 +9010,14 @@ void GameApplication::prepareGameplayRendering()
     }
     const GameplayInputFrame idleInput = {};
     m_gameSession.bindCurrentGameplayInputFrame(&idleInput);
+    // The map's actor models (MapAssetLoader's model descriptors) load here, under the loading screen, and the passes
+    // below upload them; otherwise the first gameplay frame would load and upload them.
+    IGameplayWorldRuntime *pWorldRuntime = m_gameSession.activeWorldRuntime();
+    if (pWorldRuntime != nullptr && !activeWorldFxSystem().actorModelsConfigured()
+        && !syncActorModels(*pWorldRuntime, 0.0f, 0.0f))
+    {
+        return;
+    }
     // Run presentation only. Input, game time, events and indoor mechanisms remain stopped.
     // A second submission exercises resources discovered by the first real HUD/world render.
     for (int pass = 0; pass < 2; ++pass)
@@ -8735,7 +9025,7 @@ void GameApplication::prepareGameplayRendering()
         m_cinematicGrading.resetViews();
         const bool grading = m_cinematicGrading.begin(
             width, height, m_settings.cinematicGrading, m_settings.cinematicStrength,
-            m_settings.ambientOcclusion, m_settings.ambientOcclusionStrength);
+            m_settings.ambientOcclusion, m_settings.ambientOcclusionStrength, m_settings.sharpening);
         if (m_pMapSceneRuntime->kind() == SceneKind::Outdoor)
         {
             m_outdoorGameView.render(width, height, idleInput, 0.0f, true);
@@ -8796,6 +9086,9 @@ void GameApplication::completeLoadingOverlay()
 
     prepareGameplayRendering();
     renderLoadingOverlayProgress(100);
+    // The warm render waited for its GPU readback, so bgfx has consumed and freed the uploads: return the load's
+    // freed heap to the system now rather than keeping it for the rest of the session.
+    releaseUnusedHeapPages();
     // The caller may still be finishing the old world's or menu's frame. Keep it
     // covered until the next application frame can draw the complete new scene.
     m_loadingOverlayReadyToDismiss = true;
@@ -8885,8 +9178,8 @@ void GameApplication::restoreSavedOutdoorWorldStateForSelectedMap()
 void GameApplication::shutdownRenderer()
 {
     m_cinematicGrading.shutdown();
+    m_actorModelPreview.shutdown();
     m_gameAudioSystem.stopAllPlayback();
-    MenuScreenBase::shutdownSharedResources();
     m_mainMenuChildScreensPrepared = false;
     m_outdoorGameView.shutdown();
     m_indoorGameView.shutdown();
@@ -9562,7 +9855,6 @@ void GameApplication::openMenuScreen(bool paused)
     std::unique_ptr<MainMenuScreen> pScreen =
         std::make_unique<MainMenuScreen>(*m_pAssetFileSystem, m_gameDataRepository, &m_gameAudioSystem, m_settings,
                                         std::move(actions), paused, location, date);
-    pScreen->setFontSettings(m_settings.fonts);
     pScreen->prepareForFirstFrame();
     if (SDL_Window *pWindow = SDL_GetKeyboardFocus())
     {
@@ -9603,7 +9895,6 @@ void GameApplication::openSaveGameScreen()
             return true;
         },
         location, m_gameSession.gameMinutes(), m_menuSavePreviewBmp);
-    pScreen->setFontSettings(m_settings.fonts);
     m_screenManager.setActiveScreen(std::move(pScreen));
 }
 
@@ -9639,7 +9930,6 @@ void GameApplication::openLoadGameScreen(bool returnToGameplayMenu, const std::s
         },
         returnToGameplayMenu, &m_gameAudioSystem);
 
-    pScreen->setFontSettings(m_settings.fonts);
 
     if (!m_mainMenuChildScreensPrepared)
     {
@@ -9679,7 +9969,6 @@ void GameApplication::openNewGameScreen(const std::string &source)
             openMainMenuScreen();
         });
 
-    pScreen->setFontSettings(m_settings.fonts);
 
     if (!m_mainMenuChildScreensPrepared)
     {
@@ -9972,6 +10261,9 @@ bool GameApplication::startNewSessionFromCharacterCreation(
     PartySeed seed = {};
     seed.gold = 200;
     seed.food = 5;
+    // Starting spellbooks use the book design of the continent the party starts on.
+    const MapStatsEntry *pStartMap = m_gameDataLoader.getMapStats().findByFileName(startupDestination.mapFileName);
+    const std::string startWorldId = pStartMap != nullptr ? pStartMap->worldId : std::string();
 
     for (const Character &character : characters)
     {
@@ -9982,6 +10274,7 @@ bool GameApplication::startNewSessionFromCharacterCreation(
                 m_gameDataLoader.getItemTable(),
                 m_gameDataLoader.getStandardItemEnchantTable(),
                 m_gameDataLoader.getSpecialItemEnchantTable(),
+                startWorldId,
                 preserveDebugLoadout));
     }
 
@@ -10063,11 +10356,26 @@ void GameApplication::reportQuickSaveStatus(const std::string &status)
 
 void GameApplication::renderFrame(int width, int height, float mouseWheelDelta, float deltaSeconds)
 {
+    deltaSeconds *= m_settings.timeScale;
     if (m_loadingOverlayReadyToDismiss)
     {
         cancelLoadingOverlay();
     }
     m_cinematicGrading.resetViews();
+    m_outdoorGameView.modelRenderer().setCreatureContour(m_settings.creatureOutlines);
+    m_indoorRenderer.modelRenderer().setCreatureContour(m_settings.creatureOutlines);
+    if (m_pMapSceneRuntime == nullptr)
+    {
+        m_actorModelPreview.bindScene(nullptr, nullptr);
+    }
+    else if (m_pMapSceneRuntime->kind() == SceneKind::Outdoor)
+    {
+        m_actorModelPreview.bindScene(&m_outdoorGameView.worldFxSystem(), &m_outdoorGameView.modelRenderer());
+    }
+    else
+    {
+        m_actorModelPreview.bindScene(&m_indoorRenderer.worldFxSystem(), &m_indoorRenderer.modelRenderer());
+    }
     const bool gameplayLoaded =
         !m_loadingOverlayActive
         && m_screenManager.activeScreen() == nullptr
@@ -10267,8 +10575,15 @@ void GameApplication::renderFrame(int width, int height, float mouseWheelDelta, 
                 backgroundInput.screenWidth = width;
                 backgroundInput.screenHeight = height;
                 m_gameSession.bindCurrentGameplayInputFrame(&backgroundInput);
+                // A paused world shown before its first gameplay frame (a startup screen) still shows its actor
+                // models, never their sprites; later it keeps the poses of its last gameplay frame.
+                if (m_pMapSceneRuntime != nullptr && !activeWorldFxSystem().actorModelsConfigured()
+                    && !syncActorModels(*pWorldRuntime, 0.0f, 0.0f))
+                {
+                    return;
+                }
                 m_cinematicGrading.begin(width, height, m_settings.cinematicGrading, m_settings.cinematicStrength,
-                    m_settings.ambientOcclusion, m_settings.ambientOcclusionStrength);
+                    m_settings.ambientOcclusion, m_settings.ambientOcclusionStrength, m_settings.sharpening);
                 pWorldRuntime->renderWorld(width, height, backgroundInput, 0.0f);
                 m_cinematicGrading.submit();
                 m_gameSession.renderGameplayUi(width, height);
@@ -10493,29 +10808,14 @@ void GameApplication::renderFrame(int width, int height, float mouseWheelDelta, 
             }
         }
         worldFx.setCorpseSatchels(m_settings.corpseStyle == CorpseStyle::Satchel);
+        worldFx.setProjectileFlightEffects(m_settings.projectileStyle == ProjectileStyle::Enhanced);
         // Before the models: a corpse whose body is gone has no actor model to update.
         worldFx.syncCorpseSatchels(*pWorldRuntime, gameplayWorldPaused ? 0.0f : scaledGameplayDeltaSeconds);
-        if (m_settings.actorModels)
+        worldFx.syncShieldDomes(*pWorldRuntime, gameplayWorldPaused ? 0.0f : scaledGameplayDeltaSeconds);
+        if (!syncActorModels(*pWorldRuntime, gameplayWorldPaused ? 0.0f : scaledGameplayDeltaSeconds,
+                scaledGameplayDeltaSeconds))
         {
-            std::string error;
-            const std::string manifestPath = m_settings.actorModelsManifest.empty()
-                ? "worlds/" + m_activeWorldManifest.id + "/models/actors.yml"
-                : m_settings.actorModelsManifest;
-            const std::optional<MapAssetInfo> &map = m_gameDataLoader.getSelectedMap();
-            const std::optional<ActorPreviewBillboardSet> *pActors = map
-                ? (m_pMapSceneRuntime->kind() == SceneKind::Outdoor
-                    ? &map->outdoorActorPreviewBillboardSet : &map->indoorActorPreviewBillboardSet) : nullptr;
-            const SpriteFrameTable *pFrames = pActors != nullptr && *pActors ? &(*pActors)->spriteFrameTable : nullptr;
-            if (!worldFx.configureActorModels(*m_pAssetFileSystem,
-                    manifestPath,
-                    m_gameDataLoader.getMonsterTable(), pFrames, error))
-            {
-                std::cerr << "Actor model load failed: " << error << '\n';
-                requestApplicationQuit();
-                return;
-            }
-            worldFx.setActorAnimationLod(m_settings.modelLods);
-            worldFx.syncActorModels(*pWorldRuntime, gameplayWorldPaused ? 0.0f : scaledGameplayDeltaSeconds);
+            return;
         }
         m_gameSession.gameplayFxService().consumePendingWorldFxRequests(
             pWorldRuntime->eventRuntimeState(),
@@ -10526,7 +10826,7 @@ void GameApplication::renderFrame(int width, int height, float mouseWheelDelta, 
         const uint64_t renderWorldBeginTickCount = collectFrameDiagnostics ? SDL_GetTicksNS() : 0;
         const float worldRenderDeltaSeconds = gameplayWorldPaused ? deltaSeconds : scaledGameplayDeltaSeconds;
         m_cinematicGrading.begin(width, height, m_settings.cinematicGrading, m_settings.cinematicStrength,
-            m_settings.ambientOcclusion, m_settings.ambientOcclusionStrength);
+            m_settings.ambientOcclusion, m_settings.ambientOcclusionStrength, m_settings.sharpening);
         pWorldRuntime->renderWorld(width, height, m_gameInputSystem.frame(), worldRenderDeltaSeconds);
         m_cinematicGrading.submit();
         recordFrameDiagnostics(m_framePerformanceDiagnostics.renderWorldNanoseconds, renderWorldBeginTickCount);
@@ -11354,7 +11654,6 @@ bool GameApplication::processPendingArcomageGame()
         winGoldReward,
         SDL_GetTicks()
     );
-    pScreen->setFontSettings(m_settings.fonts);
     m_screenManager.setActiveScreen(std::move(pScreen));
 
     return true;
@@ -11382,7 +11681,6 @@ bool GameApplication::processPendingPartyDefeat()
         PartyDefeatCutsceneDirectory,
         cutsceneStem,
         m_screenManager.currentMode());
-    pScreen->setFontSettings(m_settings.fonts);
     m_screenManager.setActiveScreen(std::move(pScreen));
     return true;
 }
@@ -11472,7 +11770,6 @@ bool GameApplication::processPendingWinGame()
             *m_pAssetFileSystem,
             buildWinGameCertificate(),
             m_screenManager.currentMode());
-        pScreen->setFontSettings(m_settings.fonts);
         m_screenManager.setActiveScreen(std::move(pScreen));
         m_pendingWinGameCertificateAfterMovie = false;
         return true;
@@ -11484,7 +11781,6 @@ bool GameApplication::processPendingWinGame()
         EventMovieCutsceneDirectory,
         WinGameCutsceneStem,
         m_screenManager.currentMode());
-    pScreen->setFontSettings(m_settings.fonts);
     m_screenManager.setActiveScreen(std::move(pScreen));
     return true;
 }
@@ -11524,7 +11820,6 @@ bool GameApplication::processPendingEventMovie()
         EventMovieCutsceneDirectory,
         movieStem,
         m_screenManager.currentMode());
-    pScreen->setFontSettings(m_settings.fonts);
     m_screenManager.setActiveScreen(std::move(pScreen));
     return true;
 }
@@ -11626,7 +11921,6 @@ void GameApplication::handleCompletedEventMovieScreen()
             *m_pAssetFileSystem,
             buildWinGameCertificate(),
             pCutsceneScreen->mode());
-        pScreen->setFontSettings(m_settings.fonts);
         m_screenManager.setActiveScreen(std::move(pScreen));
         m_pendingWinGameCertificateAfterMovie = false;
         return;

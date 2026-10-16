@@ -119,5 +119,6 @@ enum class SoundId : uint32_t
     DragonBreath = 18080,
     DragonBreathImpact = 18081,
     Quest = 20001,
+    ShootBlasterScatter = 44587,
 };
 }

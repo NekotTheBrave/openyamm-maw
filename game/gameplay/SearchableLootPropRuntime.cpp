@@ -87,6 +87,7 @@ SearchableLootPropResult searchLootProp(
     const StandardItemEnchantTable &standardItemEnchantTable,
     const SpecialItemEnchantTable &specialItemEnchantTable,
     Party &party,
+    const std::string &worldId,
     std::mt19937 &rng)
 {
     if (state.searchedSourceIds.contains(source.sourceId))
@@ -106,11 +107,13 @@ SearchableLootPropResult searchLootProp(
             standardItemEnchantTable,
             specialItemEnchantTable,
             ItemGenerationRequest{
-                std::clamp(
+                .treasureLevel = std::clamp(
                     source.randomTreasureLevel,
                     MinimumGeneratedTreasureLevel,
                     MaximumGeneratedTreasureLevel),
-                ItemGenerationMode::ChestLoot},
+                .mode = ItemGenerationMode::ChestLoot,
+                .worldId = worldId,
+            },
             &party,
             rng);
     }

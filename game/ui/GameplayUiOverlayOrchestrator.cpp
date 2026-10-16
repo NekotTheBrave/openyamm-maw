@@ -4,6 +4,7 @@
 #include "game/gameplay/GameplayInputFrame.h"
 #include "game/gameplay/GameplayOverlayInputController.h"
 #include "game/gameplay/GameplayPartyOverlayInputController.h"
+#include "game/ui/GameplayAlchemyBenchRenderer.h"
 #include "game/ui/GameplayDebugOverlayRenderer.h"
 #include "game/ui/GameplayDialogueRenderer.h"
 #include "game/ui/GameplayHudOverlaySupport.h"
@@ -200,6 +201,7 @@ void GameplayUiOverlayOrchestrator::renderStandardOverlays(
         if (config.renderCharacterAboveHud)
         {
             GameplayPartyOverlayRenderer::renderCharacterOverlay(overlayContext, width, height, true);
+            GameplayAlchemyBenchRenderer::render(overlayContext, width, height);
         }
         recordStage(&GameplayUiOverlayFramePerformanceDiagnostics::characterAboveNanoseconds);
 

@@ -184,17 +184,17 @@ settings:
   name: Terrain details
   type: toggle
   desc: Draw extra terrain decorations where available.
-- id: sky_style
+- id: projectile_style
   section: video
   group: World detail
-  name: Sky
+  name: Projectiles
   type: select
   options:
   - - enhanced
     - Enhanced
   - - classic
     - Classic
-  desc: Enhanced adds a living sky and fades the distance into it; Classic keeps the original.
+  desc: Enhanced gives spell bolts glowing heads and flowing trails; Classic keeps the original.
 - id: weather_quality
   section: video
   group: World detail
@@ -216,18 +216,11 @@ settings:
   name: Wet surfaces
   type: toggle
   desc: Rain darkens the ground and buildings, which dry slowly after it stops.
-- id: water_shader
-  section: video
-  group: Water
-  name: Enhanced water
-  type: toggle
-  desc: Animate water waves with sunlight highlights and angle-dependent reflections.
 - id: water_reflections
   section: video
   group: Water
   name: Scenery reflections
   type: toggle
-  depends: water_shader
   desc: Reflect the sky, ground and buildings in visible water. Requires extra rendering.
 - id: water_reflection_size
   section: video
@@ -259,14 +252,12 @@ settings:
   group: Water
   name: Movement ripples
   type: toggle
-  depends: water_shader
   desc: Small ripples from creatures moving on water.
 - id: rain_ripples
   section: video
   group: Water
   name: Rain ripples
   type: toggle
-  depends: water_shader
   desc: Raindrop rings on still water while it rains.
 - id: ambient_occlusion
   section: video
@@ -300,6 +291,15 @@ settings:
   unit: '%'
   depends: cinematic_grading
   desc: Adjust the strength of cinematic colour.
+- id: sharpening
+  section: video
+  group: Colour & effects
+  name: Sharpening
+  type: range
+  min: 0
+  max: 100
+  unit: '%'
+  desc: Sharpen the 3D view; the interface is unaffected. Zero turns it off.
 - id: colored_lights
   section: video
   group: Colour & effects
@@ -324,15 +324,41 @@ settings:
   name: Melee blood effects
   type: toggle
   desc: Add blood effects when melee attacks connect.
+- id: melee_hit_effects
+  section: video
+  group: Colour & effects
+  name: Melee hit effects
+  type: toggle
+  desc: Show a slash, thrust or crush where melee attacks connect.
+- id: melee_hit_feedback
+  section: video
+  group: Colour & effects
+  name: Melee impact feedback
+  type: toggle
+  desc: Play impact sounds by what was struck and briefly hold the struck creature.
+- id: melee_hit_flash
+  section: video
+  group: Colour & effects
+  name: Melee hit flash
+  type: toggle
+  desc: Briefly brighten a creature struck in melee.
+- id: melee_camera_kick
+  section: video
+  group: Colour & effects
+  name: Melee camera kick
+  type: toggle
+  desc: Nudge the view along the blow on critical hits and kills.
 - id: corpses
   section: video
   group: Colour & effects
   name: Slain creatures
   type: select
   options:
+  - - satchel
+    - Loot satchel
   - - keep
     - Keep bodies
-  desc: Slain creatures keep their bodies, as in the original games.
+  desc: A satchel replaces each body once it sinks away; keeping bodies costs more GPU time.
 - id: sound_volume
   section: audio
   group: Volume

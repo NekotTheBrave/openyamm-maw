@@ -1,0 +1,133 @@
+{
+  "gpu": "NVIDIA RTX 3060 Ti 8 GiB",
+  "driver": "595.91.07",
+  "renderer": "OpenGL",
+  "condition": "Release, loose x2 assets, warm OS filesystem cache, five-map MM6 route",
+  "runs": [
+    {
+      "label": "loading-before-route",
+      "binary_sha256": "1d324bdd12dd089639b02252ddf0412569662ae068ee548ea738c19a616ca2fd",
+      "source_save_sha256": "b22b2540c7a68345ed415c91d69143f3f1cccc5eb3e8a43fe574dde2c4773c87",
+      "startup_seconds": 22.81991091000009,
+      "settings_sha256": "42e60285b28405e86341b1af1db1da751aeda93753b20b2f92791c69d4f821e1",
+      "transition_frame_ms": [
+        3196.962,
+        5991.21,
+        3006.695,
+        5981.549
+      ],
+      "gameplay_hitches_ms": [
+        80.425,
+        54.158,
+        30.449,
+        33.259,
+        69.724,
+        139.105,
+        20.474,
+        153.656
+      ],
+      "readiness": []
+    },
+    {
+      "label": "loading-after-route",
+      "binary_sha256": "c3ee5b5622f18649138f85b7479a6f2348c8fc995c6ea2d57a92a77c1da9fc58",
+      "source_save_sha256": "b22b2540c7a68345ed415c91d69143f3f1cccc5eb3e8a43fe574dde2c4773c87",
+      "startup_seconds": 4.704853312000068,
+      "settings_sha256": "9e13550398cfc5a53167569aaf7b5767c0890dc7ba34f1fa3cf93d62ee81b69a",
+      "transition_frame_ms": [
+        1061.505,
+        1476.735,
+        887.631,
+        1538.536
+      ],
+      "gameplay_hitches_ms": [
+        30.485
+      ],
+      "readiness": [
+        "[LoadingReadiness] warm_ms=164.27 gpu_readback=1 atlas_uploaded_pages=15 atlas_resident_pages=15 atlas_resident_bytes=469938238 atlas_peak_preparation_bytes=264137144 native_uploaded_textures=294 native_resident_bytes=116201588 atlas_peak_preparation_jobs=4",
+        "[LoadingReadiness] warm_ms=15.2348 gpu_readback=1 atlas_uploaded_pages=5 atlas_resident_pages=20 atlas_resident_bytes=679759694 atlas_peak_preparation_bytes=206862642 native_uploaded_textures=57 native_resident_bytes=124998048 atlas_peak_preparation_jobs=2",
+        "[LoadingReadiness] warm_ms=19.7188 gpu_readback=1 atlas_uploaded_pages=0 atlas_resident_pages=20 atlas_resident_bytes=679759694 atlas_peak_preparation_bytes=0 native_uploaded_textures=0 native_resident_bytes=124998048 atlas_peak_preparation_jobs=0",
+        "[LoadingReadiness] warm_ms=15.962 gpu_readback=1 atlas_uploaded_pages=0 atlas_resident_pages=20 atlas_resident_bytes=679759694 atlas_peak_preparation_bytes=0 native_uploaded_textures=0 native_resident_bytes=124998048 atlas_peak_preparation_jobs=0",
+        "[LoadingReadiness] warm_ms=21.7786 gpu_readback=1 atlas_uploaded_pages=0 atlas_resident_pages=20 atlas_resident_bytes=679759694 atlas_peak_preparation_bytes=0 native_uploaded_textures=0 native_resident_bytes=124998048 atlas_peak_preparation_jobs=0"
+      ]
+    },
+    {
+      "label": "default_workers2",
+      "binary_sha256": "4799602759426dd698ca4f4d85c3535608060de6f9b5027918f21f2e89743323",
+      "source_save_sha256": "b22b2540c7a68345ed415c91d69143f3f1cccc5eb3e8a43fe574dde2c4773c87",
+      "settings_sha256": "106c826628ede384ecd66ae1278c4b3d5599f81ecda856ebff40108f177b668d",
+      "startup_seconds": 4.60470829399992,
+      "transition_frame_ms": [
+        1087.209,
+        1583.545,
+        867.369,
+        1420.867
+      ],
+      "gameplay_hitches_ms": [
+        20.287
+      ],
+      "readiness": [
+        "[LoadingReadiness] warm_ms=106.203 gpu_readback=1 atlas_uploaded_pages=15 atlas_resident_pages=15 atlas_resident_bytes=469938238 atlas_peak_preparation_bytes=186453148 native_uploaded_textures=294 native_resident_bytes=116201588 atlas_peak_preparation_jobs=2",
+        "[LoadingReadiness] warm_ms=15.2052 gpu_readback=1 atlas_uploaded_pages=5 atlas_resident_pages=20 atlas_resident_bytes=679759694 atlas_peak_preparation_bytes=206862642 native_uploaded_textures=57 native_resident_bytes=124998048 atlas_peak_preparation_jobs=2",
+        "[LoadingReadiness] warm_ms=20.9868 gpu_readback=1 atlas_uploaded_pages=0 atlas_resident_pages=20 atlas_resident_bytes=679759694 atlas_peak_preparation_bytes=0 native_uploaded_textures=0 native_resident_bytes=124998048 atlas_peak_preparation_jobs=0",
+        "[LoadingReadiness] warm_ms=15.4616 gpu_readback=1 atlas_uploaded_pages=0 atlas_resident_pages=20 atlas_resident_bytes=679759694 atlas_peak_preparation_bytes=0 native_uploaded_textures=0 native_resident_bytes=124998048 atlas_peak_preparation_jobs=0",
+        "[LoadingReadiness] warm_ms=20.0676 gpu_readback=1 atlas_uploaded_pages=0 atlas_resident_pages=20 atlas_resident_bytes=679759694 atlas_peak_preparation_bytes=0 native_uploaded_textures=0 native_resident_bytes=124998048 atlas_peak_preparation_jobs=0"
+      ]
+    },
+    {
+      "label": "workers8",
+      "binary_sha256": "53ca660f66327ec73ce4f746325a494524017f9609610808ab2737ad8a6733d0",
+      "source_save_sha256": "b22b2540c7a68345ed415c91d69143f3f1cccc5eb3e8a43fe574dde2c4773c87",
+      "settings_sha256": "c896ad105866592ad416142432c71ad9a8a5843e9619040e29faba0001e5884c",
+      "startup_seconds": 4.804670233000252,
+      "transition_frame_ms": [
+        1068.716,
+        1502.063,
+        883.404,
+        1438.11
+      ],
+      "gameplay_hitches_ms": [
+        57.526
+      ],
+      "readiness": [
+        "[LoadingReadiness] warm_ms=171.186 gpu_readback=1 atlas_uploaded_pages=15 atlas_resident_pages=15 atlas_resident_bytes=469938238 atlas_peak_preparation_bytes=264137144 native_uploaded_textures=294 native_resident_bytes=116201588 atlas_peak_preparation_jobs=4",
+        "[LoadingReadiness] warm_ms=15.5663 gpu_readback=1 atlas_uploaded_pages=5 atlas_resident_pages=20 atlas_resident_bytes=679759694 atlas_peak_preparation_bytes=206862642 native_uploaded_textures=57 native_resident_bytes=124998048 atlas_peak_preparation_jobs=2",
+        "[LoadingReadiness] warm_ms=19.8985 gpu_readback=1 atlas_uploaded_pages=0 atlas_resident_pages=20 atlas_resident_bytes=679759694 atlas_peak_preparation_bytes=0 native_uploaded_textures=0 native_resident_bytes=124998048 atlas_peak_preparation_jobs=0",
+        "[LoadingReadiness] warm_ms=15.6348 gpu_readback=1 atlas_uploaded_pages=0 atlas_resident_pages=20 atlas_resident_bytes=679759694 atlas_peak_preparation_bytes=0 native_uploaded_textures=0 native_resident_bytes=124998048 atlas_peak_preparation_jobs=0",
+        "[LoadingReadiness] warm_ms=21.1075 gpu_readback=1 atlas_uploaded_pages=0 atlas_resident_pages=20 atlas_resident_bytes=679759694 atlas_peak_preparation_bytes=0 native_uploaded_textures=0 native_resident_bytes=124998048 atlas_peak_preparation_jobs=0"
+      ]
+    },
+    {
+      "label": "atlas_retention_128MiB",
+      "binary_sha256": "b0891445ef1951e6b4f2aae208e57c6a40c115fb9751a578bcd502d5298ae7f6",
+      "source_save_sha256": "b22b2540c7a68345ed415c91d69143f3f1cccc5eb3e8a43fe574dde2c4773c87",
+      "settings_sha256": "23c739dbba5009c4fa4bf83ece817e6414a86ed24d199b786f60eae156e2dec3",
+      "startup_seconds": 4.605040391999864,
+      "transition_frame_ms": [
+        1097.966,
+        1822.078,
+        912.737,
+        1912.944
+      ],
+      "gameplay_hitches_ms": [
+        16.636,
+        22.197
+      ],
+      "readiness": [
+        "[LoadingReadiness] warm_ms=111.805 gpu_readback=1 atlas_uploaded_pages=15 atlas_resident_pages=15 atlas_resident_bytes=469938238 atlas_peak_preparation_bytes=264137144 native_uploaded_textures=294 native_resident_bytes=116201588 atlas_peak_preparation_jobs=4",
+        "[LoadingReadiness] warm_ms=15.2729 gpu_readback=1 atlas_uploaded_pages=5 atlas_resident_pages=9 atlas_resident_bytes=324166258 atlas_peak_preparation_bytes=206862642 native_uploaded_textures=57 native_resident_bytes=124998048 atlas_peak_preparation_jobs=2",
+        "[LoadingReadiness] warm_ms=41.4742 gpu_readback=1 atlas_uploaded_pages=15 atlas_resident_pages=15 atlas_resident_bytes=469938238 atlas_peak_preparation_bytes=264137144 native_uploaded_textures=0 native_resident_bytes=124998048 atlas_peak_preparation_jobs=4",
+        "[LoadingReadiness] warm_ms=13.7254 gpu_readback=1 atlas_uploaded_pages=5 atlas_resident_pages=9 atlas_resident_bytes=324166258 atlas_peak_preparation_bytes=206862642 native_uploaded_textures=0 native_resident_bytes=124998048 atlas_peak_preparation_jobs=2",
+        "[LoadingReadiness] warm_ms=44.6604 gpu_readback=1 atlas_uploaded_pages=15 atlas_resident_pages=15 atlas_resident_bytes=469938238 atlas_peak_preparation_bytes=264137144 native_uploaded_textures=0 native_resident_bytes=124998048 atlas_peak_preparation_jobs=4"
+      ]
+    }
+  ],
+  "final_normal_build_smoke": {
+    "binary_sha256": "d5ea6a7abef3520c0114a1092094bd9b79cf44b1de101d3b214c7c3d5c3b2ded",
+    "startup_seconds": 4.404398015999504,
+    "exit_code": 0,
+    "gameplay_hitches_ms": [
+      19.444
+    ]
+  }
+}

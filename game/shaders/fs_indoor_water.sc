@@ -2,6 +2,7 @@ $input v_worldPosition, v_worldNormal, v_texcoord0, v_texcoord1, v_color0
 
 #include "common.sh"
 #include "water_surface.sh"
+#include "liquid_surface.sh"
 #include "world_clip.sh"
 
 uniform vec4 u_indoorLightPositions[12];
@@ -16,18 +17,32 @@ void main()
     vec3 tangent = abs(baseNormal.z) > 0.99 ? vec3(1.0, 0.0, 0.0)
         : normalize(cross(vec3(0.0, 0.0, 1.0), baseNormal));
     vec3 bitangent = cross(baseNormal, tangent);
-    vec2 uv = vec2(dot(v_worldPosition, tangent), dot(v_worldPosition, bitangent)) / 768.0;
+    vec2 faceXy = vec2(dot(v_worldPosition, tangent), dot(v_worldPosition, bitangent));
+    vec2 uv = faceXy / 768.0;
     uv += v_texcoord0 * u_waterParams.x;
     float falling = dot(v_texcoord0, v_texcoord0) > 0.000001 ? 1.0 - abs(baseNormal.z) : 0.0;
+    bool lava = v_texcoord1.z > 1.5;
+    bool tar = !lava && v_texcoord1.z > 0.5;
+    bool floorFace = abs(baseNormal.z) >= 0.99;
     if (falling > 0.01)
     {
         uv *= vec2(4.0, 0.5);
     }
-    else if (abs(baseNormal.z) < 0.99)
+    else if (!floorFace)
     {
         uv *= 3.0;
     }
-    vec3 normal = waterWaveNormal(uv, baseNormal, tangent, bitangent, 0.95);
+    else if (tar)
+    {
+        // Tar heaves in broad, slow, low swells.
+        uv *= 0.5;
+    }
+    vec3 normal = waterWaveNormal(uv, baseNormal, tangent, bitangent, tar ? 0.26 : 0.95);
+    if (tar && floorFace)
+    {
+        vec3 bubble = tarBubble(v_worldPosition.xy, u_waterParams.x);
+        normal = normalize(normal - (tangent * bubble.x + bitangent * bubble.y));
+    }
 #if WATER_MOVEMENT_RIPPLES
     float movementSheen;
     normal = waterMovementNormal(v_worldPosition, normal, baseNormal, movementSheen);
@@ -60,24 +75,42 @@ void main()
         float halfLength = dot(halfDirection, halfDirection);
         if (halfLength > 0.0001)
         {
-            float highlight = pow(max(dot(normal, halfDirection * inversesqrt(halfLength)), 0.0), 96.0);
+            float specular = max(dot(normal, halfDirection * inversesqrt(halfLength)), 0.0);
+            // Tar's glossy skin gives a tighter, brighter glint.
+            float highlight = tar ? pow(specular, 220.0) * 1.4 : pow(specular, 96.0);
             highlights += radiance * highlight * incidence;
         }
     }
+    vec3 illumination = clamp(lighting, vec3_splat(0.0), vec3_splat(2.0));
+    if (lava)
+    {
+        // Self-lit whatever the room light. A face's authored flow (water uv units per second) carries the lava.
+        // Dungeon pools are small: a finer pattern than outdoor lava fields.
+        vec2 lavaUv = faceXy / 900.0;
+        if (falling > 0.01)
+        {
+            lavaUv *= vec2(1.5, 0.5);
+        }
+        float heat = lavaHeat(lavaUv, v_texcoord0 * (768.0 / 900.0 * u_waterParams.x), v_worldPosition.xy, floorFace,
+            u_waterParams.x);
+        gl_FragColor = vec4(lavaColor(heat, v_color0.rgb), 1.0);
+        return;
+    }
     vec3 tint = v_color0.rgb;
-    if (u_waterParams.y < 0.5)
+    if (u_waterParams.y < 0.5 && !tar)
     {
         // Waves still scatter room light on walls and pools without a planar reflection.
         tint = mix(tint, vec3(0.35, 0.55, 0.65), waveScatter);
     }
-    vec3 illumination = clamp(lighting, vec3_splat(0.0), vec3_splat(2.0));
     vec3 waterColor = tint * illumination;
     // A dungeon has no daylight sky response; unreflected pools retain their room illumination.
     // Stronger pond ripples still fit the existing reflection guard band and scissor budget.
     vec2 distortion = clamp(normal.xy * 0.05, vec2_splat(-0.014), vec2_splat(0.014));
     vec3 reflected = waterReflection(v_worldPosition, distortion, waterColor);
-    vec3 color = mix(waterColor, reflected, waterFresnel(normal, viewDirection)) + highlights;
-    if (falling > 0.01)
+    // Glossy tar reflects a little more head-on than water does.
+    float fresnel = waterFresnel(normal, viewDirection);
+    vec3 color = mix(waterColor, reflected, tar ? 0.07 + 0.93 * fresnel : fresnel) + highlights;
+    if (falling > 0.01 && !tar)
     {
         color = mix(color, vec3(0.85, 0.92, 1.0) * illumination, waterFlowFoam(uv, falling));
     }

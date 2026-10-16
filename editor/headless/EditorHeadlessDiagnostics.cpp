@@ -3169,7 +3169,7 @@ bool verifyEditorWorldOutdoorTerrainLoad(
             return false;
         }
 
-        const std::optional<std::string> texturePath = OpenYAMM::Engine::findImageAssetPath(
+        const std::optional<std::string> texturePath = OpenYAMM::Engine::findCookedOrImageAssetPath(
             assetFileSystem,
             "Data/bitmaps",
             textureName,

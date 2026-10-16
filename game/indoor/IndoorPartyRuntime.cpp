@@ -77,6 +77,26 @@ std::string indoorCollisionTracePoint(const bx::Vec3 &point)
     out << "(" << point.x << "," << point.y << "," << point.z << ")";
     return out.str();
 }
+
+void recordSteppedFloorFace(std::vector<size_t> &faces, const IndoorMoveState &state)
+{
+    // Bounded in case nothing consumes the faces; a frame crosses only a few.
+    constexpr size_t MaximumSteppedFloorFaces = 16;
+
+    if (!state.grounded
+        || state.supportFaceIndex == static_cast<size_t>(-1)
+        || (!faces.empty() && faces.back() == state.supportFaceIndex))
+    {
+        return;
+    }
+
+    if (faces.size() >= MaximumSteppedFloorFaces)
+    {
+        faces.erase(faces.begin());
+    }
+
+    faces.push_back(state.supportFaceIndex);
+}
 }
 
 IndoorPartyRuntime::IndoorPartyRuntime(IndoorMovementController movementController, const ItemTable &itemTable)
@@ -151,7 +171,7 @@ void IndoorPartyRuntime::update(
     float desiredVelocityX,
     float desiredVelocityY,
     bool jumpRequested,
-    bool running,
+    bool runningMovement,
     float deltaSeconds,
     bool turnBasedMovementStep,
     bool turnBasedPhysicsStep)
@@ -165,7 +185,8 @@ void IndoorPartyRuntime::update(
 
     if (!turnBasedPhysicsStep)
     {
-        m_party.updateRecovery(deltaSeconds, running ? 0.5f : 1.0f);
+        // Running halves recovery speed, but only while the party actually runs.
+        m_party.updateRecovery(deltaSeconds, runningMovement ? 0.5f : 1.0f);
         m_party.advanceTimedStates(deltaSeconds * GameSecondsPerRealSecond);
     }
 
@@ -224,6 +245,7 @@ void IndoorPartyRuntime::update(
         {
             landingFallDistance = std::max(landingFallDistance, m_movementState.fallDistance);
         }
+        recordSteppedFloorFace(m_steppedFloorFaces, m_movementState);
         if (m_collisionTraceEnabled)
         {
             const IndoorCollisionTraceInfo traceInfo =
@@ -407,6 +429,12 @@ const IndoorMoveState &IndoorPartyRuntime::movementState() const
     return m_movementState;
 }
 
+void IndoorPartyRuntime::takeSteppedFloorFaces(std::vector<size_t> &faces)
+{
+    faces.clear();
+    std::swap(faces, m_steppedFloorFaces);
+}
+
 const Party &IndoorPartyRuntime::party() const
 {
     return m_party;
@@ -458,6 +486,7 @@ IndoorPartyRuntime::Snapshot IndoorPartyRuntime::snapshot() const
 void IndoorPartyRuntime::restoreSnapshot(const Snapshot &snapshot)
 {
     m_movementState = snapshot.movementState;
+    m_steppedFloorFaces.clear();
     m_movementAccumulatorSeconds = snapshot.movementAccumulatorSeconds;
     m_pendingJumpRequested = snapshot.pendingJumpRequested;
     m_pendingImpulseVelocityX = snapshot.pendingImpulseVelocityX;

@@ -3,6 +3,7 @@
 #include "game/items/ItemGenerator.h"
 
 #include <cstdint>
+#include <string>
 #include <functional>
 #include <optional>
 
@@ -25,5 +26,6 @@ std::optional<GameplayTreasureSpawnResult> generateTreasureSpawnItem(
     const StandardItemEnchantTable &standardItemEnchantTable,
     const SpecialItemEnchantTable &specialItemEnchantTable,
     Party *pParty,
+    const std::string &worldId,
     const std::function<bool(const ItemDefinition &)> &filter = {});
 }

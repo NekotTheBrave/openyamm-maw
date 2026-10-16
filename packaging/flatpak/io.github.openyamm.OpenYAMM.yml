@@ -35,7 +35,6 @@ modules:
       - test -f /app/share/openyamm/assets/worlds/mm6.zip
       - test -f /app/share/openyamm/assets/worlds/mm7.zip
       - test -f /app/share/openyamm/assets/worlds/mm8.zip
-      - test -f /app/share/openyamm/assets/worlds/mmmerge.zip
     sources:
       - type: dir
         path: ../../build/flatpak/source

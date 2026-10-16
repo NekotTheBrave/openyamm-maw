@@ -27,6 +27,8 @@
 #include <limits>
 #include <optional>
 #include <random>
+#include <string_view>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -721,6 +723,55 @@ std::optional<std::pair<uint8_t, uint8_t>> findFirstFreeInventorySlot(
     }
 
     return std::nullopt;
+}
+
+// Sort group of an item: weapons, armour pieces, jewelry, then consumables and the rest.
+int inventorySortGroup(const ItemDefinition *pItemDefinition)
+{
+    static const std::array<std::string_view, 21> EquipStatOrder = {
+        "Weapon", "Weapon1or2", "Weapon2", "Bow", "Missile", "WeaponW",
+        "Armor", "Shield", "Helm", "Cloak", "Belt", "Gauntlets", "Boots", "Amulet", "Ring",
+        "Bottle", "Reagent", "Herb", "Gem", "Sscroll", "Mscroll"};
+
+    if (pItemDefinition == nullptr)
+    {
+        return static_cast<int>(EquipStatOrder.size()) + 1;
+    }
+
+    for (size_t index = 0; index < EquipStatOrder.size(); ++index)
+    {
+        if (pItemDefinition->equipStat == EquipStatOrder[index])
+        {
+            return static_cast<int>(index);
+        }
+    }
+
+    return static_cast<int>(EquipStatOrder.size());
+}
+
+// Repacks items column by column in the given order; fails when any item no longer fits.
+std::optional<std::vector<InventoryItem>> packInventoryItems(const std::vector<InventoryItem> &orderedItems)
+{
+    std::vector<InventoryItem> packed;
+    packed.reserve(orderedItems.size());
+
+    for (const InventoryItem &item : orderedItems)
+    {
+        const std::optional<std::pair<uint8_t, uint8_t>> placement =
+            findFirstFreeInventorySlot(packed, item.width, item.height);
+
+        if (!placement)
+        {
+            return std::nullopt;
+        }
+
+        InventoryItem placedItem = item;
+        placedItem.gridX = placement->first;
+        placedItem.gridY = placement->second;
+        packed.push_back(placedItem);
+    }
+
+    return packed;
 }
 
 bool inventoryItemContainsCell(const InventoryItem &item, uint8_t gridX, uint8_t gridY)
@@ -2436,6 +2487,7 @@ Party::Snapshot Party::snapshot() const
     snapshot.arcomageWinCount = m_arcomageWinCount;
     snapshot.arcomageLossCount = m_arcomageLossCount;
     snapshot.everOwnedItemIds = m_everOwnedItemIds;
+    snapshot.explosiveMixes = m_explosiveMixes;
     snapshot.continentReputations = m_continentReputations;
     snapshot.questBits = m_questBits;
     snapshot.eventVariables = m_eventVariables;
@@ -2483,6 +2535,7 @@ void Party::restoreSnapshot(const Snapshot &snapshot)
     m_arcomageWinCount = snapshot.arcomageWinCount;
     m_arcomageLossCount = snapshot.arcomageLossCount;
     m_everOwnedItemIds = snapshot.everOwnedItemIds;
+    m_explosiveMixes = snapshot.explosiveMixes;
     m_continentReputations = snapshot.continentReputations;
     m_questBits = snapshot.questBits;
     m_eventVariables = snapshot.eventVariables;
@@ -2553,6 +2606,7 @@ void Party::seed(const PartySeed &seed)
     m_itemWeeklyEffectSequence = 0;
     m_foundArtifactItems.clear();
     m_everOwnedItemIds.clear();
+    m_explosiveMixes.clear();
     m_continentReputations.clear();
     m_questBits.clear();
     m_eventVariables.clear();
@@ -4420,6 +4474,16 @@ bool Party::hasEverOwnedItem(uint32_t objectDescriptionId) const
     return objectDescriptionId != 0 && m_everOwnedItemIds.contains(objectDescriptionId);
 }
 
+void Party::recordExplosiveMix(uint32_t targetItemId, uint32_t heldItemId)
+{
+    m_explosiveMixes.insert((static_cast<uint64_t>(targetItemId) << 32) | heldItemId);
+}
+
+bool Party::isExplosiveMixKnown(uint32_t targetItemId, uint32_t heldItemId) const
+{
+    return m_explosiveMixes.contains((static_cast<uint64_t>(targetItemId) << 32) | heldItemId);
+}
+
 void Party::setHeldItemForQueries(const InventoryItem &item)
 {
     m_heldItemIdForQueries = item.objectDescriptionId;
@@ -4524,6 +4588,79 @@ bool Party::tryAutoPlaceItemInMemberInventory(size_t memberIndex, const Inventor
 
     recordEverOwnedItemIfRelevant(item);
     m_lastStatus = "item moved";
+    return true;
+}
+
+bool Party::sortMemberInventory(size_t memberIndex)
+{
+    Character *pMember = member(memberIndex);
+
+    if (pMember == nullptr)
+    {
+        return false;
+    }
+
+    std::vector<InventoryItem> items = pMember->inventory;
+
+    for (InventoryItem &item : items)
+    {
+        item.width = std::max<uint8_t>(1, item.width);
+        item.height = std::max<uint8_t>(1, item.height);
+    }
+
+    const auto itemDefinition =
+        [this](const InventoryItem &item) -> const ItemDefinition *
+        {
+            return m_pItemTable != nullptr ? m_pItemTable->get(item.objectDescriptionId) : nullptr;
+        };
+    const auto sizeAndIdentityKey =
+        [](const InventoryItem &item)
+        {
+            return std::tuple(-int(item.height), -int(item.width), item.objectDescriptionId, item.gridX, item.gridY);
+        };
+
+    // Grouped by type for readability; tall items lead each group so columns fill cleanly.
+    std::vector<InventoryItem> groupedItems = items;
+    std::stable_sort(
+        groupedItems.begin(),
+        groupedItems.end(),
+        [&itemDefinition, &sizeAndIdentityKey](const InventoryItem &left, const InventoryItem &right)
+        {
+            const int leftGroup = inventorySortGroup(itemDefinition(left));
+            const int rightGroup = inventorySortGroup(itemDefinition(right));
+
+            if (leftGroup != rightGroup)
+            {
+                return leftGroup < rightGroup;
+            }
+
+            return sizeAndIdentityKey(left) < sizeAndIdentityKey(right);
+        });
+
+    std::optional<std::vector<InventoryItem>> packed = packInventoryItems(groupedItems);
+
+    if (!packed)
+    {
+        // A crowded inventory may only fit when packed purely by size.
+        std::vector<InventoryItem> sizedItems = items;
+        std::stable_sort(
+            sizedItems.begin(),
+            sizedItems.end(),
+            [&sizeAndIdentityKey](const InventoryItem &left, const InventoryItem &right)
+            {
+                return sizeAndIdentityKey(left) < sizeAndIdentityKey(right);
+            });
+        packed = packInventoryItems(sizedItems);
+    }
+
+    if (!packed)
+    {
+        m_lastStatus = "not enough room to sort";
+        return false;
+    }
+
+    pMember->inventory = std::move(*packed);
+    m_lastStatus = "inventory sorted";
     return true;
 }
 

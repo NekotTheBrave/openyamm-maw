@@ -14,6 +14,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace OpenYAMM::Game
 {
@@ -142,6 +143,7 @@ private:
     bool updateTimers(float deltaGameMinutes);
     void initializeTimers(double registrationGameMinutes);
     bool updatePartyFaceTriggers();
+    bool enterPartyFloorFace(size_t floorFaceIndex);
     void updateMechanismAudio(
         const std::unordered_map<uint32_t, RuntimeMechanismState> &previousMechanisms,
         float deltaMilliseconds);
@@ -163,6 +165,7 @@ private:
     bool m_resetLegacyTimersOnInitialize = false;
     std::optional<IndoorMoveState> m_lastProcessedPartyMoveStateForFaceTriggers;
     std::optional<size_t> m_lastPartyFloorFaceForPressurePlateTriggers;
+    std::vector<size_t> m_partyFloorFacesForPressurePlateTriggers;
     std::unordered_map<uint32_t, MechanismAudioState> m_mechanismAudioStates;
     float m_mechanismAccumulatorMilliseconds = 0.0f;
     Mm9PositionedTransitionRuntime m_mm9PositionedTransitionRuntime;

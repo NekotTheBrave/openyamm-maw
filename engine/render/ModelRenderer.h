@@ -113,6 +113,11 @@ public:
     {
         m_skinnedInstancing = enabled;
     }
+    // The dark contour shell around creature materials (drawsContour); off by default.
+    void setCreatureContour(bool enabled)
+    {
+        m_creatureContour = enabled;
+    }
     void shutdown(bool destroyGpu);
     void preload(const ModelInstanceSystem &instances);
     void beginFrame();
@@ -137,7 +142,7 @@ public:
         const std::function<ModelRenderLighting(ModelInstanceHandle, const ModelBounds &)> &lightingForBounds = {},
         const ModelSkyEnvironment *pSkyEnvironment = nullptr,
         const std::function<bool(const ModelBounds &)> &visibleBounds = {}, float focalPixels = 0,
-        int forcedLod = -1, uint16_t transparentView = UINT16_MAX);
+        int forcedLod = -1, float timeSeconds = 0.0f, uint16_t transparentView = UINT16_MAX);
     // Static groups lit by `lighting` with an ambient of one (placements carry their own ambient) and no point lights.
     // Call before render() in a frame that draws both. Blended parts (fountain streams, flame cards) go to
     // transparentView when given, a view drawn after the creatures, so a creature behind them is not drawn over them;
@@ -150,6 +155,13 @@ public:
         const ModelSkyEnvironment *pSkyEnvironment,
         const std::function<bool(const ModelBounds &)> &visibleBounds, float focalPixels, int forcedLod,
         float timeSeconds, uint16_t transparentView = UINT16_MAX);
+    // One instance alone, at full detail and with its attachments, into viewId: a UI portrait such as the actor
+    // inspect preview. It draws whether or not the instance is visible to the world passes (a portrait instance stays
+    // hidden from them), without sun shadows, hover outline or a change of sky environment, and leaves the world
+    // views' LOD and attachment state untouched. The caller sets viewId's frame buffer and transform; the view should
+    // be sequential, as the draws share uniforms set once.
+    void renderPortrait(const ModelInstanceSystem &instances, ModelInstanceHandle handle, uint16_t viewId,
+        const std::array<float, 3> &cameraPosition, const ModelRenderLighting &lighting);
     // Water reflection of the static groups and creatures, drawn into viewId from the reflected camera. The main
     // view's LOD state stays untouched; nothing is culled (the mirrored view flips winding) and there are no hover
     // outlines or foliage prepass. The caller sets u_worldClipPlane, which fs_model clips against.
@@ -195,6 +207,7 @@ private:
             bgfx::TextureHandle regionMask = BGFX_INVALID_HANDLE;
             // One row per colour region, 16 sRGB stops each; invalid when the material has no colour regions.
             bgfx::TextureHandle regionRamps = BGFX_INVALID_HANDLE;
+            bgfx::TextureHandle burnMap = BGFX_INVALID_HANDLE;
         };
         std::shared_ptr<const ModelAsset> asset;
         std::vector<Texture> textures;
@@ -206,25 +219,65 @@ private:
     };
 
     struct Draw;
+    // Model textures read and decoded on the load workers, by shared texture key, for prepare to upload.
+    struct PreparedTextures;
 
-    const AssetResources *prepare(std::shared_ptr<const ModelAsset> asset);
+    // Decodes every texture these assets need that is not resident yet, in parallel (preloads only).
+    PreparedTextures prepareTextures(const std::vector<std::shared_ptr<const ModelAsset>> &assets) const;
+    const AssetResources *prepare(std::shared_ptr<const ModelAsset> asset, PreparedTextures *pPrepared = nullptr);
     void pruneUnusedAssets();
     void destroy(AssetResources &resources);
+    // The draws of one LOD mesh at a node of a posed instance.
+    void appendMeshDraws(std::vector<Draw> &draws, const ModelAsset &asset, const AssetResources &resources,
+        const ModelPose &pose, size_t nodeIndex, uint32_t meshIndex, uint32_t variant, uint32_t outlineColorAbgr,
+        ModelInstanceHandle handle) const;
     std::vector<Draw> collectDraws(const ModelInstanceSystem &instances,
         const std::function<bool(const ModelBounds &)> &visibleBounds, const ModelLodView &view = {});
     void destroyDeformedBuffers(bool destroyGpu);
     void bindSkin(const Draw &draw);
+    // Texture scroll of a creature material (openyamm_uv_scroll) at m_creatureTimeSeconds, for vs_model's u_modelScroll.
+    void bindTextureScroll(const ModelMaterial &material);
     // Face culling of a colour draw; none in a reflection pass.
     uint64_t colorCullState(const ModelMaterial &material, const ModelMatrix &matrix) const;
     // The draw's first row in the shared joint palette, allocated and refreshed for its pose (may grow the palette).
     uint32_t jointPaletteRow(const Draw &draw);
     void releaseJointRows(uint32_t row, uint32_t rows);
-    void submitInstancedSkinned(std::vector<Draw> &draws, uint16_t viewId);
+    // Opaque creature passes: one shaded pass (small creatures, water reflections), or a depth-only pass followed by
+    // a shaded pass that tests equal depth, so each pixel is lit once (see render()).
+    enum class OpaquePass
+    {
+        Shaded,
+        Depth,
+        AfterDepth,
+    };
+    // One instanced draw: the creatures sharing a primitive, material and winding, with their instance data.
+    struct SkinnedRun
+    {
+        const Draw *pDraw = nullptr;
+        bgfx::InstanceDataBuffer buffer = {};
+        bool prepassed = false;
+    };
+    // Groups the instanced draws into runs; draws that no longer fit the frame's instance memory go to leftover.
+    std::vector<SkinnedRun> prepareInstancedSkinned(const std::vector<Draw> &draws, std::vector<Draw> &leftover);
+    // depthPass: the depth prepass of the prepassed runs; otherwise every run's shaded draw.
+    void submitInstancedSkinned(const std::vector<SkinnedRun> &runs, const ModelRenderLighting &shared,
+        uint16_t viewId, bool depthPass);
+    // Creature materials (edge darkening) outside a reflection pass draw a dark contour shell after the body.
+    bool drawsContour(const ModelMaterial &material) const;
+    // The contour shell of the body just submitted with BGFX_DISCARD_NONE (its geometry and bindings still set).
+    void submitContour(uint16_t viewId, bgfx::ProgramHandle program, const ModelMatrix &cullMatrix);
     // Rebuilds m_attachmentGroups from the instances' attachments at their nodes' current matrices, plus each
-    // instance's static stand-in (ModelInstanceSystem::setStaticStandIn) at its root transform.
-    void collectAttachments(const ModelInstanceSystem &instances);
+    // instance's static stand-in (ModelInstanceSystem::setStaticStandIn) at its root transform, kept while the
+    // instances' stand-in revision is unchanged. With visibleBounds,
+    // a carrier whose motion bounds (padded by its attachments' reach) are outside the view is skipped without
+    // evaluating its pose.
+    void collectAttachments(const ModelInstanceSystem &instances,
+        const std::function<bool(const ModelBounds &)> &visibleBounds = {});
     bool bindGeometry(const Draw &draw);
-    void submit(const Draw &draw, uint16_t viewId, const ModelRenderLighting &lighting);
+    void submit(const Draw &draw, uint16_t viewId, const ModelRenderLighting &lighting,
+        OpaquePass pass = OpaquePass::Shaded);
+    // The additive fire standing in for a burning draw's freshly burnt surface (ModelBurn::fireWidth).
+    void submitBurnFire(const Draw &draw, uint16_t viewId);
     // Placements of one static group node that share a LOD mesh in one view.
     struct StaticBatch
     {
@@ -237,6 +290,11 @@ private:
         // Crossfade per placement (shader convention: 0 none, (0, 1) appearing, (1, 2) leaving); colour pass only.
         std::vector<float> fades;
     };
+    // renderStatic after its environment: the static groups' draws.
+    void submitStatic(const std::vector<ModelStaticGroup> &groups, uint16_t viewId,
+        const std::array<float, 3> &cameraPosition, const ModelRenderLighting &lighting,
+        const std::function<bool(const ModelBounds &)> &visibleBounds, float focalPixels, int forcedLod,
+        float timeSeconds, uint16_t transparentView);
     std::vector<StaticBatch> collectStaticBatches(const std::vector<ModelStaticGroup> &groups,
         const std::function<bool(const ModelBounds &)> &visibleBounds, const ModelLodView &view, float timeSeconds);
     // Placement instance data for one LOD mesh of a static group; false when the frame's instance memory is used up.
@@ -245,6 +303,10 @@ private:
     void bindStaticMaterial(const AssetResources &resources, const ModelMaterial &material, int materialIndex,
         float timeSeconds, bool shadow);
     void bindColorRegions(const ModelMaterial &material, const AssetResources::MaterialTextures &textures) const;
+    // u_modelBurn and the burn map for every fs_model/fs_model_shadow draw: off without a burn (uniforms persist
+    // between draws). fire: the additive pass over the burnt surface instead of the burning surface itself.
+    void bindBurn(const ModelBurn *pBurn, const ModelMaterial &material,
+        const AssetResources::MaterialTextures &textures, bool fire = false) const;
     void submitNodeMarkers(const ModelPose &pose, uint16_t viewId) const;
     void destroySunShadows(bool destroyGpu);
     void prepareEnvironment(const ModelSkyEnvironment *pSkyEnvironment);
@@ -260,8 +322,11 @@ private:
     bool m_staticDrawn = false;
     bool m_staticFoliageVisible = true;
     bool m_skinnedInstancing = true;
+    bool m_creatureContour = false;
     // Set while renderReflection draws.
     bool m_reflectionPass = false;
+    // Clock of scrolling creature textures, from the latest render(); portraits keep the world's.
+    float m_creatureTimeSeconds = 0.0f;
     std::array<bgfx::TextureHandle, ModelSunShadowCascades> m_shadowTextures =
         {{BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE}};
     std::array<bgfx::FrameBufferHandle, ModelSunShadowCascades> m_shadowFramebuffers =
@@ -300,6 +365,8 @@ private:
     std::unordered_map<const ModelMatrix *, JointSlot> m_jointSlots;
     std::vector<uint8_t> m_jointRowsUsed;
     bgfx::TextureHandle m_jointPalette = BGFX_INVALID_HANDLE;
+    // Counts palette reallocations (each resets every slot's upload).
+    uint32_t m_jointPaletteGeneration = 0;
     bgfx::ProgramHandle m_skinnedInstancedProgramHandle = BGFX_INVALID_HANDLE;
     // Attachments drawn as static groups (one per model and variant), with each placement's carrier alongside; a
     // carrier keeps its LOD hysteresis and crossfade across frames. Colour LOD level per carrier from the last colour
@@ -308,7 +375,18 @@ private:
     std::vector<std::vector<ModelInstanceHandle>> m_attachmentOwners;
     // Per attachment group: it holds static stand-ins (corpses) rather than carried items.
     std::vector<bool> m_attachmentStandIns;
+    // The stand-in groups at the front of m_attachmentGroups, valid while these instances' stand-in revision holds.
+    const ModelInstanceSystem *m_pStandInInstances = nullptr;
+    uint64_t m_standInRevision = 0;
+    size_t m_standInGroupCount = 0;
     std::unordered_map<uint32_t, uint32_t> m_instanceColorLevels;
+    // Per carrier (by instance index): the farthest its attachments reach from their nodes, from its last placement.
+    struct AttachmentReach
+    {
+        uint32_t generation = 0;
+        float reach = 0.0f;
+    };
+    std::unordered_map<uint32_t, AttachmentReach> m_attachmentReach;
     // Attachment crossfades run on their own clock (seconds since this origin).
     double m_attachmentClockOrigin = double(std::chrono::duration<double>(
         std::chrono::steady_clock::now().time_since_epoch()).count());
@@ -322,6 +400,7 @@ private:
     LastSubmit m_lastSubmit;
     bgfx::UniformHandle m_skinSamplerHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_skinParamsHandle = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_scrollUniformHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_textureSamplerHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_normalSamplerHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_metallicRoughnessSamplerHandle = BGFX_INVALID_HANDLE;
@@ -340,10 +419,14 @@ private:
     bgfx::UniformHandle m_skyFogUniformHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_cameraUniformHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_outlineUniformHandle = BGFX_INVALID_HANDLE;
+    // u_modelEdge.x: the material's edge darkening (fs_model.sc).
+    bgfx::UniformHandle m_edgeUniformHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_materialUniformHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_regionUniformHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_regionMaskSamplerHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_regionRampSamplerHandle = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_burnUniformHandle = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_burnSamplerHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_lightingUniformHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_normalMatrixUniformHandle = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle m_whiteTextureHandle = BGFX_INVALID_HANDLE;

@@ -1,0 +1,9 @@
+schema_version: 1
+frame_width: 118
+frame_height: 158
+columns: 8
+frames: [maleg01, maleg02, maleg03, maleg04, maleg05, maleg06, maleg07, maleg08, maleg09, maleg10, maleg11, maleg12, maleg13,
+  maleg14, maleg15, maleg16, maleg17, maleg18, maleg19, maleg20, maleg21, maleg22, maleg23, maleg24, maleg25, maleg26, maleg27,
+  maleg28, maleg29, maleg30, maleg31, maleg32, maleg33, maleg34, maleg35, maleg36, maleg37, maleg38, maleg39, maleg40, maleg41,
+  maleg42, maleg43, maleg44, maleg45, maleg46, maleg47, maleg48, maleg49, maleg50, maleg51, maleg52, maleg53, maleg54, maleg55,
+  maleg56]

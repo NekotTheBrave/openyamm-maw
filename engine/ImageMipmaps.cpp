@@ -187,4 +187,119 @@ std::vector<BgraMipLevel> prepareBgraMipChain(
     }
     return levels;
 }
+
+bool hasMixedBgraTransparency(const uint8_t *pPixels, size_t pixelCount)
+{
+    bool foundTransparent = false;
+    bool foundOpaque = false;
+
+    for (size_t pixelIndex = 0; pixelIndex < pixelCount; ++pixelIndex)
+    {
+        const uint8_t alpha = pPixels[pixelIndex * 4 + 3];
+
+        if (alpha == 0)
+        {
+            foundTransparent = true;
+        }
+        else
+        {
+            foundOpaque = true;
+        }
+
+        if (foundTransparent && foundOpaque)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void bleedTransparentBgraEdgeColors(uint16_t width, uint16_t height, std::vector<uint8_t> &pixels)
+{
+    const size_t pixelCount = static_cast<size_t>(width) * static_cast<size_t>(height);
+
+    if (pixelCount == 0 || pixels.size() < pixelCount * 4)
+    {
+        return;
+    }
+
+    std::vector<int32_t> owner(pixelCount, -1);
+    std::vector<uint32_t> queue;
+    queue.reserve(pixelCount);
+
+    for (uint32_t pixelIndex = 0; pixelIndex < pixelCount; ++pixelIndex)
+    {
+        if (pixels[static_cast<size_t>(pixelIndex) * 4 + 3] != 0)
+        {
+            owner[pixelIndex] = static_cast<int32_t>(pixelIndex);
+            queue.push_back(pixelIndex);
+        }
+    }
+
+    size_t queueHead = 0;
+
+    while (queueHead < queue.size())
+    {
+        const uint32_t currentIndex = queue[queueHead++];
+        const uint32_t x = currentIndex % width;
+        const uint32_t y = currentIndex / width;
+
+        for (int dy = -1; dy <= 1; ++dy)
+        {
+            for (int dx = -1; dx <= 1; ++dx)
+            {
+                if (dx == 0 && dy == 0)
+                {
+                    continue;
+                }
+
+                const int neighborX = static_cast<int>(x) + dx;
+                const int neighborY = static_cast<int>(y) + dy;
+
+                if (neighborX < 0
+                    || neighborY < 0
+                    || neighborX >= static_cast<int>(width)
+                    || neighborY >= static_cast<int>(height))
+                {
+                    continue;
+                }
+
+                const uint32_t neighborIndex =
+                    static_cast<uint32_t>(neighborY) * static_cast<uint32_t>(width) + static_cast<uint32_t>(neighborX);
+                const size_t neighborOffset = static_cast<size_t>(neighborIndex) * 4;
+
+                if (pixels[neighborOffset + 3] != 0 || owner[neighborIndex] != -1)
+                {
+                    continue;
+                }
+
+                owner[neighborIndex] = owner[currentIndex];
+                queue.push_back(neighborIndex);
+            }
+        }
+    }
+
+    for (size_t pixelIndex = 0; pixelIndex < pixelCount; ++pixelIndex)
+    {
+        const size_t pixelOffset = pixelIndex * 4;
+
+        if (pixels[pixelOffset + 3] != 0)
+        {
+            continue;
+        }
+
+        const int32_t sourceIndex = owner[pixelIndex];
+
+        if (sourceIndex < 0)
+        {
+            continue;
+        }
+
+        const size_t sourceOffset = static_cast<size_t>(sourceIndex) * 4;
+        pixels[pixelOffset + 0] = pixels[sourceOffset + 0];
+        pixels[pixelOffset + 1] = pixels[sourceOffset + 1];
+        pixels[pixelOffset + 2] = pixels[sourceOffset + 2];
+    }
+}
 }

@@ -30,6 +30,11 @@ constexpr int OeMinimumMeleeRecoveryTicks = 30;
 constexpr int OeMinimumRangedRecoveryTicks = 5;
 constexpr uint32_t WandAttackSkillLevel = 8;
 constexpr uint32_t Mm7WetsuitItemId = 1406;
+// Blasters flagged ScatterBlaster (the Blaster Shotgun) fire a volley across Ice Blast's arc and recover slower.
+constexpr const char *ScatterBlasterContentFlag = "ScatterBlaster";
+constexpr uint8_t ScatterBlasterProjectileCount = 7;
+constexpr float ScatterBlasterSpreadArcRadians = 3.14159265358979323846f / 3.0f;
+constexpr int ScatterBlasterExtraRecoveryTicks = 20;
 
 constexpr int ParameterBonusThresholds[29] = {
     500, 400, 350, 300, 275, 250, 225, 200, 175, 150, 125, 100, 75, 50, 40,
@@ -1720,6 +1725,11 @@ int resolveAttackRecoveryTicks(
         }
     }
 
+    if (usesBlaster && pWeapon != nullptr && pWeapon->hasContentFlag(ScatterBlasterContentFlag))
+    {
+        weaponRecoveryTicks += ScatterBlasterExtraRecoveryTicks;
+    }
+
     int shieldRecoveryTicks = 0;
 
     if (equippedItems.pOffHand != nullptr)
@@ -2614,6 +2624,12 @@ CharacterAttackProfile GameMechanics::buildCharacterAttackProfile(
             profile.rangedMinDamage = damageRange.first;
             profile.rangedMaxDamage = damageRange.second;
         }
+
+        if (pBlasterItem != nullptr && pBlasterItem->hasContentFlag(ScatterBlasterContentFlag))
+        {
+            profile.rangedProjectileCount = ScatterBlasterProjectileCount;
+            profile.rangedSpreadArcRadians = ScatterBlasterSpreadArcRadians;
+        }
     }
     else if (summary.combat.shoot.has_value())
     {
@@ -2849,11 +2865,9 @@ CharacterAttackResult GameMechanics::resolveCharacterAttackAgainstArmorClass(
     }
 
     if (result.hit
-        && (character.equippedItemEffectFlags.contains("PoisonWeaponDamage")
-            || character.equippedItemEffectFlags.contains("DiseaseWeaponDamage")
-            || (character.equippedItemEffectFlags.contains("PoisonOnHit40Grandmaster")
-                && result.skillMastery >= static_cast<uint32_t>(SkillMastery::Grandmaster)
-                && percentRoll(rng, 40))))
+        && character.equippedItemEffectFlags.contains("PoisonOnHit40Grandmaster")
+        && result.skillMastery >= static_cast<uint32_t>(SkillMastery::Grandmaster)
+        && percentRoll(rng, 40))
     {
         result.damageType = CombatDamageType::Body;
     }
@@ -2949,6 +2963,19 @@ float GameMechanics::actorTargetHeight(uint16_t actorHeight)
 {
     // A fixed minimum can put the aim point above a short creature's collision volume.
     return actorHeight * 0.6f;
+}
+
+float GameMechanics::projectileFanYawOffsetRadians(
+    uint32_t projectileCount,
+    uint32_t projectileIndex,
+    float arcRadians)
+{
+    if (projectileCount <= 1)
+    {
+        return 0.0f;
+    }
+
+    return -arcRadians * 0.5f + arcRadians * float(projectileIndex) / float(projectileCount - 1);
 }
 
 bool GameMechanics::characterRangedAttackHitsArmorClass(

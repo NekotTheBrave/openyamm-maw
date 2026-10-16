@@ -1,0 +1,257 @@
+# MM8 terrain materials for the materials terrain style; the keys are described in worlds/mm6/terrain_materials/
+# world.yml. tools/terrain_materials.py weights writes each map's <map>.yml and weight images beside this file.
+# Lava and tar are drawn by the liquid renderer; shore: false keeps beaches and seabeds away from them and their
+# edges.
+version: 1
+edge_softness: 110
+fringe:
+  strength: 1.6
+  scale: 2048
+# meadow: colour multipliers of the driest and lushest ground (OutdoorMeadowField: crests and steep slopes dry,
+# hollows and shores lush). A material's meadow key is how strongly it takes them (grass 1, default 0).
+meadow:
+  dry: [1.2, 1.06, 0.64]
+  lush: [0.78, 0.94, 0.82]
+materials:
+  grass:
+    meadow: 1.0
+    library: grass_meadow
+    reference_tile: grastyl
+    cliff_from: dirt
+    variant: grass_patches
+    variant_amount: 0.25
+    repeat: 360
+    height_contrast: 0.45
+    macro_brightness: 0.15
+    macro_tint: [1.1, 1.05, 0.85]
+    cavity: 0.3
+  # Dark Jadame earth; the native stony tiles (dirt1, dirt2, about a tenth of the dirt) become stony patches of
+  # the variant.
+  dirt:
+    library: soil
+    reference_tile: dirttyl
+    variant: dirt_stones
+    variant_amount: 0.12
+    repeat: 520
+    height_contrast: 0.4
+    macro_brightness: 0.18
+    macro_tint: [0.9, 0.86, 0.86]
+    cavity: 0.6
+    normal_strength: 1.5
+  road:
+    library: road_pebbles
+    cliff_from: dirt
+    edge_softness: 24
+    fringe: 0.15
+    tint_scale: [0.808, 0.77, 0.785]
+    repeat: 640
+    height_contrast: 0.6
+    macro_brightness: 0.12
+    cavity: 1.0
+    normal_strength: 2.0
+  # Shadowspire's grey dead dust (gdtyl), broken by patches of cracked earth.
+  dust:
+    library: soil
+    reference_tile: gdtyl
+    variant: dust_cracked
+    variant_amount: 0.3
+    repeat: 520
+    height_contrast: 0.45
+    macro_brightness: 0.15
+    macro_tint: [0.95, 0.95, 1.0]
+    cavity: 0.6
+    normal_strength: 1.5
+  # Keeps its own cracks under the dust's tint: the scale cancels its lighter mean colour.
+  dust_cracked:
+    library: mud_cracked
+    tint_scale: [0.405, 0.368, 0.395]
+    repeat: 760
+    height_contrast: 0.5
+    cavity: 0.85
+    normal_strength: 2.0
+  # Ironsand's stepping-stone road.
+  steps:
+    library: road_flagstone
+    cliff_from: hardpan
+    edge_softness: 24
+    fringe: 0.15
+    repeat: 520
+    height_contrast: 0.6
+    macro_brightness: 0.12
+    cavity: 0.8
+    normal_strength: 1.6
+  rock:
+    library: rock_layered
+    reference_tile: rktyl
+    repeat: 720
+    height_contrast: 0.5
+    macro_brightness: 0.15
+    cavity: 0.5
+    normal_strength: 1.5
+  volcanic:
+    library: gravel_volcanic
+    reference_tile: voltyl
+    repeat: 420
+    height_contrast: 0.45
+    macro_brightness: 0.15
+    macro_tint: [1.08, 1.0, 0.95]
+    cavity: 0.6
+    normal_strength: 1.5
+  # Shadowspire's black cracked stone: the cracked plates, dark and large.
+  darkstone:
+    library: mud_cracked
+    reference_tile: gstyl
+    repeat: 1150
+    height_contrast: 0.5
+    macro_brightness: 0.15
+    cavity: 0.9
+    normal_strength: 2.2
+  redrock:
+    library: rock_red
+    reference_tile: rctyl
+    repeat: 760
+    height_contrast: 0.5
+    macro_brightness: 0.15
+    macro_tint: [1.05, 0.95, 0.9]
+    cavity: 0.5
+    normal_strength: 1.6
+  # Ironsand's orange crust of small plates.
+  hardpan:
+    library: ground_crust
+    reference_tile: plntyl
+    repeat: 1000
+    height_contrast: 0.4
+    macro_brightness: 0.15
+    macro_tint: [1.05, 0.95, 0.85]
+    cavity: 0.7
+    normal_strength: 1.8
+  dunes:
+    library: sand_ripples
+    reference_tile: plsatyl
+    repeat: 900
+    height_contrast: 0.3
+    macro_brightness: 0.12
+    macro_tint: [1.06, 1.0, 0.9]
+    cavity: 0.35
+    normal_strength: 1.8
+  cliff:
+    library: rock_cliff
+    reference_tile: dirttyl
+    tint_scale: [1.3, 1.3, 1.3]
+    repeat: 640
+    height_contrast: 0.5
+    macro_brightness: 0.15
+    cavity: 0.4
+    normal_strength: 1.3
+  grass_patches:
+    meadow: 0.8
+    library: grass_patchy
+    tint_scale: [0.68, 0.72, 0.6]
+    repeat: 640
+    height_contrast: 0.25
+    cavity: 0.35
+  dirt_stones:
+    library: soil_stony
+    tint_scale: [0.57, 0.49, 0.48]
+    repeat: 640
+    height_contrast: 0.5
+    cavity: 0.8
+    normal_strength: 1.8
+  # The beach and seabed take the native shore tiles' dirt, lightened, as in MM6.
+  sand:
+    library: sand_ripples
+    reference_tile: dirttyl
+    tint_scale: [1.45, 1.42, 1.35]
+    repeat: 520
+    height_contrast: 0.3
+    macro_brightness: 0.12
+    cavity: 0.35
+    normal_strength: 1.2
+shore:
+  material: sand
+  beach_width: 150
+  beach_slope: 0.3
+  seabed_slope: 0.4
+  seabed_depth: 96
+  opaque_depth: 72
+  detail_depth: 24
+  range: 1024
+tiles:
+  - match: [wtrtyl, "hdwtr*"]
+    water: true
+  - match: [lavtyl, tartyl]
+    water: true
+    shore: false
+  - match: ["lvdr*"]
+    material: dirt
+    shore: false
+  - match: ["lv*"]
+    material: hardpan
+    shore: false
+  - match: [grastyl, grastyl2]
+    material: grass
+  - match: [dirttyl, dirt1, dirt2]
+    material: dirt
+  - match: [gdtyl]
+    material: dust
+  - match: [rktyl, rktylx]
+    material: rock
+  - match: [voltyl, voltylx]
+    material: volcanic
+  - match: [gstyl, gstylx]
+    material: darkstone
+  - match: [rctyl, rctylx]
+    material: redrock
+  - match: [plntyl]
+    material: hardpan
+  - match: [plsatyl, plsatylx]
+    material: dunes
+  - match: ["grdrt*"]
+    materials: [grass, dirt]
+  - match: ["rk*"]
+    materials: [rock, dirt]
+  - match: ["vol*"]
+    materials: [volcanic, dirt]
+  - match: ["gs*"]
+    materials: [darkstone, dust]
+  - match: ["rc*"]
+    materials: [redrock, dirt]
+  - match: ["plsa*"]
+    materials: [dunes, hardpan]
+  - match: ["plrd*"]
+    materials: [steps, hardpan]
+  # Shadowspire's road over grey dust: the grey margins read as road by colour, so the shape comes from the
+  # same road tile over brown dirt.
+  - match: ["gdrd*"]
+    materials: [road, dust]
+    shape_from: [gdrd, drsr]
+  - match: ["drsr*", "rd*"]
+    materials: [road, dirt]
+  - match: ["tr*"]
+    material: dust
+    shore: false
+  - match: ["wa*"]
+    material: dust
+  - match: ["wtrdr*"]
+    material: dirt
+# Each map's own shade of the shared ground.
+maps:
+  out01.odm:
+    grass: {shade: [0.95, 1.08, 0.88]}
+  out03.odm:
+    grass: {shade: [1.03, 1.0, 0.9]}
+  out05.odm:
+    grass: {shade: [1.07, 1.0, 0.82]}
+  # Shadowspire's shores are grey dust like its ground.
+  out06.odm:
+    sand: {reference_tile: gdtyl}
+    # Its road tiles read darker against the dust; the same cobbles as Ravenshore's.
+    road: {shade: [1.33, 1.32, 1.36]}
+  out07.odm:
+    grass: {shade: [0.9, 1.05, 0.92]}
+  out13.odm:
+    grass: {shade: [1.02, 1.02, 0.9]}
+slope:
+  material: cliff
+  start: 0.36
+  end: 0.56

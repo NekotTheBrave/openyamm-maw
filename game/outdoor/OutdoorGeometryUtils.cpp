@@ -20,6 +20,20 @@ constexpr float TerrainSteepTileHeight = static_cast<float>(OutdoorMapData::Terr
 constexpr float OutdoorFacePlaneScale = 65536.0f;
 constexpr uint16_t OutdoorFaceReservedNotAStep = 0x0001;
 constexpr float BModelGroundSupportRise = 128.0f;
+constexpr float MaximumTerrainSmoothingDeviation = 32.0f;
+
+float terrainVertexHeight(const OutdoorMapData &map, int gridX, int gridY)
+{
+    gridX = std::clamp(gridX, 0, OutdoorMapData::TerrainWidth - 1);
+    gridY = std::clamp(gridY, 0, OutdoorMapData::TerrainWidth - 1);
+    return float(map.heightMap[size_t(gridY * OutdoorMapData::TerrainWidth + gridX)] * OutdoorMapData::TerrainHeightScale);
+}
+
+float catmullRom(float p0, float p1, float p2, float p3, float t)
+{
+    return 0.5f * (2.0f * p1 + (p2 - p0) * t + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t * t
+        + (3.0f * p1 - p0 - 3.0f * p2 + p3) * t * t * t);
+}
 
 bool outdoorFaceIsEthereal(uint32_t attributes)
 {
@@ -864,5 +878,48 @@ float sampleOutdoorActorPlacementFloorHeight(
 float sampleOutdoorActorPlacementFloorHeight(const OutdoorMapData &outdoorMapData, float x, float y, float z)
 {
     return sampleOutdoorActorPlacementFloorHeight(outdoorMapData, x, y, z, FloorCheckSlack);
+}
+
+float outdoorNativeTerrainHeight(const OutdoorMapData &map, float gridX, float gridY)
+{
+    const int x0 = std::clamp(int(std::floor(gridX)), 0, OutdoorMapData::TerrainWidth - 2);
+    const int y0 = std::clamp(int(std::floor(gridY)), 0, OutdoorMapData::TerrainWidth - 2);
+    const float fx = std::clamp(gridX - float(x0), 0.0f, 1.0f);
+    const float fy = std::clamp(gridY - float(y0), 0.0f, 1.0f);
+    const float h00 = terrainVertexHeight(map, x0, y0);
+    const float h10 = terrainVertexHeight(map, x0 + 1, y0);
+    const float h01 = terrainVertexHeight(map, x0, y0 + 1);
+    const float h11 = terrainVertexHeight(map, x0 + 1, y0 + 1);
+    // The native diagonal runs from the north-west to the south-east corner.
+    return fx >= fy ? h00 + fx * (h10 - h00) + fy * (h11 - h10) : h00 + fy * (h01 - h00) + fx * (h11 - h01);
+}
+
+float outdoorSmoothedTerrainHeight(const OutdoorMapData &map, float gridX, float gridY, float smoothing)
+{
+    const float native = outdoorNativeTerrainHeight(map, gridX, gridY);
+    if (smoothing <= 0.0f)
+    {
+        return native;
+    }
+    const int x0 = std::clamp(int(std::floor(gridX)), 0, OutdoorMapData::TerrainWidth - 2);
+    const int y0 = std::clamp(int(std::floor(gridY)), 0, OutdoorMapData::TerrainWidth - 2);
+    const float fx = std::clamp(gridX - float(x0), 0.0f, 1.0f);
+    const float fy = std::clamp(gridY - float(y0), 0.0f, 1.0f);
+    std::array<float, 4> rows = {};
+    for (int row = 0; row < 4; ++row)
+    {
+        const int y = y0 - 1 + row;
+        rows[row] = catmullRom(terrainVertexHeight(map, x0 - 1, y), terrainVertexHeight(map, x0, y),
+            terrainVertexHeight(map, x0 + 1, y), terrainVertexHeight(map, x0 + 2, y), fx);
+    }
+    // Through every native vertex; overshoot beside cliffs is limited to the cell's own height range, and the
+    // departure from the native (collision) triangles is softly capped so creatures and walls stay grounded.
+    const float lowest = std::min({terrainVertexHeight(map, x0, y0), terrainVertexHeight(map, x0 + 1, y0),
+        terrainVertexHeight(map, x0, y0 + 1), terrainVertexHeight(map, x0 + 1, y0 + 1)});
+    const float highest = std::max({terrainVertexHeight(map, x0, y0), terrainVertexHeight(map, x0 + 1, y0),
+        terrainVertexHeight(map, x0, y0 + 1), terrainVertexHeight(map, x0 + 1, y0 + 1)});
+    const float cubic = std::clamp(catmullRom(rows[0], rows[1], rows[2], rows[3], fy), lowest - 16.0f,
+        highest + 16.0f);
+    return native + MaximumTerrainSmoothingDeviation * std::tanh((cubic - native) / MaximumTerrainSmoothingDeviation) * smoothing;
 }
 }

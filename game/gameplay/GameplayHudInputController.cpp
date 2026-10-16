@@ -377,7 +377,7 @@ void GameplayHudInputController::handleGameplayHudButtonInput(
                 return {GameplayHudPointerTargetType::TurnBasedToggleButton};
             }
             if (const std::optional<GameplayResolvedHudLayoutElement> passRect =
-                    context.resolveMobilePassTurnButton(config.screenWidth, config.screenHeight);
+                    context.resolvePassTurnButton(config.screenWidth, config.screenHeight);
                 passRect && context.isPointerInsideResolvedElement(*passRect, pointerX, pointerY))
             {
                 return {GameplayHudPointerTargetType::PassTurnButton};

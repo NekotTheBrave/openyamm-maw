@@ -9,7 +9,13 @@ The default game loads `assets_dev`; CI creates release ZIPs from those assets.
 | `assets_dev/` | Runtime payloads, tables, scripts, manifests and configuration in normal Git |
 | `assets_dev/worlds/mm9/`, `mm9/` | Optional local MM9 world/import payloads; excluded for now |
 | `assets_cooked/android/sprites_new/` | Prebuilt Android ETC2/EAC creature packages in normal Git |
-| `assets_source/` | Ignored local authoring banks and lossless cooking inputs; explicitly added source binaries use optional LFS |
+| `assets_dev/engine/effects/authored/textures/*.oytex`, `assets_cooked/android/engine/effects/` | Prebuilt BC7 and ASTC effect sprite atlases in normal Git; their generated PNG frames stay local in `assets_source` (`ASSET_COOKING_PLAN.md` §11) |
+| `assets_dev/engine/icons_x2/obsidian_*.oytex`, `assets_cooked/android/engine/icons_x2/` | Prebuilt BC7 and ASTC Obsidian HUD art (and ASTC face atlases) in normal Git; the Obsidian PNG sources are in `assets_source/engine/icons_x2` (`ASSET_COOKING_PLAN.md` §10) |
+| `assets_source/` | Submodule [openyamm-source-assets](https://github.com/pjasicek/openyamm-source-assets) (private, plain Git, shallow): the source assets below |
+| `assets_source/worlds/mm*/models`, `assets_source/engine/models` | 3D model sources (creatures, attachments, decorations, satchels; `tools/install_model.py`) |
+| `assets_source/worlds/mm*/textures*`, `terrain_x2`, `assets_source/engine/terrain` | Original MM6–MM8 BMPs, the x2/x4 surface masters the build cooks and the native terrain tiles `tools/terrain_materials.py` reads |
+| `assets_source/engine/terrain_materials`, `assets_source/engine/effects` | Packed terrain material sources (raw CC0 downloads stay local) and generated effect frames |
+| `assets_source/creatures/`, `assets_source/engine/sprites_new/` | Local only (ignored by the submodule): the restored x2 sprite creature bank and its exports |
 | `assets_editor_dev/` | Local editor overlays |
 | `data/` | Local original extraction; unused by the current game |
 | `assets_source/textures/native_mm6_mm8/` | Local archive of original MM6–MM8 textures |
@@ -28,10 +34,10 @@ The current Android profile contains all 60 MM6 families in 402 files (419.1 MB)
 Removing 1,046.6 MB of cooking inputs from normal Git while adding this profile
 reduces the current tracked payload by 627.5 MB. Local inputs remain intact.
 
-MM6–MM8 use restored `textures_x2` by default. Redundant native texture copies are
-removed from runtime after archival. Native palettes, skies, textures with no
-restored replacement and files used by installed lighting hash contracts remain
-in `assets_dev/worlds/mm*/textures`; removing those files would break live dependencies.
+MM6–MM8 surface textures are cooked per platform (desktop BC7 x4 into `assets_dev`, Android ASTC x2 into
+`assets_cooked/android`; see `ASSET_COOKING_PLAN.md` §9). Their sources, including the original x1 BMPs the lighting
+bakes record as dependencies, live in `assets_source` under the same relative paths; `assets_dev/worlds/mm*/textures`
+keeps only the `.act` palettes.
 
 ## Full game checkout
 
@@ -43,7 +49,10 @@ cmake --build build --target openyamm -j25
 ./build/game/openyamm
 ```
 
-No Git LFS installation or separate asset download is required. The portable
+The source assets are an optional submodule. Without it the game builds and runs from the cooked runtime files in
+`assets_dev` (the cooks skip missing sources and keep their outputs; the game skips its stale-bake check). To cook,
+bake or install models, fetch it (shallow: only the current snapshot):
+`git submodule update --init --depth 1 assets_source`. The portable
 checkout includes MM6, MM7, MM8 and MMMerge, with the optional MM9 payload excluded.
 Local authoring banks and build outputs use additional space.
 
@@ -88,7 +97,15 @@ manifests and adaptations with the referenced images. Restore an archive at its
 original repository-relative paths to resume editing. No authoring archive is
 published or downloaded automatically by the build.
 
-## Optional LFS authoring material
+## Source asset submodule
+
+`assets_source` is the separate repository `openyamm-source-assets`, so binary source history never enters this
+repository, and checkouts fetch it only on demand. Commit source changes inside `assets_source`, push that repository
+first, then commit the updated submodule pointer here. Its history only matters for going back to an old source
+version: to keep the hosted size near the size of the current files, it may be squashed now and then (a fresh
+snapshot commit, force-pushed; the main repository's older pointers then no longer resolve).
+
+## Optional LFS authoring material (superseded by the submodule)
 
 `.gitattributes` routes explicitly added binary masters under `assets_source/` to LFS.
 Runtime assets under `assets_dev/` and `assets_cooked/` have normal-Git exceptions. Authoring
@@ -97,13 +114,13 @@ selectively added alongside a source bank.
 Authors must run `git lfs install --local` before adding source binaries and check
 `git lfs ls-files` before committing them; attributes alone do not install the filter.
 
-No optional authoring bank or LFS pointer is currently staged. Source banks remain
+Apart from the world texture sources, no authoring bank is tracked. Other source banks remain
 ignored: these attributes are a policy for deliberate future additions, not an upload
 of local restoration attempts. Enroll only selected authoritative masters, composite
 returns, outline guides and necessary derivation inputs. Keep `reference/`, `data/`,
 caches and historical attempts out.
 
-Game-only users and CI need no LFS. If optional LFS banks are added later, a clone can
+Game-only users and CI need only the world texture sources from LFS. For other LFS banks, a clone can
 skip their download using `GIT_LFS_SKIP_SMUDGE=1 git clone <repository-url>` and still
 build/package the game. Authors with Git LFS installed can fetch a selected bank with
 `git lfs pull --include="assets_source/creatures/mm6/**"` after it is published.

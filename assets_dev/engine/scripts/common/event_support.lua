@@ -497,6 +497,7 @@ local function ensureMetaScope(scopeName)
     meta.chestOpenHooks = meta.chestOpenHooks or {}
     meta.title = meta.title or {}
     meta.hint = meta.hint or {}
+    meta.learnedEffect = meta.learnedEffect or {}
     meta.openedChestIds = meta.openedChestIds or {}
     meta.contextActions = meta.contextActions or {}
     meta.textureNames = meta.textureNames or {}
@@ -898,6 +899,12 @@ end
 function support.registerNoOpEvent(eventId, title, hint)
     support.registerEvent(eventId, title, function()
     end, hint)
+end
+
+-- Once the party has autonote `autonoteId`, the event's hover name shows `effect` after it in parentheses, e.g.
+-- "Orange Barrel (+2 Intellect)" after the party has drunk from an orange barrel.
+function support.registerGlobalEventLearnedEffect(eventId, autonoteId, effect)
+    ensureMetaScope("global").learnedEffect[eventId] = {autonote = autonoteId, effect = effect}
 end
 
 function support.registerGlobalNoOpEvent(eventId, title, hint)
@@ -1566,6 +1573,7 @@ RegisterEvent = support.registerEvent
 RegisterGlobalEvent = support.registerGlobalEvent
 RegisterNoOpEvent = support.registerNoOpEvent
 RegisterGlobalNoOpEvent = support.registerGlobalNoOpEvent
+RegisterGlobalEventLearnedEffect = support.registerGlobalEventLearnedEffect
 RemoveMapEvent = support.removeMapEvent
 RemoveGlobalEvent = support.removeGlobalEvent
 ReplaceMapEvent = support.replaceMapEvent

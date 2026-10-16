@@ -366,9 +366,6 @@ TEST_CASE("map stats assign default canonical MM8 map identity")
     const OpenYAMM::Game::MapStatsEntry *pErathianSewers = mapStats.findByFileName("d01.blv");
     const OpenYAMM::Game::MapStatsEntry *pBarrowXiv = mapStats.findByFileName("mdk04.blv");
     const OpenYAMM::Game::MapStatsEntry *pTempleOfTheDark = mapStats.findByFileName("t02.blv");
-    const OpenYAMM::Game::MapStatsEntry *pBreach = mapStats.findByFileName("Breach.odm");
-    const OpenYAMM::Game::MapStatsEntry *pBrAlvar = mapStats.findByFileName("BrAlvar.odm");
-    const OpenYAMM::Game::MapStatsEntry *pBrBase = mapStats.findByFileName("BrBase.blv");
 
     REQUIRE(pDaggerWound != nullptr);
     CHECK_EQ(pDaggerWound->worldId, OpenYAMM::Game::DefaultWorldId);
@@ -391,13 +388,9 @@ TEST_CASE("map stats assign default canonical MM8 map identity")
     CHECK_EQ(pTempleOfTheDark->worldId, "mm7");
     CHECK_EQ(pTempleOfTheDark->canonicalId, "world.mm7.map.t02");
 
-    REQUIRE(pBreach != nullptr);
-    REQUIRE(pBrAlvar != nullptr);
-    REQUIRE(pBrBase != nullptr);
-    CHECK_EQ(pBreach->worldId, "mmmerge");
-    CHECK_EQ(pBreach->canonicalId, "world.mmmerge.map.breach");
-    CHECK_EQ(pBrAlvar->worldId, "mmmerge");
-    CHECK_EQ(pBrBase->worldId, "mmmerge");
+    CHECK(mapStats.findByFileName("Breach.odm") == nullptr);
+    CHECK(mapStats.findByFileName("BrBase.blv") == nullptr);
+    CHECK(mapStats.findByFileName("BrAlvar.odm") == nullptr);
 }
 
 TEST_CASE("map registry supports canonical id and world/file compatibility lookups")

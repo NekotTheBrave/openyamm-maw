@@ -1172,7 +1172,6 @@ void DebugConsole::renderMobileQuickActions()
     commandButton("Map Info", "map");
     commandButton("Full Heal", "hp full");
     commandButton("Next Day", "time advance 1");
-    commandButton("Set up Breach", "setup breach");
 
     if (ImGui::Button("Clear Log", ImVec2(-1.0f, 0.0f)))
     {
@@ -1323,13 +1322,6 @@ void DebugConsole::renderQuickActions()
     if (ImGui::SmallButton("Next Day"))
     {
         executeLine("time advance 1");
-    }
-
-    ImGui::SameLine();
-
-    if (ImGui::SmallButton("Set up Breach"))
-    {
-        executeLine("setup breach");
     }
 
     ImGui::SameLine();

@@ -98,9 +98,8 @@ std::optional<BitmapFont> parseBitmapFont(const std::vector<uint8_t> &bytes)
 {
     constexpr size_t FontHeaderSize = 32;
     constexpr size_t Mm7AtlasSize = 4096;
-    constexpr size_t MmxAtlasSize = 1280;
 
-    if (bytes.size() < FontHeaderSize + MmxAtlasSize)
+    if (bytes.size() < FontHeaderSize + Mm7AtlasSize)
     {
         return std::nullopt;
     }
@@ -112,59 +111,33 @@ std::optional<BitmapFont> parseBitmapFont(const std::vector<uint8_t> &bytes)
         return std::nullopt;
     }
 
-    BitmapFont mm7Font = {};
-    mm7Font.firstChar = pBytes[0];
-    mm7Font.lastChar = pBytes[1];
-    mm7Font.fontHeight = pBytes[5];
-
-    if (bytes.size() >= FontHeaderSize + Mm7AtlasSize)
-    {
-        for (int glyphIndex = 0; glyphIndex < 256; ++glyphIndex)
-        {
-            const size_t metricOffset = FontHeaderSize + static_cast<size_t>(glyphIndex) * 12;
-            mm7Font.glyphMetrics[glyphIndex].leftSpacing = readInt32Le(&pBytes[metricOffset]);
-            mm7Font.glyphMetrics[glyphIndex].width = readInt32Le(&pBytes[metricOffset + 4]);
-            mm7Font.glyphMetrics[glyphIndex].rightSpacing = readInt32Le(&pBytes[metricOffset + 8]);
-        }
-
-        for (int glyphIndex = 0; glyphIndex < 256; ++glyphIndex)
-        {
-            const size_t offsetPosition = FontHeaderSize + 256 * 12 + static_cast<size_t>(glyphIndex) * 4;
-            mm7Font.glyphOffsets[glyphIndex] = readUint32Le(&pBytes[offsetPosition]);
-        }
-
-        mm7Font.pixels.assign(bytes.begin() + static_cast<ptrdiff_t>(FontHeaderSize + Mm7AtlasSize), bytes.end());
-
-        if (validateBitmapFont(mm7Font, mm7Font.pixels))
-        {
-            return mm7Font;
-        }
-    }
-
-    BitmapFont mmxFont = {};
-    mmxFont.firstChar = pBytes[0];
-    mmxFont.lastChar = pBytes[1];
-    mmxFont.fontHeight = pBytes[5];
+    BitmapFont font = {};
+    font.firstChar = pBytes[0];
+    font.lastChar = pBytes[1];
+    font.fontHeight = pBytes[5];
 
     for (int glyphIndex = 0; glyphIndex < 256; ++glyphIndex)
     {
-        mmxFont.glyphMetrics[glyphIndex].width = pBytes[FontHeaderSize + glyphIndex];
+        const size_t metricOffset = FontHeaderSize + static_cast<size_t>(glyphIndex) * 12;
+        font.glyphMetrics[glyphIndex].leftSpacing = readInt32Le(&pBytes[metricOffset]);
+        font.glyphMetrics[glyphIndex].width = readInt32Le(&pBytes[metricOffset + 4]);
+        font.glyphMetrics[glyphIndex].rightSpacing = readInt32Le(&pBytes[metricOffset + 8]);
     }
 
     for (int glyphIndex = 0; glyphIndex < 256; ++glyphIndex)
     {
-        const size_t offsetPosition = FontHeaderSize + 256 + static_cast<size_t>(glyphIndex) * 4;
-        mmxFont.glyphOffsets[glyphIndex] = readUint32Le(&pBytes[offsetPosition]);
+        const size_t offsetPosition = FontHeaderSize + 256 * 12 + static_cast<size_t>(glyphIndex) * 4;
+        font.glyphOffsets[glyphIndex] = readUint32Le(&pBytes[offsetPosition]);
     }
 
-    mmxFont.pixels.assign(bytes.begin() + static_cast<ptrdiff_t>(FontHeaderSize + MmxAtlasSize), bytes.end());
+    font.pixels.assign(bytes.begin() + static_cast<ptrdiff_t>(FontHeaderSize + Mm7AtlasSize), bytes.end());
 
-    if (!validateBitmapFont(mmxFont, mmxFont.pixels))
+    if (!validateBitmapFont(font, font.pixels))
     {
         return std::nullopt;
     }
 
-    return mmxFont;
+    return font;
 }
 
 
@@ -239,19 +212,6 @@ void copyBitmapGlyph(const BitmapFont &font, int character, FontAtlasImage &imag
         }
     }
 }
-}
-
-bool FontSettings::usesTrueType(const std::string &fontName) const
-{
-    if (!preferTtf)
-    {
-        return false;
-    }
-    const std::string name = normalizedFontName(fontName);
-    return std::any_of(ttfFonts.begin(), ttfFonts.end(), [&name](const std::string &candidate)
-    {
-        return normalizedFontName(candidate) == name;
-    });
 }
 
 std::optional<FontAtlasImage> loadTrueTypeFontAtlas(const AssetFileSystem &assetFileSystem, const std::string &fontName,
@@ -445,7 +405,6 @@ std::optional<FontAtlasImage> loadFontAtlas(
     const AssetFileSystem &assetFileSystem,
     const std::vector<uint8_t> &bitmapBytes,
     const std::string &fontName,
-    const FontSettings &settings,
     std::string &error)
 {
     error.clear();
@@ -467,26 +426,15 @@ std::optional<FontAtlasImage> loadFontAtlas(
     {
         atlas.atlasCellWidth = std::max(atlas.atlasCellWidth, atlas.glyphMetrics[character].width);
     }
-    const bool trueType = settings.usesTrueType(fontName);
-    atlas.atlasScale = trueType ? 4 : 1;
+    atlas.atlasScale = 4;
     // Includes reconstructed italic overhangs (notably Z-caron) and the one-pixel shadow.
-    atlas.atlasPadding = trueType ? 5 : 0;
+    atlas.atlasPadding = 5;
     atlas.atlasWidth = (atlas.atlasCellWidth + 2 * atlas.atlasPadding) * 16 * atlas.atlasScale;
     atlas.atlasHeight = (atlas.fontHeight + 2 * atlas.atlasPadding) * 16 * atlas.atlasScale;
     if (atlas.atlasWidth > 8192 || atlas.atlasHeight > 8192)
     {
         error = "font atlas exceeds 8192 pixels";
         return std::nullopt;
-    }
-
-    if (!trueType)
-    {
-        allocateAtlas(image);
-        for (int character = atlas.firstChar; character <= atlas.lastChar; ++character)
-        {
-            copyBitmapGlyph(*bitmap, character, image);
-        }
-        return image;
     }
 
     const std::string name = normalizedFontName(fontName);

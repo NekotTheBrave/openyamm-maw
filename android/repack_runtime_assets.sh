@@ -15,4 +15,4 @@ cmake --build "${host_build_dir}" --target openyamm_sprite_atlas_cook \
 python3 "${repo_root}/tools/package_runtime_assets.py" \
     --assets-root "${assets_dev_dir}" --output "${assets_dir}" \
     --profile android --sprites "${sprite_dir}" --cooker "${cooker}" \
-    --world mm6 --world mm7 --world mm8 --world mmmerge
+    --world mm6 --world mm7 --world mm8

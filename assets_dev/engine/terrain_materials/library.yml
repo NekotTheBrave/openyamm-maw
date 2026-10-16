@@ -1,0 +1,132 @@
+# Terrain material library, written by tools/terrain_materials.py prepare.
+# Cooked arrays are relative to this directory; mean_color is the display-encoded albedo mean that
+# world tints are measured against.
+version: 1
+materials:
+  dirt_cracked:
+    albedo_height: dirt_cracked/albedo_height.oytex
+    normal_ao_rough: dirt_cracked/normal_ao_rough.oytex
+    mean_color: [0.3945, 0.29, 0.2026]
+    physical_size_m: 2.0
+    license: CC0 1.0
+    origin: https://polyhaven.com/a/cracked_red_ground
+  grass_meadow:
+    albedo_height: grass_meadow/albedo_height.oytex
+    normal_ao_rough: grass_meadow/normal_ao_rough.oytex
+    mean_color: [0.378, 0.4258, 0.1895]
+    physical_size_m: 2.0
+    license: CC0 1.0
+    origin: https://ambientcg.com/view?id=Grass004
+  grass_patchy:
+    albedo_height: grass_patchy/albedo_height.oytex
+    normal_ao_rough: grass_patchy/normal_ao_rough.oytex
+    mean_color: [0.5979, 0.5755, 0.3435]
+    physical_size_m: 2.0
+    license: CC0 1.0
+    origin: https://ambientcg.com/view?id=Ground037
+  gravel_volcanic:
+    albedo_height: gravel_volcanic/albedo_height.oytex
+    normal_ao_rough: gravel_volcanic/normal_ao_rough.oytex
+    mean_color: [0.2947, 0.2895, 0.2769]
+    physical_size_m: 1.5
+    license: CC0 1.0
+    origin: https://ambientcg.com/view?id=Gravel024
+  ground_crust:
+    albedo_height: ground_crust/albedo_height.oytex
+    normal_ao_rough: ground_crust/normal_ao_rough.oytex
+    mean_color: [0.5174, 0.4763, 0.413]
+    physical_size_m: 4.0
+    license: CC0 1.0
+    origin: https://polyhaven.com/a/dry_ground_01
+  mud_cracked:
+    albedo_height: mud_cracked/albedo_height.oytex
+    normal_ao_rough: mud_cracked/normal_ao_rough.oytex
+    mean_color: [0.8138, 0.6629, 0.5065]
+    physical_size_m: 1.5
+    license: CC0 1.0
+    origin: https://polyhaven.com/a/mud_cracked_dry_03
+  road_flagstone:
+    albedo_height: road_flagstone/albedo_height.oytex
+    normal_ao_rough: road_flagstone/normal_ao_rough.oytex
+    mean_color: [0.5001, 0.4183, 0.3401]
+    physical_size_m: 2.0
+    license: CC0 1.0
+    origin: https://polyhaven.com/a/stone_pathway
+  road_pebbles:
+    albedo_height: road_pebbles/albedo_height.oytex
+    normal_ao_rough: road_pebbles/normal_ao_rough.oytex
+    mean_color: [0.2592, 0.2286, 0.1947]
+    physical_size_m: 2.0
+    license: CC0 1.0
+    origin: https://polyhaven.com/a/large_pebbles
+  rock_cliff:
+    albedo_height: rock_cliff/albedo_height.oytex
+    normal_ao_rough: rock_cliff/normal_ao_rough.oytex
+    mean_color: [0.3795, 0.2719, 0.1931]
+    physical_size_m: 2.38
+    license: CC0 1.0
+    origin: https://polyhaven.com/a/rock_face
+  rock_ground:
+    albedo_height: rock_ground/albedo_height.oytex
+    normal_ao_rough: rock_ground/normal_ao_rough.oytex
+    mean_color: [0.4503, 0.42, 0.3592]
+    physical_size_m: 3.0
+    license: CC0 1.0
+    origin: https://polyhaven.com/a/rock_ground_02
+  rock_layered:
+    albedo_height: rock_layered/albedo_height.oytex
+    normal_ao_rough: rock_layered/normal_ao_rough.oytex
+    mean_color: [0.5504, 0.546, 0.5373]
+    physical_size_m: 2.0
+    license: CC0 1.0
+    origin: https://ambientcg.com/view?id=Rock023
+  rock_red:
+    albedo_height: rock_red/albedo_height.oytex
+    normal_ao_rough: rock_red/normal_ao_rough.oytex
+    mean_color: [0.3632, 0.312, 0.2872]
+    physical_size_m: 2.0
+    license: CC0 1.0
+    origin: https://ambientcg.com/view?id=Rock061
+  sand_flat:
+    albedo_height: sand_flat/albedo_height.oytex
+    normal_ao_rough: sand_flat/normal_ao_rough.oytex
+    mean_color: [0.578, 0.5033, 0.3901]
+    physical_size_m: 1.8
+    license: CC0 1.0
+    origin: https://polyhaven.com/a/dense_sand
+  sand_ripples:
+    albedo_height: sand_ripples/albedo_height.oytex
+    normal_ao_rough: sand_ripples/normal_ao_rough.oytex
+    mean_color: [0.7628, 0.6306, 0.4695]
+    physical_size_m: 2.0
+    license: CC0 1.0
+    origin: https://ambientcg.com/view?id=Ground097
+  snow:
+    albedo_height: snow/albedo_height.oytex
+    normal_ao_rough: snow/normal_ao_rough.oytex
+    mean_color: [0.874, 0.9345, 0.9872]
+    physical_size_m: 2.0
+    license: CC0 1.0
+    origin: https://ambientcg.com/view?id=Snow008A
+  soil:
+    albedo_height: soil/albedo_height.oytex
+    normal_ao_rough: soil/normal_ao_rough.oytex
+    mean_color: [0.3295, 0.2442, 0.2]
+    physical_size_m: 1.4
+    license: CC0 1.0
+    origin: https://ambientcg.com/view?id=Ground048
+  soil_stony:
+    albedo_height: soil_stony/albedo_height.oytex
+    normal_ao_rough: soil_stony/normal_ao_rough.oytex
+    mean_color: [0.5757, 0.5033, 0.4181]
+    physical_size_m: 2.0
+    license: CC0 1.0
+    origin: https://polyhaven.com/a/rocky_trail
+  swamp:
+    albedo_height: swamp/albedo_height.oytex
+    normal_ao_rough: swamp/normal_ao_rough.oytex
+    mean_color: [0.1409, 0.2343, 0.1078]
+    physical_size_m: 2.0
+    license: CC0 1.0
+    origin: https://ambientcg.com/view?id=Moss004
+    pools: true

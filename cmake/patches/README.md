@@ -1,5 +1,14 @@
 # bgfx patches
 
+## Anisotropy level
+
+`bgfx-anisotropy-level.patch` adds `BGFX_RESET_MAXANISOTROPY_LEVEL(level)`: reset-flag bits 24–28 carry an
+anisotropy limit applied with `BGFX_RESET_MAXANISOTROPY`, clamped to the device maximum (0 keeps the device maximum).
+Upstream only switches between the device maximum (16× on desktop GPUs) and none. The OpenGL/GLES, Vulkan and
+Direct3D 11 backends honour it, and changing it re-creates their samplers without resetting the back buffer.
+`video.terrain_anisotropy` sets the level through `BgfxContext`. The OpenGL path without sampler objects applies a
+changed level only when a texture's sampler flags next change.
+
 ## Direct3D 11 compressed texture updates
 
 `bgfx-d3d11-compressed-updates.patch` fixes uploads of compressed mip levels with dimensions that are not

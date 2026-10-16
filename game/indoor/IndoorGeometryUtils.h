@@ -133,6 +133,7 @@ std::vector<std::vector<uint16_t>> buildNeighboringIndoorSectorIds(
     const MapDeltaData *pMapDeltaData = nullptr);
 float fixedIndoorDoorDirectionComponentToFloat(int value);
 bool indoorDoorCarriesPartySupport(const MapDeltaDoor &door);
+bool mechanismDoorContainsFace(const MapDeltaDoor &door, size_t faceIndex);
 bx::Vec3 indoorVertexToWorld(const IndoorVertex &vertex);
 bool buildIndoorFaceGeometry(
     const IndoorMapData &indoorMapData,

@@ -12,7 +12,6 @@
 
 #include <array>
 #include <functional>
-#include <future>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -147,22 +146,12 @@ private:
         int volume = 0;
     };
 
-    struct PendingMusicDecodeJob
-    {
-        int redbookTrack = 0;
-        std::string clipKey;
-        std::future<std::vector<float>> samplesFuture;
-    };
-
     static bool isExclusiveGroup(PlaybackGroup group);
     bool initializeSoundCatalog(const Engine::AssetFileSystem &assetFileSystem);
     void preloadSpellEffectSounds(const SpellTable &spellTable);
-    bool isBackgroundMusicTrackLoaded(int redbookTrack) const;
-    bool queueBackgroundMusicTrackDecode(int redbookTrack);
-    void updatePendingBackgroundMusicDecode();
-    bool ensureBackgroundMusicTrackLoaded(int redbookTrack);
+    // The encoded track, read once and kept while it is active or pending; MusicStream decodes it as it plays.
+    std::shared_ptr<const std::vector<uint8_t>> loadBackgroundMusicTrack(int redbookTrack);
     bool startBackgroundMusicTrack(int redbookTrack);
-    void clearPendingBackgroundMusicTrack(int redbookTrack);
     void evictUnusedMusicClips();
     float targetMusicVolume() const;
     float playbackGroupVolume(PlaybackGroup group) const;
@@ -189,14 +178,12 @@ private:
     std::unordered_set<std::string> m_persistentPreloadedClipKeys;
     std::unordered_set<std::string> m_mapPreloadedClipKeys;
     std::unordered_set<std::string> m_previousMapPreloadedClipKeys;
-    std::unordered_map<int, std::string> m_loadedMusicClipKeys;
-    std::optional<PendingMusicDecodeJob> m_pendingMusicDecodeJob;
+    std::unordered_map<int, std::shared_ptr<const std::vector<uint8_t>>> m_loadedMusicTracks;
     int m_activeMusicTrack = 0;
     int m_pendingMusicTrack = 0;
     uint64_t m_activeMusicInstanceId = 0;
     float m_activeMusicVolume = 0.0f;
     float m_musicFadeVelocity = 0.0f;
-    float m_pendingMusicDecodeDelaySeconds = 0.0f;
     bool m_backgroundMusicPaused = false;
     bool m_recordingMapSoundPreloads = false;
     float m_soundVolume = 1.0f;

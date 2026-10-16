@@ -315,7 +315,8 @@ OpenYAMM::Game::GameplayChestViewState materializeOut01Chest(
         12345,
         &chestTable,
         &gameData.itemTable,
-        &party);
+        &party,
+        "mm8");
 }
 
 OpenYAMM::Game::Party makeTrapTestParty(const OpenYAMM::Game::Character &member)
@@ -435,7 +436,8 @@ TEST_CASE("fixed chest gold with authored amount materializes as lootable gold")
             1234,
             &chestTable,
             &gameData.itemTable,
-            &party);
+            &party,
+            "mm8");
 
     const OpenYAMM::Game::GameplayChestItemState *pGoldItem = firstGoldChestItem(view);
     REQUIRE(pGoldItem != nullptr);
@@ -465,7 +467,8 @@ TEST_CASE("fixed chest gold with zero authored amount receives deterministic leg
             1234,
             &chestTable,
             &gameData.itemTable,
-            &party);
+            &party,
+            "mm8");
     const OpenYAMM::Game::GameplayChestViewState secondView =
         OpenYAMM::Game::buildMaterializedChestView(
             0,
@@ -475,7 +478,8 @@ TEST_CASE("fixed chest gold with zero authored amount receives deterministic leg
             1234,
             &chestTable,
             &gameData.itemTable,
-            &party);
+            &party,
+            "mm8");
 
     const OpenYAMM::Game::GameplayChestItemState *pFirstGoldItem = firstGoldChestItem(firstView);
     const OpenYAMM::Game::GameplayChestItemState *pSecondGoldItem = firstGoldChestItem(secondView);
@@ -512,7 +516,8 @@ TEST_CASE("chest materialization keeps unplaced guaranteed items hidden instead 
             1234,
             &chestTable,
             &gameData.itemTable,
-            &party);
+            &party,
+            "mm8");
 
     REQUIRE_EQ(view.items.size(), 1u);
     REQUIRE_EQ(view.hiddenItems.size(), 1u);
@@ -549,7 +554,8 @@ TEST_CASE("chest materialization discards random overflow instead of hiding it")
             1234,
             &chestTable,
             &gameData.itemTable,
-            &party);
+            &party,
+            "mm8");
 
     REQUIRE_EQ(view.items.size(), 1u);
     CHECK(view.hiddenItems.empty());
@@ -583,7 +589,8 @@ TEST_CASE("chest materialization places random loot in descending value order")
             1234,
             &chestTable,
             &gameData.itemTable,
-            &party);
+            &party,
+            "mm8");
 
     REQUIRE_GT(view.items.size(), 1u);
     CHECK(view.hiddenItems.empty());
@@ -633,7 +640,8 @@ TEST_CASE("chest level seven random placeholder generates a guaranteed rare item
             4321,
             &chestTable,
             &gameData.itemTable,
-            &party);
+            &party,
+            "mm8");
 
     const OpenYAMM::Game::GameplayChestItemState *pGeneratedItem = firstChestItem(view);
     REQUIRE(pGeneratedItem != nullptr);
@@ -667,7 +675,8 @@ TEST_CASE("Ravenshore hidden tree chest retains its guaranteed artifact")
             12345,
             &chestTable,
             &gameData.itemTable,
-            &party);
+            &party,
+            "mm8");
 
     CHECK(chestViewContainsRareItem(view, gameData.itemTable));
 }
@@ -863,7 +872,8 @@ TEST_CASE("outdoor Ravage Roaming pirate treasure fixed gold materializes as loo
             12345,
             &chestTable,
             &gameData.itemTable,
-            &party);
+            &party,
+            "mm8");
 
     const OpenYAMM::Game::GameplayChestItemState *pGoldItem = firstGoldChestItem(view);
     REQUIRE(pGoldItem != nullptr);

@@ -145,6 +145,29 @@ TEST_CASE("Obsidian layouts retain inventory geometry and distinct selected and 
     CHECK(map->gapY == 101);
 }
 
+TEST_CASE("alchemy bench layout loads and leaves the party bar and its own button uncovered")
+{
+    OpenYAMM::Game::UiLayoutManager manager;
+    REQUIRE(manager.loadLayoutText("character.yml", loadLayoutSource("assets_dev/engine/ui/gameplay/character.yml")));
+    REQUIRE(manager.loadLayoutText(
+        "alchemy_bench.yml",
+        loadLayoutSource("assets_dev/engine/ui/gameplay/alchemy_bench.yml")));
+    const auto *pPanel = manager.findElement("AlchemyBenchPanel");
+    const auto *pButton = manager.findElement("CharacterAlchemyButton");
+    REQUIRE(pPanel != nullptr);
+    REQUIRE(pButton != nullptr);
+    // Both are children of 640 x 480 roots, so their gaps are positions in the shared reference frame.
+    CHECK(pPanel->gapY + pPanel->height <= 366.0f);
+    CHECK(pButton->gapY >= pPanel->gapY + pPanel->height);
+
+    for (const char *pId : {"AlchemyBenchMixButton", "AlchemyBenchMixAllButton", "AlchemyBenchClearButton"})
+    {
+        const auto *pBenchButton = manager.findElement(pId);
+        REQUIRE(pBenchButton != nullptr);
+        CHECK(pBenchButton->disabledAsset == "obsidian_button_tab_disabled");
+    }
+}
+
 TEST_CASE("Obsidian split arcs and indicators stay inside the bottom anchored party frame")
 {
     using OpenYAMM::Game::UiLayoutManager;

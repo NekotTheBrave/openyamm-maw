@@ -84,6 +84,12 @@ TEST_CASE("installed icon packages preserve native logical dimensions across all
                 continue;
             }
             const std::string name = entry.path().filename().string();
+            const std::string extension = entry.path().extension().string();
+            // Cooked HUD art (.oytex) and portrait set manifests sit beside the images (tools/cook_ui_textures.py).
+            if (extension != ".png" && extension != ".bmp" && extension != ".pcx")
+            {
+                continue;
+            }
             const std::optional<std::string> path = findImageAssetPath(fs, package + "/icons", name, directories, paths);
             INFO(package, "/", name);
             REQUIRE(path);

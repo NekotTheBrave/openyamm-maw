@@ -9,6 +9,8 @@
 
 namespace OpenYAMM::Engine
 {
+class AssetFileSystem;
+
 using ModelMatrix = std::array<float, 16>;
 
 struct ModelTransform
@@ -37,8 +39,11 @@ struct ModelImage
 {
     std::string name;
     std::string sourcePath;
-    // PNG, or a cooked block-compressed texture (.oytex, engine/render/CookedTexture.h) referenced by URI.
+    // An embedded PNG's bytes. An image referenced by URI (a PNG, or a cooked block-compressed texture,
+    // engine/render/CookedTexture.h) stays in its file: pFileSystem reads it when the renderer uploads it, so loaded
+    // models do not keep a second copy of every texture in memory.
     std::vector<uint8_t> bytes;
+    const AssetFileSystem *pFileSystem = nullptr;
     bool cooked = false;
 };
 
@@ -59,6 +64,9 @@ struct ModelColorRamp
     std::array<float, 2> luminanceRange = {0.0f, 1.0f};
     std::array<std::array<float, 3>, ModelColorRampStops> colors = {};
 };
+
+// Edge darkening of creature materials that do not set "openyamm_edge_darkening".
+constexpr float DefaultCreatureEdgeDarkening = 0.65f;
 
 struct ModelMaterial
 {
@@ -85,6 +93,10 @@ struct ModelMaterial
     int regionMaskImageIndex = -1;
     ModelSampler regionMaskSampler;
     std::vector<ModelColorRamp> regionRamps;
+    // "openyamm_burn_map" names a linear texture whose red channel orders the surface for a burn (ModelBurn): 0 burns
+    // first, 1 last. Green modulates the glowing cracks of the charred band ahead of the burn front.
+    int burnMapImageIndex = -1;
+    ModelSampler burnMapSampler;
     // Static decoration extras: "openyamm_wind" sways the vertex by up to this many model units at the model's top,
     // growing with (height / model height)^2; "openyamm_billboard" turns the mesh (a quad in the model's x/up plane)
     // about the vertical axis to face the camera, as a far impostor.
@@ -97,9 +109,12 @@ struct ModelMaterial
     // "openyamm_specular_mask": the metallic-roughness texture's red channel (unused by glTF) scales specular per
     // texel, so a matte head and glossy armour can share one material and one draw.
     bool specularMask = false;
-    // Texture animation of static decorations. "openyamm_uv_scroll": [du, dv] texture units per second (flowing water);
-    // "openyamm_flipbook": [columns, rows, frames per second], frames left to right then top to bottom, looping with a
-    // per-placement phase (fire). "openyamm_flutter": cloth wave amplitude in model units; each vertex moves along
+    // "openyamm_edge_darkening": how much the surface darkens toward the silhouette (0..1), a soft contour like the
+    // sprites' dark rim. Skinned (creature) materials default to DefaultCreatureEdgeDarkening; others to none.
+    float edgeDarkening = 0.0f;
+    // Texture animation. "openyamm_uv_scroll": [du, dv] texture units per second (flowing water; also on creature
+    // models, e.g. an air elemental's wind). Static decorations only: "openyamm_flipbook": [columns, rows, frames per
+    // second], frames left to right then top to bottom, looping with a per-placement phase (fire). "openyamm_flutter": cloth wave amplitude in model units; each vertex moves along
     // its normal by amplitude x COLOR_0 alpha x a wave travelling along texture coordinate u (flags).
     // "openyamm_pulse": [amplitude, period seconds]; the emission is scaled by 1 + amplitude x sin(2 pi t / period),
     // with the per-placement phase (glowing crystals).
@@ -131,6 +146,9 @@ struct ModelPrimitive
     std::vector<ModelMorphTarget> morphTargets;
     // glTF COLOR_0 (linear RGBA, multiplies the base colour); empty when absent. Drawn by static placements.
     std::vector<std::array<uint8_t, 4>> colors;
+    // "_BURN_ORDER": the burn map's red channel at each vertex (0 burns first), baked by the model cook
+    // (tools/cook_model_geometry.py) for primitives drawn with a burn map; empty otherwise.
+    std::vector<float> burnOrder;
 };
 
 struct ModelMesh

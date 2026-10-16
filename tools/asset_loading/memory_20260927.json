@@ -1,0 +1,213 @@
+{
+  "date": "2026-09-27",
+  "gpu": "NVIDIA GeForce RTX 3060 Ti, 8192 MiB",
+  "driver": "595.91.07",
+  "renderer": "OpenGL 3.3",
+  "resolution": "1600x900",
+  "condition": "Release, loose x2 assets, warm filesystem cache; identical settings except private save paths",
+  "route": [
+    "oute3.odm",
+    "6d01.blv",
+    "oute3.odm",
+    "6d01.blv",
+    "oute3.odm"
+  ],
+  "method": {
+    "ram": "Linux /proc/PID/status VmRSS; peak from kernel VmHWM, in KiB converted to MiB",
+    "gpu": "NVIDIA-SMI per-process graphics framebuffer memory, MiB; game PID only",
+    "sampling_interval_seconds": 0.1,
+    "settling": "8 seconds of gameplay at each stop; medians/ranges use samples at least 3 seconds after ready",
+    "instrumentation": "Private before/after binaries add route-driving and ready/leaving markers to GameApplication",
+    "baseline": "Original source/header snapshot, retaining user changes preceding loading implementation",
+    "optimized": "Current normal game code, two atlas preparation workers",
+    "limitations": [
+      "One paired route measurement; not a worst-case map survey or long-session leak test",
+      "GPU peak is sampled, so sub-100-ms peaks may be missed",
+      "RSS includes resident shared mappings; it is not exclusive private heap usage",
+      "RAM and GPU measurements exclude the headless isolated-save preparation process",
+      "Memory sampling run is separate from the earlier loading-time benchmark",
+      "Logical cache payload counters and NVIDIA physical framebuffer accounting are different measurements"
+    ]
+  },
+  "normal_binary_sha256": "d5ea6a7abef3520c0114a1092094bd9b79cf44b1de101d3b214c7c3d5c3b2ded",
+  "runs": [
+    {
+      "label": "before",
+      "binary_sha256": "23580efb60124db03f9d5c79b4dfe2cce40dd7137c81e70bf661afcd595cf829",
+      "source_save_sha256": "b22b2540c7a68345ed415c91d69143f3f1cccc5eb3e8a43fe574dde2c4773c87",
+      "run_directory": "/tmp/openyamm-desktop-memory-before-0drab0j3",
+      "rss_peak_mib": 2284.44140625,
+      "gpu_peak_mib": 875,
+      "settled": [
+        {
+          "map": "New Sorpigal",
+          "sample_count": 48,
+          "rss_median_mib": 1957.38671875,
+          "rss_range_mib": [
+            1956.10546875,
+            1959.25
+          ],
+          "gpu_median_mib": 867.0,
+          "gpu_range_mib": [
+            867,
+            867
+          ]
+        },
+        {
+          "map": "Goblinwatch",
+          "sample_count": 47,
+          "rss_median_mib": 1446.7734375,
+          "rss_range_mib": [
+            1444.44140625,
+            1449.09765625
+          ],
+          "gpu_median_mib": 379,
+          "gpu_range_mib": [
+            379,
+            379
+          ]
+        },
+        {
+          "map": "New Sorpigal return 1",
+          "sample_count": 48,
+          "rss_median_mib": 1785.494140625,
+          "rss_range_mib": [
+            1784.15234375,
+            1788.09765625
+          ],
+          "gpu_median_mib": 849.0,
+          "gpu_range_mib": [
+            809,
+            849
+          ]
+        },
+        {
+          "map": "Goblinwatch return",
+          "sample_count": 47,
+          "rss_median_mib": 1559.57421875,
+          "rss_range_mib": [
+            1557.390625,
+            1561.890625
+          ],
+          "gpu_median_mib": 385,
+          "gpu_range_mib": [
+            385,
+            385
+          ]
+        },
+        {
+          "map": "New Sorpigal return 2",
+          "sample_count": 47,
+          "rss_median_mib": 1925.14453125,
+          "rss_range_mib": [
+            1923.98828125,
+            1926.30859375
+          ],
+          "gpu_median_mib": 809,
+          "gpu_range_mib": [
+            809,
+            809
+          ]
+        }
+      ],
+      "ram_samples": 790,
+      "gpu_samples": 758,
+      "exit_code": 0,
+      "max_swap_mib": 0.0,
+      "readiness": [],
+      "raw_samples_sha256": "515b9fdfa068904cea331e691f37ead4f1877260fd02249357d1aa6ea2ad845e"
+    },
+    {
+      "label": "after",
+      "binary_sha256": "31006a1e6a91295faa4fdcdd9a3af7da750e3581f47af449b83dcb30f4205b7f",
+      "source_save_sha256": "b22b2540c7a68345ed415c91d69143f3f1cccc5eb3e8a43fe574dde2c4773c87",
+      "run_directory": "/tmp/openyamm-desktop-memory-after-2ifn7rnh",
+      "rss_peak_mib": 2214.66796875,
+      "gpu_peak_mib": 928,
+      "settled": [
+        {
+          "map": "New Sorpigal",
+          "sample_count": 48,
+          "rss_median_mib": 1822.291015625,
+          "rss_range_mib": [
+            1821.06640625,
+            1823.54296875
+          ],
+          "gpu_median_mib": 867.0,
+          "gpu_range_mib": [
+            867,
+            867
+          ]
+        },
+        {
+          "map": "Goblinwatch",
+          "sample_count": 48,
+          "rss_median_mib": 1348.0390625,
+          "rss_range_mib": [
+            1345.84375,
+            1350.40234375
+          ],
+          "gpu_median_mib": 737.0,
+          "gpu_range_mib": [
+            737,
+            737
+          ]
+        },
+        {
+          "map": "New Sorpigal return 1",
+          "sample_count": 47,
+          "rss_median_mib": 1502.82421875,
+          "rss_range_mib": [
+            1501.32421875,
+            1505.2578125
+          ],
+          "gpu_median_mib": 928,
+          "gpu_range_mib": [
+            888,
+            928
+          ]
+        },
+        {
+          "map": "Goblinwatch return",
+          "sample_count": 47,
+          "rss_median_mib": 1365.9453125,
+          "rss_range_mib": [
+            1363.6171875,
+            1368.03125
+          ],
+          "gpu_median_mib": 781,
+          "gpu_range_mib": [
+            781,
+            781
+          ]
+        },
+        {
+          "map": "New Sorpigal return 2",
+          "sample_count": 47,
+          "rss_median_mib": 1520.1171875,
+          "rss_range_mib": [
+            1518.96875,
+            1521.3671875
+          ],
+          "gpu_median_mib": 928,
+          "gpu_range_mib": [
+            928,
+            928
+          ]
+        }
+      ],
+      "ram_samples": 487,
+      "gpu_samples": 469,
+      "exit_code": 0,
+      "max_swap_mib": 0.0,
+      "readiness": [
+        "[LoadingReadiness] warm_ms=221.032 gpu_readback=1 atlas_uploaded_pages=15 atlas_resident_pages=15 atlas_resident_bytes=469938238 atlas_peak_preparation_bytes=186453148 native_uploaded_textures=294 native_resident_bytes=116201588 atlas_peak_preparation_jobs=2",
+        "[LoadingReadiness] warm_ms=15.6302 gpu_readback=1 atlas_uploaded_pages=5 atlas_resident_pages=20 atlas_resident_bytes=679759694 atlas_peak_preparation_bytes=206862642 native_uploaded_textures=57 native_resident_bytes=124998048 atlas_peak_preparation_jobs=2",
+        "[LoadingReadiness] warm_ms=20.1812 gpu_readback=1 atlas_uploaded_pages=0 atlas_resident_pages=20 atlas_resident_bytes=679759694 atlas_peak_preparation_bytes=0 native_uploaded_textures=0 native_resident_bytes=124998048 atlas_peak_preparation_jobs=0",
+        "[LoadingReadiness] warm_ms=17.5373 gpu_readback=1 atlas_uploaded_pages=0 atlas_resident_pages=20 atlas_resident_bytes=679759694 atlas_peak_preparation_bytes=0 native_uploaded_textures=0 native_resident_bytes=124998048 atlas_peak_preparation_jobs=0",
+        "[LoadingReadiness] warm_ms=20.4071 gpu_readback=1 atlas_uploaded_pages=0 atlas_resident_pages=20 atlas_resident_bytes=679759694 atlas_peak_preparation_bytes=0 native_uploaded_textures=0 native_resident_bytes=124998048 atlas_peak_preparation_jobs=0"
+      ],
+      "raw_samples_sha256": "690aa6bffc921007d6404aca2333637d38cd14fdcd4773cdba7eb5ced215df5b"
+    }
+  ]
+}

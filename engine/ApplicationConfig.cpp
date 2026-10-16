@@ -22,6 +22,7 @@ ApplicationConfig ApplicationConfig::createDefault()
     config.windowHeight = OPENYAMM_WINDOW_HEIGHT;
     config.windowMode = WindowMode::Windowed;
     config.verticalSync = false;
+    config.maxAnisotropy = 4;
     config.fpsTrace = false;
     config.performanceTrace = false;
     config.hitchTrace = false;

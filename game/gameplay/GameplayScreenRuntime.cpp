@@ -713,7 +713,7 @@ bool GameplayScreenRuntime::contextActionButtonVisible() const
             || actions.actions[actions.primaryIndex].kind == GameplayContextActionKind::DropHeldItem);
 }
 
-std::optional<GameplayScreenRuntime::ResolvedHudLayoutElement> GameplayScreenRuntime::resolveMobilePassTurnButton(
+std::optional<GameplayScreenRuntime::ResolvedHudLayoutElement> GameplayScreenRuntime::resolvePassTurnButton(
     int width,
     int height) const
 {
@@ -722,21 +722,13 @@ std::optional<GameplayScreenRuntime::ResolvedHudLayoutElement> GameplayScreenRun
     if (pParty == nullptr
         || currentHudScreenState() != GameplayHudScreenState::Gameplay
         || pendingSpellTargetActive()
-        || findHudLayoutElement("OutdoorMobileContextActionButton") == nullptr
         || !turnBasedCombatRuntime().canPassTurn(*pParty))
     {
         return std::nullopt;
     }
 
-    std::optional<ResolvedHudLayoutElement> rect =
-        resolveHudLayoutElement("OutdoorMobileContextActionButton", width, height, 0, 0);
-
-    if (rect && contextActionButtonVisible())
-    {
-        rect->y -= rect->height + 4.0f * rect->scale;
-    }
-
-    return rect;
+    // Attached to the turn indicator dock on desktop and Android alike.
+    return resolveHudLayoutElement("ObsidianTurnPassButton", width, height, 0, 0);
 }
 
 const char *GameplayScreenRuntime::mobileInspectLayoutId() const
@@ -793,7 +785,7 @@ std::vector<GameplayTouchControl> GameplayScreenRuntime::mobileTouchControls(int
     {
         append("OutdoorMobileContextActionButton");
     }
-    if (const std::optional<ResolvedHudLayoutElement> passRect = resolveMobilePassTurnButton(width, height))
+    if (const std::optional<ResolvedHudLayoutElement> passRect = resolvePassTurnButton(width, height))
     {
         controls.push_back({GameplayTouchRole::Hud, passRect->x, passRect->y, passRect->width, passRect->height});
     }
@@ -907,6 +899,16 @@ const RosterTable *GameplayScreenRuntime::rosterTable() const
 const ReadableScrollTable *GameplayScreenRuntime::readableScrollTable() const
 {
     return &m_session.data().readableScrollTable();
+}
+
+const PotionMixingTable *GameplayScreenRuntime::potionMixingTable() const
+{
+    return &m_session.data().potionMixingTable();
+}
+
+const PotionNoteTable *GameplayScreenRuntime::potionNoteTable() const
+{
+    return &m_session.data().potionNoteTable();
 }
 
 const MergedPotionSettingTable *GameplayScreenRuntime::mergedPotionSettingTable() const
@@ -2577,6 +2579,13 @@ void GameplayScreenRuntime::resetCharacterOverlayInteractionState()
     interactionState().characterMemberCycleLatch = false;
     interactionState().characterPressedTarget = {};
     interactionState().characterTouchItemDragActive = false;
+    interactionState().alchemyBenchClickLatch = false;
+    interactionState().alchemyBenchPressedTarget = {};
+    interactionState().alchemyBenchDragging = false;
+    interactionState().alchemyBenchScrollDrag = 0;
+    // The bench lives inside the character screen and never outlasts it.
+    characterScreen().alchemyBench.active = false;
+    characterScreen().alchemyBench.recipeSearchActive = false;
 }
 
 void GameplayScreenRuntime::syncPartyConditionPortraits()
@@ -2999,7 +3008,8 @@ void GameplayScreenRuntime::consumePendingEventRuntimeAudioRequests()
             [pWorldRuntime](size_t actorIndex) -> std::optional<GameAudioSystem::WorldPosition>
             {
                 GameplayRuntimeActorState actor = {};
-                if (!pWorldRuntime->actorRuntimeState(actorIndex, actor) || actor.isInvisible)
+                // A corpseless actor turns invisible when its death timer ends; its death voice plays out.
+                if (!pWorldRuntime->actorRuntimeState(actorIndex, actor) || (actor.isInvisible && !actor.isDead))
                 {
                     return std::nullopt;
                 }
@@ -3846,17 +3856,8 @@ void GameplayScreenRuntime::renderLayoutLabel(
 
             return GameplayHudCommon::findHudFont(uiRuntime().hudFontHandles(), font->fontName);
         },
-        [this](const GameplayHudFontData &font, uint32_t colorAbgr) -> bgfx::TextureHandle
-        {
-            HudFontHandle gameplayFont = {};
-            gameplayFont.fontName = font.fontName;
-            gameplayFont.fontHeight = font.fontHeight;
-            gameplayFont.mainTextureHandle = font.mainTextureHandle;
-            gameplayFont.shadowTextureHandle = font.shadowTextureHandle;
-            return uiRuntime().ensureHudFontMainTextureColor(gameplayFont, colorAbgr);
-        },
         [this, pClip](const GameplayHudFontData &font,
-               bgfx::TextureHandle textureHandle,
+               const GameplayHudFontLayer &layer,
                const std::string &text,
                float textX,
                float textY,
@@ -3867,7 +3868,7 @@ void GameplayScreenRuntime::renderLayoutLabel(
             gameplayFont.fontHeight = font.fontHeight;
             gameplayFont.mainTextureHandle = font.mainTextureHandle;
             gameplayFont.shadowTextureHandle = font.shadowTextureHandle;
-            renderHudFontLayer(gameplayFont, textureHandle, text, textX, textY, fontScale, pClip);
+            renderHudFontLayer(gameplayFont, layer, text, textX, textY, fontScale, pClip);
         });
 }
 
@@ -3900,9 +3901,8 @@ void GameplayScreenRuntime::renderHudTextColored(
             textX = lineStartX + static_cast<float>(*run.tabStop) * fontScale;
         }
 
-        const bgfx::TextureHandle textureHandle =
-            ensureHudFontMainTextureColor(font, run.colorAbgr.value_or(defaultColorAbgr));
-        renderHudFontLayer(font, textureHandle, run.text, textX, textY, fontScale, pClip);
+        const GameplayHudFontLayer layer = hudFontMainLayer(font, run.colorAbgr.value_or(defaultColorAbgr));
+        renderHudFontLayer(font, layer, run.text, textX, textY, fontScale, pClip);
         textX += measureHudTextWidth(font, run.text) * fontScale;
     }
 }
@@ -3915,23 +3915,21 @@ std::vector<std::string> GameplayScreenRuntime::wrapHudTextToWidth(
     return uiRuntime().wrapHudTextToWidth(font, text, maxWidth);
 }
 
-bgfx::TextureHandle GameplayScreenRuntime::ensureHudFontMainTextureColor(
-    const HudFontHandle &font,
-    uint32_t colorAbgr) const
+GameplayHudFontLayer GameplayScreenRuntime::hudFontMainLayer(const HudFontHandle &font, uint32_t colorAbgr) const
 {
-    return uiRuntime().ensureHudFontMainTextureColor(font, colorAbgr);
+    return uiRuntime().hudFontMainLayer(font, colorAbgr);
 }
 
 void GameplayScreenRuntime::renderHudFontLayer(
     const HudFontHandle &font,
-    bgfx::TextureHandle textureHandle,
+    const GameplayHudFontLayer &layer,
     const std::string &text,
     float textX,
     float textY,
     float fontScale,
     const GameplayResolvedHudLayoutElement *pClip) const
 {
-    uiRuntime().renderHudFontLayer(font, textureHandle, text, textX, textY, fontScale, pClip);
+    uiRuntime().renderHudFontLayer(font, layer, text, textX, textY, fontScale, pClip);
 }
 
 void GameplayScreenRuntime::bindHudRenderBackend(const GameplayHudRenderBackend &backend)
@@ -3964,12 +3962,9 @@ void GameplayScreenRuntime::prepareHudView(int width, int height) const
     uiRuntime().prepareHudView(width, height);
 }
 
-void GameplayScreenRuntime::submitHudQuadBatch(
-    const std::vector<GameplayHudBatchQuad> &quads,
-    int screenWidth,
-    int screenHeight) const
+void GameplayScreenRuntime::submitHudQuadBatch(const std::vector<GameplayHudBatchQuad> &quads) const
 {
-    uiRuntime().submitHudQuadBatch(quads, screenWidth, screenHeight);
+    uiRuntime().submitHudQuadBatch(quads);
 }
 
 void GameplayScreenRuntime::renderViewportSidePanels(
@@ -4289,15 +4284,8 @@ void GameplayScreenRuntime::renderHudTextLine(
         return;
     }
 
-    bgfx::TextureHandle coloredMainTextureHandle = ensureHudFontMainTextureColor(*font, colorAbgr);
-
-    if (!bgfx::isValid(coloredMainTextureHandle))
-    {
-        coloredMainTextureHandle = font->mainTextureHandle;
-    }
-
     renderHudFontLayer(*font, font->shadowTextureHandle, text, textX, textY, fontScale);
-    renderHudFontLayer(*font, coloredMainTextureHandle, text, textX, textY, fontScale);
+    renderHudFontLayer(*font, hudFontMainLayer(*font, colorAbgr), text, textX, textY, fontScale);
 }
 
 void GameplayScreenRuntime::resetHudTransientState() const

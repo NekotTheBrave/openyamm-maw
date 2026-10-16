@@ -362,6 +362,49 @@ bool projectWorldPointToScreenForKeyboardCache(
     return std::isfinite(screenX) && std::isfinite(screenY);
 }
 
+// Screen rect of world points, when every one projects.
+template <size_t PointCount>
+bool projectVisiblePointsRect(
+    const std::array<bx::Vec3, PointCount> &points,
+    int viewWidth,
+    int viewHeight,
+    const float *pViewProjectionMatrix,
+    ProjectedBillboardRect &rect)
+{
+    float minX = std::numeric_limits<float>::max();
+    float maxX = std::numeric_limits<float>::lowest();
+    float minY = std::numeric_limits<float>::max();
+    float maxY = std::numeric_limits<float>::lowest();
+
+    for (const bx::Vec3 &point : points)
+    {
+        float projectedX = 0.0f;
+        float projectedY = 0.0f;
+
+        if (!projectWorldPointToScreenForKeyboardCache(
+                point,
+                viewWidth,
+                viewHeight,
+                pViewProjectionMatrix,
+                projectedX,
+                projectedY))
+        {
+            return false;
+        }
+
+        minX = std::min(minX, projectedX);
+        maxX = std::max(maxX, projectedX);
+        minY = std::min(minY, projectedY);
+        maxY = std::max(maxY, projectedY);
+    }
+
+    rect.left = std::clamp(minX, 0.0f, static_cast<float>(viewWidth - 1));
+    rect.right = std::clamp(maxX, 0.0f, static_cast<float>(viewWidth - 1));
+    rect.top = std::clamp(minY, 0.0f, static_cast<float>(viewHeight - 1));
+    rect.bottom = std::clamp(maxY, 0.0f, static_cast<float>(viewHeight - 1));
+    return rect.right > rect.left && rect.bottom > rect.top;
+}
+
 bool projectVisibleBillboardRect(
     const bx::Vec3 &center,
     const bx::Vec3 &right,
@@ -377,54 +420,30 @@ bool projectVisibleBillboardRect(
         {center.x - right.x - up.x, center.y - right.y - up.y, center.z - right.z - up.z},
         {center.x + right.x - up.x, center.y + right.y - up.y, center.z + right.z - up.z}
     }};
-    bool hasProjection = false;
-    float minX = 0.0f;
-    float maxX = 0.0f;
-    float minY = 0.0f;
-    float maxY = 0.0f;
+    return projectVisiblePointsRect(corners, viewWidth, viewHeight, pViewProjectionMatrix, rect);
+}
 
-    for (const bx::Vec3 &corner : corners)
-    {
-        float projectedX = 0.0f;
-        float projectedY = 0.0f;
+// Screen rect of a world box (a model's bounds).
+bool projectVisibleBoxRect(
+    const std::array<float, 3> &min,
+    const std::array<float, 3> &max,
+    int viewWidth,
+    int viewHeight,
+    const float *pViewProjectionMatrix,
+    ProjectedBillboardRect &rect)
+{
+    const std::array<bx::Vec3, 8> corners = {{
+        {min[0], min[1], min[2]},
+        {max[0], min[1], min[2]},
+        {min[0], max[1], min[2]},
+        {max[0], max[1], min[2]},
+        {min[0], min[1], max[2]},
+        {max[0], min[1], max[2]},
+        {min[0], max[1], max[2]},
+        {max[0], max[1], max[2]}
+    }};
 
-        if (!projectWorldPointToScreenForKeyboardCache(
-                corner,
-                viewWidth,
-                viewHeight,
-                pViewProjectionMatrix,
-                projectedX,
-                projectedY))
-        {
-            return false;
-        }
-
-        if (!hasProjection)
-        {
-            minX = projectedX;
-            maxX = projectedX;
-            minY = projectedY;
-            maxY = projectedY;
-            hasProjection = true;
-            continue;
-        }
-
-        minX = std::min(minX, projectedX);
-        maxX = std::max(maxX, projectedX);
-        minY = std::min(minY, projectedY);
-        maxY = std::max(maxY, projectedY);
-    }
-
-    if (!hasProjection)
-    {
-        return false;
-    }
-
-    rect.left = std::clamp(minX, 0.0f, static_cast<float>(viewWidth - 1));
-    rect.right = std::clamp(maxX, 0.0f, static_cast<float>(viewWidth - 1));
-    rect.top = std::clamp(minY, 0.0f, static_cast<float>(viewHeight - 1));
-    rect.bottom = std::clamp(maxY, 0.0f, static_cast<float>(viewHeight - 1));
-    return rect.right > rect.left && rect.bottom > rect.top;
+    return projectVisiblePointsRect(corners, viewWidth, viewHeight, pViewProjectionMatrix, rect);
 }
 
 void fillKeyboardInteractionSamplePoints(
@@ -700,26 +719,27 @@ void OutdoorBillboardRenderer::appendLitBillboardVertices(
     const bx::Vec3 &up,
     float u0,
     float u1,
-    uint32_t lightContributionAbgr)
+    uint32_t lightContributionAbgr,
+    float hitFlash)
 {
     vertices.push_back(
         {center.x - right.x - up.x, center.y - right.y - up.y, center.z - right.z - up.z, u0, 1.0f,
-         lightContributionAbgr});
+         lightContributionAbgr, hitFlash});
     vertices.push_back(
         {center.x - right.x + up.x, center.y - right.y + up.y, center.z - right.z + up.z, u0, 0.0f,
-         lightContributionAbgr});
+         lightContributionAbgr, hitFlash});
     vertices.push_back(
         {center.x + right.x + up.x, center.y + right.y + up.y, center.z + right.z + up.z, u1, 0.0f,
-         lightContributionAbgr});
+         lightContributionAbgr, hitFlash});
     vertices.push_back(
         {center.x - right.x - up.x, center.y - right.y - up.y, center.z - right.z - up.z, u0, 1.0f,
-         lightContributionAbgr});
+         lightContributionAbgr, hitFlash});
     vertices.push_back(
         {center.x + right.x + up.x, center.y + right.y + up.y, center.z + right.z + up.z, u1, 0.0f,
-         lightContributionAbgr});
+         lightContributionAbgr, hitFlash});
     vertices.push_back(
         {center.x + right.x - up.x, center.y + right.y - up.y, center.z + right.z - up.z, u1, 1.0f,
-         lightContributionAbgr});
+         lightContributionAbgr, hitFlash});
 }
 
 void OutdoorBillboardRenderer::writeLitBillboardVertices(
@@ -729,7 +749,8 @@ void OutdoorBillboardRenderer::writeLitBillboardVertices(
     const bx::Vec3 &up,
     float u0,
     float u1,
-    uint32_t lightContributionAbgr)
+    uint32_t lightContributionAbgr,
+    float hitFlash)
 {
     pVertices[0] = {
         center.x - right.x - up.x,
@@ -737,42 +758,48 @@ void OutdoorBillboardRenderer::writeLitBillboardVertices(
         center.z - right.z - up.z,
         u0,
         1.0f,
-        lightContributionAbgr};
+        lightContributionAbgr,
+        hitFlash};
     pVertices[1] = {
         center.x - right.x + up.x,
         center.y - right.y + up.y,
         center.z - right.z + up.z,
         u0,
         0.0f,
-        lightContributionAbgr};
+        lightContributionAbgr,
+        hitFlash};
     pVertices[2] = {
         center.x + right.x + up.x,
         center.y + right.y + up.y,
         center.z + right.z + up.z,
         u1,
         0.0f,
-        lightContributionAbgr};
+        lightContributionAbgr,
+        hitFlash};
     pVertices[3] = {
         center.x - right.x - up.x,
         center.y - right.y - up.y,
         center.z - right.z - up.z,
         u0,
         1.0f,
-        lightContributionAbgr};
+        lightContributionAbgr,
+        hitFlash};
     pVertices[4] = {
         center.x + right.x + up.x,
         center.y + right.y + up.y,
         center.z + right.z + up.z,
         u1,
         0.0f,
-        lightContributionAbgr};
+        lightContributionAbgr,
+        hitFlash};
     pVertices[5] = {
         center.x + right.x - up.x,
         center.y + right.y - up.y,
         center.z + right.z - up.z,
         u1,
         1.0f,
-        lightContributionAbgr};
+        lightContributionAbgr,
+        hitFlash};
 }
 
 uint32_t OutdoorBillboardRenderer::computeBillboardLightContributionAbgr(
@@ -1019,14 +1046,16 @@ void OutdoorBillboardRenderer::preloadPendingLevelSpriteTextures(OutdoorGameView
         return;
     }
 
-    const SpriteFrameTable &spriteFrameTable = view.m_outdoorActorPreviewBillboardSet->spriteFrameTable;
+    const ActorPreviewBillboardSet &actorSet = *view.m_outdoorActorPreviewBillboardSet;
+    const SpriteFrameTable &spriteFrameTable = actorSet.spriteFrameTable;
 
     for (size_t actorIndex = 0; actorIndex < view.m_pOutdoorWorldRuntime->mapActorCount(); ++actorIndex)
     {
         const OutdoorWorldRuntime::MapActorState *pActorState =
             view.m_pOutdoorWorldRuntime->mapActorState(actorIndex);
 
-        if (pActorState == nullptr)
+        // A model draws a bound monster: none of its sprites is needed.
+        if (pActorState == nullptr || actorSet.drawsModel(pActorState->monsterId))
         {
             continue;
         }
@@ -1164,63 +1193,86 @@ void OutdoorBillboardRenderer::prepareKeyboardInteractionBillboardCache(
                 continue;
             }
 
-            const uint32_t animationOffsetTicks =
-                animationTimeTicks + static_cast<uint32_t>(std::abs(billboard.x + billboard.y));
-            const SpriteFrameEntry *pFrame =
-                view.m_outdoorDecorationBillboardSet->spriteFrameTable.getFrame(spriteId, animationOffsetTicks);
-
-            if (pFrame == nullptr)
-            {
-                continue;
-            }
-
-            const float facingRadians = static_cast<float>(billboard.facing) * Pi / 180.0f;
-            const float angleToCamera = std::atan2(
-                static_cast<float>(billboard.y) - cameraPosition.y,
-                static_cast<float>(billboard.x) - cameraPosition.x);
-            const float octantAngle = facingRadians - angleToCamera + Pi + (Pi / 8.0f);
-            const int octant = static_cast<int>(std::floor(octantAngle / (Pi / 4.0f))) & 7;
-            const ResolvedSpriteTexture resolvedTexture = SpriteFrameTable::resolveTexture(*pFrame, octant);
-            const OutdoorGameView::BillboardTextureHandle *pTexture =
-                ensureSpriteBillboardTexture(view, resolvedTexture.textureName, pFrame->paletteId);
-
-            if (pTexture == nullptr || !bgfx::isValid(pTexture->textureHandle))
-            {
-                continue;
-            }
-
-            const float spriteScale = std::max(pFrame->scale, 0.01f);
-            const float worldWidth = static_cast<float>(pTexture->width) * spriteScale;
-            const float worldHeight = static_cast<float>(pTexture->height) * spriteScale;
-            const float halfWidth = worldWidth * 0.5f;
-            const bx::Vec3 center = bottomAnchoredBillboardCenter(
-                static_cast<float>(billboard.x),
-                static_cast<float>(billboard.y),
-                static_cast<float>(billboard.z),
-                cameraUp,
-                worldHeight);
-            const bx::Vec3 right = {
-                cameraRight.x * halfWidth,
-                cameraRight.y * halfWidth,
-                cameraRight.z * halfWidth
-            };
-            const bx::Vec3 up = {
-                cameraUp.x * worldHeight * 0.5f,
-                cameraUp.y * worldHeight * 0.5f,
-                cameraUp.z * worldHeight * 0.5f
-            };
             ProjectedBillboardRect rect = {};
 
-            if (!projectVisibleBillboardRect(
-                    center,
-                    right,
-                    up,
-                    viewWidth,
-                    viewHeight,
-                    viewProjectionMatrix,
-                    rect))
+            if (view.m_decorationModels.modelsSprite(spriteId))
             {
-                continue;
+                // A model draws it: target the decoration's native collision cylinder.
+                const float radius = std::max(static_cast<float>(billboard.radius), 16.0f);
+                const float x = static_cast<float>(billboard.x);
+                const float y = static_cast<float>(billboard.y);
+                const float z = static_cast<float>(billboard.z);
+
+                if (!projectVisibleBoxRect(
+                        {x - radius, y - radius, z},
+                        {x + radius, y + radius, z + std::max(static_cast<float>(billboard.height), 16.0f)},
+                        viewWidth,
+                        viewHeight,
+                        viewProjectionMatrix,
+                        rect))
+                {
+                    continue;
+                }
+            }
+            else
+            {
+                const uint32_t animationOffsetTicks =
+                    animationTimeTicks + static_cast<uint32_t>(std::abs(billboard.x + billboard.y));
+                const SpriteFrameEntry *pFrame =
+                    view.m_outdoorDecorationBillboardSet->spriteFrameTable.getFrame(spriteId, animationOffsetTicks);
+
+                if (pFrame == nullptr)
+                {
+                    continue;
+                }
+
+                const float facingRadians = static_cast<float>(billboard.facing) * Pi / 180.0f;
+                const float angleToCamera = std::atan2(
+                    static_cast<float>(billboard.y) - cameraPosition.y,
+                    static_cast<float>(billboard.x) - cameraPosition.x);
+                const float octantAngle = facingRadians - angleToCamera + Pi + (Pi / 8.0f);
+                const int octant = static_cast<int>(std::floor(octantAngle / (Pi / 4.0f))) & 7;
+                const ResolvedSpriteTexture resolvedTexture = SpriteFrameTable::resolveTexture(*pFrame, octant);
+                const OutdoorGameView::BillboardTextureHandle *pTexture =
+                    ensureSpriteBillboardTexture(view, resolvedTexture.textureName, pFrame->paletteId);
+
+                if (pTexture == nullptr || !bgfx::isValid(pTexture->textureHandle))
+                {
+                    continue;
+                }
+
+                const float spriteScale = std::max(pFrame->scale, 0.01f);
+                const float worldWidth = static_cast<float>(pTexture->width) * spriteScale;
+                const float worldHeight = static_cast<float>(pTexture->height) * spriteScale;
+                const float halfWidth = worldWidth * 0.5f;
+                const bx::Vec3 center = bottomAnchoredBillboardCenter(
+                    static_cast<float>(billboard.x),
+                    static_cast<float>(billboard.y),
+                    static_cast<float>(billboard.z),
+                    cameraUp,
+                    worldHeight);
+                const bx::Vec3 right = {
+                    cameraRight.x * halfWidth,
+                    cameraRight.y * halfWidth,
+                    cameraRight.z * halfWidth
+                };
+                const bx::Vec3 up = {
+                    cameraUp.x * worldHeight * 0.5f,
+                    cameraUp.y * worldHeight * 0.5f,
+                    cameraUp.z * worldHeight * 0.5f
+                };
+
+                if (!projectVisibleBillboardRect(
+                        center,
+                        right,
+                        up,
+                        viewWidth,
+                        viewHeight,
+                        viewProjectionMatrix,
+                        rect))
+                {
+                    continue;
+                }
             }
 
             OutdoorGameView::KeyboardInteractionBillboardCandidate candidate = {};
@@ -1278,26 +1330,6 @@ void OutdoorBillboardRenderer::prepareKeyboardInteractionBillboardCache(
                 continue;
             }
 
-            uint16_t spriteFrameIndex = pActorState->spriteFrameIndex;
-            const size_t animationIndex = static_cast<size_t>(pActorState->animation);
-
-            if (animationIndex < pActorState->actionSpriteFrameIndices.size()
-                && pActorState->actionSpriteFrameIndices[animationIndex] != 0)
-            {
-                spriteFrameIndex = pActorState->actionSpriteFrameIndices[animationIndex];
-            }
-
-            const uint32_t frameTimeTicks = pActorState->useStaticSpriteFrame
-                ? 0u
-                : static_cast<uint32_t>(std::max(0.0f, pActorState->animationTimeTicks));
-            const SpriteFrameEntry *pFrame =
-                view.m_outdoorActorPreviewBillboardSet->spriteFrameTable.getFrame(spriteFrameIndex, frameTimeTicks);
-
-            if (pFrame == nullptr)
-            {
-                continue;
-            }
-
             const float deltaX = static_cast<float>(pActorState->x) - cameraPosition.x;
             const float deltaY = static_cast<float>(pActorState->y) - cameraPosition.y;
             const float deltaZ = static_cast<float>(pActorState->z) - cameraPosition.z;
@@ -1310,51 +1342,88 @@ void OutdoorBillboardRenderer::prepareKeyboardInteractionBillboardCache(
                 continue;
             }
 
-            const float angleToCamera = std::atan2(
-                static_cast<float>(pActorState->y) - cameraPosition.y,
-                static_cast<float>(pActorState->x) - cameraPosition.x);
-            const float octantAngle = pActorState->yawRadians - angleToCamera + Pi + (Pi / 8.0f);
-            const int octant = static_cast<int>(std::floor(octantAngle / (Pi / 4.0f))) & 7;
-            const ResolvedSpriteTexture resolvedTexture = SpriteFrameTable::resolveTexture(*pFrame, octant);
-            const OutdoorGameView::BillboardTextureHandle *pTexture =
-                ensureSpriteBillboardTexture(view, resolvedTexture.textureName, pFrame->paletteId);
-
-            if (pTexture == nullptr || !bgfx::isValid(pTexture->textureHandle))
-            {
-                continue;
-            }
-
-            const float spriteScale = std::max(pFrame->scale, 0.01f);
-            const float worldWidth = static_cast<float>(pTexture->width) * spriteScale;
-            const float worldHeight = static_cast<float>(pTexture->height) * spriteScale;
-            const float halfWidth = worldWidth * 0.5f;
-            const bx::Vec3 center = spriteBillboardCenter(
-                static_cast<float>(pActorState->x),
-                static_cast<float>(pActorState->y),
-                static_cast<float>(pActorState->z),
-                cameraRight, cameraUp, *pTexture, spriteScale, resolvedTexture.mirrored);
-            const bx::Vec3 right = {
-                cameraRight.x * halfWidth,
-                cameraRight.y * halfWidth,
-                cameraRight.z * halfWidth
-            };
-            const bx::Vec3 up = {
-                cameraUp.x * worldHeight * 0.5f,
-                cameraUp.y * worldHeight * 0.5f,
-                cameraUp.z * worldHeight * 0.5f
-            };
             ProjectedBillboardRect rect = {};
 
-            if (!projectVisibleBillboardRect(
-                    center,
-                    right,
-                    up,
-                    viewWidth,
-                    viewHeight,
-                    viewProjectionMatrix,
-                    rect))
+            if (view.m_worldFxSystem.hasActorModel(actorIndex)
+                || view.m_outdoorActorPreviewBillboardSet->drawsModel(pActorState->monsterId))
             {
-                continue;
+                // A model presents it: target the model's picking bounds (none before its first sync).
+                const Engine::ModelBounds *pBounds = view.m_worldFxSystem.actorModelBounds(actorIndex);
+
+                if (pBounds == nullptr || !pBounds->valid
+                    || !projectVisibleBoxRect(pBounds->min, pBounds->max, viewWidth, viewHeight,
+                        viewProjectionMatrix, rect))
+                {
+                    continue;
+                }
+            }
+            else
+            {
+                uint16_t spriteFrameIndex = pActorState->spriteFrameIndex;
+                const size_t animationIndex = static_cast<size_t>(pActorState->animation);
+
+                if (animationIndex < pActorState->actionSpriteFrameIndices.size()
+                    && pActorState->actionSpriteFrameIndices[animationIndex] != 0)
+                {
+                    spriteFrameIndex = pActorState->actionSpriteFrameIndices[animationIndex];
+                }
+
+                const uint32_t frameTimeTicks = pActorState->useStaticSpriteFrame
+                    ? 0u
+                    : static_cast<uint32_t>(std::max(0.0f, pActorState->animationTimeTicks));
+                const SpriteFrameEntry *pFrame =
+                    view.m_outdoorActorPreviewBillboardSet->spriteFrameTable.getFrame(spriteFrameIndex, frameTimeTicks);
+
+                if (pFrame == nullptr)
+                {
+                    continue;
+                }
+
+                const float angleToCamera = std::atan2(
+                    static_cast<float>(pActorState->y) - cameraPosition.y,
+                    static_cast<float>(pActorState->x) - cameraPosition.x);
+                const float octantAngle = pActorState->yawRadians - angleToCamera + Pi + (Pi / 8.0f);
+                const int octant = static_cast<int>(std::floor(octantAngle / (Pi / 4.0f))) & 7;
+                const ResolvedSpriteTexture resolvedTexture = SpriteFrameTable::resolveTexture(*pFrame, octant);
+                const OutdoorGameView::BillboardTextureHandle *pTexture =
+                    ensureSpriteBillboardTexture(view, resolvedTexture.textureName, pFrame->paletteId);
+
+                if (pTexture == nullptr || !bgfx::isValid(pTexture->textureHandle))
+                {
+                    continue;
+                }
+
+                const float spriteScale = std::max(pFrame->scale, 0.01f);
+                const float worldWidth = static_cast<float>(pTexture->width) * spriteScale;
+                const float worldHeight = static_cast<float>(pTexture->height) * spriteScale;
+                const float halfWidth = worldWidth * 0.5f;
+                const bx::Vec3 center = spriteBillboardCenter(
+                    static_cast<float>(pActorState->x),
+                    static_cast<float>(pActorState->y),
+                    static_cast<float>(pActorState->z),
+                    cameraRight, cameraUp, *pTexture, spriteScale, resolvedTexture.mirrored);
+                const bx::Vec3 right = {
+                    cameraRight.x * halfWidth,
+                    cameraRight.y * halfWidth,
+                    cameraRight.z * halfWidth
+                };
+                const bx::Vec3 up = {
+                    cameraUp.x * worldHeight * 0.5f,
+                    cameraUp.y * worldHeight * 0.5f,
+                    cameraUp.z * worldHeight * 0.5f
+                };
+
+                if (!projectVisibleBillboardRect(
+                        center,
+                        right,
+                        up,
+                        viewWidth,
+                        viewHeight,
+                        viewProjectionMatrix,
+                        rect))
+                {
+                    continue;
+                }
             }
 
             OutdoorGameView::KeyboardInteractionBillboardCandidate candidate = {};
@@ -1640,7 +1709,10 @@ void OutdoorBillboardRenderer::queueEventBillboardTextureWarmup(
         const std::optional<uint16_t> spriteFrameIndex =
             pEventSpriteFrameTable->findFrameIndexBySpriteName(spriteName);
 
-        if (spriteFrameIndex)
+        // A decoration model replaces a sprite an event switches to; its texture is never needed.
+        if (spriteFrameIndex
+            && !(view.m_outdoorDecorationBillboardSet
+                && view.m_outdoorDecorationBillboardSet->modelSpriteIds.contains(*spriteFrameIndex)))
         {
             view.queueSpriteFrameWarmup(*spriteFrameIndex);
         }
@@ -2508,6 +2580,7 @@ void OutdoorBillboardRenderer::renderActorPreviewBillboards(
         BillboardQuad quad;
         bool visible = true;
         uint32_t lightContributionAbgr = 0xff000000u;
+        float hitFlash = 0.0f;
         bool hasHealthBar = false;
         bool healthBarFocused = false;
         bool healthBarAttacking = false;
@@ -2657,6 +2730,39 @@ void OutdoorBillboardRenderer::renderActorPreviewBillboards(
     constexpr float ActorViewVerticalTangent = 0.57735026919f;
     const float actorViewHorizontalTangent = ActorViewVerticalTangent * actorViewAspectRatio;
 
+    // Offers a hostile actor whose body is in view (its centre relative to the camera and half extents) a health bar.
+    const auto considerActorHealthBar =
+        [&](BillboardDrawItem &drawItem, const OutdoorWorldRuntime::MapActorState &actor, size_t actorIndex,
+            const bx::Vec3 &centerDelta, float halfWidth, float halfHeight)
+        {
+            if (!renderCombatActorHealthBars || !actor.hostileToParty || actor.currentHp <= 0 || actor.maxHp <= 0)
+            {
+                return;
+            }
+
+            const float centerDepth = bx::dot(centerDelta, cameraForward);
+
+            if (centerDepth <= BillboardNearDepth
+                || std::abs(bx::dot(centerDelta, cameraRight)) > centerDepth * actorViewHorizontalTangent + halfWidth
+                || std::abs(bx::dot(centerDelta, cameraUp)) > centerDepth * ActorViewVerticalTangent + halfHeight)
+            {
+                return;
+            }
+
+            const bool attacking = actor.hasDetectedParty
+                && (actor.aiState == OutdoorWorldRuntime::ActorAiState::Pursuing
+                    || actor.aiState == OutdoorWorldRuntime::ActorAiState::Attacking);
+            if (drawItem.distanceSquared <= MaximumCombatActorHealthBarDistanceSquared)
+            {
+                healthBars.observeActivity(actorIndex, attacking);
+            }
+            considerCombatActorHealthBarCandidate(healthBarSelection,
+                {drawItems.size(), drawItem.distanceSquared, actorIndex, focusedActor == actorIndex,
+                    attacking || healthBars.inCombat(actorIndex)},
+                view.settingsSnapshot().enemyHealthBarMode);
+            drawItem.healthBarAttacking = attacking;
+        };
+
     auto appendActorDrawItem =
         [&](const OutdoorWorldRuntime::MapActorState *pRuntimeActor,
             std::optional<size_t> runtimeActorIndex,
@@ -2689,6 +2795,59 @@ void OutdoorBillboardRenderer::renderActorPreviewBillboards(
             if (pReflection == nullptr
                 && deltaX * cameraForward.x + deltaY * cameraForward.y + deltaZ * cameraForward.z <= BillboardNearDepth)
             {
+                return;
+            }
+
+            const bool contextHighlighted =
+                runtimeActorIndex.has_value()
+                && contextActionHighlightsActor(pContextActionHit, *runtimeActorIndex);
+            const bool hovered =
+                contextHighlighted
+                || (spriteOutlineEnabled && runtimeActorIndex.has_value()
+                    && hoveredRuntimeActorIndex.has_value()
+                    && *runtimeActorIndex == *hoveredRuntimeActorIndex);
+            const uint32_t hoveredOutlineColorAbgr =
+                hovered && pRuntimeActor != nullptr
+                    ? (contextHighlighted
+                        ? contextActionHighlightOutlineColor() : resolveHoveredActorOutlineColor(*pRuntimeActor))
+                    : 0;
+
+            // A model presents this actor (or will, from the next model sync) and no sprite is resolved: the draw item
+            // carries the hover outline to the model and anchors the health bar and quest marker at its standing top.
+            if (runtimeActorIndex
+                && (view.m_worldFxSystem.hasActorModel(*runtimeActorIndex)
+                    || (pRuntimeActor != nullptr
+                        && view.m_outdoorActorPreviewBillboardSet->drawsModel(pRuntimeActor->monsterId))))
+            {
+                if (pReflection != nullptr)
+                {
+                    return;
+                }
+
+                BillboardDrawItem drawItem = {};
+                drawItem.actor = true;
+                drawItem.modelActor = true;
+                drawItem.actorIndex = *runtimeActorIndex;
+                drawItem.hovered = hovered;
+                drawItem.hoveredOutlineColorAbgr = hoveredOutlineColorAbgr;
+                view.m_worldFxSystem.setActorModelOutline(drawItem.actorIndex, hoveredOutlineColorAbgr);
+                drawItem.x = static_cast<float>(actorX);
+                drawItem.y = static_cast<float>(actorY);
+                drawItem.z = static_cast<float>(actorZ) - view.m_worldFxSystem.actorCorpseSinkDepth(*runtimeActorIndex);
+                drawItem.distanceSquared = distanceSquared;
+                drawItem.cameraDepth = deltaX * cameraForward.x + deltaY * cameraForward.y + deltaZ * cameraForward.z;
+                const float standingTop = view.m_worldFxSystem.actorModelStandingTop(*runtimeActorIndex)
+                    .value_or(static_cast<float>(actorHeight));
+                drawItem.questMarkerZ = drawItem.z + standingTop;
+
+                if (pRuntimeActor != nullptr)
+                {
+                    considerActorHealthBar(drawItem, *pRuntimeActor, *runtimeActorIndex,
+                        {deltaX, deltaY, deltaZ + standingTop * 0.5f}, static_cast<float>(actorRadius),
+                        standingTop * 0.5f);
+                }
+
+                drawItems.push_back(drawItem);
                 return;
             }
 
@@ -2777,24 +2936,9 @@ void OutdoorBillboardRenderer::renderActorPreviewBillboards(
             drawItem.pTexture = pTexture;
             drawItem.mirrored = resolvedTexture.mirrored;
             drawItem.actor = true;
-            drawItem.modelActor = runtimeActorIndex && view.m_worldFxSystem.hasActorModel(*runtimeActorIndex);
             drawItem.actorIndex = runtimeActorIndex.value_or(static_cast<size_t>(-1));
-            const bool contextHighlighted =
-                runtimeActorIndex.has_value()
-                && contextActionHighlightsActor(pContextActionHit, *runtimeActorIndex);
-            drawItem.hovered =
-                contextHighlighted
-                || (spriteOutlineEnabled && runtimeActorIndex.has_value()
-                    && hoveredRuntimeActorIndex.has_value()
-                    && *runtimeActorIndex == *hoveredRuntimeActorIndex);
-            drawItem.hoveredOutlineColorAbgr =
-                drawItem.hovered && pRuntimeActor != nullptr
-                    ? (contextHighlighted ? contextActionHighlightOutlineColor() : resolveHoveredActorOutlineColor(*pRuntimeActor))
-                    : 0;
-            if (drawItem.modelActor && pReflection == nullptr)
-            {
-                view.m_worldFxSystem.setActorModelOutline(drawItem.actorIndex, drawItem.hoveredOutlineColorAbgr);
-            }
+            drawItem.hovered = hovered;
+            drawItem.hoveredOutlineColorAbgr = hoveredOutlineColorAbgr;
             drawItem.x = static_cast<float>(actorX);
             drawItem.y = static_cast<float>(actorY);
             // A slain creature's sprite sinks into the ground before its loot satchel appears.
@@ -2826,42 +2970,17 @@ void OutdoorBillboardRenderer::renderActorPreviewBillboards(
                     drawItem.x,
                     drawItem.y,
                     drawItem.z + worldHeight * 0.5f);
+                drawItem.hitFlash = runtimeActorIndex && view.m_pOutdoorWorldRuntime != nullptr
+                    ? view.m_pOutdoorWorldRuntime->actorHitFeedback().flashAmount(*runtimeActorIndex) : 0.0f;
             }
 
-            if (renderCombatActorHealthBars
-                && pRuntimeActor != nullptr
-                && pRuntimeActor->hostileToParty
-                && pRuntimeActor->currentHp > 0
-                && pRuntimeActor->maxHp > 0)
+            if (pRuntimeActor != nullptr)
             {
                 const float worldWidth = static_cast<float>(pTexture->width) * previewScale;
-                const bx::Vec3 billboardCenterDelta = spriteBillboardCenter(
-                    deltaX, deltaY, deltaZ, cameraRight, cameraUp, *pTexture, previewScale, resolvedTexture.mirrored);
-                const float billboardCenterDepth = bx::dot(billboardCenterDelta, cameraForward);
-                const float billboardHorizontalOffset = bx::dot(billboardCenterDelta, cameraRight);
-                const float billboardVerticalOffset = bx::dot(billboardCenterDelta, cameraUp);
-                const bool billboardIntersectsView =
-                    billboardCenterDepth > BillboardNearDepth
-                    && std::abs(billboardHorizontalOffset)
-                        <= billboardCenterDepth * actorViewHorizontalTangent + worldWidth * 0.5f
-                    && std::abs(billboardVerticalOffset)
-                        <= billboardCenterDepth * ActorViewVerticalTangent + worldHeight * 0.5f;
-
-                if (billboardIntersectsView)
-                {
-                    const bool attacking = pRuntimeActor->hasDetectedParty
-                        && (pRuntimeActor->aiState == OutdoorWorldRuntime::ActorAiState::Pursuing
-                            || pRuntimeActor->aiState == OutdoorWorldRuntime::ActorAiState::Attacking);
-                    if (drawItem.distanceSquared <= MaximumCombatActorHealthBarDistanceSquared)
-                    {
-                        healthBars.observeActivity(*runtimeActorIndex, attacking);
-                    }
-                    considerCombatActorHealthBarCandidate(healthBarSelection,
-                        {drawItems.size(), drawItem.distanceSquared, *runtimeActorIndex,
-                            focusedActor == runtimeActorIndex, attacking || healthBars.inCombat(*runtimeActorIndex)},
-                        view.settingsSnapshot().enemyHealthBarMode);
-                    drawItem.healthBarAttacking = attacking;
-                }
+                considerActorHealthBar(drawItem, *pRuntimeActor, *runtimeActorIndex,
+                    spriteBillboardCenter(deltaX, deltaY, deltaZ, cameraRight, cameraUp, *pTexture, previewScale,
+                        resolvedTexture.mirrored),
+                    worldWidth * 0.5f, worldHeight * 0.5f);
             }
 
             drawItem.healthBarStandingFrame = actionSpriteFrameIndices[0] != 0
@@ -3285,7 +3404,8 @@ void OutdoorBillboardRenderer::renderActorPreviewBillboards(
                 vertices, drawItem.quad.center, drawItem.quad.right, drawItem.quad.up,
                 u0, u1, pReflection != nullptr
                     ? waterBillboardColor(drawItem.lightContributionAbgr, drawItem.distanceSquared)
-                    : drawItem.lightContributionAbgr);
+                    : drawItem.lightContributionAbgr,
+                drawItem.hitFlash);
             return true;
         };
 
@@ -3462,7 +3582,8 @@ void OutdoorBillboardRenderer::renderActorPreviewBillboards(
                 up,
                 u0,
                 u1,
-                drawItem.lightContributionAbgr);
+                drawItem.lightContributionAbgr,
+                drawItem.hitFlash);
 
             if (bgfx::getAvailTransientVertexBuffer(vertexCount, OutdoorGameView::LitBillboardVertex::ms_layout)
                 < vertexCount)
@@ -3625,8 +3746,7 @@ void OutdoorBillboardRenderer::renderActorPreviewBillboards(
         }
     }
 
-    if (view.m_gameSettings.waterShader && view.m_outdoorDecorationBillboardSet
-        && view.m_waterRenderer.isReady())
+    if (view.m_outdoorDecorationBillboardSet && view.m_waterRenderer.isReady())
     {
         const auto &atmosphere = view.m_pOutdoorWorldRuntime->atmosphereState();
         const float daylight = atmosphere.isNight ? 0.0f : 1.0f - std::clamp(atmosphere.fogDensity, 0.0f, 1.0f);
@@ -3657,7 +3777,14 @@ void OutdoorBillboardRenderer::renderActorPreviewBillboards(
     }
     for (const BillboardDrawItem &item : drawItems)
     {
-        if (item.hasHealthBar)
+        if (item.hasHealthBar && item.modelActor)
+        {
+            EnemyHealthBarRenderer::render(view.m_gameSession.gameplayScreenRuntime(), item.actorIndex,
+                {item.x, item.y, item.z}, {item.x, item.y, item.questMarkerZ + 26.0f}, item.distanceSquared,
+                item.healthBarFocused, item.healthBarAttacking, viewId,
+                cameraPosition, pViewMatrix, pProjectionMatrix, view.m_lastRenderHeight);
+        }
+        else if (item.hasHealthBar)
         {
             const SpriteFrameEntry *pStandingFrame =
                 view.m_outdoorActorPreviewBillboardSet->spriteFrameTable.getFrame(item.healthBarStandingFrame, 0);
@@ -4556,7 +4683,7 @@ void OutdoorBillboardRenderer::renderRuntimeProjectiles(
 
     for (const GameplayProjectilePresentationState &projectile : projectiles)
     {
-        if (projectile.visualMode == GameplayProjectileVisualMode::FxOnly)
+        if (!view.m_worldFxSystem.projectileShowsNativeSprite(projectile))
         {
             continue;
         }
@@ -4583,7 +4710,7 @@ void OutdoorBillboardRenderer::renderRuntimeProjectiles(
             impact.sourceObjectSpriteName,
             impact.sourceObjectFlags);
 
-        const bool hasImpactEffectRebind = view.m_worldFxSystem.hasProjectileImpactEffectRebind(recipe);
+        const bool hasImpactEffectRebind = view.m_worldFxSystem.projectileImpactUsesNamedEffect(impact);
         if (hasImpactEffectRebind
             || (FxRecipes::projectileRecipeUsesDedicatedImpactFx(recipe)
                 && !FxRecipes::projectileRecipeShowsImpactBillboard(recipe)))

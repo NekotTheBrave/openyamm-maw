@@ -1,0 +1,231 @@
+# MM6 terrain materials for the materials terrain style. Input of tools/terrain_materials.py weights, which writes
+# each map's <map>.yml and weight image beside this file; the runtime reads only those and the engine library.
+# materials: world names for library materials. reference_tile gives the native base tile whose mean colour the
+#   material is tinted to; without one, the colour comes from the pixels of its two-material tiles.
+#   repeat is the world width of one texture repeat (512 units per terrain cell). cavity darkens the albedo by
+#   the material height (the photoscans are delit; native tiles carry their shading); normal_strength scales relief.
+#   macro_brightness and macro_tint vary brightness and tint large cloudy patches (UE-style macro variation).
+#   tint_scale multiplies the measured tint; shade multiplies it again and also tints the material's variant
+#   (the knob for one map's own shade, below).
+# maps: per map file, material keys that replace the world's for that map only, so the same native grass or sand
+#   can read lusher, drier or darker from map to map, e.g. maps: {outb2.odm: {grass: {shade: [1.08, 1.0, 0.8]}}}.
+#   variant names a material mixed in macro-noise patches (variant_amount = coverage) for mid-scale variety;
+#   it replaces the layer's anti-tiling sample, so it costs nothing extra.
+#   edge_softness (per material, smaller than the map's) keeps a material's own edge crisp and lays it over the
+#   others; fringe scales the edge noise for that material (default 1).
+#   cliff_from names the material whose colour steep slopes take where this one is the ground (default itself).
+# tiles: first match wins. material = whole tile; materials = [foreground, background] classified per pixel by
+#   colour (shore land keeps tile alpha as water); water = the classic animated water tile.
+version: 1
+# edge_softness: world units the material transitions are blurred over; fringe: inside that band, fine noise
+# (strength, and the world size its noise texture repeats over: smaller = finer clumps) scatters islands of each
+# material into the other instead of one clean line.
+edge_softness: 110
+fringe:
+  strength: 1.6
+  scale: 2048
+# meadow: colour multipliers of the driest and lushest ground (OutdoorMeadowField: crests and steep slopes dry,
+# hollows and shores lush). A material's meadow key is how strongly it takes them (grass 1, default 0).
+meadow:
+  dry: [1.2, 1.06, 0.64]
+  lush: [0.78, 0.94, 0.82]
+materials:
+  grass:
+    meadow: 1.0
+    library: grass_meadow
+    reference_tile: 6grastyl
+    cliff_from: dirt
+    variant: grass_patches
+    variant_amount: 0.3
+    repeat: 360
+    height_contrast: 0.45
+    macro_brightness: 0.15
+    macro_tint: [1.1, 1.05, 0.85]
+    cavity: 0.3
+  dirt:
+    library: dirt_cracked
+    reference_tile: 6dirttyl
+    repeat: 700
+    height_contrast: 0.4
+    macro_brightness: 0.2
+    macro_tint: [0.85, 0.82, 0.85]
+    cavity: 0.85
+    normal_strength: 2.0
+  road:
+    library: road_pebbles
+    cliff_from: dirt
+    # Roads keep their shape: a narrow own edge blend and little fringe noise.
+    edge_softness: 24
+    fringe: 0.15
+    # Rounded grey fieldstones with deep dark joints, like the native road: the photoscan already has the native
+    # road's mean colour, so the measured tint (which would double its brightness) is cancelled to a neutral grey.
+    tint_scale: [0.808, 0.77, 0.785]
+    repeat: 640
+    height_contrast: 0.6
+    macro_brightness: 0.12
+    cavity: 1.0
+    normal_strength: 2.0
+  rock:
+    library: rock_ground
+    reference_tile: 6voltyl
+    repeat: 480
+    height_contrast: 0.45
+    macro_brightness: 0.2
+    macro_tint: [1.12, 1.06, 1.0]
+    cavity: 0.45
+    normal_strength: 1.3
+  cliff:
+    library: rock_cliff
+    reference_tile: 6dirttyl
+    repeat: 640
+    height_contrast: 0.5
+    macro_brightness: 0.15
+    cavity: 0.4
+    normal_strength: 1.3
+  grass_patches:
+    meadow: 0.8
+    library: grass_patchy
+    tint_scale: [0.68, 0.72, 0.6]
+    repeat: 640
+    height_contrast: 0.25
+    cavity: 0.35
+  sand:
+    library: sand_ripples
+    reference_tile: 6dirttyl
+    tint_scale: [1.45, 1.42, 1.35]
+    repeat: 520
+    height_contrast: 0.3
+    macro_brightness: 0.12
+    cavity: 0.35
+    normal_strength: 1.2
+  desert:
+    library: sand_ripples
+    reference_tile: 6sandtyl
+    repeat: 900
+    height_contrast: 0.3
+    macro_brightness: 0.12
+    macro_tint: [1.06, 1.0, 0.9]
+    cavity: 0.35
+    normal_strength: 1.8
+  snow:
+    library: snow
+    # Snowy slopes break into rock, not white rock.
+    cliff_from: dirt
+    tint_scale: [0.9, 0.92, 0.95]
+    reference_tile: snotyl
+    repeat: 640
+    height_contrast: 0.3
+    macro_brightness: 0.06
+    macro_tint: [0.96, 0.98, 1.04]
+    cavity: 0.15
+    normal_strength: 1.3
+  # Cracked plates about as large as the native tile's (six across a cell).
+  badlands:
+    library: mud_cracked
+    reference_tile: crktyl
+    repeat: 760
+    height_contrast: 0.4
+    macro_brightness: 0.2
+    macro_tint: [1.05, 0.95, 0.88]
+    cavity: 0.85
+    normal_strength: 2.0
+  swamp:
+    library: swamp
+    reference_tile: swmtyl
+    # Olive moss like the native tile; large repeat so the pools read as pools.
+    tint_scale: [0.85, 0.8, 0.55]
+    repeat: 900
+    height_contrast: 0.5
+    macro_brightness: 0.15
+    macro_tint: [0.9, 1.0, 0.9]
+    cavity: 0.3
+    normal_strength: 1.2
+  tropical:
+    library: grass_patchy
+    reference_tile: troptyl
+    repeat: 480
+    height_contrast: 0.3
+    macro_brightness: 0.15
+    cavity: 0.35
+# shore: sand under the water and along beach_width units of beach; the rendered terrain rises beach_slope per unit
+# inland from the waterline and falls seabed_slope per unit under the water, to seabed_depth (render only;
+# collision keeps the native heights). The water turns opaque at opaque_depth: only the seabed shallower than that
+# is drawn, with full material detail down to detail_depth and a single cheap sand sample below it.
+# range is the encoding range of the map's waterline distance image.
+shore:
+  material: sand
+  beach_width: 150
+  beach_slope: 0.3
+  seabed_slope: 0.4
+  seabed_depth: 96
+  opaque_depth: 72
+  detail_depth: 24
+  range: 1024
+tiles:
+  - match: [6grastyl]
+    material: grass
+  - match: [6dirttyl]
+    material: dirt
+  - match: [6voltyl]
+    material: rock
+  - match: ["6grdrt*"]
+    materials: [grass, dirt]
+  - match: ["voldrt*"]
+    materials: [rock, dirt]
+  - match: ["6drsr*"]
+    materials: [road, dirt]
+  - match: [6sandtyl]
+    material: desert
+  - match: [snotyl]
+    material: snow
+  - match: [crktyl]
+    material: badlands
+  - match: [swmtyl]
+    material: swamp
+  - match: [troptyl]
+    material: tropical
+  - match: ["6sndrt*"]
+    materials: [desert, dirt]
+  - match: ["snodr*"]
+    materials: [snow, dirt]
+  - match: ["crkdrt*"]
+    materials: [badlands, dirt]
+  - match: ["swmdr*"]
+    materials: [swamp, dirt]
+  - match: ["trop*"]
+    materials: [tropical, dirt]
+  - match: ["6wtrdr*"]
+    material: dirt
+  - match: [6wtrtyl, "6hdwtr*"]
+    water: true
+# Each map's own shade of the shared ground.
+maps:
+  outa2.odm:
+    desert: {shade: [1.03, 1.0, 0.94]}
+  outa3.odm:
+    desert: {shade: [1.04, 1.03, 1.0]}
+  outb1.odm:
+    snow: {shade: [0.95, 0.96, 0.98]}
+  outb2.odm:
+    grass: {shade: [0.86, 0.86, 0.8]}
+    dirt: {shade: [0.93, 0.91, 0.92]}
+  outb3.odm:
+    grass: {shade: [1.08, 1.0, 0.78]}
+    desert: {shade: [1.04, 0.97, 0.9]}
+  outc2.odm:
+    grass: {shade: [1.04, 1.0, 0.88]}
+  outc3.odm:
+    swamp: {shade: [0.9, 0.9, 0.85]}
+  outd1.odm:
+    grass: {shade: [0.95, 1.03, 1.0]}
+  outd2.odm:
+    grass: {shade: [0.95, 1.06, 0.85]}
+  oute1.odm:
+    grass: {shade: [0.95, 0.98, 1.02]}
+  oute2.odm:
+    grass: {shade: [0.94, 0.98, 1.03]}
+slope:
+  material: cliff
+  # 1 - normal.z where cliff begins and fully replaces the ground.
+  start: 0.36
+  end: 0.56

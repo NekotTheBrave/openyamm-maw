@@ -9,6 +9,7 @@ add_library(openyamm_game STATIC
     render/RuntimeShader.cpp
     render/CinematicGrading.cpp
     render/WaterRenderer.cpp
+    render/ShieldDomeRenderer.cpp
     render/WeatherRenderer.cpp
     render/SkyPresets.cpp
     render/SkyState.cpp
@@ -33,6 +34,7 @@ add_library(openyamm_game STATIC
     data/GameDataRepository.cpp
     app/GameSession.cpp
     audio/GameAudioSystem.cpp
+    audio/MusicStream.cpp
     tables/ChestTable.cpp
     tables/AwardTable.cpp
     tables/JournalAutonoteTable.cpp
@@ -48,6 +50,8 @@ add_library(openyamm_game STATIC
     events/ScriptedEventTimer.cpp
     tables/FaceAnimationTable.cpp
     fx/ParticleRecipes.cpp
+    fx/ProjectileEffectBindings.cpp
+    fx/SpellAuraEffectBindings.cpp
     fx/EffectSystem.cpp
     fx/EffectRenderer.cpp
     fx/import/EffectDefinitionLoader.cpp
@@ -70,7 +74,11 @@ add_library(openyamm_game STATIC
     gameplay/ArenaRuntime.cpp
     gameplay/AwardRuntime.cpp
     gameplay/GameplayBolsterRuntime.cpp
+    gameplay/ActorBehaviorCatalog.cpp
+    gameplay/ActorBehaviorRuntime.cpp
     gameplay/GameplayActorAiSystem.cpp
+    gameplay/GameplayActorHitFeedback.cpp
+    gameplay/MeleeContactEffects.cpp
     gameplay/GameplayActorService.cpp
     gameplay/GameplayDialogController.cpp
     gameplay/GameplayDialogUiFlow.cpp
@@ -85,6 +93,7 @@ add_library(openyamm_game STATIC
     gameplay/MonsterSpellSupport.cpp
     gameplay/MercenaryRecruitmentRuntime.cpp
     gameplay/GameplayOverlayInputController.cpp
+    gameplay/GameplayAlchemyBenchInputController.cpp
     gameplay/GameplayPartyOverlayInputController.cpp
     gameplay/GameplayProjectileService.cpp
     gameplay/GameplayScreenController.cpp
@@ -111,6 +120,7 @@ add_library(openyamm_game STATIC
     content/ContentManifest.cpp
     content/ContentTableComposer.cpp
     items/InventoryItemUseRuntime.cpp
+    items/AlchemyBenchRuntime.cpp
     items/InventoryItemMixingRuntime.cpp
     maps/IndoorSceneYml.cpp
     maps/MapItemSourceYml.cpp
@@ -150,8 +160,9 @@ add_library(openyamm_game STATIC
     indoor/IndoorWorldRuntime.cpp
     maps/MapAssetLoader.cpp
     maps/DecorationModelPlacement.cpp
+    maps/ActorModelManifest.cpp
+    maps/DecorationModelManifest.cpp
     maps/DecorationModelSet.cpp
-    maps/StaleLightingNote.cpp
     maps/MapDecorationTextures.cpp
     maps/MapIdentity.cpp
     maps/MapRegistry.cpp
@@ -164,6 +175,7 @@ add_library(openyamm_game STATIC
     tables/ObjectTable.cpp
     render/SpriteAtlasCook.cpp
     render/SpriteAtlasCache.cpp
+    render/ActorModelPreview.cpp
     render/NativeSpriteTextureCache.cpp
     render/SpriteAtlasMipmaps.cpp
     outdoor/OutdoorBillboardRenderer.cpp
@@ -179,8 +191,10 @@ add_library(openyamm_game STATIC
     outdoor/OutdoorPresentationController.cpp
     outdoor/TerrainDecorationData.cpp
     outdoor/TerrainDecorationRenderer.cpp
+    outdoor/OutdoorTerrainMaterials.cpp
     outdoor/OutdoorRenderer.cpp
     outdoor/OutdoorGeometryUtils.cpp
+    outdoor/OutdoorMeadow.cpp
     outdoor/OutdoorMovementController.cpp
     outdoor/OutdoorMovementDriver.cpp
     outdoor/OutdoorPathfindingBuilder.cpp
@@ -218,7 +232,7 @@ add_library(openyamm_game STATIC
     tables/SpellFxTable.cpp
     tables/TransitionTable.cpp
     tables/SpriteTables.cpp
-    tables/SurfaceMaterialTable.cpp
+    tables/LiquidTable.cpp
     tables/TextureFrameTable.cpp
     outdoor/OutdoorGameView.cpp
     outdoor/OutdoorDistantSea.cpp
@@ -236,6 +250,8 @@ add_library(openyamm_game STATIC
     ui/GameplayUiRenderer.cpp
     gameplay/GameplaySpeechRules.cpp
     gameplay/GameplayScreenRuntime.cpp
+    ui/GameplayAlchemyBenchRenderer.cpp
+    ui/GameplayAlchemyBenchView.cpp
     ui/GameplayPartyOverlayRenderer.cpp
     ui/GameplayUiOverlayOrchestrator.cpp
     ui/GameplayUiRuntime.cpp
@@ -415,12 +431,16 @@ if (NOT CMAKE_CROSSCOMPILING)
         ../tools/TextureBlockEncode.cpp
         render/SpriteAtlasCook.cpp
         render/SpriteAtlasMipmaps.cpp)
-    target_include_directories(openyamm_sprite_atlas_cook PRIVATE ${CMAKE_SOURCE_DIR})
+    # The ASTC encoder is compiled into openyamm_bgfx (bimg's astc-encoder); tools/TextureBlockEncode.cpp calls it.
+    target_include_directories(openyamm_sprite_atlas_cook PRIVATE ${CMAKE_SOURCE_DIR}
+        ${OPENYAMM_BIMG_SOURCE_DIR}/3rdparty/astc-encoder/include)
     target_link_libraries(openyamm_sprite_atlas_cook PRIVATE openyamm_engine libzstd_static openyamm_atlas_encoders)
     add_executable(openyamm_model_texture_cook EXCLUDE_FROM_ALL
         ../tools/cook_model_textures_main.cpp
+        ../tools/CookModelGeometry.cpp
         ../tools/TextureBlockEncode.cpp)
-    target_include_directories(openyamm_model_texture_cook PRIVATE ${CMAKE_SOURCE_DIR})
+    target_include_directories(openyamm_model_texture_cook PRIVATE ${CMAKE_SOURCE_DIR}
+        ${OPENYAMM_BIMG_SOURCE_DIR}/3rdparty/astc-encoder/include ${OPENYAMM_BGFX_SOURCE_DIR}/3rdparty)
     target_link_libraries(openyamm_model_texture_cook PRIVATE openyamm_engine libzstd_static openyamm_atlas_encoders)
     if (IS_DIRECTORY "${CMAKE_SOURCE_DIR}/assets_source/engine/sprites_new")
         add_custom_target(openyamm_cook_sprite_atlases
@@ -431,6 +451,64 @@ if (NOT CMAKE_CROSSCOMPILING)
             DEPENDS openyamm_sprite_atlas_cook
             COMMENT "Preparing changed sprite atlas runtime pages"
             VERBATIM)
+    endif()
+    # (MAW port: the assets_source submodule is private; without its checkout, an empty folder, nothing is cooked and
+    # the committed cooked files are used.)
+    # World surface textures: the x4 sources in assets_source cook into assets_dev; the build keeps them current
+    # (incremental, about a second when nothing changed). See tools/cook_surface_textures.py. Like the other build-time
+    # cooks it needs the assets_source checkout; release checkouts package the committed cooked files.
+    if (EXISTS "${CMAKE_SOURCE_DIR}/assets_source/.git" AND IS_DIRECTORY "${OPENYAMM_DEV_ASSETS_DIR}/worlds")
+        add_custom_target(openyamm_cook_surface_textures
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/cook_surface_textures.py" --profile desktop
+                --sources "${CMAKE_SOURCE_DIR}/assets_source" --output "${OPENYAMM_DEV_ASSETS_DIR}"
+                --cooker "$<TARGET_FILE:openyamm_model_texture_cook>"
+            DEPENDS openyamm_model_texture_cook
+            COMMENT "Cooking changed world surface textures"
+            VERBATIM)
+        if (TARGET openyamm)
+            add_dependencies(openyamm openyamm_cook_surface_textures)
+        endif()
+    endif()
+    # 3D models (tools/cook_models.py): source GLBs in assets_source cook into assets_dev (geometry passes, compressed
+    # textures). Incremental. Off until the switch to cooked models (ASSET_COOKING_PLAN.md section 12): until then
+    # assets_dev holds uncooked copies of the sources.
+    option(OPENYAMM_COOK_MODELS "Cook assets_source models into assets_dev with every build" OFF)
+    if (OPENYAMM_COOK_MODELS)
+        add_custom_target(openyamm_cook_models
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/cook_models.py" --profile desktop
+                --source "${CMAKE_SOURCE_DIR}/assets_source" --output "${OPENYAMM_DEV_ASSETS_DIR}"
+                --cooker "$<TARGET_FILE:openyamm_model_texture_cook>"
+            DEPENDS openyamm_model_texture_cook
+            COMMENT "Cooking changed 3D models"
+            VERBATIM)
+        if (TARGET openyamm)
+            add_dependencies(openyamm openyamm_cook_models)
+        endif()
+    endif()
+    # Obsidian HUD art (sources in assets_source) and portrait face set atlases (tools/cook_ui_textures.py), cooked
+    # into assets_dev for desktop.
+    if (EXISTS "${CMAKE_SOURCE_DIR}/assets_source/.git" AND IS_DIRECTORY "${OPENYAMM_DEV_ASSETS_DIR}/engine/icons_x2")
+        add_custom_target(openyamm_cook_ui_textures
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/cook_ui_textures.py"
+                --assets "${OPENYAMM_DEV_ASSETS_DIR}" --cooker "$<TARGET_FILE:openyamm_model_texture_cook>"
+            DEPENDS openyamm_model_texture_cook
+            COMMENT "Cooking changed HUD art"
+            VERBATIM)
+        if (TARGET openyamm)
+            add_dependencies(openyamm openyamm_cook_ui_textures)
+        endif()
+    endif()
+    # Enhanced sky textures (sources in assets_source, tools/cook_sky_textures.py), cooked into assets_dev for desktop.
+    if (IS_DIRECTORY "${CMAKE_SOURCE_DIR}/assets_source/engine/rendering/sky")
+        add_custom_target(openyamm_cook_sky_textures
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/cook_sky_textures.py" --profile desktop
+                --assets "${OPENYAMM_DEV_ASSETS_DIR}" --cooker "$<TARGET_FILE:openyamm_model_texture_cook>"
+            DEPENDS openyamm_model_texture_cook
+            COMMENT "Cooking changed sky textures"
+            VERBATIM)
+        if (TARGET openyamm)
+            add_dependencies(openyamm openyamm_cook_sky_textures)
+        endif()
     endif()
     if (IS_DIRECTORY "${OPENYAMM_DEV_ASSETS_DIR}/engine/sprites_new")
         add_custom_target(openyamm_verify_sprite_atlases

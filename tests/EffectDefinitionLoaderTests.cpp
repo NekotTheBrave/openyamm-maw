@@ -1,7 +1,12 @@
 #include "engine/AssetFileSystem.h"
 #include "engine/AssetScaleTier.h"
+#include "engine/TextTable.h"
 #include "engine/models/GltfModelLoader.h"
+#include "engine/render/CookedTexture.h"
 #include "game/fx/EffectSystem.h"
+#include "game/fx/ParticleRecipes.h"
+#include "game/fx/ProjectileEffectBindings.h"
+#include "game/fx/SpellAuraEffectBindings.h"
 #include "game/fx/import/EffectDefinitionLoader.h"
 #include "game/fx/import/EffectResourceLibrary.h"
 
@@ -13,6 +18,8 @@
 #include <fstream>
 #include <chrono>
 #include <memory>
+#include <set>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -264,8 +271,10 @@ TEST_CASE("EffectDefinitionLoader composes authored showcase with MM9 for all le
         const auto definitions = loader.load("engine/effects/library.yml", error);
         INFO(world, ": ", error);
         REQUIRE(definitions.has_value());
-        // Five authored recipes (three showcase, two creature hand/staff emitters) and the MM9 library.
-        REQUIRE_EQ(definitions->size(), 42);
+        // Seven authored recipes (three showcase, three creature hand/staff emitters, the behaviour ward sparks), the
+        // 122 generated projectile flight, settled, impact and aura effects, the 63 melee effects (nine blows, three
+        // misses, 18 element accents, eleven material contacts in three strengths) and the MM9 library.
+        REQUIRE_EQ(definitions->size(), 229);
         Game::EffectLibrary library;
         REQUIRE(library.replace(*definitions, error));
         REQUIRE(library.find("mm9:spell_reaver") != nullptr);
@@ -294,6 +303,68 @@ TEST_CASE("EffectDefinitionLoader composes authored showcase with MM9 for all le
             CHECK_FALSE(system.contains(handle));
             CHECK(system.particles().empty());
             CHECK(system.fixedSprites().empty());
+        }
+        // Melee sprites are cooked atlases (tools/cook_effect_textures.py) whose size matches their descriptors.
+        const Game::EffectSpriteResource *pArc = resources.findSprite("openyamm:effect-sprite/melee_arc");
+        REQUIRE(pArc != nullptr);
+        CHECK(pArc->framePaths.empty());
+        CHECK_EQ(pArc->frameCount, 6);
+        CHECK_EQ(pArc->atlasColumns, 3);
+        const std::optional<std::vector<uint8_t>> atlasBytes = assets.readBinaryFile(pArc->atlasPath);
+        REQUIRE(atlasBytes.has_value());
+        const Engine::CookedTexture atlas = Engine::decodeCookedTexture(*atlasBytes);
+        CHECK_EQ(atlas.codec, Engine::TextureBlockCodec::Bc7);
+        CHECK_EQ(atlas.levels, 1);
+        CHECK_EQ(atlas.width, 3 * pArc->frameWidth);
+        CHECK_EQ(atlas.height, 2 * pArc->frameHeight);
+        std::vector<std::string> meleeIds;
+        for (const std::string name : {"slash", "thrust", "crush"})
+        {
+            for (const std::string suffix : {"_light", "", "_heavy", "_miss", "_element_fire", "_element_air",
+                "_element_water", "_element_body", "_element_light", "_element_dark"})
+            {
+                meleeIds.push_back("openyamm:fx/melee/" + name + suffix);
+            }
+        }
+        // Every material's contact effect exists (engine/data_tables/melee_hit_materials.txt).
+        const std::optional<std::string> materials = assets.readTextFile("engine/data_tables/melee_hit_materials.txt");
+        REQUIRE(materials.has_value());
+        const std::optional<Engine::TextTable> materialTable = Engine::TextTable::parseTabSeparated(*materials);
+        REQUIRE(materialTable.has_value());
+        for (size_t row = 0; row < materialTable->getRowCount(); ++row)
+        {
+            const std::vector<std::string> &cells = materialTable->getRow(row);
+            if (cells.size() > 5 && !cells[0].empty() && cells[0][0] != '#' && !cells[5].empty())
+            {
+                for (const std::string suffix : {"_light", "", "_heavy"})
+                {
+                    meleeIds.push_back(cells[5] + suffix);
+                }
+            }
+        }
+        for (const std::string &id : meleeIds)
+        {
+            {
+                CAPTURE(id);
+                Game::EffectSystem system(&library);
+                const Game::EffectHandle handle = system.spawn(id);
+                REQUIRE(system.contains(handle));
+                system.update(1.0f / 60.0f);
+                CHECK((!system.fixedSprites().empty() || !system.particles().empty()));
+                for (const Game::EffectFixedSprite &sprite : system.fixedSprites())
+                {
+                    CHECK(resources.findSprite(std::string(sprite.spriteResource)) != nullptr);
+                }
+                for (const Game::EffectParticle &particle : system.particles())
+                {
+                    CHECK(resources.findSprite(std::string(particle.spriteResource)) != nullptr);
+                }
+                for (uint32_t tick = 0; tick < 70; ++tick)
+                {
+                    system.update(1.0f / 60.0f);
+                }
+                CHECK_FALSE(system.contains(handle));
+            }
         }
     }
 }
@@ -348,4 +419,272 @@ TEST_CASE("EffectDefinitionLoader rejects broken imports and resource collisions
     CHECK_FALSE(resources.load(assets, "engine/effects/bindings.yml", {}, error));
     CHECK(error.find("repeated effect resource") != std::string::npos);
     CHECK(resources.findAssetPath("test:frame") == std::optional<std::string>("test.png"));
+}
+
+TEST_CASE("EffectDefinitionLoader parses ribbons, velocity-aligned sprites and distance emitters")
+{
+    using namespace OpenYAMM::Game;
+    std::string error;
+    const std::optional<std::vector<std::shared_ptr<const EffectDefinition>>> parsed = EffectDefinitionLoader::parse(R"(
+schema: openyamm.effectLibrary.v1
+effects:
+  - id: test:bolt
+    duration_seconds: 30
+    compatibility_profile: predictable
+    components:
+      - {id: 1, type: sprite, start_seconds: 0, end_seconds: 30, sprite_resource: test:glow, alignment: velocity,
+         stretch_u: 2, color_keys: [], scale_keys: [], motion_keys: []}
+      - id: 2
+        type: ribbon
+        start_seconds: 0
+        end_seconds: 30
+        sprite_resource: test:noise
+        lifetime_seconds: 0.25
+        max_length: 200
+        width: 30
+        fill: 0
+        erosion: 0.5
+        jitter: 6
+        jitter_rate: 20
+        width_keys: [{time: 0, value: 1}, {time: 1, value: 0.2}]
+        color_keys: [{time: 0, rgb: [255, 200, 100], transparency: 0}]
+      - {id: 3, type: sprite_system, start_seconds: 0, end_seconds: 30, sprite_resource: test:flame,
+         emission_shape: point, emission_distance: 12, particle_lifetime_seconds: 0.2, random_roll: true,
+         spin_speed: 2.5, color_keys: [], scale_keys: [], motion_keys: []}
+)", error);
+    INFO(error);
+    REQUIRE(parsed.has_value());
+    const EffectDefinition &definition = *parsed->front();
+    REQUIRE_EQ(definition.sprites.size(), 1);
+    CHECK_EQ(definition.sprites[0].alignment, EffectSpriteAlignment::Velocity);
+    REQUIRE_EQ(definition.ribbons.size(), 1);
+    const EffectRibbonDefinition &ribbon = definition.ribbons[0];
+    CHECK_EQ(ribbon.blendMode, EffectBlendMode::Additive);
+    CHECK(ribbon.maxLength == doctest::Approx(200.0f));
+    CHECK(ribbon.fill == doctest::Approx(0.0f));
+    CHECK(ribbon.jitter == doctest::Approx(6.0f));
+    CHECK_EQ(ribbon.widthKeys.size(), 2);
+    REQUIRE_EQ(definition.spriteEmitters.size(), 1);
+    CHECK(definition.spriteEmitters[0].emissionDistance == doctest::Approx(12.0f));
+    CHECK(definition.spriteEmitters[0].randomRoll);
+    CHECK(definition.spriteEmitters[0].spinSpeed == doctest::Approx(2.5f));
+
+    EffectLibrary library;
+    std::shared_ptr<EffectDefinition> broken = std::make_shared<EffectDefinition>(definition);
+    broken->id = "test:broken";
+    broken->ribbons[0].erosion = 1.5f;
+    CHECK_FALSE(library.add(broken, error));
+    CHECK(error.find("ribbon component 2") != std::string::npos);
+
+    // Distance emission follows the emitter through the world, so it cannot shed in local space.
+    std::shared_ptr<EffectDefinition> local = std::make_shared<EffectDefinition>(definition);
+    local->id = "test:local";
+    local->spriteEmitters[0].particleSpace = EffectParticleSpace::Local;
+    CHECK_FALSE(library.add(local, error));
+    CHECK(error.find("sprite component 3") != std::string::npos);
+}
+
+TEST_CASE("Projectile effect bindings name existing effects and resolve monster variants")
+{
+    using namespace OpenYAMM;
+    using Game::FxRecipes::ProjectileRecipe;
+    const std::filesystem::path sourceRoot = OPENYAMM_SOURCE_DIR;
+    Engine::AssetFileSystem assets;
+    REQUIRE(assets.initialize(sourceRoot, sourceRoot / "assets_dev", Engine::AssetScaleTier::X1, "mm6"));
+    Game::EffectDefinitionLoader loader(&assets);
+    std::string error;
+    const auto definitions = loader.load("engine/effects/library.yml", error);
+    REQUIRE_MESSAGE(definitions.has_value(), error);
+    Game::EffectLibrary library;
+    REQUIRE(library.replace(*definitions, error));
+    Game::ProjectileEffectBindings bindings;
+    REQUIRE_MESSAGE(Game::loadProjectileEffectBindings(assets, "engine/effects/projectiles.yml", library, bindings,
+        error), error);
+    const Game::ProjectileEffectBinding *pFireBolt = bindings.find(ProjectileRecipe::FireBolt, "");
+    REQUIRE(pFireBolt != nullptr);
+    CHECK_EQ(pFireBolt->flight, "openyamm:fx/projectile/fire_bolt");
+    CHECK_EQ(pFireBolt->impact, "openyamm:fx/impact/fire_small");
+    CHECK(bindings.contains(ProjectileRecipe::MindBlast));
+    CHECK(bindings.contains(ProjectileRecipe::Sparks));
+    CHECK(bindings.contains(ProjectileRecipe::Arrow));
+    CHECK_FALSE(bindings.contains(ProjectileRecipe::Stun));
+    const Game::ProjectileEffectBinding *pSwarm = bindings.find(ProjectileRecipe::DeadlySwarm, "");
+    REQUIRE(pSwarm != nullptr);
+    REQUIRE(pSwarm->nativeSprite.has_value());
+    CHECK_FALSE(*pSwarm->nativeSprite);
+    CHECK(pSwarm->impactFollowsTarget);
+    const Game::ProjectileEffectBinding *pSoulDrinker = bindings.find(ProjectileRecipe::SoulDrinker, "");
+    REQUIRE(pSoulDrinker != nullptr);
+    CHECK_EQ(pSoulDrinker->returnFlight, "openyamm:fx/projectile/soul_drain");
+    const std::vector<std::string> effectIds = bindings.effectIds();
+    CHECK(std::find(effectIds.begin(), effectIds.end(), "openyamm:fx/projectile/soul_drain") != effectIds.end());
+    for (const ProjectileRecipe recipe : {ProjectileRecipe::Implosion, ProjectileRecipe::Inferno,
+             ProjectileRecipe::Immolation, ProjectileRecipe::MassDistortion, ProjectileRecipe::SpiritLash,
+             ProjectileRecipe::PrismaticLight, ProjectileRecipe::Lifedrain, ProjectileRecipe::ShrinkingRay,
+             ProjectileRecipe::Armageddon})
+    {
+        INFO(Game::FxRecipes::projectileRecipeName(recipe));
+        const Game::ProjectileEffectBinding *pBinding = bindings.find(recipe, "");
+        REQUIRE(pBinding != nullptr);
+        CHECK_FALSE(pBinding->impact.empty());
+    }
+    CHECK_FALSE(bindings.find(ProjectileRecipe::ShrinkingRay, "")->flight.empty());
+
+    // Spell auras: each kind has a default, spells may override it, and every aura effect is bound.
+    Game::SpellAuraEffectBindings auras;
+    REQUIRE_MESSAGE(Game::loadSpellAuraEffectBindings(assets, "engine/effects/spell_auras.yml", library, auras, error),
+        error);
+    CHECK_EQ(auras.find(Game::SpellAuraKind::CreatureDebuff, 34), "openyamm:fx/aura/stun");
+    CHECK_EQ(auras.find(Game::SpellAuraKind::CreatureDebuff, 59), "openyamm:fx/aura/debuff");
+    CHECK_EQ(auras.find(Game::SpellAuraKind::PartyBuff, 17), "openyamm:fx/aura/party_ward");
+    CHECK_EQ(auras.find(Game::SpellAuraKind::CreatureBuff, 17), "openyamm:fx/aura/shield");
+    CHECK_EQ(auras.find(Game::SpellAuraKind::Heal, 68), "openyamm:fx/aura/heal");
+    std::set<std::string> boundAuras;
+    for (const std::string &id : auras.effectIds())
+    {
+        boundAuras.insert(id);
+    }
+    for (const auto &definition : *definitions)
+    {
+        if (definition->id.starts_with("openyamm:fx/aura/"))
+        {
+            INFO(definition->id);
+            CHECK(boundAuras.contains(definition->id));
+        }
+    }
+    const auto parseAuras = [&](const std::string &body)
+    {
+        Game::SpellAuraEffectBindings parsed;
+        return Game::parseSpellAuraEffectBindings(
+            "schema: openyamm.spellAuraEffects.v1\n" + body, "test.yml", library, parsed, error);
+    };
+    CHECK(parseAuras("defaults: {heal: openyamm:fx/aura/heal}\n"));
+    CHECK_FALSE(parseAuras("defaults: {cure: openyamm:fx/aura/heal}\n"));
+    CHECK_FALSE(parseAuras("spells: {34: {creature_debuff: openyamm:fx/aura/missing}}\n"));
+    CHECK_FALSE(parseAuras("spells: {0: {heal: openyamm:fx/aura/heal}}\n"));
+    CHECK_FALSE(parseAuras("extra: 1\n"));
+    const Game::ProjectileEffectBinding *pFireSpike = bindings.find(ProjectileRecipe::FireSpike, "");
+    REQUIRE(pFireSpike != nullptr);
+    CHECK_EQ(pFireSpike->settled, "openyamm:fx/projectile/fire_spike_mine");
+
+    // A monster variant overrides the recipe's fields for the monsters it names (any case), and only for them.
+    const Game::ProjectileEffectBinding *pSpat = bindings.find(ProjectileRecipe::MonsterFireBolt, "Lich A");
+    const Game::ProjectileEffectBinding *pDragon = bindings.find(ProjectileRecipe::MonsterFireBolt, "dragon a");
+    REQUIRE(pSpat != nullptr);
+    REQUIRE(pDragon != nullptr);
+    CHECK_EQ(pSpat->flight, "openyamm:fx/projectile/monster_fire_bolt");
+    CHECK_EQ(pDragon->flight, "openyamm:fx/projectile/dragon_fire");
+    CHECK_EQ(pDragon->impact, "openyamm:fx/impact/fire_large");
+    REQUIRE(pDragon->light.has_value());
+    CHECK(pDragon->light->radius == doctest::Approx(260.0f));
+    const Game::ProjectileEffectBinding *pLiving =
+        bindings.find(ProjectileRecipe::MonsterFireBolt, "Elemental Fire C");
+    REQUIRE(pLiving != nullptr);
+    CHECK_EQ(pLiving->flight, "openyamm:fx/projectile/living_flame");
+    CHECK_EQ(pLiving->impact, "openyamm:fx/impact/fire_small");
+    CHECK_EQ(bindings.find(ProjectileRecipe::Blaster, "Robot A")->flight, "openyamm:fx/projectile/blaster");
+
+    // Every monster a variant names exists in the merged monster table (its Picture column).
+    std::ifstream monsterData(sourceRoot / "assets_dev/engine/data_tables/monster_data.txt");
+    REQUIRE(monsterData.good());
+    std::set<std::string> pictures;
+    std::string line;
+    while (std::getline(monsterData, line))
+    {
+        std::vector<std::string> columns;
+        std::stringstream row(line);
+        std::string column;
+        while (std::getline(row, column, '\t'))
+        {
+            columns.push_back(column);
+        }
+        if (columns.size() > 2)
+        {
+            pictures.insert(Game::ProjectileEffectBindings::normalizeMonsterPicture(columns[2]));
+        }
+    }
+    for (const std::string &picture : bindings.variantMonsterPictures())
+    {
+        INFO(picture);
+        CHECK(pictures.contains(picture));
+    }
+
+    Game::ProjectileEffectBindings none;
+    CHECK(Game::loadProjectileEffectBindings(assets, "engine/effects/missing_projectiles.yml", library, none, error));
+    CHECK(none.empty());
+    Game::EffectLibrary empty;
+    CHECK_FALSE(Game::loadProjectileEffectBindings(assets, "engine/effects/projectiles.yml", empty, none, error));
+    CHECK(error.find("unknown flight effect") != std::string::npos);
+    const auto parse = [&](const std::string &projectiles)
+    {
+        Game::ProjectileEffectBindings parsed;
+        return Game::parseProjectileEffectBindings(
+            "schema: openyamm.projectileEffects.v1\nprojectiles:\n" + projectiles, "test", library, parsed, error);
+    };
+    CHECK(parse("  fire_bolt: {impact: openyamm:fx/impact/fireball, sprite: hidden}\n"));
+    CHECK_FALSE(parse("  fire_bolt: {flihgt: openyamm:fx/projectile/fire_bolt}\n"));
+    CHECK(error.find("unknown key flihgt") != std::string::npos);
+    CHECK_FALSE(parse("  fire_bolt: {flight: openyamm:fx/projectile/fire_bolt, sprite: shown}\n"));
+    CHECK_FALSE(parse("  fire_bolt: {sprite: hidden}\n"));
+    CHECK_FALSE(parse("  fire_bolt: {flight: openyamm:fx/projectile/fire_bolt, light: {rgb: [1, 2], radius: 5}}\n"));
+    CHECK_FALSE(parse("  fire_bolt: {flight: openyamm:fx/projectile/fire_bolt, variants: [{flight: x}]}\n"));
+
+    // Every bound flight and settled effect draws while it moves, then drains completely once stopped; every
+    // impact plays out and finishes on its own.
+    std::set<std::string> flights;
+    std::set<std::string> impacts;
+    for (const auto &definition : *definitions)
+    {
+        if (definition->id.starts_with("openyamm:fx/projectile/"))
+        {
+            flights.insert(definition->id);
+        }
+        // Auras play out and finish on their own, as impacts do.
+        else if (definition->id.starts_with("openyamm:fx/impact/") || definition->id.starts_with("openyamm:fx/aura/"))
+        {
+            impacts.insert(definition->id);
+        }
+    }
+    CHECK_EQ(flights.size(), 50);
+    CHECK_EQ(impacts.size(), 72);
+    for (const std::string &id : impacts)
+    {
+        INFO(id);
+        Game::EffectSystem effects(&library);
+        const Game::EffectHandle handle = effects.spawn(id);
+        REQUIRE(effects.contains(handle));
+        bool drew = false;
+        for (int tick = 0; tick < 60 * 4 && effects.contains(handle); ++tick)
+        {
+            effects.update(1.0f / 60.0f);
+            drew = drew || !effects.fixedSprites().empty() || !effects.particles().empty();
+        }
+        CHECK(drew);
+        CHECK_FALSE(effects.contains(handle));
+        CHECK(effects.particles().empty());
+    }
+    // Each flight effect draws a trail (a ribbon or shed particles) while it moves, then drains completely once
+    // stopped.
+    for (const std::string &id : flights)
+    {
+        Game::EffectSystem effects(&library);
+        const Game::EffectHandle handle = effects.spawn(id);
+        REQUIRE(effects.contains(handle));
+        for (int tick = 1; tick <= 30; ++tick)
+        {
+            REQUIRE(effects.setTransform(handle, {tick * 40.0f, 0.0f, 100.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1.0f));
+            effects.update(1.0f / 60.0f);
+        }
+        INFO(id);
+        CHECK((!effects.ribbons().empty() || effects.particles().size() >= 5));
+        CHECK((!effects.fixedSprites().empty() || !effects.ribbons().empty()));
+        effects.stop(handle, Game::EffectStopMode::Drain);
+        for (int tick = 0; tick < 120; ++tick)
+        {
+            effects.update(1.0f / 60.0f);
+        }
+        CHECK_FALSE(effects.contains(handle));
+        CHECK(effects.ribbons().empty());
+        CHECK(effects.particles().empty());
+    }
 }

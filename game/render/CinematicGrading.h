@@ -4,11 +4,13 @@
 
 namespace OpenYAMM::Game
 {
-// Owns world post-processing targets; solid geometry precedes optional AO, transparencies and grading.
+// Owns world post-processing targets; solid geometry precedes optional AO, transparencies, then grading and
+// sharpening in one screen pass.
 class CinematicGrading
 {
 public:
-    bool begin(int width, int height, bool enabled, int strength, bool ambientOcclusion = false, int aoStrength = 35);
+    bool begin(int width, int height, bool enabled, int strength, bool ambientOcclusion = false, int aoStrength = 35,
+        int sharpening = 0);
     void prepareWorldView(const float *pView, const float *pProjection);
     uint16_t transparentView(uint16_t worldView) const;
     void submit(bgfx::FrameBufferHandle target = BGFX_INVALID_HANDLE);
@@ -29,20 +31,23 @@ private:
     bgfx::UniformHandle m_sceneSampler = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_lutSampler = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_params = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle m_aoDepthProgram = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_aoProgram = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_aoBlurProgram = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_aoCompositeProgram = BGFX_INVALID_HANDLE;
+    bgfx::FrameBufferHandle m_aoDepthFrameBuffer = BGFX_INVALID_HANDLE;
     bgfx::FrameBufferHandle m_aoFrameBuffer = BGFX_INVALID_HANDLE;
     bgfx::FrameBufferHandle m_aoBlurFrameBuffer = BGFX_INVALID_HANDLE;
     bgfx::FrameBufferHandle m_aoCompositeFrameBuffer = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_depthSampler = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_aoSampler = BGFX_INVALID_HANDLE;
-    bgfx::UniformHandle m_aoProjection = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_aoLinearDepthSampler = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_aoRay = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_aoInverseProjection = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_aoParams = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_aoDepthParams = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_aoTexel = BGFX_INVALID_HANDLE;
-    float m_projection[16] = {};
+    float m_ray[4] = {};
     float m_inverseProjection[16] = {};
     bgfx::VertexLayout m_vertexLayout;
     bgfx::TransientVertexBuffer m_vertices = {};
@@ -50,6 +55,7 @@ private:
     uint16_t m_height = 0;
     float m_strength = 0.0f;
     float m_aoStrength = 0.0f;
+    float m_sharpening = 0.0f;
     bool m_aoTargets = false;
     bool m_aoActive = false;
     bool m_aoPrepared = false;

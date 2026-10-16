@@ -1,14 +1,14 @@
 #include "game/render/WaterCoverage.h"
-#include "game/render/WaterAppearance.h"
 #include "game/data/ActorNameResolver.h"
 #include "game/events/EvtEnums.h"
 #include "game/gameplay/InteractiveDecorationRules.h"
+#include "game/maps/ActorModelManifest.h"
+#include "game/maps/DecorationModelManifest.h"
 #include "game/maps/IndoorSceneYml.h"
 #include "game/maps/MapAssetLoader.h"
 #include "game/maps/MapDecorationTextures.h"
 #include "game/maps/MapIdentity.h"
 #include "game/maps/MapPresentation.h"
-#include "game/maps/StaleLightingNote.h"
 #include "game/mod/ModHooks.h"
 #include "game/maps/OutdoorSceneYml.h"
 #include "game/maps/TerrainTileData.h"
@@ -19,9 +19,11 @@
 #include "game/render/TextureFiltering.h"
 #include "game/SpriteObjectDefs.h"
 #include "game/StringUtils.h"
-#include "game/tables/SurfaceMaterialTable.h"
+#include "game/tables/LiquidTable.h"
 #include "game/tables/TextureFrameTable.h"
+#include "engine/AssetScaleTier.h"
 #include "engine/ImageAssetLoader.h"
+#include "engine/ParallelFor.h"
 #include "engine/SpriteAtlas.h"
 #include "engine/TextTable.h"
 
@@ -37,11 +39,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <future>
 #include <iostream>
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <stdexcept>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -232,9 +236,6 @@ std::string monsterSpriteFrameFamilyDirectory()
     return "Data/rendering/sprite_frames/monsters";
 }
 
-constexpr int TerrainTextureTileSize = 128;
-constexpr int TerrainTextureAtlasColumns = 16;
-constexpr int TerrainTextureAtlasTilePadding = 2;
 constexpr uint16_t LevelDecorationInvisible = 0x0020;
 constexpr uint32_t EnvironmentFlagRain = 0x01;
 constexpr uint32_t EnvironmentFlagSnow = 0x02;
@@ -385,11 +386,6 @@ OutdoorWeatherProfile buildOutdoorWeatherProfile(const MapDeltaLocationTime &loc
 
 std::optional<std::string> resolveMonsterNameForSpawn(const MapStatsEntry &map, uint16_t typeId, uint16_t index);
 
-int terrainTexturePhysicalTileSize(Engine::AssetScaleTier assetScaleTier)
-{
-    return TerrainTextureTileSize * Engine::assetScaleTierFactor(assetScaleTier);
-}
-
 std::string trimAsciiWhitespace(const std::string &value)
 {
     size_t begin = 0;
@@ -532,10 +528,10 @@ const TerrainTileDescriptor *findLiquidBaseTerrainDescriptor(
     return pFallback;
 }
 
-const SurfaceMaterialDefinition *findTerrainSurfaceMaterialForDescriptor(
+const LiquidDefinition *findTerrainLiquidForDescriptor(
     const TerrainTileDescriptor &descriptor,
     const std::vector<TerrainTileDescriptor> &tileDescriptors,
-    const SurfaceMaterialTable *pSurfaceMaterialTable,
+    const LiquidTable *pLiquidTable,
     const TerrainTileDescriptor **ppBaseDescriptor)
 {
     if (ppBaseDescriptor != nullptr)
@@ -543,7 +539,7 @@ const SurfaceMaterialDefinition *findTerrainSurfaceMaterialForDescriptor(
         *ppBaseDescriptor = nullptr;
     }
 
-    if (pSurfaceMaterialTable == nullptr)
+    if (pLiquidTable == nullptr)
     {
         return nullptr;
     }
@@ -560,10 +556,9 @@ const SurfaceMaterialDefinition *findTerrainSurfaceMaterialForDescriptor(
         }
     }
 
-    if (const SurfaceMaterialDefinition *pMaterial =
-            pSurfaceMaterialTable->findMatch(descriptor.textureName, 0, true))
+    if (const LiquidDefinition *pLiquid = pLiquidTable->findMatch(descriptor.textureName, 0, true))
     {
-        return pMaterial;
+        return pLiquid;
     }
 
     if (pBaseDescriptor == nullptr)
@@ -581,131 +576,7 @@ const SurfaceMaterialDefinition *findTerrainSurfaceMaterialForDescriptor(
         *ppBaseDescriptor = pBaseDescriptor;
     }
 
-    return pSurfaceMaterialTable->findMatch(pBaseDescriptor->textureName, 0, true);
-}
-
-std::vector<uint8_t> scrollTerrainPixels(
-    const std::vector<uint8_t> &sourcePixels,
-    int width,
-    int height,
-    int offsetX,
-    int offsetY)
-{
-    if (width <= 0 || height <= 0 || sourcePixels.size() < static_cast<size_t>(width * height * 4))
-    {
-        return sourcePixels;
-    }
-
-    std::vector<uint8_t> scrolledPixels(sourcePixels.size(), 0);
-
-    for (int y = 0; y < height; ++y)
-    {
-        const int sourceY = (y + offsetY + height) % height;
-
-        for (int x = 0; x < width; ++x)
-        {
-            const int sourceX = (x + offsetX + width) % width;
-            const size_t sourceOffset = static_cast<size_t>((sourceY * width + sourceX) * 4);
-            const size_t targetOffset = static_cast<size_t>((y * width + x) * 4);
-            std::memcpy(
-                scrolledPixels.data() + static_cast<ptrdiff_t>(targetOffset),
-                sourcePixels.data() + static_cast<ptrdiff_t>(sourceOffset),
-                4);
-        }
-    }
-
-    return scrolledPixels;
-}
-
-SurfaceAnimationSequence fallbackLiquidSurfaceAnimation()
-{
-    constexpr uint32_t FallbackAnimationTicks = 128;
-    constexpr int FallbackFrameCount = 7;
-
-    SurfaceAnimationSequence animation = {};
-    animation.animationLengthTicks = FallbackAnimationTicks;
-
-    for (int frameIndex = 0; frameIndex < FallbackFrameCount; ++frameIndex)
-    {
-        SurfaceAnimationFrame frame = {};
-        frame.textureName = "generated_liquid_scroll_" + std::to_string(frameIndex);
-        frame.frameLengthTicks = FallbackAnimationTicks / FallbackFrameCount;
-        animation.frames.push_back(std::move(frame));
-    }
-
-    return animation;
-}
-
-std::vector<std::vector<uint8_t>> buildFallbackLiquidAnimationFrames(
-    const std::vector<uint8_t> &basePixels,
-    int width,
-    int height,
-    SurfaceAnimationSequence &animation)
-{
-    std::vector<std::vector<uint8_t>> frames;
-    animation = fallbackLiquidSurfaceAnimation();
-    frames.reserve(animation.frames.size());
-
-    for (size_t frameIndex = 0; frameIndex < animation.frames.size(); ++frameIndex)
-    {
-        frames.push_back(
-            scrollTerrainPixels(
-                basePixels,
-                width,
-                height,
-                static_cast<int>(frameIndex) * 3,
-                static_cast<int>(frameIndex) * 2));
-    }
-
-    return frames;
-}
-
-std::vector<uint8_t> compositeTerrainOverlayOverBase(
-    const std::vector<uint8_t> &basePixels,
-    const std::vector<uint8_t> &overlayPixels)
-{
-    if (basePixels.size() != overlayPixels.size())
-    {
-        return overlayPixels;
-    }
-
-    std::vector<uint8_t> compositedPixels = basePixels;
-
-    for (size_t offset = 0; offset + 3 < compositedPixels.size(); offset += 4)
-    {
-        const uint32_t sourceAlpha = overlayPixels[offset + 3];
-
-        if (sourceAlpha == 0)
-        {
-            continue;
-        }
-
-        if (sourceAlpha >= 255)
-        {
-            compositedPixels[offset + 0] = overlayPixels[offset + 0];
-            compositedPixels[offset + 1] = overlayPixels[offset + 1];
-            compositedPixels[offset + 2] = overlayPixels[offset + 2];
-            compositedPixels[offset + 3] = 255;
-            continue;
-        }
-
-        const uint32_t destinationAlpha = compositedPixels[offset + 3];
-        const uint32_t inverseSourceAlpha = 255 - sourceAlpha;
-        const uint32_t outAlpha = sourceAlpha + (destinationAlpha * inverseSourceAlpha + 127) / 255;
-
-        for (int channel = 0; channel < 3; ++channel)
-        {
-            const uint32_t source = overlayPixels[offset + static_cast<size_t>(channel)];
-            const uint32_t destination = compositedPixels[offset + static_cast<size_t>(channel)];
-            const uint32_t blended =
-                (source * sourceAlpha + destination * inverseSourceAlpha + 127) / 255;
-            compositedPixels[offset + static_cast<size_t>(channel)] = static_cast<uint8_t>(blended);
-        }
-
-        compositedPixels[offset + 3] = static_cast<uint8_t>(std::min(outAlpha, 255u));
-    }
-
-    return compositedPixels;
+    return pLiquidTable->findMatch(pBaseDescriptor->textureName, 0, true);
 }
 
 bool loadDecorationRows(
@@ -978,38 +849,39 @@ void collectEncounterMonsterSpriteFamilies(
     }
 }
 
-std::optional<SurfaceMaterialTable> loadSurfaceMaterialTable(
+std::optional<LiquidTable> loadLiquidTable(
     const Engine::AssetFileSystem &assetFileSystem,
     MapAssetLoadSharedCache *pSharedCache)
 {
-    if (pSharedCache != nullptr && pSharedCache->surfaceMaterialTable)
+    if (pSharedCache != nullptr && pSharedCache->liquidTable)
     {
-        return pSharedCache->surfaceMaterialTable;
+        return pSharedCache->liquidTable;
     }
 
-    const std::optional<std::string> contents =
-        assetFileSystem.readTextFile("Data/rendering/surface_materials.yml");
+    constexpr const char *pPath = "engine/liquids/liquids.yml";
+    const std::optional<std::string> contents = assetFileSystem.readTextFile(pPath);
 
     if (!contents)
     {
+        std::cerr << "Failed to read liquids: " << pPath << '\n';
         return std::nullopt;
     }
 
-    SurfaceMaterialTable materialTable = {};
+    LiquidTable liquidTable = {};
     std::string errorMessage;
 
-    if (!materialTable.loadFromYaml(*contents, errorMessage))
+    if (!liquidTable.loadFromYaml(*contents, errorMessage))
     {
-        std::cerr << "Failed to load surface materials: " << errorMessage << '\n';
+        std::cerr << "Failed to load liquids: " << errorMessage << '\n';
         return std::nullopt;
     }
 
     if (pSharedCache != nullptr)
     {
-        pSharedCache->surfaceMaterialTable = materialTable;
+        pSharedCache->liquidTable = liquidTable;
     }
 
-    return materialTable;
+    return liquidTable;
 }
 
 std::optional<std::string> loadMonsterSpriteFrameFamilyText(
@@ -1067,15 +939,9 @@ std::vector<std::string> enumerateMonsterSpriteFrameFamilyEntries(
     return familyEntries;
 }
 
-std::optional<SpriteFrameTable> loadCommonSpriteFrameTable(
-    const Engine::AssetFileSystem &assetFileSystem,
-    MapAssetLoadSharedCache *pSharedCache)
+// Safe on any thread.
+std::optional<SpriteFrameTable> parseCommonSpriteFrameTable(const Engine::AssetFileSystem &assetFileSystem)
 {
-    if (pSharedCache != nullptr && pSharedCache->commonSpriteFrameTable)
-    {
-        return pSharedCache->commonSpriteFrameTable;
-    }
-
     const std::optional<std::string> contents =
         assetFileSystem.readTextFile("Data/rendering/sprite_frame_data_common.yml");
 
@@ -1090,6 +956,17 @@ std::optional<SpriteFrameTable> loadCommonSpriteFrameTable(
     if (!spriteFrameTable.loadFromYaml(*contents, errorMessage))
     {
         std::cerr << "Failed to load sprite frame data: " << errorMessage << '\n';
+        return std::nullopt;
+    }
+
+    // Engine-authored item sprites live apart from the native table, which outdoor lighting bakes depend on.
+    const std::string engineItemsPath = "Data/rendering/sprite_frame_data_engine_items.yml";
+    const std::optional<std::string> engineItems = assetFileSystem.readTextFile(engineItemsPath);
+
+    if (engineItems && !spriteFrameTable.loadFromYaml(*engineItems, errorMessage, true))
+    {
+        std::cerr << "Failed to load engine item sprite frame data from " << engineItemsPath << ": "
+                  << errorMessage << '\n';
         return std::nullopt;
     }
 
@@ -1115,12 +992,35 @@ std::optional<SpriteFrameTable> loadCommonSpriteFrameTable(
         }
     }
 
-    if (pSharedCache != nullptr)
+    // Contact frames and attack sound delays of monster attack sprites; an attack sprite without a contact frame
+    // applies its attack at the animation's end, and without a delay plays its sound as the attack starts.
+    const std::string attackTimingPath = "Data/rendering/sprite_attack_timing.yml";
+    const std::optional<std::string> attackTiming = assetFileSystem.readTextFile(attackTimingPath);
+
+    if (attackTiming && !spriteFrameTable.loadAttackTimingFromYaml(*attackTiming, errorMessage))
     {
-        pSharedCache->commonSpriteFrameTable = spriteFrameTable;
+        std::cerr << "Failed to load " << attackTimingPath << ": " << errorMessage << '\n';
+        return std::nullopt;
     }
 
     return spriteFrameTable;
+}
+
+std::optional<SpriteFrameTable> loadCommonSpriteFrameTable(
+    const Engine::AssetFileSystem &assetFileSystem,
+    MapAssetLoadSharedCache *pSharedCache)
+{
+    if (pSharedCache == nullptr)
+    {
+        return parseCommonSpriteFrameTable(assetFileSystem);
+    }
+    if (!pSharedCache->commonSpriteFrameTable)
+    {
+        pSharedCache->commonSpriteFrameTable = pSharedCache->commonSpriteFrameTableLoading.valid()
+            ? pSharedCache->commonSpriteFrameTableLoading.get() : parseCommonSpriteFrameTable(assetFileSystem);
+        pSharedCache->commonSpriteFrameTableLoading = {};
+    }
+    return pSharedCache->commonSpriteFrameTable;
 }
 
 bool appendMonsterSpriteFrameFamilies(
@@ -1282,17 +1182,13 @@ SurfaceAnimationSequence resolveSurfaceAnimation(
     uint32_t faceAttributes,
     bool isTerrain,
     const TextureFrameTable *pTextureFrameTable,
-    const SurfaceMaterialTable *pSurfaceMaterialTable,
+    const LiquidTable *pLiquidTable,
     std::optional<size_t> textureFrameTableIndex = std::nullopt)
 {
-    if (pSurfaceMaterialTable != nullptr)
+    // Liquids are drawn by the liquid shader: their legacy frame animations are never loaded.
+    if (pLiquidTable != nullptr && pLiquidTable->findMatch(textureName, faceAttributes, isTerrain) != nullptr)
     {
-        if (const SurfaceMaterialDefinition *pMaterial =
-                pSurfaceMaterialTable->findMatch(textureName, faceAttributes, isTerrain);
-            pMaterial != nullptr && !pMaterial->animation.empty())
-        {
-            return pMaterial->animation;
-        }
+        return staticSurfaceAnimation(textureName);
     }
 
     if (!isTerrain && pTextureFrameTable != nullptr)
@@ -1347,31 +1243,6 @@ void appendAnimationTextureNamesIfMissing(
             textureNames.push_back(normalizedTextureName);
         }
     }
-}
-
-std::unordered_set<std::string> collectTerrainFallbackTextureNames(
-    const std::vector<std::pair<std::string, SurfaceAnimationSequence>> &animationBindings)
-{
-    std::unordered_set<std::string> fallbackTextureNames;
-
-    for (const auto &binding : animationBindings)
-    {
-        const SurfaceAnimationSequence &animation = binding.second;
-
-        if (animation.frames.size() <= 1)
-        {
-            continue;
-        }
-
-        fallbackTextureNames.insert(binding.first);
-
-        for (const SurfaceAnimationFrame &frame : animation.frames)
-        {
-            fallbackTextureNames.insert(toLowerCopy(frame.textureName));
-        }
-    }
-
-    return fallbackTextureNames;
 }
 
 uint32_t makeAbgr(uint8_t red, uint8_t green, uint8_t blue)
@@ -1845,26 +1716,79 @@ std::optional<std::vector<uint8_t>> loadIndexedBitmapPixelsBgra(
     return pixels;
 }
 
+// The cooked file a world surface texture resolves to in the active scale tier; empty when its best match is a source
+// image. Uses the load's path caches, so it runs on the loading thread.
+std::optional<std::string> findCookedSurfaceTexturePath(
+    const Engine::AssetFileSystem &assetFileSystem,
+    const std::string &textureName,
+    Engine::DirectoryAssetPathCache &directoryAssetPathsByPath,
+    Engine::AssetPathLookupCache &assetPathByKey)
+{
+    const std::optional<std::string> path = Engine::findCookedOrImageAssetPath(
+        assetFileSystem, "Data/bitmaps", textureName, directoryAssetPathsByPath, assetPathByKey);
+    if (!path || toLowerCopy(std::filesystem::path(*path).extension().string()) != ".oytex")
+    {
+        return std::nullopt;
+    }
+    return path;
+}
+
+// A cooked world surface texture from its file's bytes; safe on any thread.
+OutdoorBitmapTexture decodeCookedSurfaceTexture(
+    const std::string &textureName,
+    const std::string &path,
+    const std::optional<std::vector<uint8_t>> &bytes)
+{
+    if (!bytes || bytes->empty())
+    {
+        throw std::runtime_error("Cannot read cooked surface texture " + path);
+    }
+
+    std::shared_ptr<Engine::CookedTexture> cooked;
+    try
+    {
+        cooked = std::make_shared<Engine::CookedTexture>(Engine::decodeCookedTexture(*bytes));
+    }
+    catch (const std::exception &exception)
+    {
+        throw std::runtime_error("Cannot load cooked surface texture " + path + ": " + exception.what());
+    }
+    // The BModel upload path: raw (non-sRGB) texels, box-filtered mips without cutout coverage, the full chain.
+    if (cooked->semantic != Engine::ImageMipSemantic::Linear || cooked->alphaCutoff != 0
+        || cooked->levels != Engine::cookedTextureFullChainLevels(cooked->width, cooked->height)
+        || !cooked->statistics)
+    {
+        throw std::runtime_error("Cooked surface texture " + path
+            + " was prepared for another use or before source statistics; run tools/cook_surface_textures.py");
+    }
+
+    const Engine::AssetScaleTier tier = Engine::assetScaleTierFromResolvedPath(path);
+    OutdoorBitmapTexture texture = {};
+    texture.textureName = textureName;
+    texture.physicalWidth = cooked->width;
+    texture.physicalHeight = cooked->height;
+    texture.width = Engine::scalePhysicalPixelsToLogical(cooked->width, tier);
+    texture.height = Engine::scalePhysicalPixelsToLogical(cooked->height, tier);
+    texture.hasTransparentPixels = cooked->statistics->alphaUse != Engine::CookedTextureAlphaUse::Opaque;
+    texture.hasPartialAlphaPixels = cooked->statistics->alphaUse == Engine::CookedTextureAlphaUse::Partial;
+    texture.cookedTexture = std::move(cooked);
+    return texture;
+}
+
 std::optional<std::vector<uint8_t>> loadBitmapPixelsBgra(
     const Engine::AssetFileSystem &assetFileSystem,
     const std::string &directoryPath,
     const std::string &textureName,
     int &width,
     int &height,
-    bool forceTerrainTileSize,
     bool applyTransparencyKey,
     BitmapLoadCache &bitmapLoadCache,
     int16_t paletteId = 0,
     const std::string &paletteWorldId = {}
 )
 {
-    const int forcedTerrainTileSize =
-        forceTerrainTileSize
-            ? terrainTexturePhysicalTileSize(assetFileSystem.getAssetScaleTier(Engine::AssetScaleCategory::Terrain))
-            : 0;
     const std::string cacheKey =
         directoryPath + "|" + toLowerCopy(textureName)
-        + "|" + std::to_string(forcedTerrainTileSize)
         + "|" + std::to_string(applyTransparencyKey ? 1 : 0)
         + "|" + std::to_string(static_cast<int>(paletteId))
         + "|" + (paletteWorldId.empty() ? std::string() : normalizeWorldId(paletteWorldId));
@@ -1946,7 +1870,7 @@ std::optional<std::vector<uint8_t>> loadBitmapPixelsBgra(
     }
 
     Engine::ImageDecodeOptions decodeOptions = {};
-    decodeOptions.overridePalette = paletteId > 0 && !forceTerrainTileSize
+    decodeOptions.overridePalette = paletteId > 0
         ? loadActPalette(assetFileSystem, paletteId, bitmapLoadCache, paletteWorldId)
         : std::nullopt;
     decodeOptions.applyPaletteZeroTransparencyKey = applyTransparencyKey;
@@ -1970,24 +1894,6 @@ std::optional<std::vector<uint8_t>> loadBitmapPixelsBgra(
     width = image->width;
     height = image->height;
     std::vector<uint8_t> pixels = std::move(image->pixels);
-
-    if (forceTerrainTileSize && (width != forcedTerrainTileSize || height != forcedTerrainTileSize))
-    {
-        pixels = Engine::scalePixelsNearestBgra(pixels, width, height, forcedTerrainTileSize, forcedTerrainTileSize);
-
-        if (pixels.empty())
-        {
-            if (pPixelCache != nullptr)
-            {
-                (*pPixelCache)[cacheKey] = std::nullopt;
-            }
-
-            return std::nullopt;
-        }
-
-        width = forcedTerrainTileSize;
-        height = forcedTerrainTileSize;
-    }
 
     if (pPixelCache != nullptr)
     {
@@ -2064,7 +1970,6 @@ void prepareBillboardTexturesForUploadParallel(std::vector<OutdoorBitmapTexture>
 OutdoorBitmapTexture decodeActorBitmapTextureRequest(
     const Engine::AssetFileSystem &assetFileSystem,
     const BitmapTextureRequest &textureRequest,
-    Engine::AssetScaleTier spriteAssetScaleTier,
     const std::string &worldId,
     BitmapLoadCache &bitmapLoadCache)
 {
@@ -2077,7 +1982,6 @@ OutdoorBitmapTexture decodeActorBitmapTextureRequest(
             textureRequest.textureName,
             textureWidth,
             textureHeight,
-            false,
             true,
             bitmapLoadCache,
             textureRequest.paletteId,
@@ -2091,8 +1995,8 @@ OutdoorBitmapTexture decodeActorBitmapTextureRequest(
     OutdoorBitmapTexture texture = {};
     texture.textureName = textureRequest.textureName;
     texture.paletteId = textureRequest.paletteId;
-    texture.width = Engine::scalePhysicalPixelsToLogical(textureWidth, spriteAssetScaleTier);
-    texture.height = Engine::scalePhysicalPixelsToLogical(textureHeight, spriteAssetScaleTier);
+    texture.width = textureWidth;
+    texture.height = textureHeight;
     texture.physicalWidth = textureWidth;
     texture.physicalHeight = textureHeight;
     updateBitmapAlphaInfo(texture, *pixels);
@@ -2101,46 +2005,12 @@ OutdoorBitmapTexture decodeActorBitmapTextureRequest(
     return texture;
 }
 
-std::optional<std::vector<uint8_t>> loadTerrainBitmapPixelsBgra(
-    const Engine::AssetFileSystem &assetFileSystem,
-    const std::string &textureName,
-    int &width,
-    int &height,
-    bool applyTransparencyKey,
-    BitmapLoadCache &bitmapLoadCache)
-{
-    std::optional<std::vector<uint8_t>> pixels =
-        loadBitmapPixelsBgra(
-            assetFileSystem,
-            "terrain",
-            textureName,
-            width,
-            height,
-            true,
-            applyTransparencyKey,
-            bitmapLoadCache);
-
-    if (pixels)
-    {
-        return pixels;
-    }
-
-    return loadBitmapPixelsBgra(
-        assetFileSystem,
-        "terrain_textures",
-        textureName,
-        width,
-        height,
-        true,
-        applyTransparencyKey,
-        bitmapLoadCache);
-}
-
 template <typename EntityType>
 std::optional<DecorationBillboardSet> buildDecorationBillboardSet(
     const Engine::AssetFileSystem &assetFileSystem,
     const std::vector<EntityType> &entities,
     const std::string &worldId,
+    const std::string &mapFile,
     const std::vector<OutdoorBitmapTexture> &decorationTextures,
     BitmapLoadCache &bitmapLoadCache,
     const MapLoadProgressPump &progressPump,
@@ -2165,6 +2035,21 @@ std::optional<DecorationBillboardSet> buildDecorationBillboardSet(
         || !billboardSet.decorationTable.loadRows(decorationRows))
     {
         return std::nullopt;
+    }
+
+    // A broken manifest leaves every sprite loaded; DecorationModelSet::load reports it and draws the sprites.
+    std::vector<std::string> modelledNames;
+    std::string modelError;
+    if (modelledDecorationNames(assetFileSystem, worldId, mapFile, modelledNames, modelError))
+    {
+        for (const std::string &name : modelledNames)
+        {
+            const DecorationEntry *pModelled = billboardSet.decorationTable.findByInternalName(name);
+            if (pModelled != nullptr && pModelled->spriteId != 0)
+            {
+                billboardSet.modelSpriteIds.insert(pModelled->spriteId);
+            }
+        }
     }
 
     std::vector<BitmapTextureRequest> textureRequests;
@@ -2206,7 +2091,7 @@ std::optional<DecorationBillboardSet> buildDecorationBillboardSet(
         billboard.name = entity.name;
         billboardSet.billboards.push_back(std::move(billboard));
 
-        if (pDecoration->spriteId != 0)
+        if (pDecoration->spriteId != 0 && !billboardSet.modelSpriteIds.contains(pDecoration->spriteId))
         {
             appendSpriteFrameTextures(
                 textureRequests,
@@ -2215,7 +2100,9 @@ std::optional<DecorationBillboardSet> buildDecorationBillboardSet(
         }
         if (entity.scriptEventId() == 0)
         {
-            if (const DecorationEntry *counterpart = toggleableDecorationCounterpart(billboardSet.decorationTable, *pDecoration))
+            const DecorationEntry *counterpart =
+                toggleableDecorationCounterpart(billboardSet.decorationTable, *pDecoration);
+            if (counterpart != nullptr && !billboardSet.modelSpriteIds.contains(counterpart->spriteId))
             {
                 appendSpriteFrameTextures(textureRequests, billboardSet.spriteFrameTable, counterpart->spriteId);
             }
@@ -2226,9 +2113,6 @@ std::optional<DecorationBillboardSet> buildDecorationBillboardSet(
     {
         return std::nullopt;
     }
-
-    const Engine::AssetScaleTier nativeSpriteTier =
-        assetFileSystem.getAssetScaleTier(Engine::AssetScaleCategory::Sprites);
 
     // Include scripted alternate states even when they have no initial map placement.
     billboardSet.textures = decorationTextures;
@@ -2260,7 +2144,6 @@ std::optional<DecorationBillboardSet> buildDecorationBillboardSet(
                 textureRequest.textureName,
                 textureWidth,
                 textureHeight,
-                false,
                 true,
                 bitmapLoadCache,
                 textureRequest.paletteId,
@@ -2275,8 +2158,8 @@ std::optional<DecorationBillboardSet> buildDecorationBillboardSet(
         OutdoorBitmapTexture texture = {};
         texture.textureName = textureRequest.textureName;
         texture.paletteId = textureRequest.paletteId;
-        texture.width = Engine::scalePhysicalPixelsToLogical(textureWidth, nativeSpriteTier);
-        texture.height = Engine::scalePhysicalPixelsToLogical(textureHeight, nativeSpriteTier);
+        texture.width = textureWidth;
+        texture.height = textureHeight;
         texture.physicalWidth = textureWidth;
         texture.physicalHeight = textureHeight;
         updateBitmapAlphaInfo(texture, *pixels);
@@ -2471,6 +2354,7 @@ std::optional<DecorationBillboardSet> buildOutdoorDecorationBillboardSet(
     const Engine::AssetFileSystem &assetFileSystem,
     const OutdoorMapData &outdoorMapData,
     const std::string &worldId,
+    const std::string &mapFile,
     const std::vector<OutdoorBitmapTexture> &decorationTextures,
     BitmapLoadCache &bitmapLoadCache,
     const MapLoadProgressPump &progressPump,
@@ -2482,6 +2366,7 @@ std::optional<DecorationBillboardSet> buildOutdoorDecorationBillboardSet(
             assetFileSystem,
             outdoorMapData.entities,
             worldId,
+            mapFile,
             decorationTextures,
             bitmapLoadCache,
             progressPump,
@@ -2515,6 +2400,7 @@ std::optional<DecorationBillboardSet> buildIndoorDecorationBillboardSet(
     const Engine::AssetFileSystem &assetFileSystem,
     const IndoorMapData &indoorMapData,
     const std::string &worldId,
+    const std::string &mapFile,
     const std::vector<OutdoorBitmapTexture> &decorationTextures,
     BitmapLoadCache &bitmapLoadCache,
     const MapLoadProgressPump &progressPump,
@@ -2526,6 +2412,7 @@ std::optional<DecorationBillboardSet> buildIndoorDecorationBillboardSet(
             assetFileSystem,
             indoorMapData.entities,
             worldId,
+            mapFile,
             decorationTextures,
             bitmapLoadCache,
             progressPump,
@@ -2668,9 +2555,6 @@ std::optional<SpriteObjectBillboardSet> buildSpriteObjectBillboardSet(
         }
     }
 
-    const Engine::AssetScaleTier spriteAssetScaleTier =
-        assetFileSystem.getAssetScaleTier(Engine::AssetScaleCategory::Sprites);
-
     for (const BitmapTextureRequest &textureRequest : textureRequests)
     {
         pumpMapLoadProgress(progressPump);
@@ -2678,7 +2562,6 @@ std::optional<SpriteObjectBillboardSet> buildSpriteObjectBillboardSet(
             decodeActorBitmapTextureRequest(
                 assetFileSystem,
                 textureRequest,
-                spriteAssetScaleTier,
                 worldId,
                 bitmapLoadCache);
 
@@ -2938,32 +2821,27 @@ void appendMonsterActionTextures(
     }
 }
 
-void appendSummonMonsterTextures(
-    std::vector<BitmapTextureRequest> &textureRequests,
-    const SpriteFrameTable &spriteFrameTable,
-    const MonsterTable &monsterTable)
+void noteModelDescriptor(ActorPreviewBillboardSet &billboardSet, const MonsterEntry &monster)
 {
-    for (int16_t monsterId : SummonWispMonsterIds)
+    if (std::find(billboardSet.modelDescriptors.begin(), billboardSet.modelDescriptors.end(), monster.internalName)
+        == billboardSet.modelDescriptors.end())
     {
-        appendMonsterActionTextures(
-            textureRequests,
-            spriteFrameTable,
-            buildMonsterActionSpriteFrameIndices(spriteFrameTable, monsterTable.findById(monsterId)));
+        billboardSet.modelDescriptors.push_back(monster.internalName);
     }
 }
 
-void appendEncounterSlotTierTextures(
-    std::vector<BitmapTextureRequest> &textureRequests,
-    const SpriteFrameTable &spriteFrameTable,
+// The A, B and C tiers of a map encounter slot (MapStats monsters 1-3), as spawn points and SummonMonsters use them.
+std::vector<const MonsterEntry *> encounterSlotTierMonsters(
     const MapStatsEntry &map,
     const MonsterTable &monsterTable,
     int encounterSlot)
 {
+    std::vector<const MonsterEntry *> monsters;
     const MapEncounterInfo *pEncounter = mapEncounterInfoBySlot(map, encounterSlot);
 
     if (pEncounter == nullptr)
     {
-        return;
+        return monsters;
     }
 
     const std::string pictureBase =
@@ -2971,30 +2849,80 @@ void appendEncounterSlotTierTextures(
 
     if (pictureBase.empty())
     {
-        return;
+        return monsters;
     }
 
     for (char tierLetter : {'A', 'B', 'C'})
     {
         const std::string pictureName = pictureBase + " " + std::string(1, tierLetter);
         const MonsterTable::MonsterStatsEntry *pStats = monsterTable.findStatsByPictureName(pictureName);
+        const MonsterEntry *pMonsterEntry =
+            pStats != nullptr ? monsterTable.findById(static_cast<int16_t>(pStats->id)) : nullptr;
 
-        if (pStats == nullptr)
+        if (pMonsterEntry != nullptr)
         {
-            continue;
+            monsters.push_back(pMonsterEntry);
         }
+    }
 
-        const MonsterEntry *pMonsterEntry = monsterTable.findById(static_cast<int16_t>(pStats->id));
+    return monsters;
+}
 
-        if (pMonsterEntry == nullptr)
+// Monsters that can appear later without being placed. Every encounter slot of the map, which its event scripts may
+// summon (SummonMonsters) even when no spawn point uses it, has its models built with the map so a summon does not
+// stall gameplay. Wisps are summoned rarely: only their sprites are preloaded, a wisp model loads when first summoned.
+void appendSummonableMonsters(
+    std::vector<BitmapTextureRequest> &textureRequests,
+    ActorPreviewBillboardSet &billboardSet,
+    const MapStatsEntry &map,
+    const MonsterTable &monsterTable)
+{
+    for (int encounterSlot = 1; encounterSlot <= 3; ++encounterSlot)
+    {
+        for (const MonsterEntry *pMonsterEntry : encounterSlotTierMonsters(map, monsterTable, encounterSlot))
+        {
+            if (billboardSet.drawsModel(pMonsterEntry))
+            {
+                noteModelDescriptor(billboardSet, *pMonsterEntry);
+            }
+        }
+    }
+
+    for (int16_t monsterId : SummonWispMonsterIds)
+    {
+        const MonsterEntry *pMonsterEntry = monsterTable.findById(monsterId);
+
+        if (billboardSet.drawsModel(pMonsterEntry))
         {
             continue;
         }
 
         appendMonsterActionTextures(
             textureRequests,
-            spriteFrameTable,
-            buildMonsterActionSpriteFrameIndices(spriteFrameTable, pMonsterEntry));
+            billboardSet.spriteFrameTable,
+            buildMonsterActionSpriteFrameIndices(billboardSet.spriteFrameTable, pMonsterEntry));
+    }
+}
+
+void appendEncounterSlotTierTextures(
+    std::vector<BitmapTextureRequest> &textureRequests,
+    ActorPreviewBillboardSet &billboardSet,
+    const MapStatsEntry &map,
+    const MonsterTable &monsterTable,
+    int encounterSlot)
+{
+    for (const MonsterEntry *pMonsterEntry : encounterSlotTierMonsters(map, monsterTable, encounterSlot))
+    {
+        if (billboardSet.drawsModel(pMonsterEntry))
+        {
+            noteModelDescriptor(billboardSet, *pMonsterEntry);
+            continue;
+        }
+
+        appendMonsterActionTextures(
+            textureRequests,
+            billboardSet.spriteFrameTable,
+            buildMonsterActionSpriteFrameIndices(billboardSet.spriteFrameTable, pMonsterEntry));
     }
 }
 
@@ -3101,10 +3029,17 @@ void appendMapDeltaActors(
         billboard.uniqueNameIndex = actor.uniqueNameIndex;
         billboard.useStaticFrame = spriteFrameIndex != 0 && spriteFrameIndex == savedSpriteFrameIndex;
         billboard.isFriendly = true;
+        billboard.modelled = billboardSet.drawsModel(pMonsterEntry);
         billboard.source = ActorPreviewSource::Companion;
         billboard.actorName = resolvedActorName;
         billboardSet.billboards.push_back(std::move(billboard));
         ++billboardSet.mapDeltaActorCount;
+
+        if (billboardSet.billboards.back().modelled)
+        {
+            noteModelDescriptor(billboardSet, *pMonsterEntry);
+            continue;
+        }
 
         appendMonsterActionTextures(textureRequests, billboardSet.spriteFrameTable, actionSpriteFrameIndices);
         appendSpriteFrameTextures(textureRequests, billboardSet.spriteFrameTable, spriteFrameIndex);
@@ -3196,19 +3131,27 @@ void appendSpawnActors(
         billboard.uniqueNameIndex = 0;
         billboard.useStaticFrame = false;
         billboard.isFriendly = true;
+        billboard.modelled = billboardSet.drawsModel(pMonsterEntry);
         billboard.source = ActorPreviewSource::Spawn;
         billboard.actorName = *monsterName;
         billboardSet.billboards.push_back(std::move(billboard));
         ++billboardSet.spawnActorCount;
 
-        appendMonsterActionTextures(textureRequests, billboardSet.spriteFrameTable, actionSpriteFrameIndices);
-        appendSpriteFrameTextures(textureRequests, billboardSet.spriteFrameTable, *frameIndex);
+        if (billboardSet.billboards.back().modelled)
+        {
+            noteModelDescriptor(billboardSet, *pMonsterEntry);
+        }
+        else
+        {
+            appendMonsterActionTextures(textureRequests, billboardSet.spriteFrameTable, actionSpriteFrameIndices);
+            appendSpriteFrameTextures(textureRequests, billboardSet.spriteFrameTable, *frameIndex);
+        }
 
         if (spawn.typeId == 3 && spawn.index >= 1 && spawn.index <= 3)
         {
             appendEncounterSlotTierTextures(
                 textureRequests,
-                billboardSet.spriteFrameTable,
+                billboardSet,
                 map,
                 monsterTable,
                 spawn.index);
@@ -3227,10 +3170,12 @@ std::optional<ActorPreviewBillboardSet> buildActorPreviewBillboardSet(
     const OutdoorMapData *pOutdoorMapData = nullptr,
     bool decodeAllTextures = true,
     const MapLoadProgressPump &progressPump = {},
-    MapAssetLoadSharedCache *pSharedCache = nullptr
+    MapAssetLoadSharedCache *pSharedCache = nullptr,
+    std::shared_ptr<const ActorModelManifest> pActorModels = {}
 )
 {
     ActorPreviewBillboardSet billboardSet = {};
+    billboardSet.actorModels = std::move(pActorModels);
 
     std::unordered_set<std::string> neededMonsterFamilies;
     std::unordered_set<std::string> neededWorldPrefixedMonsterSpriteNames;
@@ -3292,7 +3237,7 @@ std::optional<ActorPreviewBillboardSet> buildActorPreviewBillboardSet(
     }
 
     appendSpawnActors(billboardSet, textureRequests, map, monsterTable, spawns, pOutdoorMapData);
-    appendSummonMonsterTextures(textureRequests, billboardSet.spriteFrameTable, monsterTable);
+    appendSummonableMonsters(textureRequests, billboardSet, map, monsterTable);
 
     if (billboardSet.billboards.empty() && textureRequests.empty() && !map.arena)
     {
@@ -3301,9 +3246,6 @@ std::optional<ActorPreviewBillboardSet> buildActorPreviewBillboardSet(
 
     if (decodeAllTextures)
     {
-        const Engine::AssetScaleTier spriteAssetScaleTier =
-            assetFileSystem.getAssetScaleTier(Engine::AssetScaleCategory::Sprites);
-
         for (const BitmapTextureRequest &textureRequest : textureRequests)
         {
             pumpMapLoadProgress(progressPump);
@@ -3316,7 +3258,6 @@ std::optional<ActorPreviewBillboardSet> buildActorPreviewBillboardSet(
                 decodeActorBitmapTextureRequest(
                     assetFileSystem,
                     textureRequest,
-                    spriteAssetScaleTier,
                     map.worldId,
                     bitmapLoadCache);
 
@@ -3332,6 +3273,12 @@ std::optional<ActorPreviewBillboardSet> buildActorPreviewBillboardSet(
     for (const ActorPreviewBillboard &billboard : billboardSet.billboards)
     {
         const SpriteFrameEntry *pFrame = billboardSet.spriteFrameTable.getFrame(billboard.spriteFrameIndex, 0);
+
+        if (billboard.modelled)
+        {
+            ++billboardSet.texturedActorCount;
+            continue;
+        }
 
         if (pFrame == nullptr)
         {
@@ -3437,64 +3384,12 @@ std::optional<std::vector<uint32_t>> buildOutdoorTileColors(
     return tileColors;
 }
 
-void copyTerrainTileIntoAtlasPixels(
-    std::vector<uint8_t> &atlasPixels,
-    int atlasWidth,
-    int atlasHeight,
-    int innerAtlasX,
-    int innerAtlasY,
-    int tileSize,
-    int tilePadding,
-    const std::vector<uint8_t> &tilePixels)
-{
-    if (atlasWidth <= 0
-        || atlasHeight <= 0
-        || tileSize <= 0
-        || tilePixels.size() < static_cast<size_t>(tileSize * tileSize * 4))
-    {
-        return;
-    }
-
-    const int cellStartX = innerAtlasX - tilePadding;
-    const int cellStartY = innerAtlasY - tilePadding;
-    const int paddedTileSize = tileSize + tilePadding * 2;
-
-    for (int paddedY = 0; paddedY < paddedTileSize; ++paddedY)
-    {
-        const int sourceY = std::clamp(paddedY - tilePadding, 0, tileSize - 1);
-        const int targetY = cellStartY + paddedY;
-
-        if (targetY < 0 || targetY >= atlasHeight)
-        {
-            continue;
-        }
-
-        for (int paddedX = 0; paddedX < paddedTileSize; ++paddedX)
-        {
-            const int sourceX = std::clamp(paddedX - tilePadding, 0, tileSize - 1);
-            const int targetX = cellStartX + paddedX;
-
-            if (targetX < 0 || targetX >= atlasWidth)
-            {
-                continue;
-            }
-
-            const size_t sourceOffset = static_cast<size_t>((sourceY * tileSize + sourceX) * 4);
-            const size_t targetOffset = static_cast<size_t>((targetY * atlasWidth + targetX) * 4);
-            std::memcpy(
-                atlasPixels.data() + static_cast<ptrdiff_t>(targetOffset),
-                tilePixels.data() + static_cast<ptrdiff_t>(sourceOffset),
-                4);
-        }
-    }
-}
-
-std::optional<OutdoorTerrainTextureAtlas> buildOutdoorTerrainTextureAtlas(
+// The map's terrain tile table: each used tile's name and its part in the liquids, and the coverage masks of its
+// liquid edge tiles (cooked by tools/terrain_materials.py from the native tiles; the runtime loads no tile art).
+std::optional<OutdoorTerrainTiles> buildOutdoorTerrainTiles(
     const Engine::AssetFileSystem &assetFileSystem,
     const OutdoorMapData &outdoorMapData,
-    BitmapLoadCache &bitmapLoadCache,
-    const SurfaceMaterialTable *pSurfaceMaterialTable,
-    const MapLoadProgressPump &progressPump
+    const LiquidTable *pLiquidTable
 )
 {
     const std::optional<std::vector<TerrainTileDescriptor>> tileDescriptors =
@@ -3505,40 +3400,172 @@ std::optional<OutdoorTerrainTextureAtlas> buildOutdoorTerrainTextureAtlas(
         return std::nullopt;
     }
 
-    const Engine::AssetScaleTier terrainAssetScaleTier =
-        assetFileSystem.getAssetScaleTier(Engine::AssetScaleCategory::Terrain);
-    const int terrainTileSize = terrainTexturePhysicalTileSize(terrainAssetScaleTier);
-    const int atlasTilePadding = TerrainTextureAtlasTilePadding;
-    const int atlasCellSize = terrainTileSize + atlasTilePadding * 2;
-    OutdoorTerrainTextureAtlas textureAtlas = {};
-    textureAtlas.tileSize = terrainTileSize;
-    textureAtlas.tilePadding = atlasTilePadding;
-    textureAtlas.width = TerrainTextureAtlasColumns * atlasCellSize;
-    textureAtlas.height = TerrainTextureAtlasColumns * atlasCellSize;
-    textureAtlas.pixels.resize(static_cast<size_t>(textureAtlas.width * textureAtlas.height * 4), 0);
+    // Only the tile ids the map's cells use: a tileset's other slots are never drawn.
+    std::array<bool, 256> usedTileIds = {};
+    for (const uint8_t tileId : outdoorMapData.tileMap)
+    {
+        usedTileIds[tileId] = true;
+    }
 
-    std::unordered_map<std::string, std::vector<std::vector<uint8_t>>> animatedTerrainFramesByKey;
-    std::unordered_map<std::string, uint32_t> waterColorsByTextureName;
-    std::unordered_set<std::string> missingTextureNames;
-    std::unordered_set<std::string> invalidSizeTextureNames;
-    size_t validTileCount = 0;
-
+    OutdoorTerrainTiles terrainTiles;
     for (int tileIndex = 0; tileIndex < 256; ++tileIndex)
     {
-        pumpMapLoadProgress(progressPump);
         const TerrainTileDescriptor &descriptor = (*tileDescriptors)[tileIndex];
         const std::string &textureName = descriptor.textureName;
 
-        if (textureName.empty() || textureName == "pending")
+        if (!usedTileIds[tileIndex] || textureName.empty() || textureName == "pending")
         {
             continue;
         }
 
+        const TerrainTileDescriptor *pBaseDescriptor = nullptr;
+        const LiquidDefinition *pLiquid =
+            findTerrainLiquidForDescriptor(descriptor, *tileDescriptors, pLiquidTable, &pBaseDescriptor);
+        // An edge tile over a liquid keeps its overlay's alpha as the liquid's coverage; a liquid tile has no art.
+        const bool liquidEdge = pLiquid != nullptr
+            && pLiquid->terrainTransitionOverlay
+            && isTerrainDescriptorTransition(descriptor)
+            && pBaseDescriptor != nullptr
+            && pBaseDescriptor->textureName != textureName;
+        OutdoorTerrainTile &tile = terrainTiles.tiles[size_t(tileIndex)];
+        tile.textureName = textureName;
+        tile.valid = true;
+        tile.water = hasTerrainTileFlag(descriptor, TerrainTileFlagWater) || pLiquid != nullptr;
+        tile.waterSurface = pLiquid != nullptr;
+        tile.transitionOverlay = liquidEdge;
+        tile.liquid = pLiquid != nullptr ? pLiquid->kind : LiquidKind::None;
+        tile.waterColorAbgr = pLiquid != nullptr ? pLiquid->colorAbgr : 0;
+
+        if (liquidEdge)
+        {
+            const std::string maskPath =
+                "worlds/" + outdoorMapData.worldId + "/terrain_materials/liquid_edges/" + textureName + ".png";
+            const std::optional<std::vector<uint8_t>> bytes = assetFileSystem.readBinaryFile(maskPath);
+            const std::optional<Engine::ImagePixelsBgra> mask =
+                bytes ? Engine::decodeImagePixelsBgra(*bytes, maskPath) : std::nullopt;
+
+            if (!mask || mask->width != WaterCoverageSize || mask->height != WaterCoverageSize)
+            {
+                std::cerr << "Terrain liquid edge mask missing or not " << WaterCoverageSize << "x"
+                          << WaterCoverageSize << ": " << maskPath << " (tools/terrain_materials.py edges --world "
+                          << outdoorMapData.worldId << ")\n";
+                return std::nullopt;
+            }
+
+            std::vector<uint8_t> &coverage = terrainTiles.liquidCoverageMasks[size_t(tileIndex)];
+            coverage.resize(size_t(WaterCoverageSize) * WaterCoverageSize);
+            for (size_t texel = 0; texel < coverage.size(); ++texel)
+            {
+                coverage[texel] = mask->pixels[texel * 4 + 2];
+            }
+        }
+    }
+
+    return terrainTiles;
+}
+
+// A liquid face texture has no art: the liquid shader draws it. Native liquid textures are 128 texels square, which
+// keeps the face UVs (and so the flow speed of flowing liquids) as authored.
+OutdoorBitmapTexture liquidFaceTexture(const std::string &textureName, const LiquidDefinition &liquid)
+{
+    constexpr int LiquidTextureSize = 128;
+    constexpr int PlaceholderSize = 4;
+    OutdoorBitmapTexture texture = {};
+    texture.textureName = textureName;
+    texture.width = LiquidTextureSize;
+    texture.height = LiquidTextureSize;
+    texture.physicalWidth = PlaceholderSize;
+    texture.physicalHeight = PlaceholderSize;
+    texture.liquid = liquid.kind;
+    texture.waterColorAbgr = liquid.colorAbgr;
+    const std::array<uint8_t, 4> bgra = {
+        uint8_t(liquid.colorAbgr >> 16), uint8_t(liquid.colorAbgr >> 8), uint8_t(liquid.colorAbgr), 255};
+    for (int pixel = 0; pixel < PlaceholderSize * PlaceholderSize; ++pixel)
+    {
+        texture.pixels.insert(texture.pixels.end(), bgra.begin(), bgra.end());
+    }
+    return texture;
+}
+
+// Loads face textures by name: liquids as their colour, other textures from Data/bitmaps (cooked first).
+std::vector<OutdoorBitmapTexture> loadFaceTextures(
+    const Engine::AssetFileSystem &assetFileSystem,
+    const std::vector<std::string> &textureNames,
+    const std::unordered_map<std::string, const LiquidDefinition *> &liquidTextures,
+    BitmapLoadCache &bitmapLoadCache,
+    const MapLoadProgressPump &progressPump)
+{
+    std::vector<OutdoorBitmapTexture> textures;
+    const Engine::AssetScaleTier textureAssetScaleTier =
+        assetFileSystem.getAssetScaleTier(Engine::AssetScaleCategory::Textures);
+
+    // Cooked files resolve through the load's caches here, then read and decode on the load workers.
+    struct CookedSlot
+    {
+        std::optional<std::string> path;
+        const std::optional<std::vector<uint8_t>> *pCachedBytes = nullptr;
+        std::optional<std::vector<uint8_t>> readBytes;
+        std::optional<OutdoorBitmapTexture> texture;
+    };
+    std::vector<CookedSlot> cookedSlots(textureNames.size());
+    for (size_t index = 0; index < textureNames.size(); ++index)
+    {
+        pumpMapLoadProgress(progressPump);
+        if (liquidTextures.contains(textureNames[index]))
+        {
+            continue;
+        }
+        CookedSlot &slot = cookedSlots[index];
+        slot.path = findCookedSurfaceTexturePath(assetFileSystem, textureNames[index],
+            bitmapDirectoryAssetPathsByPath(bitmapLoadCache), bitmapPathByKey(bitmapLoadCache));
+        if (slot.path && bitmapLoadCache.retainBinaryFiles)
+        {
+            const auto cachedIt = bitmapBinaryFilesByPath(bitmapLoadCache).find(*slot.path);
+            if (cachedIt != bitmapBinaryFilesByPath(bitmapLoadCache).end())
+            {
+                slot.pCachedBytes = &cachedIt->second;
+            }
+        }
+    }
+    Engine::parallelFor(cookedSlots.size(), [&assetFileSystem, &textureNames, &cookedSlots](size_t index)
+    {
+        CookedSlot &slot = cookedSlots[index];
+        if (!slot.path)
+        {
+            return;
+        }
+        if (slot.pCachedBytes == nullptr)
+        {
+            slot.readBytes = assetFileSystem.readBinaryFile(*slot.path);
+        }
+        slot.texture = decodeCookedSurfaceTexture(textureNames[index], *slot.path,
+            slot.pCachedBytes != nullptr ? *slot.pCachedBytes : slot.readBytes);
+    });
+
+    for (size_t index = 0; index < textureNames.size(); ++index)
+    {
+        const std::string &textureName = textureNames[index];
+        if (const auto liquid = liquidTextures.find(textureName); liquid != liquidTextures.end())
+        {
+            textures.push_back(liquidFaceTexture(textureName, *liquid->second));
+            continue;
+        }
+        CookedSlot &slot = cookedSlots[index];
+        if (slot.texture)
+        {
+            if (slot.pCachedBytes == nullptr && bitmapLoadCache.retainBinaryFiles)
+            {
+                bitmapBinaryFilesByPath(bitmapLoadCache).emplace(*slot.path, std::move(slot.readBytes));
+            }
+            textures.push_back(std::move(*slot.texture));
+            continue;
+        }
         int textureWidth = 0;
         int textureHeight = 0;
-        const std::optional<std::vector<uint8_t>> tilePixels =
-            loadTerrainBitmapPixelsBgra(
+        const std::optional<std::vector<uint8_t>> pixels =
+            loadBitmapPixelsBgra(
                 assetFileSystem,
+                "Data/bitmaps",
                 textureName,
                 textureWidth,
                 textureHeight,
@@ -3546,263 +3573,23 @@ std::optional<OutdoorTerrainTextureAtlas> buildOutdoorTerrainTextureAtlas(
                 bitmapLoadCache
             );
 
-        if (!tilePixels)
+        if (!pixels || textureWidth <= 0 || textureHeight <= 0)
         {
-            missingTextureNames.insert(textureName);
             continue;
         }
 
-        if (textureWidth != terrainTileSize || textureHeight != terrainTileSize)
-        {
-            invalidSizeTextureNames.insert(
-                textureName + " (" + std::to_string(textureWidth) + "x" + std::to_string(textureHeight) + ")");
-            continue;
-        }
-
-        std::vector<uint8_t> resolvedTilePixels = *tilePixels;
-        std::vector<uint8_t> fallbackLiquidBasePixels = resolvedTilePixels;
-        std::vector<std::vector<uint8_t>> animatedSurfaceFrames;
-        SurfaceAnimationSequence surfaceAnimation = staticSurfaceAnimation(textureName);
-        const TerrainTileDescriptor *pBaseDescriptor = nullptr;
-        const SurfaceMaterialDefinition *pSurfaceMaterial =
-            findTerrainSurfaceMaterialForDescriptor(
-                descriptor,
-                *tileDescriptors,
-                pSurfaceMaterialTable,
-                &pBaseDescriptor);
-        std::vector<uint8_t> transitionOverlayPixels;
-        bool useTransitionOverlay = pSurfaceMaterial != nullptr
-            && pSurfaceMaterial->terrainTransitionOverlay
-            && isTerrainDescriptorTransition(descriptor)
-            && pBaseDescriptor != nullptr
-            && pBaseDescriptor->textureName != textureName;
-
-        if (useTransitionOverlay)
-        {
-            int overlayTextureWidth = 0;
-            int overlayTextureHeight = 0;
-            const std::optional<std::vector<uint8_t>> overlayTilePixels =
-                loadTerrainBitmapPixelsBgra(
-                    assetFileSystem,
-                    textureName,
-                    overlayTextureWidth,
-                    overlayTextureHeight,
-                    true,
-                    bitmapLoadCache
-                );
-            int baseTextureWidth = 0;
-            int baseTextureHeight = 0;
-            const std::optional<std::vector<uint8_t>> baseTilePixels =
-                loadTerrainBitmapPixelsBgra(
-                    assetFileSystem,
-                    pBaseDescriptor->textureName,
-                    baseTextureWidth,
-                    baseTextureHeight,
-                    false,
-                    bitmapLoadCache
-                );
-
-            if (overlayTilePixels
-                && overlayTextureWidth == terrainTileSize
-                && overlayTextureHeight == terrainTileSize
-                && baseTilePixels
-                && baseTextureWidth == terrainTileSize
-                && baseTextureHeight == terrainTileSize)
-            {
-                transitionOverlayPixels = *overlayTilePixels;
-                fallbackLiquidBasePixels = *baseTilePixels;
-                resolvedTilePixels = compositeTerrainOverlayOverBase(*baseTilePixels, transitionOverlayPixels);
-            }
-            else
-            {
-                useTransitionOverlay = false;
-            }
-        }
-
-        if (pSurfaceMaterial != nullptr && !pSurfaceMaterial->animation.empty())
-        {
-            surfaceAnimation = pSurfaceMaterial->animation;
-            const std::string cacheKey = pSurfaceMaterial->id
-                + "|"
-                + toLowerCopy(useTransitionOverlay && pBaseDescriptor != nullptr
-                    ? pBaseDescriptor->textureName
-                    : textureName)
-                + "|"
-                + (useTransitionOverlay ? toLowerCopy(textureName) : std::string());
-            const auto cachedFramesIt = animatedTerrainFramesByKey.find(cacheKey);
-
-            if (cachedFramesIt != animatedTerrainFramesByKey.end())
-            {
-                animatedSurfaceFrames = cachedFramesIt->second;
-            }
-            else
-            {
-                animatedSurfaceFrames.reserve(pSurfaceMaterial->animation.frames.size());
-
-                for (const SurfaceAnimationFrame &frame : pSurfaceMaterial->animation.frames)
-                {
-                    pumpMapLoadProgress(progressPump);
-                    int frameWidth = 0;
-                    int frameHeight = 0;
-                    const std::optional<std::vector<uint8_t>> framePixels =
-                        loadTerrainBitmapPixelsBgra(
-                            assetFileSystem,
-                            frame.textureName,
-                            frameWidth,
-                            frameHeight,
-                            false,
-                            bitmapLoadCache
-                        );
-
-                    if (!framePixels || frameWidth != terrainTileSize || frameHeight != terrainTileSize)
-                    {
-                        animatedSurfaceFrames.clear();
-                        break;
-                    }
-
-                    if (useTransitionOverlay)
-                    {
-                        animatedSurfaceFrames.push_back(
-                            compositeTerrainOverlayOverBase(*framePixels, transitionOverlayPixels));
-                    }
-                    else
-                    {
-                        animatedSurfaceFrames.push_back(*framePixels);
-                    }
-                }
-
-                if (!animatedSurfaceFrames.empty())
-                {
-                    animatedTerrainFramesByKey.emplace(cacheKey, animatedSurfaceFrames);
-                }
-            }
-
-            if (!animatedSurfaceFrames.empty())
-            {
-                resolvedTilePixels = animatedSurfaceFrames.front();
-            }
-        }
-        else if (pSurfaceMaterial != nullptr
-            && (pSurfaceMaterial->semantic == SurfaceMaterialSemantic::Water
-                || pSurfaceMaterial->semantic == SurfaceMaterialSemantic::Lava))
-        {
-            surfaceAnimation = staticSurfaceAnimation(textureName);
-            const std::string cacheKey = pSurfaceMaterial->id
-                + "|fallback|"
-                + toLowerCopy(useTransitionOverlay && pBaseDescriptor != nullptr
-                    ? pBaseDescriptor->textureName
-                    : textureName)
-                + "|"
-                + (useTransitionOverlay ? toLowerCopy(textureName) : std::string());
-            const auto cachedFramesIt = animatedTerrainFramesByKey.find(cacheKey);
-
-            if (cachedFramesIt != animatedTerrainFramesByKey.end())
-            {
-                animatedSurfaceFrames = cachedFramesIt->second;
-            }
-            else
-            {
-                animatedSurfaceFrames = buildFallbackLiquidAnimationFrames(
-                    fallbackLiquidBasePixels,
-                    terrainTileSize,
-                    terrainTileSize,
-                    surfaceAnimation);
-
-                if (useTransitionOverlay)
-                {
-                    for (std::vector<uint8_t> &framePixels : animatedSurfaceFrames)
-                    {
-                        framePixels = compositeTerrainOverlayOverBase(framePixels, transitionOverlayPixels);
-                    }
-                }
-
-                animatedTerrainFramesByKey.emplace(cacheKey, animatedSurfaceFrames);
-            }
-
-            if (!animatedSurfaceFrames.empty())
-            {
-                resolvedTilePixels = animatedSurfaceFrames.front();
-            }
-        }
-
-        const int atlasColumn = tileIndex % TerrainTextureAtlasColumns;
-        const int atlasRow = tileIndex / TerrainTextureAtlasColumns;
-        const int atlasX = atlasColumn * atlasCellSize + atlasTilePadding;
-        const int atlasY = atlasRow * atlasCellSize + atlasTilePadding;
-
-        copyTerrainTileIntoAtlasPixels(
-            textureAtlas.pixels,
-            textureAtlas.width,
-            textureAtlas.height,
-            atlasX,
-            atlasY,
-            terrainTileSize,
-            atlasTilePadding,
-            resolvedTilePixels);
-
-        OutdoorTerrainAtlasRegion region = {};
-        region.u0 = static_cast<float>(atlasX) / static_cast<float>(textureAtlas.width);
-        region.v0 = static_cast<float>(atlasY) / static_cast<float>(textureAtlas.height);
-        region.u1 = static_cast<float>(atlasX + terrainTileSize) / static_cast<float>(textureAtlas.width);
-        region.v1 = static_cast<float>(atlasY + terrainTileSize) / static_cast<float>(textureAtlas.height);
-        region.isValid = true;
-        region.isWater = hasTerrainTileFlag(descriptor, TerrainTileFlagWater)
-            || (pSurfaceMaterial != nullptr && pSurfaceMaterial->semantic == SurfaceMaterialSemantic::Water);
-        region.isWaterSurface = region.isWater && !hasTerrainTileFlag(descriptor, TerrainTileFlagBurn)
-            && (pSurfaceMaterial == nullptr || pSurfaceMaterial->semantic != SurfaceMaterialSemantic::Lava);
-        region.isTransitionOverlay = useTransitionOverlay;
-        if (region.isWaterSurface)
-        {
-            const std::string &baseTextureName = useTransitionOverlay ? pBaseDescriptor->textureName : textureName;
-            const auto [color, inserted] = waterColorsByTextureName.try_emplace(baseTextureName, 0);
-            if (inserted)
-            {
-                color->second = waterBodyColorFromBgra(fallbackLiquidBasePixels);
-            }
-            region.waterColorAbgr = color->second;
-        }
-        if (region.isWaterSurface && useTransitionOverlay)
-        {
-            textureAtlas.waterCoverageMasks[tileIndex] =
-                waterCoverageFromOverlay(transitionOverlayPixels, terrainTileSize, terrainTileSize);
-        }
-
-        textureAtlas.tileTextureNames[tileIndex] = textureName;
-        textureAtlas.tileRegions[static_cast<size_t>(tileIndex)] = region;
-
-        if (!animatedSurfaceFrames.empty())
-        {
-            OutdoorAnimatedWaterTileSource animatedWaterTile = {};
-            animatedWaterTile.region = region;
-            animatedWaterTile.framePixels = std::move(animatedSurfaceFrames);
-            animatedWaterTile.animation = surfaceAnimation;
-            animatedWaterTile.currentFrameIndex = 0;
-            textureAtlas.animatedWaterTiles.push_back(std::move(animatedWaterTile));
-        }
-
-        ++validTileCount;
+        OutdoorBitmapTexture texture = {};
+        texture.textureName = textureName;
+        texture.width = Engine::scalePhysicalPixelsToLogical(textureWidth, textureAssetScaleTier);
+        texture.height = Engine::scalePhysicalPixelsToLogical(textureHeight, textureAssetScaleTier);
+        texture.physicalWidth = textureWidth;
+        texture.physicalHeight = textureHeight;
+        updateBitmapAlphaInfo(texture, *pixels);
+        texture.pixels = *pixels;
+        textures.push_back(std::move(texture));
     }
 
-    if (!missingTextureNames.empty() || !invalidSizeTextureNames.empty())
-    {
-        std::cout << "Terrain atlas diagnostics for " << outdoorMapData.fileName
-                  << ": master_tile=" << static_cast<int>(outdoorMapData.masterTile)
-                  << " valid_tiles=" << validTileCount
-                  << " missing_textures=" << missingTextureNames.size()
-                  << " invalid_size_textures=" << invalidSizeTextureNames.size() << '\n';
-
-        for (const std::string &textureName : missingTextureNames)
-        {
-            std::cout << "  missing terrain bitmap: " << textureName << '\n';
-        }
-
-        for (const std::string &textureName : invalidSizeTextureNames)
-        {
-            std::cout << "  invalid terrain bitmap size: " << textureName << '\n';
-        }
-    }
-
-    return textureAtlas;
+    return textures;
 }
 
 std::optional<OutdoorBModelTextureSet> buildOutdoorBModelTextureSet(
@@ -3810,14 +3597,14 @@ std::optional<OutdoorBModelTextureSet> buildOutdoorBModelTextureSet(
     const OutdoorMapData &outdoorMapData,
     BitmapLoadCache &bitmapLoadCache,
     const TextureFrameTable *pTextureFrameTable,
-    const SurfaceMaterialTable *pSurfaceMaterialTable,
+    const LiquidTable *pLiquidTable,
     const std::vector<OutdoorSceneSurfaceAnimation> *pSceneSurfaceAnimations,
     const MapItemSourceData *pItemSourceData,
     const MapLoadProgressPump &progressPump
 )
 {
     std::vector<std::string> textureNames;
-    std::unordered_map<std::string, SurfaceMaterialSemantic> waterMaterials;
+    std::unordered_map<std::string, const LiquidDefinition *> liquidTextures;
     std::vector<std::pair<std::string, SurfaceAnimationSequence>> animationBindings;
 
     for (const OutdoorBModel &bmodel : outdoorMapData.bmodels)
@@ -3855,20 +3642,12 @@ std::optional<OutdoorBModelTextureSet> buildOutdoorBModelTextureSet(
                     face.attributes,
                     false,
                     pTextureFrameTable,
-                    pSurfaceMaterialTable);
+                    pLiquidTable);
 
-            const SurfaceMaterialDefinition *pMaterial = pSurfaceMaterialTable != nullptr
-                ? pSurfaceMaterialTable->findMatch(normalizedName, face.attributes, false) : nullptr;
-            const SurfaceMaterialSemantic semantic = pMaterial != nullptr
-                ? pMaterial->semantic : SurfaceMaterialSemantic::GenericAnimated;
-            if (semantic == SurfaceMaterialSemantic::Lava)
+            if (const LiquidDefinition *pLiquid = pLiquidTable != nullptr
+                    ? pLiquidTable->findMatch(normalizedName, face.attributes, false) : nullptr)
             {
-                waterMaterials[normalizedName] = semantic;
-            }
-            else if (!hasFaceAttribute(face.attributes, FaceAttribute::Lava)
-                && (hasFaceAttribute(face.attributes, FaceAttribute::Fluid) || semantic == SurfaceMaterialSemantic::Water))
-            {
-                waterMaterials[normalizedName] = semantic;
+                liquidTextures.try_emplace(normalizedName, pLiquid);
             }
 
             appendTextureNameIfMissing(textureNames, normalizedName);
@@ -3885,68 +3664,8 @@ std::optional<OutdoorBModelTextureSet> buildOutdoorBModelTextureSet(
 
     OutdoorBModelTextureSet textureSet = {};
     textureSet.animationBindings = animationBindings;
-    const Engine::AssetScaleTier textureAssetScaleTier =
-        assetFileSystem.getAssetScaleTier(Engine::AssetScaleCategory::Textures);
-    const Engine::AssetScaleTier terrainAssetScaleTier =
-        assetFileSystem.getAssetScaleTier(Engine::AssetScaleCategory::Terrain);
-    const std::unordered_set<std::string> terrainFallbackTextureNames =
-        collectTerrainFallbackTextureNames(animationBindings);
-
-    for (const std::string &textureName : textureNames)
-    {
-        pumpMapLoadProgress(progressPump);
-        int textureWidth = 0;
-        int textureHeight = 0;
-        Engine::AssetScaleTier loadedAssetScaleTier = textureAssetScaleTier;
-        std::optional<std::vector<uint8_t>> pixels =
-            loadBitmapPixelsBgra(
-                assetFileSystem,
-                "Data/bitmaps",
-                textureName,
-                textureWidth,
-                textureHeight,
-                false,
-                false,
-                bitmapLoadCache
-            );
-
-        if ((!pixels || textureWidth <= 0 || textureHeight <= 0)
-            && terrainFallbackTextureNames.find(toLowerCopy(textureName)) != terrainFallbackTextureNames.end())
-        {
-            pixels = loadTerrainBitmapPixelsBgra(
-                assetFileSystem,
-                textureName,
-                textureWidth,
-                textureHeight,
-                false,
-                bitmapLoadCache);
-            loadedAssetScaleTier = terrainAssetScaleTier;
-        }
-
-        if (!pixels || textureWidth <= 0 || textureHeight <= 0)
-        {
-            continue;
-        }
-
-        OutdoorBitmapTexture texture = {};
-        texture.textureName = textureName;
-        texture.width = Engine::scalePhysicalPixelsToLogical(textureWidth, loadedAssetScaleTier);
-        texture.height = Engine::scalePhysicalPixelsToLogical(textureHeight, loadedAssetScaleTier);
-        texture.physicalWidth = textureWidth;
-        texture.physicalHeight = textureHeight;
-        const auto material = waterMaterials.find(textureName);
-        if (material != waterMaterials.end())
-        {
-            texture.surfaceSemantic = material->second;
-            if (material->second != SurfaceMaterialSemantic::Lava)
-            {
-                texture.waterColorAbgr = waterBodyColorFromBgra(*pixels);
-            }
-        }
-        updateBitmapAlphaInfo(texture, *pixels);
-        texture.pixels = *pixels;
-        textureSet.textures.push_back(std::move(texture));
-    }
+    textureSet.textures = loadFaceTextures(
+        assetFileSystem, textureNames, liquidTextures, bitmapLoadCache, progressPump);
 
     if (textureSet.textures.empty())
     {
@@ -3961,13 +3680,13 @@ std::optional<IndoorTextureSet> buildIndoorTextureSet(
     const IndoorMapData &indoorMapData,
     BitmapLoadCache &bitmapLoadCache,
     const TextureFrameTable *pTextureFrameTable,
-    const SurfaceMaterialTable *pSurfaceMaterialTable,
+    const LiquidTable *pLiquidTable,
     const MapItemSourceData *pItemSourceData,
     const MapLoadProgressPump &progressPump
 )
 {
     std::vector<std::string> textureNames;
-    std::unordered_map<std::string, SurfaceMaterialSemantic> waterMaterials;
+    std::unordered_map<std::string, const LiquidDefinition *> liquidTextures;
     std::vector<std::pair<std::string, SurfaceAnimationSequence>> animationBindings;
 
     for (const IndoorFace &face : indoorMapData.faces)
@@ -3986,21 +3705,13 @@ std::optional<IndoorTextureSet> buildIndoorTextureSet(
                 face.attributes,
                 false,
                 pTextureFrameTable,
-                pSurfaceMaterialTable,
+                pLiquidTable,
                 textureFrameTableIndex);
 
-        const SurfaceMaterialDefinition *pMaterial = pSurfaceMaterialTable != nullptr
-            ? pSurfaceMaterialTable->findMatch(normalizedName, face.attributes, false) : nullptr;
-        const SurfaceMaterialSemantic semantic = pMaterial != nullptr
-            ? pMaterial->semantic : SurfaceMaterialSemantic::GenericAnimated;
-        if (semantic == SurfaceMaterialSemantic::Lava)
+        if (const LiquidDefinition *pLiquid = pLiquidTable != nullptr
+                ? pLiquidTable->findMatch(normalizedName, face.attributes, false) : nullptr)
         {
-            waterMaterials[normalizedName] = semantic;
-        }
-        else if (!hasFaceAttribute(face.attributes, FaceAttribute::Lava)
-            && (hasFaceAttribute(face.attributes, FaceAttribute::Fluid) || semantic == SurfaceMaterialSemantic::Water))
-        {
-            waterMaterials[normalizedName] = semantic;
+            liquidTextures.try_emplace(normalizedName, pLiquid);
         }
 
         appendTextureNameIfMissing(textureNames, normalizedName);
@@ -4016,68 +3727,8 @@ std::optional<IndoorTextureSet> buildIndoorTextureSet(
 
     IndoorTextureSet textureSet = {};
     textureSet.animationBindings = animationBindings;
-    const Engine::AssetScaleTier textureAssetScaleTier =
-        assetFileSystem.getAssetScaleTier(Engine::AssetScaleCategory::Textures);
-    const Engine::AssetScaleTier terrainAssetScaleTier =
-        assetFileSystem.getAssetScaleTier(Engine::AssetScaleCategory::Terrain);
-    const std::unordered_set<std::string> terrainFallbackTextureNames =
-        collectTerrainFallbackTextureNames(animationBindings);
-
-    for (const std::string &textureName : textureNames)
-    {
-        pumpMapLoadProgress(progressPump);
-        int textureWidth = 0;
-        int textureHeight = 0;
-        Engine::AssetScaleTier loadedAssetScaleTier = textureAssetScaleTier;
-        std::optional<std::vector<uint8_t>> pixels =
-            loadBitmapPixelsBgra(
-                assetFileSystem,
-                "Data/bitmaps",
-                textureName,
-                textureWidth,
-                textureHeight,
-                false,
-                false,
-                bitmapLoadCache
-            );
-
-        if ((!pixels || textureWidth <= 0 || textureHeight <= 0)
-            && terrainFallbackTextureNames.find(toLowerCopy(textureName)) != terrainFallbackTextureNames.end())
-        {
-            pixels = loadTerrainBitmapPixelsBgra(
-                assetFileSystem,
-                textureName,
-                textureWidth,
-                textureHeight,
-                false,
-                bitmapLoadCache);
-            loadedAssetScaleTier = terrainAssetScaleTier;
-        }
-
-        if (!pixels || textureWidth <= 0 || textureHeight <= 0)
-        {
-            continue;
-        }
-
-        OutdoorBitmapTexture texture = {};
-        texture.textureName = textureName;
-        texture.width = Engine::scalePhysicalPixelsToLogical(textureWidth, loadedAssetScaleTier);
-        texture.height = Engine::scalePhysicalPixelsToLogical(textureHeight, loadedAssetScaleTier);
-        texture.physicalWidth = textureWidth;
-        texture.physicalHeight = textureHeight;
-        const auto material = waterMaterials.find(textureName);
-        if (material != waterMaterials.end())
-        {
-            texture.surfaceSemantic = material->second;
-            if (material->second != SurfaceMaterialSemantic::Lava)
-            {
-                texture.waterColorAbgr = waterBodyColorFromBgra(*pixels);
-            }
-        }
-        updateBitmapAlphaInfo(texture, *pixels);
-        texture.pixels = *pixels;
-        textureSet.textures.push_back(std::move(texture));
-    }
+    textureSet.textures = loadFaceTextures(
+        assetFileSystem, textureNames, liquidTextures, bitmapLoadCache, progressPump);
 
     if (textureSet.textures.empty())
     {
@@ -4185,6 +3836,31 @@ bool ensureMonsterSpriteFramesLoaded(
     return false;
 }
 
+std::optional<OutdoorBitmapTexture> loadCookedSurfaceTexture(
+    const Engine::AssetFileSystem &assetFileSystem,
+    const std::string &textureName,
+    Engine::DirectoryAssetPathCache &directoryAssetPathsByPath,
+    Engine::AssetPathLookupCache &assetPathByKey,
+    Engine::BinaryAssetCache *pBinaryFilesByPath)
+{
+    const std::optional<std::string> path =
+        findCookedSurfaceTexturePath(assetFileSystem, textureName, directoryAssetPathsByPath, assetPathByKey);
+    if (!path)
+    {
+        return std::nullopt;
+    }
+    if (pBinaryFilesByPath == nullptr)
+    {
+        return decodeCookedSurfaceTexture(textureName, *path, assetFileSystem.readBinaryFile(*path));
+    }
+    auto cachedIt = pBinaryFilesByPath->find(*path);
+    if (cachedIt == pBinaryFilesByPath->end())
+    {
+        cachedIt = pBinaryFilesByPath->emplace(*path, assetFileSystem.readBinaryFile(*path)).first;
+    }
+    return decodeCookedSurfaceTexture(textureName, *path, cachedIt->second);
+}
+
 namespace
 {
 size_t texturePixelBytes(const std::vector<OutdoorBitmapTexture> &textures)
@@ -4193,7 +3869,7 @@ size_t texturePixelBytes(const std::vector<OutdoorBitmapTexture> &textures)
 
     for (const OutdoorBitmapTexture &texture : textures)
     {
-        byteCount += texture.pixels.size();
+        byteCount += texture.pixels.size() + (texture.cookedTexture ? texture.cookedTexture->blocks.size() : 0);
     }
 
     return byteCount;
@@ -4204,6 +3880,7 @@ void clearTexturePixels(std::vector<OutdoorBitmapTexture> &textures)
     for (OutdoorBitmapTexture &texture : textures)
     {
         std::vector<uint8_t>().swap(texture.pixels);
+        texture.cookedTexture.reset();
     }
 }
 
@@ -4244,19 +3921,6 @@ size_t mapRenderSourcePixelBytes(const MapAssetInfo &mapAssetInfo)
         }
     }
 
-    if (mapAssetInfo.outdoorTerrainTextureAtlas)
-    {
-        byteCount += mapAssetInfo.outdoorTerrainTextureAtlas->pixels.size();
-
-        for (const OutdoorAnimatedWaterTileSource &source : mapAssetInfo.outdoorTerrainTextureAtlas->animatedWaterTiles)
-        {
-            for (const std::vector<uint8_t> &framePixels : source.framePixels)
-            {
-                byteCount += framePixels.size();
-            }
-        }
-    }
-
     if (mapAssetInfo.outdoorBModelTextureSet)
     {
         byteCount += texturePixelBytes(mapAssetInfo.outdoorBModelTextureSet->textures);
@@ -4287,16 +3951,6 @@ void clearMapRenderSourcePixels(MapAssetInfo &mapAssetInfo)
         }
     }
 
-    if (mapAssetInfo.outdoorTerrainTextureAtlas)
-    {
-        std::vector<uint8_t>().swap(mapAssetInfo.outdoorTerrainTextureAtlas->pixels);
-
-        for (OutdoorAnimatedWaterTileSource &source : mapAssetInfo.outdoorTerrainTextureAtlas->animatedWaterTiles)
-        {
-            std::vector<std::vector<uint8_t>>().swap(source.framePixels);
-        }
-    }
-
     if (mapAssetInfo.outdoorBModelTextureSet)
     {
         clearTexturePixels(mapAssetInfo.outdoorBModelTextureSet->textures);
@@ -4315,6 +3969,16 @@ void clearMapRenderSourcePixels(MapAssetInfo &mapAssetInfo)
     }
 }
 
+bool ActorPreviewBillboardSet::drawsModel(const MonsterEntry *pMonster) const
+{
+    return actorModels != nullptr && pMonster != nullptr && actorModels->binds(pMonster->internalName);
+}
+
+bool ActorPreviewBillboardSet::drawsModel(int16_t monsterId) const
+{
+    return actorModels != nullptr && actorModels->bindsMonster(monsterId);
+}
+
 std::optional<MapAssetInfo> MapAssetLoader::load(
     const Engine::AssetFileSystem &assetFileSystem,
     const MapStatsEntry &map,
@@ -4323,13 +3987,24 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
     MapLoadPurpose purpose,
     const MapCompanionLoadOptions &companionLoadOptions,
     const MapLoadProgressPump &progressPump,
-    MapAssetLoadSharedCache *pSharedCache
+    MapAssetLoadSharedCache *pSharedCache,
+    std::shared_ptr<const ActorModelManifest> pActorModels
 ) const
 {
     BitmapLoadCache bitmapLoadCache = {};
     if (pSharedCache != nullptr)
     {
         pSharedCache->beginLoad(assetFileSystem.contentGeneration());
+        // The common sprite frame table (one large YAML parse, kept for the session) parses on a worker while this
+        // thread reads the map, its scene and its lighting; loadCommonSpriteFrameTable collects it.
+        if (!pSharedCache->commonSpriteFrameTable && !pSharedCache->commonSpriteFrameTableLoading.valid()
+            && std::thread::hardware_concurrency() > 1)
+        {
+            pSharedCache->commonSpriteFrameTableLoading = std::async(std::launch::async, [&assetFileSystem]()
+            {
+                return parseCommonSpriteFrameTable(assetFileSystem);
+            }).share();
+        }
     }
     bitmapLoadCache.pSharedCache = pSharedCache;
     MapLoadTimingLogger timingLogger(map.fileName);
@@ -4479,14 +4154,14 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
     }
 
     std::optional<TextureFrameTable> textureFrameTable;
-    std::optional<SurfaceMaterialTable> surfaceMaterialTable;
+    std::optional<LiquidTable> liquidTable;
 
     if (loadRenderSurfaces)
     {
         textureFrameTable = loadTextureFrameTable(assetFileSystem, pSharedCache);
         logStageComplete("texture frame table loaded");
-        surfaceMaterialTable = loadSurfaceMaterialTable(assetFileSystem, pSharedCache);
-        logStageComplete("surface materials loaded");
+        liquidTable = loadLiquidTable(assetFileSystem, pSharedCache);
+        logStageComplete("liquids loaded");
     }
 
     const std::string normalizedFileName = toLowerCopy(map.fileName);
@@ -4698,31 +4373,6 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
                             assetInfo.outdoorMapData->lightmapBrightnessScale);
                     }
 
-                    // A bake older than a source it was baked from (a model or binding changed since) still loads during
-                    // development; the stale bakes are noted for a re-bake before release (StaleLightingNote.h).
-                    std::vector<std::string> staleSources;
-                    for (const OutdoorLightingData::Dependency &dependency : lightingData->dependencies)
-                    {
-                        const std::optional<std::vector<uint8_t>> bytes =
-                            assetFileSystem.readBinaryFile(dependency.path);
-                        if (!bytes || outdoorLightingContentHash(*bytes) != dependency.hash)
-                        {
-                            staleSources.push_back(dependency.path);
-                        }
-                    }
-                    if (!staleSources.empty())
-                    {
-                        std::cerr << "Stale baked lighting: " << *lightingDataPath << " is older than "
-                                  << staleSources.front() << (staleSources.size() > 1 ? " and others" : "")
-                                  << "; re-bake it before release\n";
-                    }
-                    if (assetFileSystem.resolvePhysicalPath(*lightingDataPath)
-                        && !assetFileSystem.getDevelopmentRoot().empty()
-                        && !updateStaleLightingNote(assetFileSystem.getDevelopmentRoot() / StaleLightingNoteFileName,
-                            *lightingDataPath, staleSources))
-                    {
-                        std::cerr << "Could not update " << StaleLightingNoteFileName << '\n';
-                    }
                     assetInfo.lightingDataPath = *lightingDataPath;
                     assetInfo.lightingDataSize = lightingDataBytes->size();
                     assetInfo.outdoorMapData->lightingData = std::move(*lightingData);
@@ -4757,7 +4407,8 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
                         // Gameplay streams exact actor frames and viewing angles through OutdoorGameView.
                         purpose != MapLoadPurpose::FullGameplay,
                         progressPump,
-                        pSharedCache
+                        pSharedCache,
+                        pActorModels
                     );
                 logStageComplete("outdoor actor previews built");
             }
@@ -4768,21 +4419,24 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
                 logStageComplete("outdoor land mask built");
                 assetInfo.outdoorTileColors = buildOutdoorTileColors(assetFileSystem, *assetInfo.outdoorMapData);
                 logStageComplete("outdoor tile colors built");
-                assetInfo.outdoorTerrainTextureAtlas =
-                    buildOutdoorTerrainTextureAtlas(
-                        assetFileSystem,
-                        *assetInfo.outdoorMapData,
-                        bitmapLoadCache,
-                        surfaceMaterialTable ? &*surfaceMaterialTable : nullptr,
-                        progressPump);
-                logStageComplete("outdoor terrain textures built");
+                if (!assetInfo.outdoorMapData->noTerrain)
+                {
+                    assetInfo.outdoorTerrainTiles = buildOutdoorTerrainTiles(
+                        assetFileSystem, *assetInfo.outdoorMapData, liquidTable ? &*liquidTable : nullptr);
+                    if (!assetInfo.outdoorTerrainTiles)
+                    {
+                        std::cerr << "Failed to build the outdoor terrain tiles for " << map.fileName << '\n';
+                        return std::nullopt;
+                    }
+                    logStageComplete("outdoor terrain tiles built");
+                }
                 assetInfo.outdoorBModelTextureSet =
                     buildOutdoorBModelTextureSet(
                         assetFileSystem,
                         *assetInfo.outdoorMapData,
                         bitmapLoadCache,
                         textureFrameTable ? &*textureFrameTable : nullptr,
-                        surfaceMaterialTable ? &*surfaceMaterialTable : nullptr,
+                        liquidTable ? &*liquidTable : nullptr,
                         outdoorSceneSurfaceAnimations.empty() ? nullptr : &outdoorSceneSurfaceAnimations,
                         assetInfo.itemSourceData ? &*assetInfo.itemSourceData : nullptr,
                         progressPump);
@@ -4818,6 +4472,7 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
                         assetFileSystem,
                         *assetInfo.outdoorMapData,
                         map.worldId,
+                        map.fileName,
                         decorationTextures,
                         bitmapLoadCache,
                         progressPump,
@@ -4980,7 +4635,7 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
                     *assetInfo.indoorMapData,
                     bitmapLoadCache,
                     textureFrameTable ? &*textureFrameTable : nullptr,
-                    surfaceMaterialTable ? &*surfaceMaterialTable : nullptr,
+                    liquidTable ? &*liquidTable : nullptr,
                     assetInfo.itemSourceData ? &*assetInfo.itemSourceData : nullptr,
                     progressPump
                 );
@@ -4994,6 +4649,7 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
                         assetFileSystem,
                         *assetInfo.indoorMapData,
                         map.worldId,
+                        map.fileName,
                         decorationTextures,
                         bitmapLoadCache,
                         progressPump,
@@ -5014,7 +4670,8 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
                         nullptr,
                         true,
                         progressPump,
-                        pSharedCache
+                        pSharedCache,
+                        pActorModels
                     );
                 logStageComplete("indoor actor previews built");
             }

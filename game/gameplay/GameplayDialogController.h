@@ -120,7 +120,8 @@ public:
         uint32_t newsId,
         const std::string &titleOverride,
         const std::string &newsText,
-        uint32_t participantPictureId = 0) const;
+        uint32_t participantPictureId = 0,
+        std::optional<uint32_t> sourceActorIndex = std::nullopt) const;
     CloseDialogRequestResult handleDialogueCloseRequest(Context &context) const;
     bool refreshHouseBankInputDialog(Context &context, bool showCursor) const;
     Result returnToHouseBankMainDialog(Context &context) const;

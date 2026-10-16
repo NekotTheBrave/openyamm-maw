@@ -651,17 +651,15 @@ std::optional<uint16_t> interactiveDecorationEventId(
     return static_cast<uint16_t>(baseEventId + (fixedEvent || state >= eventCount ? 0 : state));
 }
 
-std::vector<bool> hiddenIndoorDecorationEntities(
-    std::span<const IndoorEntity> entities, const DecorationTable &table, const EventRuntimeState &state)
+std::vector<IndoorDecorationClearRule> indoorDecorationClearRules(
+    std::span<const IndoorEntity> entities, const DecorationTable &table)
 {
-    std::vector<bool> hidden(entities.size(), false);
-    size_t decorVarIndex = 0;
+    std::vector<IndoorDecorationClearRule> rules(entities.size());
+    int16_t decorVarIndex = 0;
 
     for (size_t entityIndex = 0; entityIndex < entities.size(); ++entityIndex)
     {
         const IndoorEntity &entity = entities[entityIndex];
-        const auto override = state.spriteOverrides.find(entity.spriteOverrideKey(entityIndex));
-        hidden[entityIndex] = override != state.spriteOverrides.end() && override->second.hidden;
 
         if (entity.scriptEventId() != 0)
         {
@@ -676,16 +674,55 @@ std::vector<bool> hiddenIndoorDecorationEntities(
 
         const std::optional<InteractiveDecorationBindingSpec> spec =
             resolveInteractiveDecorationBindingSpec(*pDecoration, entity.name);
-        if (!spec || decorVarIndex >= state.decorVars.size())
+        if (!spec)
+        {
+            continue;
+        }
+
+        rules[entityIndex] = {decorVarIndex, spec->eventCount, spec->hideWhenCleared};
+        ++decorVarIndex;
+    }
+
+    return rules;
+}
+
+std::vector<bool> hiddenIndoorDecorationEntities(
+    std::span<const IndoorEntity> entities, std::span<const IndoorDecorationClearRule> rules,
+    const EventRuntimeState &state)
+{
+    std::vector<bool> hidden(entities.size(), false);
+
+    for (size_t entityIndex = 0; entityIndex < entities.size(); ++entityIndex)
+    {
+        const IndoorEntity &entity = entities[entityIndex];
+        if (!state.spriteOverrides.empty())
+        {
+            const auto override = state.spriteOverrides.find(entity.spriteOverrideKey(entityIndex));
+            hidden[entityIndex] = override != state.spriteOverrides.end() && override->second.hidden;
+        }
+
+        if (entityIndex >= rules.size())
+        {
+            continue;
+        }
+
+        const IndoorDecorationClearRule &rule = rules[entityIndex];
+        if (rule.decorVarIndex < 0 || size_t(rule.decorVarIndex) >= state.decorVars.size())
         {
             continue;
         }
 
         hidden[entityIndex] = hidden[entityIndex]
-            || interactiveDecorationIsCleared(state.decorVars[decorVarIndex], spec->eventCount, spec->hideWhenCleared);
-        ++decorVarIndex;
+            || interactiveDecorationIsCleared(state.decorVars[rule.decorVarIndex], rule.eventCount,
+                rule.hideWhenCleared);
     }
 
     return hidden;
+}
+
+std::vector<bool> hiddenIndoorDecorationEntities(
+    std::span<const IndoorEntity> entities, const DecorationTable &table, const EventRuntimeState &state)
+{
+    return hiddenIndoorDecorationEntities(entities, indoorDecorationClearRules(entities, table), state);
 }
 }

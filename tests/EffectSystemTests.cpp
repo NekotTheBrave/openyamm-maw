@@ -2,11 +2,13 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -428,4 +430,231 @@ TEST_CASE("EffectSystem clear tears down models particles sprites and sound owne
     REQUIRE_EQ(teardownEvents.size(), 1u);
     CHECK_EQ(teardownEvents.front().kind, Game::EffectSoundEventKind::Stop);
     CHECK_FALSE(effects.contains(handle));
+}
+
+namespace
+{
+std::shared_ptr<OpenYAMM::Game::EffectDefinition> makeRibbonDefinition()
+{
+    using namespace OpenYAMM::Game;
+    std::shared_ptr<EffectDefinition> definition = std::make_shared<EffectDefinition>();
+    definition->id = "test:bolt";
+    definition->durationSeconds = 30.0f;
+    EffectSpriteDefinition head;
+    head.componentId = 1;
+    head.endSeconds = 30.0f;
+    head.spriteResource = "test:sprite/glow";
+    head.alignment = EffectSpriteAlignment::Velocity;
+    definition->sprites.push_back(head);
+    EffectRibbonDefinition ribbon;
+    ribbon.componentId = 2;
+    ribbon.endSeconds = 30.0f;
+    ribbon.spriteResource = "test:sprite/noise";
+    ribbon.lifetimeSeconds = 0.5f;
+    ribbon.maxLength = 100.0f;
+    ribbon.sampleDistance = 10.0f;
+    ribbon.width = 20.0f;
+    ribbon.widthKeys = {{.time = 0.0f, .value = 1.0f}, {.time = 1.0f, .value = 0.0f}};
+    ribbon.colorKeys = {{.time = 0.0f, .rgb = {255, 255, 255}, .transparency = 0}};
+    definition->ribbons.push_back(ribbon);
+    return definition;
+}
+}
+
+TEST_CASE("EffectSystem ribbons sample the path by distance, cap their length and drain")
+{
+    using namespace OpenYAMM::Game;
+    EffectLibrary library;
+    std::string error;
+    REQUIRE(library.add(makeRibbonDefinition(), error));
+    EffectSystem effects(&library);
+    const EffectHandle handle = effects.spawn("test:bolt");
+    REQUIRE(effects.contains(handle));
+    CHECK(effects.activeSpriteResources() == std::vector<std::string>{"test:sprite/glow", "test:sprite/noise"});
+
+    // 30 units per tick along +Y: one sample per tick, but never more than 100 units of trail.
+    for (int tick = 1; tick <= 20; ++tick)
+    {
+        REQUIRE(effects.setTransform(handle, {0.0f, tick * 30.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1.0f));
+        effects.update(1.0f / 60.0f);
+    }
+    REQUIRE_EQ(effects.ribbons().size(), 1);
+    const EffectRibbon &ribbon = effects.ribbons().front();
+    REQUIRE(ribbon.points.size() >= 3);
+    const EffectRibbonPoint &head = ribbon.points.back();
+    CHECK(head.position[1] == doctest::Approx(600.0f));
+    CHECK(head.phase == doctest::Approx(0.0f));
+    CHECK(head.width == doctest::Approx(20.0f));
+    CHECK(head.distance - ribbon.points.front().distance <= 100.0f + 30.0f);
+    CHECK(ribbon.points.front().phase > 0.6f);
+    for (size_t index = 1; index < ribbon.points.size(); ++index)
+    {
+        CHECK(ribbon.points[index].distance >= ribbon.points[index - 1].distance);
+        CHECK(ribbon.points[index].phase <= ribbon.points[index - 1].phase);
+    }
+
+    // The velocity-aligned head follows the direction of travel.
+    REQUIRE_EQ(effects.fixedSprites().size(), 1);
+    CHECK(effects.fixedSprites()[0].planeRight[1] == doctest::Approx(1.0f));
+
+    // Draining removes the head at once and freezes the trail, whose samples then age out.
+    REQUIRE(effects.stop(handle, EffectStopMode::Drain));
+    effects.update(1.0f / 60.0f);
+    CHECK(effects.fixedSprites().empty());
+    REQUIRE_EQ(effects.ribbons().size(), 1);
+    CHECK(effects.ribbons().front().points.back().position[1] == doctest::Approx(600.0f));
+    for (int tick = 0; tick < 40; ++tick)
+    {
+        effects.update(1.0f / 60.0f);
+    }
+    CHECK(effects.ribbons().empty());
+    CHECK_FALSE(effects.contains(handle));
+}
+
+TEST_CASE("EffectSystem ribbon jitter leaves the head in place and is deterministic")
+{
+    using namespace OpenYAMM::Game;
+    std::shared_ptr<EffectDefinition> definition = makeRibbonDefinition();
+    definition->ribbons[0].jitter = 8.0f;
+    definition->ribbons[0].jitterRate = 20.0f;
+    EffectLibrary library;
+    std::string error;
+    REQUIRE(library.add(definition, error));
+    const auto run = [&]()
+    {
+        EffectSystem effects(&library);
+        const EffectHandle handle = effects.spawn("test:bolt");
+        for (int tick = 1; tick <= 6; ++tick)
+        {
+            effects.setTransform(handle, {tick * 15.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1.0f);
+            effects.update(1.0f / 60.0f);
+        }
+        std::vector<float> offsets;
+        for (const EffectRibbonPoint &point : effects.ribbons().front().points)
+        {
+            offsets.push_back(point.jitterOffset);
+        }
+        return offsets;
+    };
+    const std::vector<float> first = run();
+    REQUIRE(first.size() >= 3);
+    CHECK(first.back() == doctest::Approx(0.0f));
+    bool anyOffset = false;
+    for (const float offset : first)
+    {
+        CHECK(std::abs(offset) <= 8.0f);
+        anyOffset = anyOffset || std::abs(offset) > 0.01f;
+    }
+    CHECK(anyOffset);
+    CHECK(run() == first);
+}
+
+TEST_CASE("EffectSystem distance emitters space particles along the path at any speed")
+{
+    using namespace OpenYAMM::Game;
+    std::shared_ptr<EffectDefinition> definition = std::make_shared<EffectDefinition>();
+    definition->id = "test:flame";
+    definition->durationSeconds = 30.0f;
+    EffectSpriteEmitterDefinition emitter;
+    emitter.componentId = 1;
+    emitter.endSeconds = 30.0f;
+    emitter.spriteResource = "test:sprite/flame";
+    emitter.emissionDistance = 10.0f;
+    emitter.particleLifetimeSeconds = 2.0f;
+    definition->spriteEmitters.push_back(emitter);
+    EffectLibrary library;
+    std::string error;
+    REQUIRE(library.add(definition, error));
+    EffectSystem effects(&library);
+    const EffectHandle handle = effects.spawn("test:flame");
+    effects.update(1.0f / 60.0f);
+    REQUIRE_EQ(effects.particles().size(), 1u);
+
+    // A stationary emitter sheds nothing more.
+    effects.update(1.0f / 60.0f);
+    CHECK_EQ(effects.particles().size(), 1u);
+
+    // 35 units per tick along +X: a particle every 10 units, each older the earlier on the path it was passed.
+    for (int tick = 1; tick <= 6; ++tick)
+    {
+        REQUIRE(effects.setTransform(handle, {tick * 35.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1.0f));
+        effects.update(1.0f / 60.0f);
+    }
+    std::vector<EffectParticle> particles(effects.particles().begin(), effects.particles().end());
+    REQUIRE_EQ(particles.size(), 22u);
+    std::sort(
+        particles.begin(),
+        particles.end(),
+        [](const EffectParticle &left, const EffectParticle &right)
+        {
+            return left.position[0] < right.position[0];
+        });
+    for (size_t index = 0; index < particles.size(); ++index)
+    {
+        CHECK(particles[index].position[0] == doctest::Approx(static_cast<float>(index) * 10.0f));
+        if (index > 0)
+        {
+            CHECK(particles[index].ageSeconds < particles[index - 1].ageSeconds);
+        }
+    }
+
+    // A jump of many spacings in one step is a teleport: the trail restarts there instead of filling the gap.
+    REQUIRE(effects.setTransform(handle, {5000.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1.0f));
+    effects.update(1.0f / 60.0f);
+    CHECK_EQ(effects.particles().size(), 22u);
+    REQUIRE(effects.setTransform(handle, {5030.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 1.0f));
+    effects.update(1.0f / 60.0f);
+    CHECK_EQ(effects.particles().size(), 25u);
+}
+
+TEST_CASE("EffectSystem sprite systems can roll and spin their particles")
+{
+    using namespace OpenYAMM::Game;
+    std::shared_ptr<EffectDefinition> definition = std::make_shared<EffectDefinition>();
+    definition->id = "test:smoke";
+    definition->durationSeconds = 30.0f;
+    EffectSpriteEmitterDefinition emitter;
+    emitter.componentId = 1;
+    emitter.endSeconds = 30.0f;
+    emitter.spriteResource = "test:sprite/smoke";
+    emitter.spritesPerEmission = 16;
+    emitter.emissionIntervalSeconds = 100.0f;
+    emitter.particleLifetimeSeconds = 2.0f;
+    emitter.randomRoll = true;
+    emitter.spinSpeed = 4.0f;
+    definition->spriteEmitters.push_back(emitter);
+    EffectLibrary library;
+    std::string error;
+    REQUIRE(library.add(definition, error));
+    EffectSystem effects(&library);
+    effects.spawn("test:smoke");
+    effects.update(1.0f / 60.0f);
+    REQUIRE_EQ(effects.particles().size(), 16u);
+    std::vector<float> rolls;
+    bool bothWays[2] = {false, false};
+    for (const EffectParticle &particle : effects.particles())
+    {
+        CHECK(particle.roll >= -0.1f);
+        CHECK(particle.roll <= 6.4f);
+        CHECK(std::abs(particle.rollSpeed) >= 2.0f - 1.0e-4f);
+        CHECK(std::abs(particle.rollSpeed) <= 4.0f + 1.0e-4f);
+        bothWays[particle.rollSpeed > 0.0f ? 0 : 1] = true;
+        rolls.push_back(particle.roll);
+    }
+    CHECK(bothWays[0]);
+    CHECK(bothWays[1]);
+    std::sort(rolls.begin(), rolls.end());
+    CHECK(rolls.back() - rolls.front() > 1.0f);
+
+    // Rolls turn at their own rate as the particles age.
+    const std::vector<EffectParticle> before(effects.particles().begin(), effects.particles().end());
+    for (int tick = 0; tick < 30; ++tick)
+    {
+        effects.update(1.0f / 60.0f);
+    }
+    for (size_t index = 0; index < before.size(); ++index)
+    {
+        const EffectParticle &after = effects.particles()[index];
+        CHECK(after.roll - before[index].roll == doctest::Approx(before[index].rollSpeed * 0.5f).epsilon(0.02));
+    }
 }

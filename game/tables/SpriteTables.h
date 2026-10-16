@@ -114,6 +114,12 @@ public:
     const SpriteFrameEntry *getFrame(uint16_t spriteId, uint32_t timeTicks) const;
     std::vector<std::string> collectTextureNames(uint16_t spriteId) const;
     std::optional<uint16_t> findFrameIndexBySpriteName(const std::string &spriteName) const;
+    // Authored timing of monster attack sprites (rendering/sprite_attack_timing.yml).
+    bool loadAttackTimingFromYaml(const std::string &yamlText, std::string &errorMessage);
+    // Ticks from the start of an attack sprite's animation to its contact frame, when one is authored.
+    std::optional<int32_t> attackImpactTicks(uint16_t spriteId) const;
+    // Delay of the attack sound after the attack starts; 0 plays it as the attack starts.
+    float attackSoundDelaySeconds(uint16_t spriteId) const;
     static ResolvedSpriteTexture resolveTexture(const SpriteFrameEntry &frame, int octant);
     static bool hasFlag(uint32_t flags, SpriteFrameFlag flag);
 
@@ -127,5 +133,14 @@ private:
     std::vector<bool> m_framePresent;
     std::vector<uint16_t> m_eFrames;
     std::unordered_map<std::string, uint16_t> m_spriteNameIndex;
+    struct AttackTiming
+    {
+        uint32_t contactFrame = 0;
+        float soundDelaySeconds = 0.0f;
+    };
+
+    const AttackTiming *findAttackTiming(uint16_t spriteId) const;
+
+    std::unordered_map<std::string, AttackTiming> m_attackTimings;
 };
 }

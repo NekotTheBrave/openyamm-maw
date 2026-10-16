@@ -110,6 +110,13 @@ public:
         return false;
     }
 
+    virtual bool setMapActorBehavior(size_t actorIndex, const std::string &behaviorId)
+    {
+        (void)actorIndex;
+        (void)behaviorId;
+        return false;
+    }
+
     virtual bool isMapActorHostile(size_t actorIndex) const
     {
         (void)actorIndex;

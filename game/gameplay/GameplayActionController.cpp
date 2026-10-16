@@ -1,18 +1,22 @@
 #include "game/gameplay/GameplayActionController.h"
 
 #include "game/audio/GameAudioSystem.h"
+#include "game/gameplay/GameplayActorHitFeedback.h"
 #include "game/gameplay/GameplayFxService.h"
 #include "game/gameplay/GameplayScreenRuntime.h"
 #include "game/gameplay/GameplaySpellService.h"
+#include "game/gameplay/MeleeContactEffects.h"
 #include "game/gameplay/TurnBasedCombatRuntime.h"
 #include "game/items/ItemEnchantRuntime.h"
 #include "game/mod/ModHooks.h"
 #include "game/party/PartySpellSystem.h"
+#include "game/party/SkillData.h"
 #include "game/StringUtils.h"
 #include "game/tables/ItemTable.h"
 #include "game/tables/MonsterTable.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <random>
@@ -27,6 +31,12 @@ constexpr float DragonBreathSourceHeight = 96.0f;
 constexpr float PartyMemberProjectileLateralSpacing = 28.0f;
 constexpr float ProjectileRightVectorEpsilon = 0.0001f;
 constexpr float MeleeContactNormalEpsilon = 0.0001f;
+// A blow below this fraction of the target's maximum HP glances; at or above the crushing fraction (or a kill or
+// critical damage) it crushes.
+constexpr float MeleeGlancingDamageFraction = 0.06f;
+constexpr float MeleeCrushingDamageFraction = 0.3f;
+// The camera kick on a critical or killing melee blow, about 1.5 degrees.
+constexpr float MeleeCameraKickRadians = 0.026f;
 
 void resetQuickCastRepeatState(GameplayScreenState::QuickSpellState &quickSpellState)
 {
@@ -71,23 +81,18 @@ GameplayWorldPoint toRuntimeWorldPoint(const GameplayActionController::WorldPoin
     };
 }
 
-void queueMeleeHitBloodEffect(
+struct MeleeContact
+{
+    GameplayActionController::WorldPoint point = {};
+    GameplayActionController::WorldPoint normal = {};
+};
+
+// Where the blow lands: the crosshair hit on the target, else the world's visual contact point, else the target's body
+// surface facing the party. The normal points outward from the target's centre.
+std::optional<MeleeContact> resolveMeleeContact(
     const GameplayActionController::PartyAttackConfig &config,
     const GameplayActionController::PartyAttackActorFacts &target)
 {
-    if (config.pRuntime == nullptr
-        || !config.pRuntime->settingsSnapshot().meleeHitBloodEffects
-        || config.pMonsterTable == nullptr)
-    {
-        return;
-    }
-
-    const MonsterTable::MonsterStatsEntry *pStats = config.pMonsterTable->findStatsById(target.monsterId);
-    if (pStats == nullptr || !pStats->bloodSplatOnDeath)
-    {
-        return;
-    }
-
     const GameplayActionController::WorldPoint center = {
         .x = target.position.x,
         .y = target.position.y,
@@ -134,7 +139,7 @@ void queueMeleeHitBloodEffect(
     }
     if (!std::isfinite(normalLength) || normalLength <= MeleeContactNormalEpsilon)
     {
-        return;
+        return std::nullopt;
     }
     normal.x /= normalLength;
     normal.y /= normalLength;
@@ -148,9 +153,202 @@ void queueMeleeHitBloodEffect(
         contact.z += normal.z * contactRadius;
     }
 
-    config.pRuntime->fxService().queueMeleeHitBloodEffect(
-        {contact.x, contact.y, contact.z},
-        {normal.x, normal.y, normal.z});
+    return MeleeContact{contact, normal};
+}
+
+// The struck material's contact effect (blood, sparks, chips, drops) on the contact point, out of the body, more of it
+// for a harder blow. Blood and gore follow the blood setting, the rest the hit effects setting.
+void queueMeleeContactParticles(
+    const GameplayActionController::PartyAttackConfig &config,
+    const GameplayActionController::PartyAttackActorFacts &target,
+    const MeleeContact &contact,
+    MeleeHitStrength strength)
+{
+    if (config.pRuntime == nullptr || config.pMonsterTable == nullptr)
+    {
+        return;
+    }
+
+    const MonsterTable::MeleeHitMaterial *pMaterial = config.pMonsterTable->findMeleeHitMaterial(target.monsterId);
+    const GameSettings &settings = config.pRuntime->settingsSnapshot();
+
+    if (pMaterial == nullptr
+        || pMaterial->contactEffectId.empty()
+        || !(pMaterial->blood ? settings.meleeHitBloodEffects : settings.meleeHitEffects))
+    {
+        return;
+    }
+
+    config.pRuntime->fxService().queueSurfaceEffect(
+        meleeContactEffectVariant(pMaterial->contactEffectId, strength),
+        {contact.point.x, contact.point.y, contact.point.z},
+        {contact.normal.x, contact.normal.y, contact.normal.z},
+        meleeContactParticleScale(static_cast<float>(target.height)));
+}
+
+MeleeHitStrength resolveMeleeHitStrength(
+    const GameplayActionController::PartyAttackActorFacts &target,
+    const CharacterAttackResult &attack,
+    int appliedDamage,
+    bool killed)
+{
+    const float damageFraction = target.maxHp > 0
+        ? static_cast<float>(appliedDamage) / static_cast<float>(target.maxHp) : 1.0f;
+
+    if (killed || attack.criticalDamage || damageFraction >= MeleeCrushingDamageFraction)
+    {
+        return MeleeHitStrength::Crushing;
+    }
+
+    return damageFraction < MeleeGlancingDamageFraction ? MeleeHitStrength::Glancing : MeleeHitStrength::Normal;
+}
+
+// Where and how the attacker's blow is drawn over the contact point: the weapon's class and element, from the
+// attacker's side of the party. Empty when the blow cannot face the camera.
+std::optional<MeleeContactEffectPlacement> placeMeleeBlow(
+    const GameplayActionController::PartyAttackConfig &config,
+    const Character &attacker,
+    size_t attackerIndex,
+    const GameplayActionController::PartyAttackActorFacts &target,
+    const MeleeContact &contact,
+    MeleeHitStrength strength,
+    bool missed)
+{
+    const ItemDefinition *pWeapon = config.pItemTable != nullptr && attacker.equipment.mainHand != 0
+            && !attacker.equipmentRuntime.mainHand.broken
+        ? config.pItemTable->get(attacker.equipment.mainHand) : nullptr;
+    std::mt19937 rng(config.randomSeed
+        ^ static_cast<uint32_t>((target.actorIndex + 1) * 2246822519u)
+        ^ static_cast<uint32_t>((attackerIndex + 1) * 3266489917u));
+    std::uniform_real_distribution<float> variation(-1.0f, 1.0f);
+
+    MeleeContactEffectInput input;
+    input.weaponClass =
+        meleeWeaponClassForSkill(canonicalSkillName(pWeapon != nullptr ? pWeapon->skillGroup : "Unarmed"));
+    input.strength = strength;
+    input.missed = missed;
+    input.elements = meleeWeaponElementsFor(ItemEnchantRuntime::characterAttackElementalDamageBonuses(
+        attacker,
+        CharacterAttackMode::Melee,
+        config.pItemTable,
+        config.pSpecialItemEnchantTable));
+    input.contact = {contact.point.x, contact.point.y, contact.point.z};
+    input.viewer = {config.rangedSource.x, config.rangedSource.y, config.rangedSource.z};
+
+    // The camera from the attack's view matrix (bx column-major rows: right, up, back; translation in 12 to 14).
+    const std::array<float, 16> &view = config.fallbackQuery.viewMatrix;
+    const std::array<float, 3> cameraRight = {view[0], view[4], view[8]};
+    const std::array<float, 3> cameraUp = {view[1], view[5], view[9]};
+    const std::array<float, 3> cameraBack = {view[2], view[6], view[10]};
+
+    if (std::abs(cameraRight[0] * cameraRight[0] + cameraRight[1] * cameraRight[1] + cameraRight[2] * cameraRight[2]
+            - 1.0f) < 0.01f)
+    {
+        for (size_t axis = 0; axis < 3; ++axis)
+        {
+            input.viewer[axis] =
+                -(view[12] * cameraRight[axis] + view[13] * cameraUp[axis] + view[14] * cameraBack[axis]);
+        }
+        input.screenRight = cameraRight;
+        input.screenUp = cameraUp;
+    }
+    input.memberIndex = attackerIndex;
+    input.memberCount = config.pParty != nullptr ? config.pParty->memberCount() : 1;
+    input.targetHeight = static_cast<float>(target.height);
+    input.twoHanded = pWeapon != nullptr
+        && (pWeapon->equipStat == "Weapon2" || (pWeapon->equipStat == "Weapon1or2" && attacker.equipment.offHand == 0));
+    input.variation = variation(rng);
+    return buildMeleeContactEffect(input);
+}
+
+// The blow's effect and its element accents, when hit effects are on.
+void queueMeleeBlowEffects(
+    const GameplayActionController::PartyAttackConfig &config,
+    const MeleeContactEffectPlacement &placement)
+{
+    if (config.pRuntime == nullptr || !config.pRuntime->settingsSnapshot().meleeHitEffects)
+    {
+        return;
+    }
+
+    GameplayFxService &fxService = config.pRuntime->fxService();
+    fxService.queueWorldEffect(placement.effectId, placement.position, placement.rotation, placement.scale);
+
+    for (const std::string &accentEffectId : placement.accentEffectIds)
+    {
+        fxService.queueWorldEffect(accentEffectId, placement.position, placement.rotation, placement.scale);
+    }
+}
+
+// A small turn of the view along a critical or killing blow, when the camera kick is on.
+void kickCameraAlongMeleeBlow(
+    const GameplayActionController::PartyAttackConfig &config,
+    const MeleeContactEffectPlacement &placement)
+{
+    if (config.pRuntime == nullptr
+        || config.pWorldRuntime == nullptr
+        || !config.pRuntime->settingsSnapshot().meleeCameraKick)
+    {
+        return;
+    }
+
+    config.pWorldRuntime->actorHitFeedback().triggerCameraKick(
+        placement.blowScreenDirection[0],
+        placement.blowScreenDirection[1],
+        MeleeCameraKickRadians);
+}
+
+// Impact sound of the struck material, then an optional flash and a hitstop on the target, scaled by the blow's
+// strength.
+void presentMeleeHitFeedback(
+    const GameplayActionController::PartyAttackConfig &config,
+    const GameplayActionController::PartyAttackActorFacts &target,
+    const MeleeContact &contact,
+    MeleeHitStrength strength)
+{
+    if (config.pRuntime == nullptr
+        || config.pWorldRuntime == nullptr
+        || !config.pRuntime->settingsSnapshot().meleeHitFeedback)
+    {
+        return;
+    }
+
+    const MonsterTable::MeleeHitMaterial *pMaterial =
+        config.pMonsterTable != nullptr ? config.pMonsterTable->findMeleeHitMaterial(target.monsterId) : nullptr;
+    GameAudioSystem *pAudioSystem = config.pRuntime->audioSystem();
+
+    if (pMaterial != nullptr && pAudioSystem != nullptr)
+    {
+        const std::string &soundPath = pMaterial->impactSoundPaths[static_cast<size_t>(strength)];
+
+        if (!soundPath.empty())
+        {
+            pAudioSystem->playAssetInstance(
+                soundPath,
+                GameAudioSystem::PlaybackGroup::World,
+                GameAudioSystem::WorldPosition{contact.point.x, contact.point.y, contact.point.z},
+                false);
+        }
+    }
+
+    struct HitFeedbackTuning
+    {
+        float flashSeconds;
+        float flashPeak;
+        float hitstopSeconds;
+    };
+    static constexpr std::array<HitFeedbackTuning, 3> TuningByStrength = {{
+        {0.07f, 0.12f, 0.0f},
+        {0.09f, 0.18f, 0.05f},
+        {0.12f, 0.25f, 0.09f},
+    }};
+    const HitFeedbackTuning &tuning = TuningByStrength[static_cast<size_t>(strength)];
+    const bool flash = config.pRuntime->settingsSnapshot().meleeHitFlash;
+    config.pWorldRuntime->actorHitFeedback().trigger(
+        target.actorIndex,
+        flash ? tuning.flashSeconds : 0.0f,
+        flash ? tuning.flashPeak : 0.0f,
+        tuning.hitstopSeconds);
 }
 
 float partyMemberProjectileLateralOffset(size_t memberIndex, size_t memberCount)
@@ -291,6 +489,7 @@ CharacterAttackResult buildRangedReleaseAttack(
     attack.skillLevel = profile.rangedSkillLevel;
     attack.skillMastery = profile.rangedSkillMastery;
     attack.projectileCount = profile.rangedProjectileCount;
+    attack.projectileSpreadArcRadians = profile.rangedSpreadArcRadians;
     attack.spellId = profile.rangedSpellId;
     attack.attackSoundHook = "wand_cast";
 
@@ -300,7 +499,7 @@ CharacterAttackResult buildRangedReleaseAttack(
     }
     else if (mode == CharacterAttackMode::Blaster)
     {
-        attack.attackSoundHook = "blaster_shot";
+        attack.attackSoundHook = attack.projectileSpreadArcRadians > 0.0f ? "blaster_scatter_shot" : "blaster_shot";
         attack.damageType = CombatDamageType::Irresistible;
     }
     else if (mode == CharacterAttackMode::DragonBreath)
@@ -312,9 +511,9 @@ CharacterAttackResult buildRangedReleaseAttack(
 
     if (attack.canAttack)
     {
-        const int minimumDamage = profile.rangedMinDamage;
-        const int maximumDamage = std::max(profile.rangedMinDamage, profile.rangedMaxDamage);
-        attack.damage = std::uniform_int_distribution<int>(minimumDamage, maximumDamage)(rng);
+        attack.minimumDamage = profile.rangedMinDamage;
+        attack.maximumDamage = std::max(profile.rangedMinDamage, profile.rangedMaxDamage);
+        attack.damage = std::uniform_int_distribution<int>(attack.minimumDamage, attack.maximumDamage)(rng);
     }
 
     return attack;
@@ -442,6 +641,10 @@ void playPartyAttackSound(
     else if (attack.attackSoundHook == "blaster_shot")
     {
         soundId = SoundId::ShootBlaster;
+    }
+    else if (attack.attackSoundHook == "blaster_scatter_shot")
+    {
+        soundId = SoundId::ShootBlasterScatter;
     }
     else
     {
@@ -853,7 +1056,7 @@ GameplayActionController::PartyAttackExecutionResult GameplayActionController::e
 
             appliedMeleeDamage = appliedDamage;
             const int beforeHp = target->currentHp;
-            queueMeleeHitBloodEffect(config, *target);
+            const std::optional<MeleeContact> contact = resolveMeleeContact(config, *target);
             attacked = config.pWorldRuntime->applyPartyAttackMeleeDamage(
                 target->actorIndex,
                 appliedDamage,
@@ -869,6 +1072,27 @@ GameplayActionController::PartyAttackExecutionResult GameplayActionController::e
                 const std::optional<GameplayPartyAttackActorFacts> afterTarget =
                     config.pWorldRuntime->partyAttackActorFacts(target->actorIndex, false);
                 killed = beforeHp > 0 && afterTarget && afterTarget->currentHp <= 0;
+
+                if (contact)
+                {
+                    const MeleeHitStrength strength =
+                        resolveMeleeHitStrength(*target, attack, appliedDamage, killed);
+                    queueMeleeContactParticles(config, *target, *contact, strength);
+                    const std::optional<MeleeContactEffectPlacement> blow = placeMeleeBlow(
+                        config, *pAttacker, actingMemberIndex, *target, *contact, strength, false);
+
+                    if (blow)
+                    {
+                        queueMeleeBlowEffects(config, *blow);
+
+                        if (killed || attack.criticalDamage)
+                        {
+                            kickCameraAlongMeleeBlow(config, *blow);
+                        }
+                    }
+
+                    presentMeleeHitFeedback(config, *target, *contact, strength);
+                }
 
                 if (pAttacker->vampiricHealFraction > 0.0f && appliedDamage > 0)
                 {
@@ -894,6 +1118,20 @@ GameplayActionController::PartyAttackExecutionResult GameplayActionController::e
             attacked = config.pWorldRuntime->applyPartyAttackMeleeBModelDamage(
                 *config.directTargetBModelIndex,
                 attack.damage);
+        }
+
+        // A miss shows the blow passing the target; the swing sound already plays.
+        if (target && targetInMeleeRange && attack.canAttack && !attack.hit)
+        {
+            const std::optional<MeleeContact> contact = resolveMeleeContact(config, *target);
+            const std::optional<MeleeContactEffectPlacement> blow = contact
+                ? placeMeleeBlow(config, *pAttacker, actingMemberIndex, *target, *contact, MeleeHitStrength::Normal, true)
+                : std::nullopt;
+
+            if (blow)
+            {
+                queueMeleeBlowEffects(config, *blow);
+            }
         }
     }
     else if (attack.canAttack)
@@ -1007,17 +1245,44 @@ GameplayActionController::PartyAttackExecutionResult GameplayActionController::e
                     config.pRuntime != nullptr && config.pRuntime->turnBasedCombatRuntime().active(),
                 .targetActorIndex = target ? std::optional<size_t>(target->actorIndex) : std::nullopt,
             };
-            attacked = config.pWorldRuntime->spawnPartyAttackProjectile(projectileRequest);
-
-            for (uint8_t projectileIndex = 1; projectileIndex < attack.projectileCount; ++projectileIndex)
+            if (attack.projectileSpreadArcRadians > 0.0f)
             {
-                const WorldPoint secondSource = offsetPartyProjectileSourceForMember(
-                    config,
-                    rangedTarget,
-                    actingMemberIndex + projectileIndex,
-                    party.members().size() + attack.projectileCount - 1);
-                projectileRequest.source = toRuntimeWorldPoint(secondSource);
-                attacked = config.pWorldRuntime->spawnPartyAttackProjectile(projectileRequest) || attacked;
+                // A fanned volley: every projectile flies its own heading and rolls its own damage.
+                const float deltaX = rangedTarget.x - rangedSource.x;
+                const float deltaY = rangedTarget.y - rangedSource.y;
+                const float aimYawRadians = std::atan2(deltaY, deltaX);
+                const float fanDistance = std::max(512.0f, std::sqrt(deltaX * deltaX + deltaY * deltaY));
+                std::uniform_int_distribution<int> damageDistribution(attack.minimumDamage, attack.maximumDamage);
+
+                for (uint8_t projectileIndex = 0; projectileIndex < attack.projectileCount; ++projectileIndex)
+                {
+                    const float yawRadians = aimYawRadians + GameMechanics::projectileFanYawOffsetRadians(
+                        attack.projectileCount,
+                        projectileIndex,
+                        attack.projectileSpreadArcRadians);
+                    projectileRequest.target = toRuntimeWorldPoint(WorldPoint{
+                        .x = rangedSource.x + std::cos(yawRadians) * fanDistance,
+                        .y = rangedSource.y + std::sin(yawRadians) * fanDistance,
+                        .z = rangedTarget.z,
+                    });
+                    projectileRequest.damage = damageDistribution(rng);
+                    attacked = config.pWorldRuntime->spawnPartyAttackProjectile(projectileRequest) || attacked;
+                }
+            }
+            else
+            {
+                attacked = config.pWorldRuntime->spawnPartyAttackProjectile(projectileRequest);
+
+                for (uint8_t projectileIndex = 1; projectileIndex < attack.projectileCount; ++projectileIndex)
+                {
+                    const WorldPoint secondSource = offsetPartyProjectileSourceForMember(
+                        config,
+                        rangedTarget,
+                        actingMemberIndex + projectileIndex,
+                        party.members().size() + attack.projectileCount - 1);
+                    projectileRequest.source = toRuntimeWorldPoint(secondSource);
+                    attacked = config.pWorldRuntime->spawnPartyAttackProjectile(projectileRequest) || attacked;
+                }
             }
         }
 

@@ -123,7 +123,8 @@ android {
     androidResources {
         // Keep _legacy bake dependencies; the default <dir>_* filter silently drops them from the APK.
         ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~"
-        noCompress += ["zip", "ogv", "oyatlas"]
+        // Cooked textures are already Zstandard-compressed: deflate saves nothing and costs an inflate per load.
+        noCompress += ["zip", "ogv", "oyatlas", "oytex"]
     }
 
     externalNativeBuild {
@@ -188,8 +189,7 @@ def registerOpenYammApkAssetsTask = { taskName, nativeBuildTaskName, shaderBuild
             [zip: new File(runtimeAssetsRoot, "engine.zip"), into: "engine"],
             [zip: new File(runtimeAssetsRoot, "worlds/mm6.zip"), into: "worlds/mm6"],
             [zip: new File(runtimeAssetsRoot, "worlds/mm7.zip"), into: "worlds/mm7"],
-            [zip: new File(runtimeAssetsRoot, "worlds/mm8.zip"), into: "worlds/mm8"],
-            [zip: new File(runtimeAssetsRoot, "worlds/mmmerge.zip"), into: "worlds/mmmerge"]
+            [zip: new File(runtimeAssetsRoot, "worlds/mm8.zip"), into: "worlds/mm8"]
         ]
 
         inputs.files(packagedAssetRoots.collect { it.zip })

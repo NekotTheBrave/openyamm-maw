@@ -1,0 +1,16 @@
+#	Material	Glancing	Normal	Crushing	ContactEffect	Blood	Note
+1	Flesh	engine/audio/melee_hits/flesh_glancing.wav	engine/audio/melee_hits/flesh_normal.wav	engine/audio/melee_hits/flesh_crushing.wav	openyamm:fx/melee/contact/blood	1	Default material; monster_descriptors.txt HitMaterial names one per monster
+2	ArmorLeather	engine/audio/melee_hits/armor_leather_glancing.wav	engine/audio/melee_hits/armor_leather_normal.wav	engine/audio/melee_hits/armor_leather_crushing.wav	openyamm:fx/melee/contact/blood	1	
+3	ArmorChain	engine/audio/melee_hits/armor_chain_glancing.wav	engine/audio/melee_hits/armor_chain_normal.wav	engine/audio/melee_hits/armor_chain_crushing.wav	openyamm:fx/melee/contact/sparks	0	
+4	ArmorPlate	engine/audio/melee_hits/armor_plate_glancing.wav	engine/audio/melee_hits/armor_plate_normal.wav	engine/audio/melee_hits/armor_plate_crushing.wav	openyamm:fx/melee/contact/sparks	0	
+5	Bone	engine/audio/melee_hits/wood_hollow_glancing.wav	engine/audio/melee_hits/wood_hollow_normal.wav	engine/audio/melee_hits/wood_hollow_crushing.wav	openyamm:fx/melee/contact/bone	0	No MM9 bone set; the hollow wood knock reads as dry bone
+6	Stone	engine/audio/melee_hits/stone_glancing.wav	engine/audio/melee_hits/stone_normal.wav	engine/audio/melee_hits/stone_crushing.wav	openyamm:fx/melee/contact/stone	0	
+7	Metal	engine/audio/melee_hits/metal_solid_glancing.wav	engine/audio/melee_hits/metal_solid_normal.wav	engine/audio/melee_hits/metal_solid_crushing.wav	openyamm:fx/melee/contact/sparks	0	
+8	MetalHollow	engine/audio/melee_hits/metal_hollow_glancing.wav	engine/audio/melee_hits/metal_hollow_normal.wav	engine/audio/melee_hits/metal_hollow_crushing.wav	openyamm:fx/melee/contact/sparks	0	
+9	Wood	engine/audio/melee_hits/wood_solid_glancing.wav	engine/audio/melee_hits/wood_solid_normal.wav	engine/audio/melee_hits/wood_solid_crushing.wav	openyamm:fx/melee/contact/wood	0	
+10	Earth	engine/audio/melee_hits/earth_glancing.wav	engine/audio/melee_hits/earth_normal.wav	engine/audio/melee_hits/earth_crushing.wav	openyamm:fx/melee/contact/earth	0	
+11	Glass	engine/audio/melee_hits/glass_glancing.wav	engine/audio/melee_hits/glass_normal.wav	engine/audio/melee_hits/glass_crushing.wav	openyamm:fx/melee/contact/glass	0	
+12	Liquid	engine/audio/melee_hits/liquid_glancing.wav	engine/audio/melee_hits/liquid_normal.wav	engine/audio/melee_hits/liquid_crushing.wav	openyamm:fx/melee/contact/splash	0	
+13	Ethereal				openyamm:fx/melee/contact/motes	0	No impact sound; the monster wince still plays
+14	Chitin	engine/audio/melee_hits/wood_hollow_glancing.wav	engine/audio/melee_hits/wood_hollow_normal.wav	engine/audio/melee_hits/wood_hollow_crushing.wav	openyamm:fx/melee/contact/ichor	1	Insect shell: the hollow wood knock, ichor drops
+15	Slime	engine/audio/melee_hits/liquid_glancing.wav	engine/audio/melee_hits/liquid_normal.wav	engine/audio/melee_hits/liquid_crushing.wav	openyamm:fx/melee/contact/goo	1	Oozes and jellies

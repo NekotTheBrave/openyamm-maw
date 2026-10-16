@@ -203,7 +203,4 @@
 201	pending	3	0	-	-	-	0		
 202	Devil Outpost	3	LowerToEqual	-	-	-	0		
 203	New World Computing	3	0	-	-	-	0		
-204	Breach	4	LowerToEqual	x	x	-	0		
-205	BrAlvar	4	LowerToEqual	x	x	-	0		sunsetclouds
-206	BrBase	4	LowerToEqual	x	x	-	0		
 207	The Strange Temple	2	LowerToEqual	x	-	-	0	0	

@@ -286,6 +286,14 @@ elements:
       align_x: center
       align_y: middle
       scale: 0.55
+  - id: ObsidianTurnPassButton
+    anchor: top_left
+    offset_x: 74.666667
+    offset_y: -3.2
+    width: 46.933333
+    height: 39.466667
+    interactive: true
+    notes: Pass / End Movement, attached right of the turn plate while the party can pass.
   interactive: true
   visible: false
   anchor_space: screen

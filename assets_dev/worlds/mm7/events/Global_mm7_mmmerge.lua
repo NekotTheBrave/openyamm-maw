@@ -1009,18 +1009,6 @@ ReplaceGlobalEvent(1784, "MMMerge Verdant Enroth", function()
     CrossContinents.ExplainCurrentContinent(3)
 end)
 
-ReplaceGlobalEvent(1785, "MMMerge Verdant Runaway Chaos", function()
-    CrossContinents.ExplainRunawayChaos()
-end)
-
-ReplaceGlobalEvent(1786, "MMMerge Verdant Controlled Breach", function()
-    CrossContinents.ExplainControlledBreach()
-end)
-
-ReplaceGlobalEvent(1787, "MMMerge Verdant next step", function()
-    CrossContinents.ExplainNextStep()
-end)
-
 ReplaceGlobalEvent(1788, "MMMerge Verdant connector stone", function()
     CrossContinents.HandleConnectorStone()
 end)

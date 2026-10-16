@@ -1,0 +1,466 @@
+# Map decorations drawn as static 3D models instead of their sprites. Matched by decoration name; the decoration keeps
+# its native collision, events and picking. The sprite a decoration currently shows picks the model, so an event
+# SetSprite to another bound decoration switches models (a picked food tree), and one to an unbound sprite draws it.
+#   height: world height of the model (the native sprite's world height); height_jitter: +- fraction per placement
+#   yaw: random (seeded by map position) or facing (the map's facing angle) plus yaw_offset radians
+#   lod_pixels: projected sizes below which LOD 1..3 take over (default 500, 200, 80)
+#   maps: optional list limiting the binding to those maps
+decorations:
+  - name: 6tree01
+    model: worlds/mm6/models/mm6_deco_tree01.glb
+    height: 531
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6tree02
+    model: worlds/mm6/models/mm6_deco_tree02.glb
+    height: 662
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6tree19
+    model: worlds/mm6/models/mm6_deco_tree19.glb
+    height: 312
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6tree05
+    model: worlds/mm6/models/mm6_deco_tree05.glb
+    height: 604
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6tree03
+    model: worlds/mm6/models/mm6_deco_tree03.glb
+    height: 363
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6tree04
+    model: worlds/mm6/models/mm6_deco_tree04.glb
+    height: 493
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6tree06
+    model: worlds/mm6/models/mm6_deco_tree06.glb
+    # The food tree pair is one tree: keep height/jitter equal so picking the fruit (SetSprite tree06a -> 6tree06)
+    # only removes the fruit.
+    height: 576
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: tree06a
+    model: worlds/mm6/models/mm6_deco_tree06a.glb
+    height: 576
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6flower02
+    model: worlds/mm6/models/mm6_deco_flower02.glb
+    height: 67
+    height_jitter: 0.15
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6flower07
+    model: worlds/mm6/models/mm6_deco_flower07.glb
+    height: 76
+    height_jitter: 0.15
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6rock01
+    model: worlds/mm6/models/mm6_deco_rock01.glb
+    height: 99
+    height_jitter: 0.15
+    z_offset: -4
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: bigbarel
+    model: worlds/mm6/models/mm6_deco_barrel.glb
+    height: 117
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: ckfyr00
+    model: worlds/mm6/models/mm6_deco_cauldron.glb
+    height: 222
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: sta1a
+    model: worlds/mm6/models/mm6_deco_fountain.glb
+    height: 266
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: swrdstn
+    model: worlds/mm6/models/mm6_deco_swordstone.glb
+    # Pulling the sword (SetSprite swrdstn -> swrdstx) keeps the same boulder: both models share it and the
+    # sword stone's height is exactly 174/83 of the boulder's.
+    height: 174
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: swrdstx
+    model: worlds/mm6/models/mm6_deco_swordstone_empty.glb
+    height: 83
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: bouy0
+    model: worlds/mm6/models/mm6_deco_buoy.glb
+    height: 172
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: searka01
+    model: worlds/mm6/models/mm6_deco_surfrock_a.glb
+    height: 67
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: searkb01
+    model: worlds/mm6/models/mm6_deco_surfrock_b.glb
+    height: 89
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: fla3__01
+    model: worlds/mm6/models/mm6_deco_flag.glb
+    height: 256
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+
+  # Added 2026-10-09 for Misty Islands, Silver Cove, Castle Ironfist and Eel Infested Waters.
+  - name: 6tree10
+    model: worlds/mm6/models/mm6_deco_tree10.glb
+    height: 595
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6tree15
+    model: worlds/mm6/models/mm6_deco_tree15.glb
+    height: 633
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6tree25
+    model: worlds/mm6/models/mm6_deco_tree25.glb
+    height: 287
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: swptree1
+    model: worlds/mm6/models/mm6_deco_swptree1.glb
+    height: 380
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: swptree3
+    model: worlds/mm6/models/mm6_deco_swptree3.glb
+    height: 309
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6flower06
+    model: worlds/mm6/models/mm6_deco_flower06.glb
+    height: 131
+    height_jitter: 0.15
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6flower08
+    model: worlds/mm6/models/mm6_deco_flower08.glb
+    height: 88
+    height_jitter: 0.15
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6rock07
+    model: worlds/mm6/models/mm6_deco_rock07.glb
+    height: 113
+    height_jitter: 0.15
+    z_offset: -4
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6rock14
+    model: worlds/mm6/models/mm6_deco_rock14.glb
+    height: 107
+    height_jitter: 0.15
+    z_offset: -4
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: cmpfyr00
+    model: worlds/mm6/models/mm6_deco_campfire.glb
+    height: 121
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: brnrock0
+    model: worlds/mm6/models/mm6_deco_burningrock.glb
+    height: 169
+    height_jitter: 0.1
+    z_offset: -4
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: fla1__01
+    model: worlds/mm6/models/mm6_deco_flag1.glb
+    height: 256
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: sklplrev
+    model: worlds/mm6/models/mm6_deco_skullpile_meshy.glb
+    height: 153
+    height_jitter: 0.05
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+
+  # Added 2026-10-09: every remaining MM6 outdoor decoration.
+  - name: 6tree17
+    model: worlds/mm6/models/mm6_deco_tree17.glb
+    height: 440
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6tree18
+    model: worlds/mm6/models/mm6_deco_tree18.glb
+    height: 251
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6tree13
+    model: worlds/mm6/models/mm6_deco_tree13.glb
+    height: 636
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6tree14
+    model: worlds/mm6/models/mm6_deco_tree14.glb
+    height: 558
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6tree07
+    model: worlds/mm6/models/mm6_deco_tree07.glb
+    height: 347
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: cac25
+    model: worlds/mm6/models/mm6_deco_cac25.glb
+    height: 256
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: swptree2
+    model: worlds/mm6/models/mm6_deco_swptree2.glb
+    height: 592
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: snotre01
+    model: worlds/mm6/models/mm6_deco_snotre01.glb
+    height: 262
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: snotre03
+    model: worlds/mm6/models/mm6_deco_snotre03.glb
+    height: 256
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: snotre05
+    model: worlds/mm6/models/mm6_deco_snotre05.glb
+    height: 271
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6tree28
+    model: worlds/mm6/models/mm6_deco_tree28.glb
+    height: 287
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6tree27
+    model: worlds/mm6/models/mm6_deco_tree27.glb
+    height: 292
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6tree29
+    model: worlds/mm6/models/mm6_deco_tree29.glb
+    height: 117
+    height_jitter: 0.15
+    lod_pixels: [360, 180, 90]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: swptree4
+    model: worlds/mm6/models/mm6_deco_swptree4.glb
+    height: 589
+    height_jitter: 0.1
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: stump5a
+    model: worlds/mm6/models/mm6_deco_stump5a.glb
+    height: 72
+    height_jitter: 0.15
+    z_offset: -2
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: cac8
+    model: worlds/mm6/models/mm6_deco_cac8.glb
+    height: 185
+    height_jitter: 0.15
+    z_offset: -3
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: cac5
+    model: worlds/mm6/models/mm6_deco_cac5.glb
+    height: 248
+    height_jitter: 0.12
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: cac16
+    model: worlds/mm6/models/mm6_deco_cac16.glb
+    height: 253
+    height_jitter: 0.1
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: cac7
+    model: worlds/mm6/models/mm6_deco_cac7.glb
+    height: 137
+    height_jitter: 0.15
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: cac10
+    model: worlds/mm6/models/mm6_deco_cac10.glb
+    height: 167
+    height_jitter: 0.15
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: cac15
+    model: worlds/mm6/models/mm6_deco_cac15.glb
+    height: 139
+    height_jitter: 0.15
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: cac27
+    model: worlds/mm6/models/mm6_deco_cac27.glb
+    height: 139
+    height_jitter: 0.12
+    z_offset: -4
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: snoweed1
+    model: worlds/mm6/models/mm6_deco_snoweed1.glb
+    height: 127
+    height_jitter: 0.15
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6rock05
+    model: worlds/mm6/models/mm6_deco_rock05.glb
+    height: 107
+    height_jitter: 0.15
+    z_offset: -4
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6rock13
+    model: worlds/mm6/models/mm6_deco_rock13.glb
+    height: 52
+    height_jitter: 0.15
+    z_offset: -3
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6rock06
+    model: worlds/mm6/models/mm6_deco_rock06.glb
+    height: 92
+    height_jitter: 0.15
+    z_offset: -4
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6rock04
+    model: worlds/mm6/models/mm6_deco_rock04.glb
+    height: 111
+    height_jitter: 0.15
+    z_offset: -4
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6rock03
+    model: worlds/mm6/models/mm6_deco_rock03.glb
+    height: 53
+    height_jitter: 0.15
+    z_offset: -3
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6rock12
+    model: worlds/mm6/models/mm6_deco_rock12.glb
+    height: 87
+    height_jitter: 0.15
+    z_offset: -4
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6rock08
+    model: worlds/mm6/models/mm6_deco_rock08.glb
+    height: 85
+    height_jitter: 0.15
+    z_offset: -4
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6rock09
+    model: worlds/mm6/models/mm6_deco_rock09.glb
+    height: 63
+    height_jitter: 0.15
+    z_offset: -4
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: ped06
+    model: worlds/mm6/models/mm6_deco_pedestal.glb
+    height: 150
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  # The five filled statuette pedestals (shrine events SetSprite ped06 -> ped0N): the unchanged ped06 pedestal plus a
+  # gold figure (mm6_new_sorpigal_3d/statuettes/), enlarged past the sprite to fill the slab. Heights are the model
+  # bounds, so the pedestal stays 150 units.
+  - name: ped01
+    model: worlds/mm6/models/mm6_deco_pedestal_bear.glb
+    height: 177
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: ped02
+    model: worlds/mm6/models/mm6_deco_pedestal_tiger.glb
+    height: 179
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: ped03
+    model: worlds/mm6/models/mm6_deco_pedestal_eagle.glb
+    height: 210
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: ped04
+    model: worlds/mm6/models/mm6_deco_pedestal_wolf.glb
+    height: 185
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: ped05
+    model: worlds/mm6/models/mm6_deco_pedestal_dragon.glb
+    height: 210
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: foodbowl
+    model: worlds/mm6/models/mm6_deco_foodbowl.glb
+    height: 20
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: smlbarel
+    model: worlds/mm6/models/mm6_deco_keg.glb
+    height: 89
+    height_jitter: 0.05
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: dec25
+    model: worlds/mm6/models/mm6_deco_campfire.glb
+    # The art fills 108 of the 128-unit frame (the cmpfyr00 fire drawn smaller, with margins).
+    height: 108
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: corpse04
+    model: worlds/mm6/models/mm6_deco_corpse04.glb
+    height: 177
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: corpse05
+    model: worlds/mm6/models/mm6_deco_corpse05.glb
+    height: 139
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: corpse06
+    model: worlds/mm6/models/mm6_deco_corpse06.glb
+    height: 128
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: corpse16
+    model: worlds/mm6/models/mm6_deco_corpse16.glb
+    height: 139
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: 6tree21
+    model: worlds/mm6/models/mm6_deco_tree21.glb
+    height: 360
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: cac19
+    model: worlds/mm6/models/mm6_deco_cac19.glb
+    height: 168
+    height_jitter: 0.12
+    lod_pixels: [500, 250, 140]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: cac18
+    model: worlds/mm6/models/mm6_deco_cac18.glb
+    height: 255
+    height_jitter: 0.12
+    lod_pixels: [600, 300, 160]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: cac24
+    model: worlds/mm6/models/mm6_deco_cac24.glb
+    height: 196
+    height_jitter: 0.12
+    lod_pixels: [500, 250, 140]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: cac17
+    model: worlds/mm6/models/mm6_deco_cac17.glb
+    height: 218
+    height_jitter: 0.12
+    lod_pixels: [600, 300, 160]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: cac23
+    model: worlds/mm6/models/mm6_deco_cac23.glb
+    height: 282
+    height_jitter: 0.12
+    lod_pixels: [600, 300, 160]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]
+  - name: cac3
+    model: worlds/mm6/models/mm6_deco_cac3.glb
+    height: 154
+    height_jitter: 0.15
+    lod_pixels: [500, 250, 140]
+    maps: [outa1.odm, outa2.odm, outa3.odm, outb1.odm, outb2.odm, outb3.odm, outc1.odm, outc2.odm, outc3.odm, outd1.odm, outd2.odm, outd3.odm, oute1.odm, oute2.odm, oute3.odm]

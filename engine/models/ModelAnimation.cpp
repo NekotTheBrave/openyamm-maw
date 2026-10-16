@@ -20,6 +20,32 @@ void includePoint(ModelBounds &bounds, const std::array<float, 3> &point)
     }
 }
 
+// Includes the box of the transformed local box: its centre moves with the matrix and each half-extent is the
+// absolute-valued linear part applied to the local half-extents (the same box as its eight transformed corners).
+void includeTransformedBox(ModelBounds &bounds, const ModelMatrix &matrix, const ModelBounds &local)
+{
+    std::array<float, 3> center;
+    std::array<float, 3> extent;
+    for (size_t axis = 0; axis < 3; ++axis)
+    {
+        center[axis] = (local.min[axis] + local.max[axis]) * 0.5f;
+        extent[axis] = (local.max[axis] - local.min[axis]) * 0.5f;
+    }
+    std::array<float, 3> low;
+    std::array<float, 3> high;
+    for (size_t row = 0; row < 3; ++row)
+    {
+        const float middle = matrix[row] * center[0] + matrix[4 + row] * center[1] + matrix[8 + row] * center[2]
+            + matrix[12 + row];
+        const float reach = std::abs(matrix[row]) * extent[0] + std::abs(matrix[4 + row]) * extent[1]
+            + std::abs(matrix[8 + row]) * extent[2];
+        low[row] = middle - reach;
+        high[row] = middle + reach;
+    }
+    includePoint(bounds, low);
+    includePoint(bounds, high);
+}
+
 std::array<float, 3> morphPosition(const ModelPrimitive &primitive, const std::vector<float> &weights,
     size_t vertexIndex)
 {
@@ -348,15 +374,33 @@ ModelBounds modelPoseBounds(const ModelAsset &asset, const ModelPose &pose, cons
                 ? multiplyModelMatrices(pose.globalMatrices[asset.skins[node.skinIndex].joints[jointIndex]],
                     asset.skins[node.skinIndex].inverseBindMatrices[jointIndex])
                 : pose.globalMatrices[nodeIndex];
-            for (uint32_t corner = 0; corner < 8; ++corner)
-            {
-                const float point[3] = {corner & 1 ? local.max[0] : local.min[0],
-                    corner & 2 ? local.max[1] : local.min[1], corner & 4 ? local.max[2] : local.min[2]};
-                includePoint(result, {matrix[0] * point[0] + matrix[4] * point[1]
-                        + matrix[8] * point[2] + matrix[12],
-                    matrix[1] * point[0] + matrix[5] * point[1] + matrix[9] * point[2] + matrix[13],
-                    matrix[2] * point[0] + matrix[6] * point[1] + matrix[10] * point[2] + matrix[14]});
-            }
+            includeTransformedBox(result, matrix, local);
+        }
+    }
+    return result;
+}
+
+std::array<float, 3> skinnedModelVertex(const ModelAsset &asset, const ModelPose &pose, size_t nodeIndex,
+    const ModelPrimitive &primitive, size_t vertexIndex)
+{
+    const ModelSkin &skin = asset.skins[asset.nodes[nodeIndex].skinIndex];
+    const std::array<float, 3> &position = primitive.vertices[vertexIndex].position;
+    const ModelVertexInfluences &influences = primitive.influences[vertexIndex];
+    std::array<float, 3> result = {};
+    for (size_t i = 0; i < influences.weights.size(); ++i)
+    {
+        const float weight = influences.weights[i];
+        if (weight == 0.0f)
+        {
+            continue;
+        }
+        const uint16_t jointIndex = influences.joints[i];
+        const ModelMatrix joint = multiplyModelMatrices(
+            pose.globalMatrices[skin.joints[jointIndex]], skin.inverseBindMatrices[jointIndex]);
+        for (size_t axis = 0; axis < 3; ++axis)
+        {
+            result[axis] += weight * (joint[axis] * position[0] + joint[4 + axis] * position[1]
+                + joint[8 + axis] * position[2] + joint[12 + axis]);
         }
     }
     return result;
@@ -427,6 +471,15 @@ void resetModelPose(const ModelAsset &asset, ModelPose &pose)
 
 void evaluateModelClip(const ModelAsset &asset, uint32_t clipIndex, float timeSeconds, ModelPose &pose)
 {
+    sampleModelClip(asset, clipIndex, timeSeconds, pose);
+    if (clipIndex < asset.clips.size())
+    {
+        composeModelPose(asset, pose);
+    }
+}
+
+void sampleModelClip(const ModelAsset &asset, uint32_t clipIndex, float timeSeconds, ModelPose &pose)
+{
     resetModelPose(asset, pose);
     if (clipIndex >= asset.clips.size())
     {
@@ -438,6 +491,10 @@ void evaluateModelClip(const ModelAsset &asset, uint32_t clipIndex, float timeSe
         sampleChannel(channel, timeSeconds, pose.localTransforms[channel.nodeIndex],
             pose.morphWeights[channel.nodeIndex]);
     }
+}
+
+void composeModelPose(const ModelAsset &asset, ModelPose &pose)
+{
     for (size_t nodeIndex = 0; nodeIndex < asset.nodes.size(); ++nodeIndex)
     {
         if (!asset.nodes[nodeIndex].usesMatrix)
@@ -448,7 +505,7 @@ void evaluateModelClip(const ModelAsset &asset, uint32_t clipIndex, float timeSe
 }
 
 void blendModelPose(const ModelAsset &asset, ModelPose &pose, const ModelPose &other, float amount,
-    const std::vector<float> &mask)
+    const std::vector<float> &mask, bool compose)
 {
     for (size_t i = 0; i < asset.nodes.size(); ++i)
     {
@@ -469,7 +526,10 @@ void blendModelPose(const ModelAsset &asset, ModelPose &pose, const ModelPose &o
         {
             pose.morphWeights[i][morph] += (other.morphWeights[i][morph] - pose.morphWeights[i][morph]) * weight;
         }
-        pose.localMatrices[i] = composeModelTransform(transform);
+        if (compose)
+        {
+            pose.localMatrices[i] = composeModelTransform(transform);
+        }
     }
 }
 

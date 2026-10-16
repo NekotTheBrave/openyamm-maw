@@ -98,15 +98,16 @@ void renderBuffPanel(GameplayScreenRuntime &context, const Party &party, Gamepla
             GameplayUiSkin::renderTexture(context, definition.pIcon, badge);
         }
     }
-    const std::optional<GameplayHudTextureHandle> edge =
-        context.gameplayUiRuntime().ensureSolidHudTextureLoaded("__obsidian_buff_frame__", 0xc46a7e88u);
+    const std::optional<GameplayHudPaletteColor> edge = context.gameplayUiRuntime().ensureHudPaletteColor(0xc46a7e88u);
     if (edge)
     {
         const float stroke = std::max(1.0f, rect->scale * 0.65f);
-        context.submitHudTexturedQuad(*edge, rect->x, rect->y, rect->width, stroke);
-        context.submitHudTexturedQuad(*edge, rect->x, rect->y + rect->height - stroke, rect->width, stroke);
-        context.submitHudTexturedQuad(*edge, rect->x, rect->y, stroke, rect->height);
-        context.submitHudTexturedQuad(*edge, rect->x + rect->width - stroke, rect->y, stroke, rect->height);
+        const std::vector<GameplayHudBatchQuad> edges = {
+            gameplayHudPaletteQuad(*edge, rect->x, rect->y, rect->width, stroke),
+            gameplayHudPaletteQuad(*edge, rect->x, rect->y + rect->height - stroke, rect->width, stroke),
+            gameplayHudPaletteQuad(*edge, rect->x, rect->y, stroke, rect->height),
+            gameplayHudPaletteQuad(*edge, rect->x + rect->width - stroke, rect->y, stroke, rect->height)};
+        context.submitHudQuadBatch(edges);
     }
 }
 }

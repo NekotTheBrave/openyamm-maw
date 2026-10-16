@@ -19,6 +19,7 @@ namespace
 {
 constexpr float Pi = 3.14159265358979323846f;
 constexpr float FlyWheelHeightStep = 64.0f;
+constexpr float MaxFlyWheelStepsPerFrame = 4.0f;
 } // namespace
 
 void OutdoorGameplayInputController::updateCameraFromInput(
@@ -124,8 +125,8 @@ void OutdoorGameplayInputController::updateCameraFromInput(
         && view.m_gameSettings.keyboard.binding(KeyboardAction::FlyUp).kind == wheelKind;
     const bool wheelFlyDown = flyDownPressed
         && view.m_gameSettings.keyboard.binding(KeyboardAction::FlyDown).kind == wheelKind;
-    const float flyHeightDelta = FlyWheelHeightStep * std::abs(input.mouseWheelDelta)
-        * (int(wheelFlyUp) - int(wheelFlyDown));
+    const float flyWheelSteps = std::min(std::abs(input.mouseWheelDelta), MaxFlyWheelStepsPerFrame);
+    const float flyHeightDelta = FlyWheelHeightStep * flyWheelSteps * (int(wheelFlyUp) - int(wheelFlyDown));
     const bool lookUpPressed = input.action(KeyboardAction::LookUp).held;
     const bool lookDownPressed = input.action(KeyboardAction::LookDown).held;
     const bool centerViewPressed = input.action(KeyboardAction::CenterView).held;

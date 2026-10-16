@@ -1,0 +1,192 @@
+# MM7 terrain materials for the materials terrain style; the keys are described in worlds/mm6/terrain_materials/
+# world.yml. tools/terrain_materials.py weights writes each map's <map>.yml and weight images beside this file.
+version: 1
+edge_softness: 110
+fringe:
+  strength: 1.6
+  scale: 2048
+# meadow: colour multipliers of the driest and lushest ground (OutdoorMeadowField: crests and steep slopes dry,
+# hollows and shores lush). A material's meadow key is how strongly it takes them (grass 1, default 0).
+meadow:
+  dry: [1.2, 1.06, 0.64]
+  lush: [0.78, 0.94, 0.82]
+materials:
+  grass:
+    meadow: 1.0
+    library: grass_meadow
+    reference_tile: 7grastyl
+    cliff_from: dirt
+    variant: grass_patches
+    variant_amount: 0.3
+    repeat: 360
+    height_contrast: 0.45
+    macro_brightness: 0.15
+    macro_tint: [1.1, 1.05, 0.85]
+    cavity: 0.3
+  # Smooth Erathian earth; the native stony tiles (7dirt1, 7dirt2, about a tenth of the dirt) become stony
+  # patches of the variant.
+  dirt:
+    library: soil
+    reference_tile: 7dirttyl
+    variant: dirt_stones
+    variant_amount: 0.12
+    repeat: 520
+    height_contrast: 0.4
+    macro_brightness: 0.18
+    macro_tint: [0.9, 0.86, 0.86]
+    cavity: 0.6
+    normal_strength: 1.5
+  road:
+    library: road_pebbles
+    cliff_from: dirt
+    edge_softness: 24
+    fringe: 0.15
+    tint_scale: [0.808, 0.77, 0.785]
+    repeat: 640
+    height_contrast: 0.6
+    macro_brightness: 0.12
+    cavity: 1.0
+    normal_strength: 2.0
+  desert:
+    library: sand_flat
+    reference_tile: 7sand
+    repeat: 520
+    height_contrast: 0.3
+    macro_brightness: 0.12
+    macro_tint: [1.06, 1.0, 0.9]
+    cavity: 0.3
+    normal_strength: 1.2
+  snow:
+    library: snow
+    # Snowy slopes break into rock, not white rock.
+    cliff_from: dirt
+    tint_scale: [0.9, 0.92, 0.95]
+    reference_tile: 7snow
+    repeat: 640
+    height_contrast: 0.3
+    macro_brightness: 0.06
+    macro_tint: [0.96, 0.98, 1.04]
+    cavity: 0.15
+    normal_strength: 1.3
+  swamp:
+    library: swamp
+    reference_tile: 7swtyl
+    # Olive moss like the native tile; large repeat so the pools read as pools.
+    tint_scale: [0.85, 0.8, 0.55]
+    repeat: 900
+    height_contrast: 0.5
+    macro_brightness: 0.15
+    macro_tint: [0.9, 1.0, 0.9]
+    cavity: 0.3
+    normal_strength: 1.2
+  wasteland:
+    library: mud_cracked
+    reference_tile: 7wastetile
+    repeat: 760
+    height_contrast: 0.4
+    macro_brightness: 0.2
+    macro_tint: [0.9, 0.85, 0.85]
+    cavity: 0.85
+    normal_strength: 2.0
+  cliff:
+    library: rock_cliff
+    reference_tile: 7dirttyl
+    repeat: 640
+    height_contrast: 0.5
+    macro_brightness: 0.15
+    cavity: 0.4
+    normal_strength: 1.3
+  grass_patches:
+    meadow: 0.8
+    library: grass_patchy
+    tint_scale: [0.68, 0.72, 0.6]
+    repeat: 640
+    height_contrast: 0.25
+    cavity: 0.35
+  # Keeps its own stones under the soil's tint: the scale cancels its lighter mean colour.
+  dirt_stones:
+    library: soil_stony
+    tint_scale: [0.57, 0.49, 0.48]
+    repeat: 640
+    height_contrast: 0.5
+    cavity: 0.8
+    normal_strength: 1.8
+  # The beach and seabed take the native shore tiles' dirt, lightened, as in MM6.
+  sand:
+    library: sand_ripples
+    reference_tile: 7dirttyl
+    tint_scale: [1.45, 1.42, 1.35]
+    repeat: 520
+    height_contrast: 0.3
+    macro_brightness: 0.12
+    cavity: 0.35
+    normal_strength: 1.2
+shore:
+  material: sand
+  beach_width: 150
+  beach_slope: 0.3
+  seabed_slope: 0.4
+  seabed_depth: 96
+  opaque_depth: 72
+  detail_depth: 24
+  range: 1024
+tiles:
+  - match: [7wtrtyl, "7hdwtr*"]
+    water: true
+  - match: [7grastyl]
+    material: grass
+  - match: [7dirttyl, 7dirt1, 7dirt2]
+    material: dirt
+  - match: [7sand]
+    material: desert
+  - match: [7snow]
+    material: snow
+  - match: ["7swtyl*"]
+    material: swamp
+  - match: [7wastetile]
+    material: wasteland
+  - match: ["7grdrt*"]
+    materials: [grass, dirt]
+  - match: ["7sndrt*"]
+    materials: [snow, dirt]
+  - match: ["7sddrt*"]
+    materials: [desert, dirt]
+  - match: ["7swdrt*"]
+    materials: [swamp, dirt]
+  - match: ["7wstdrt*"]
+    materials: [wasteland, dirt]
+  - match: ["7drsr*"]
+    materials: [road, dirt]
+  - match: ["7hwtrdr*"]
+    material: dirt
+# Each map's own shade of the shared ground. Harmondale and the Barrow
+# Downs paint their stony dirt in clumps, about a quarter of the dirt.
+maps:
+  7out01.odm:
+    grass: {shade: [0.95, 1.06, 0.9]}
+  7out02.odm:
+    dirt: {variant_amount: 0.25}
+  7out03.odm:
+    grass: {shade: [1.03, 1.0, 0.92]}
+  7out04.odm:
+    grass: {shade: [0.9, 1.02, 0.88]}
+  7out05.odm:
+    dirt: {shade: [0.85, 0.83, 0.85]}
+    desert: {shade: [0.9, 0.88, 0.88]}
+    wasteland: {shade: [0.88, 0.85, 0.85]}
+  7out06.odm:
+    desert: {shade: [1.08, 1.02, 0.92]}
+  out09.odm:
+    grass: {shade: [0.95, 1.04, 0.95]}
+  out10.odm:
+    dirt: {shade: [0.85, 0.82, 0.82]}
+    desert: {shade: [0.9, 0.88, 0.86]}
+  out11.odm:
+    grass: {shade: [0.95, 0.93, 0.85]}
+    dirt: {variant_amount: 0.25}
+  out14.odm:
+    grass: {shade: [0.94, 1.05, 0.92]}
+slope:
+  material: cliff
+  start: 0.36
+  end: 0.56

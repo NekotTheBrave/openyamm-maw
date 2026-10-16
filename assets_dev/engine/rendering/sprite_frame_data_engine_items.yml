@@ -1,0 +1,11 @@
+# Sprite frame groups for engine-authored items (no native MM6-MM8 source), appended to the common table.
+# Kept out of sprite_frame_data_common.yml, which outdoor lighting bakes depend on. Use sprite_id 23990-23999.
+sprites:
+  - sprite_id: 23990
+    sprite_name: "blastsg"
+    animation_length_raw: 1
+    frames:
+      - texture_name: "blastsg"
+        frame_length_raw: 1
+        flags: [First, Image1]
+        palette_id: 547

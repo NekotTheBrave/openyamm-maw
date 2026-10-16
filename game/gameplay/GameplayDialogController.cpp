@@ -4251,7 +4251,8 @@ GameplayDialogController::Result GameplayDialogController::openNpcNews(
     uint32_t newsId,
     const std::string &titleOverride,
     const std::string &newsText,
-    uint32_t participantPictureId) const
+    uint32_t participantPictureId,
+    std::optional<uint32_t> sourceActorIndex) const
 {
     Result result = {};
     result.previousMessageCount = context.eventRuntimeState.messages.size();
@@ -4264,6 +4265,7 @@ GameplayDialogController::Result GameplayDialogController::openNpcNews(
     EventRuntimeState::PendingDialogueContext pendingContext = {};
     pendingContext.kind = DialogueContextKind::NpcNews;
     pendingContext.sourceId = npcId;
+    pendingContext.sourceActorIndex = sourceActorIndex;
     pendingContext.newsId = newsId;
     pendingContext.participantPictureId = participantPictureId;
     pendingContext.titleOverride = titleOverride;

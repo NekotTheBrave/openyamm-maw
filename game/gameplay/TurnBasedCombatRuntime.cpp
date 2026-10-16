@@ -18,9 +18,8 @@ namespace
 {
 constexpr float OeRealtimeRecoveryScale = 2.133333333333333f;
 constexpr float TurnTicksPerSecond = 128.0f;
-constexpr int TurnMovementStepActionPoints = 26;
-constexpr int TurnMovementActionPoints = 130;
-constexpr float TurnMovementStepSeconds = static_cast<float>(TurnMovementStepActionPoints) / TurnTicksPerSecond;
+// 130 movement points per turn, spent at one point per tick of walking: about one second of movement.
+constexpr float TurnMovementActionPoints = 130.0f;
 constexpr float LegacyGameTicksPerMinute = 256.0f;
 constexpr float CompletedTurnGameTimeTicks = 213.0f;
 constexpr float CompletedTurnGameTimeMinutes = CompletedTurnGameTimeTicks / LegacyGameTicksPerMinute;
@@ -29,7 +28,10 @@ constexpr float ActorActionResolutionMaxTicks = 128.0f;
 constexpr float ActorNearbyDistance = 5120.0f;
 constexpr int InactiveInitiative = 1001;
 constexpr int MinimumPlayerRecoveryTicks = 30;
-constexpr int ActorPostWaitRecoveryInitiative = 100;
+// Granted actors finish their attack (animation and impact) within this many ticks; longer means stuck.
+constexpr float ActorTurnActionMaxTicks = 384.0f;
+constexpr int ArrivedActorInitiative = 1;
+constexpr int ArrivedCharacterInitiative = 100;
 
 float ticksToRecoverySeconds(int ticks)
 {
@@ -50,6 +52,32 @@ bool memberCanStayInTurnQueue(const Character &member)
 bool actorCanEnterTurnQueue(const GameplayRuntimeActorState &actor)
 {
     return !actor.isDead && actor.hostileToParty;
+}
+
+bool actorIsNearParty(
+    const GameplayRuntimeActorState &actor,
+    float partyX,
+    float partyY,
+    float partyZ);
+
+// Matches OE's turn queue scan, which skips actor 10.
+bool actorCanJoinTurnQueue(const IGameplayWorldRuntime &worldRuntime, size_t actorIndex, bool &distant)
+{
+    GameplayRuntimeActorState actor = {};
+    distant = false;
+
+    if (actorIndex == 10 || !worldRuntime.actorRuntimeState(actorIndex, actor) || !actorCanEnterTurnQueue(actor))
+    {
+        return false;
+    }
+
+    if (!actorIsNearParty(actor, worldRuntime.partyX(), worldRuntime.partyY(), worldRuntime.partyFootZ()))
+    {
+        distant = true;
+        return false;
+    }
+
+    return true;
 }
 
 bool actorIsNearParty(
@@ -128,7 +156,7 @@ TurnBasedCombatStage TurnBasedCombatRuntime::stage() const
 
 int TurnBasedCombatRuntime::movementActionPoints() const
 {
-    return m_movementActionPoints;
+    return static_cast<int>(std::ceil(m_movementActionPoints));
 }
 
 int TurnBasedCombatRuntime::pendingActions() const
@@ -160,7 +188,19 @@ bool TurnBasedCombatRuntime::shouldUpdateActorAi(const Party *pParty) const
         return true;
     }
 
-    return false;
+    // In the attack stage actor AI runs only while granted actors take their queued action.
+    return m_stage == TurnBasedCombatStage::Attack && m_resolvingActorActions;
+}
+
+ActorTurnBasedMode TurnBasedCombatRuntime::actorMode() const
+{
+    if (!m_active)
+    {
+        return ActorTurnBasedMode::RealTime;
+    }
+
+    // OE moves actors only during the wait stage and lets them attack only on their attack-stage turn.
+    return m_stage == TurnBasedCombatStage::Wait ? ActorTurnBasedMode::MoveOnly : ActorTurnBasedMode::Hold;
 }
 
 bool TurnBasedCombatRuntime::frontQueueCharacter(size_t &memberIndex) const
@@ -191,10 +231,11 @@ bool TurnBasedCombatRuntime::begin(Party &party, const IGameplayWorldRuntime *pW
     m_turnInitiative = 100;
     m_turnCount = 0;
     m_pendingActions = 0;
-    m_movementActionPoints = 0;
+    m_movementActionPoints = 0.0f;
     m_actorActionTimerTicks = 0.0f;
     m_movementFinished = false;
     m_waitingForActorActionResolution = false;
+    m_resolvingActorActions = false;
     m_pendingGameTimeAdvanceMinutes = 0.0f;
     clearMovementLatches();
     m_loggedReadyMemberIndex.reset();
@@ -215,7 +256,7 @@ bool TurnBasedCombatRuntime::begin(Party &party, const IGameplayWorldRuntime *pW
     return true;
 }
 
-void TurnBasedCombatRuntime::end(Party *pParty, bool preserveRecovery)
+void TurnBasedCombatRuntime::end(Party *pParty, IGameplayWorldRuntime *pWorldRuntime, bool preserveRecovery)
 {
     GAMEPLAY_DEBUG_TRACE(
         "turn_based_end stage=" + std::string(turnStageName(m_stage))
@@ -225,21 +266,34 @@ void TurnBasedCombatRuntime::end(Party *pParty, bool preserveRecovery)
         + " actor_action_ticks=" + std::to_string(m_actorActionTimerTicks)
         + " " + queueSummary(m_queue));
 
-    if (preserveRecovery && pParty != nullptr)
+    if (preserveRecovery)
     {
         for (const QueueEntry &entry : m_queue)
         {
-            if (entry.kind != QueueEntry::Kind::Character || entry.id >= pParty->members().size())
+            const int remainingTicks = std::max(0, entry.initiative);
+            if (remainingTicks >= InactiveInitiative)
             {
                 continue;
             }
 
-            const int remainingTicks = std::max(0, entry.initiative);
-            if (remainingTicks > 0 && remainingTicks < InactiveInitiative)
+            if (entry.kind == QueueEntry::Kind::Character)
             {
-                pParty->applyRecoveryToMember(entry.id, ticksToRecoverySeconds(remainingTicks));
+                if (pParty != nullptr && entry.id < pParty->members().size() && remainingTicks > 0)
+                {
+                    pParty->applyRecoveryToMember(entry.id, ticksToRecoverySeconds(remainingTicks));
+                }
+            }
+            else if (pWorldRuntime != nullptr)
+            {
+                // OE carries each monster's remaining initiative into its realtime recovery.
+                pWorldRuntime->setActorAttackCooldownSeconds(entry.id, ticksToRecoverySeconds(remainingTicks));
             }
         }
+    }
+
+    if (pWorldRuntime != nullptr)
+    {
+        pWorldRuntime->setTurnBasedActorMode(ActorTurnBasedMode::RealTime);
     }
 
     reset();
@@ -252,12 +306,13 @@ void TurnBasedCombatRuntime::reset()
     m_queue.clear();
     m_turnInitiative = 100;
     m_aiTurnTimerTicks = 0.0f;
-    m_movementActionPoints = 0;
+    m_movementActionPoints = 0.0f;
     m_pendingActions = 0;
     m_turnCount = 0;
     m_actorActionTimerTicks = 0.0f;
     m_movementFinished = false;
     m_waitingForActorActionResolution = false;
+    m_resolvingActorActions = false;
     m_pendingGameTimeAdvanceMinutes = 0.0f;
     clearMovementLatches();
     m_loggedReadyMemberIndex.reset();
@@ -283,7 +338,7 @@ bool TurnBasedCombatRuntime::canToggleOff(const Party &party) const
     return canBeginPlayerAction(party);
 }
 
-bool TurnBasedCombatRuntime::toggle(Party &party, const IGameplayWorldRuntime *pWorldRuntime)
+bool TurnBasedCombatRuntime::toggle(Party &party, IGameplayWorldRuntime *pWorldRuntime)
 {
     if (!m_active)
     {
@@ -300,7 +355,7 @@ bool TurnBasedCombatRuntime::toggle(Party &party, const IGameplayWorldRuntime *p
         return false;
     }
 
-    end(&party);
+    end(&party, pWorldRuntime);
     return true;
 }
 
@@ -318,6 +373,7 @@ bool TurnBasedCombatRuntime::update(Party *pParty, IGameplayWorldRuntime *pWorld
     }
 
     removeInvalidEntries(*pParty);
+    removeInvalidActorEntries(pWorldRuntime);
 
     if (m_stage == TurnBasedCombatStage::Wait)
     {
@@ -342,7 +398,7 @@ bool TurnBasedCombatRuntime::update(Party *pParty, IGameplayWorldRuntime *pWorld
                 pWorldRuntime->stopTurnBasedActorMovement();
             }
 
-            enterAttackStage(pParty);
+            enterAttackStage(pParty, pWorldRuntime);
             GAMEPLAY_DEBUG_TRACE(
                 "turn_based_stage stage=attack reason=actor_actions_resolved " + queueSummary(m_queue));
             return true;
@@ -367,17 +423,14 @@ bool TurnBasedCombatRuntime::update(Party *pParty, IGameplayWorldRuntime *pWorld
                 pWorldRuntime->stopTurnBasedActorMovement();
             }
 
-            enterAttackStage(pParty);
+            enterAttackStage(pParty, pWorldRuntime);
             GAMEPLAY_DEBUG_TRACE(
                 "turn_based_stage stage=attack reason=wait_finished " + queueSummary(m_queue));
         }
     }
     else if (m_stage == TurnBasedCombatStage::Attack)
     {
-        if (!hasPendingActions())
-        {
-            advanceAttackQueue(pParty, false);
-        }
+        updateAttackStage(pParty, pWorldRuntime, deltaSeconds);
     }
     else if (m_stage == TurnBasedCombatStage::Movement)
     {
@@ -399,9 +452,10 @@ bool TurnBasedCombatRuntime::update(Party *pParty, IGameplayWorldRuntime *pWorld
     return true;
 }
 
-bool TurnBasedCombatRuntime::noteMovementInput(GameplayInputFrame &input)
+bool TurnBasedCombatRuntime::noteMovementInput(GameplayInputFrame &input, float deltaSeconds)
 {
     m_movementStepThisFrame = false;
+    m_movementStepSeconds = 0.0f;
 
     if (!m_active)
     {
@@ -448,7 +502,9 @@ bool TurnBasedCombatRuntime::noteMovementInput(GameplayInputFrame &input)
 
     const bool consumeAny = forwardHeld || backwardHeld || leftHeld || rightHeld;
 
-    if (!consumeAny || !consumeMovementActionPoint())
+    const float stepSeconds = consumeAny ? spendMovementBudget(deltaSeconds) : 0.0f;
+
+    if (stepSeconds <= 0.0f)
     {
         if (consumeAny)
         {
@@ -475,6 +531,7 @@ bool TurnBasedCombatRuntime::noteMovementInput(GameplayInputFrame &input)
     setActionState(input, KeyboardAction::FlyDown, false);
     input.turnBasedMovementStep = true;
     m_movementStepThisFrame = true;
+    m_movementStepSeconds = stepSeconds;
     GAMEPLAY_DEBUG_TRACE(
         std::string("turn_based_movement_step forward=") + (forwardHeld ? "true" : "false")
         + " backward=" + (backwardHeld ? "true" : "false")
@@ -494,7 +551,7 @@ float TurnBasedCombatRuntime::movementDeltaSecondsForFrame(float fallbackDeltaSe
     if (m_stage == TurnBasedCombatStage::Movement && m_movementStepThisFrame)
     {
         (void)fallbackDeltaSeconds;
-        return TurnMovementStepSeconds;
+        return m_movementStepSeconds;
     }
 
     return 0.0f;
@@ -627,7 +684,7 @@ bool TurnBasedCombatRuntime::applyPlayerAction(Party &party, size_t memberIndex,
     }
 
     sortQueue(&party);
-    advanceAttackQueue(&party, false);
+    advanceAttackQueue(&party);
     GAMEPLAY_DEBUG_TRACE(
         "turn_based_player_action_applied member=" + std::to_string(memberIndex)
         + " recovery_ticks=" + std::to_string(requestedRecoveryTicks)
@@ -686,7 +743,8 @@ void TurnBasedCombatRuntime::rebuildInitialQueue(Party &party, const IGameplayWo
             m_queue.push_back(QueueEntry{
                 .kind = QueueEntry::Kind::Character,
                 .id = memberIndex,
-                .initiative = recoverySecondsToTicks(member.recoverySecondsRemaining) * 15 / 32 + 16,
+                // MM8 Start scales remaining recovery by 0.46875 and, unlike OE, adds no 16-tick offset.
+                .initiative = recoverySecondsToTicks(member.recoverySecondsRemaining) * 15 / 32,
             });
         }
     }
@@ -724,27 +782,25 @@ void TurnBasedCombatRuntime::rebuildInitialQueue(Party &party, const IGameplayWo
 
         for (size_t actorIndex = 0; actorIndex < actorCount; ++actorIndex)
         {
-            GameplayRuntimeActorState actor = {};
-            if (actorIndex == 10
-                || !pWorldRuntime->actorRuntimeState(actorIndex, actor)
-                || !actorCanEnterTurnQueue(actor))
+            bool distant = false;
+            if (!actorCanJoinTurnQueue(*pWorldRuntime, actorIndex, distant))
             {
+                if (distant)
+                {
+                    ++candidateActors;
+                    ++distantActors;
+                }
+
                 continue;
             }
 
             ++candidateActors;
 
-            if (!actorIsNearParty(actor, partyX, partyY, partyZ))
-            {
-                ++distantActors;
-                continue;
-            }
-
             const uint32_t roll = static_cast<uint32_t>((actorIndex * 1103515245u + 12345u) >> 16) % 3u;
             m_queue.push_back(QueueEntry{
                 .kind = QueueEntry::Kind::Actor,
                 .id = actorIndex,
-                .initiative = 17 + static_cast<int>(roll) * 2,
+                .initiative = 1 + static_cast<int>(roll) * 2,
             });
             ++queuedActors;
         }
@@ -757,6 +813,78 @@ void TurnBasedCombatRuntime::rebuildInitialQueue(Party &party, const IGameplayWo
             + " party=(" + std::to_string(partyX) + "," + std::to_string(partyY)
             + "," + std::to_string(partyZ) + ")");
     }
+}
+
+void TurnBasedCombatRuntime::addArrivedCombatants(const Party &party, const IGameplayWorldRuntime *pWorldRuntime)
+{
+    const auto queued = [this](QueueEntry::Kind kind, size_t id)
+    {
+        return std::any_of(
+            m_queue.begin(),
+            m_queue.end(),
+            [kind, id](const QueueEntry &entry)
+            {
+                return entry.kind == kind && entry.id == id;
+            });
+    };
+
+    // OE StartTurn: members able to act again rejoin at full turn initiative, newly arrived actors act first.
+    for (size_t memberIndex = 0; memberIndex < party.members().size(); ++memberIndex)
+    {
+        if (memberCanStayInTurnQueue(party.members()[memberIndex])
+            && !queued(QueueEntry::Kind::Character, memberIndex))
+        {
+            m_queue.push_back(QueueEntry{
+                .kind = QueueEntry::Kind::Character,
+                .id = memberIndex,
+                .initiative = ArrivedCharacterInitiative,
+            });
+        }
+    }
+
+    if (pWorldRuntime == nullptr)
+    {
+        return;
+    }
+
+    for (size_t actorIndex = 0; actorIndex < pWorldRuntime->mapActorCount(); ++actorIndex)
+    {
+        bool distant = false;
+        if (!queued(QueueEntry::Kind::Actor, actorIndex)
+            && actorCanJoinTurnQueue(*pWorldRuntime, actorIndex, distant))
+        {
+            m_queue.push_back(QueueEntry{
+                .kind = QueueEntry::Kind::Actor,
+                .id = actorIndex,
+                .initiative = ArrivedActorInitiative,
+            });
+            GAMEPLAY_DEBUG_TRACE("turn_based_actor_joined actor=" + std::to_string(actorIndex));
+        }
+    }
+}
+
+void TurnBasedCombatRuntime::removeInvalidActorEntries(const IGameplayWorldRuntime *pWorldRuntime)
+{
+    if (pWorldRuntime == nullptr)
+    {
+        return;
+    }
+
+    m_queue.erase(
+        std::remove_if(
+            m_queue.begin(),
+            m_queue.end(),
+            [pWorldRuntime](const QueueEntry &entry)
+            {
+                if (entry.kind != QueueEntry::Kind::Actor)
+                {
+                    return false;
+                }
+
+                GameplayRuntimeActorState actor = {};
+                return !pWorldRuntime->actorRuntimeState(entry.id, actor) || !actorCanEnterTurnQueue(actor);
+            }),
+        m_queue.end());
 }
 
 std::optional<size_t> TurnBasedCombatRuntime::readyCharacterQueueIndex(const Party *pParty) const
@@ -868,7 +996,7 @@ void TurnBasedCombatRuntime::removeInvalidEntries(const Party &party)
         m_queue.end());
 }
 
-void TurnBasedCombatRuntime::advanceAttackQueue(Party *pParty, bool resolveReadyActors)
+void TurnBasedCombatRuntime::advanceAttackQueue(Party *pParty)
 {
     if (pParty == nullptr || m_queue.empty())
     {
@@ -897,32 +1025,9 @@ void TurnBasedCombatRuntime::advanceAttackQueue(Party *pParty, bool resolveReady
 
         if (readyActorQueued())
         {
-            if (!resolveReadyActors)
-            {
-                enterMovementStage();
-                GAMEPLAY_DEBUG_TRACE(
-                    "turn_based_stage stage=movement reason=actor_ready turn_initiative="
-                    + std::to_string(m_turnInitiative)
-                    + " movement_ap=" + std::to_string(m_movementActionPoints)
-                    + " " + queueSummary(m_queue));
-                return;
-            }
-
-            size_t resolvedActors = 0;
-            for (QueueEntry &entry : m_queue)
-            {
-                if (entry.kind == QueueEntry::Kind::Actor && entry.initiative <= 0)
-                {
-                    entry.initiative = ActorPostWaitRecoveryInitiative;
-                    ++resolvedActors;
-                }
-            }
-
-            GAMEPLAY_DEBUG_TRACE(
-                "turn_based_actor_ready_resolved count=" + std::to_string(resolvedActors)
-                + " " + queueSummary(m_queue));
+            // Ready actors take their action through beginReadyActorActions, which needs the world.
             m_loggedReadyMemberIndex.reset();
-            continue;
+            return;
         }
 
         int nextInitiative = InactiveInitiative;
@@ -962,7 +1067,7 @@ void TurnBasedCombatRuntime::advanceAttackQueue(Party *pParty, bool resolveReady
             + " turn_initiative=" + std::to_string(m_turnInitiative)
             + " " + queueSummary(m_queue));
 
-        if (m_turnInitiative <= 0 && !readyCharacterQueueIndex(pParty))
+        if (m_turnInitiative <= 0 && !readyCharacterQueueIndex(pParty) && !readyActorQueued())
         {
             enterMovementStage();
             GAMEPLAY_DEBUG_TRACE(
@@ -975,39 +1080,112 @@ void TurnBasedCombatRuntime::advanceAttackQueue(Party *pParty, bool resolveReady
     }
 }
 
+void TurnBasedCombatRuntime::beginReadyActorActions(Party *pParty, IGameplayWorldRuntime *pWorldRuntime)
+{
+    if (pWorldRuntime == nullptr
+        || m_stage != TurnBasedCombatStage::Attack
+        || m_resolvingActorActions
+        || readyCharacterQueueIndex(pParty)
+        || !readyActorQueued())
+    {
+        return;
+    }
+
+    size_t grantedActors = 0;
+    for (QueueEntry &entry : m_queue)
+    {
+        if (entry.kind != QueueEntry::Kind::Actor || entry.initiative > 0)
+        {
+            continue;
+        }
+
+        // OE: an actor acts when its initiative runs out, then waits its own monster recovery.
+        pWorldRuntime->grantTurnBasedActorAction(entry.id);
+        entry.initiative = std::max(1, pWorldRuntime->turnBasedActorRecoveryTicks(entry.id));
+        ++grantedActors;
+    }
+
+    m_resolvingActorActions = true;
+    m_actorActionTimerTicks = 0.0f;
+    sortQueue(pParty);
+    GAMEPLAY_DEBUG_TRACE(
+        "turn_based_actor_actions_granted count=" + std::to_string(grantedActors)
+        + " " + queueSummary(m_queue));
+}
+
+void TurnBasedCombatRuntime::updateAttackStage(
+    Party *pParty,
+    IGameplayWorldRuntime *pWorldRuntime,
+    float deltaSeconds)
+{
+    if (m_resolvingActorActions)
+    {
+        m_actorActionTimerTicks += std::max(0.0f, deltaSeconds) * TurnTicksPerSecond;
+        const bool actorsBusy =
+            pWorldRuntime != nullptr
+            && (pWorldRuntime->turnBasedActorActionGrantPending() || pWorldRuntime->turnBasedActorActionInProgress());
+
+        if (actorsBusy && m_actorActionTimerTicks < ActorTurnActionMaxTicks)
+        {
+            return;
+        }
+
+        GAMEPLAY_DEBUG_TRACE(
+            std::string("turn_based_actor_actions_resolved timeout=") + (actorsBusy ? "true" : "false")
+            + " ticks=" + std::to_string(m_actorActionTimerTicks));
+        m_resolvingActorActions = false;
+    }
+
+    if (hasPendingActions())
+    {
+        return;
+    }
+
+    advanceAttackQueue(pParty);
+    beginReadyActorActions(pParty, pWorldRuntime);
+}
+
 void TurnBasedCombatRuntime::enterWaitStage()
 {
     m_stage = TurnBasedCombatStage::Wait;
     m_aiTurnTimerTicks = InitialWaitTicks;
     m_actorActionTimerTicks = 0.0f;
-    m_movementActionPoints = 0;
+    m_movementActionPoints = 0.0f;
     m_movementFinished = false;
     m_movementStepThisFrame = false;
+    m_movementStepSeconds = 0.0f;
     m_waitingForActorActionResolution = false;
     clearMovementLatches();
     m_loggedReadyMemberIndex.reset();
 }
 
-void TurnBasedCombatRuntime::enterAttackStage(Party *pParty)
+void TurnBasedCombatRuntime::enterAttackStage(Party *pParty, IGameplayWorldRuntime *pWorldRuntime)
 {
     m_stage = TurnBasedCombatStage::Attack;
     m_turnInitiative = 100;
     m_actorActionTimerTicks = 0.0f;
     ++m_turnCount;
-    m_movementActionPoints = 0;
+    m_movementActionPoints = 0.0f;
     m_movementFinished = false;
     m_waitingForActorActionResolution = false;
+    m_resolvingActorActions = false;
     m_loggedReadyMemberIndex.reset();
 
     for (QueueEntry &entry : m_queue)
     {
-        if (entry.initiative == 0)
+        if (entry.initiative <= 0)
         {
             entry.initiative = 100;
         }
     }
 
-    advanceAttackQueue(pParty, true);
+    if (pParty != nullptr)
+    {
+        addArrivedCombatants(*pParty, pWorldRuntime);
+    }
+
+    advanceAttackQueue(pParty);
+    beginReadyActorActions(pParty, pWorldRuntime);
 }
 
 void TurnBasedCombatRuntime::enterMovementStage()
@@ -1017,29 +1195,31 @@ void TurnBasedCombatRuntime::enterMovementStage()
     m_movementActionPoints = TurnMovementActionPoints;
     m_movementFinished = false;
     m_movementStepThisFrame = false;
+    m_movementStepSeconds = 0.0f;
     m_waitingForActorActionResolution = false;
     clearMovementLatches();
     m_loggedReadyMemberIndex.reset();
 }
 
-bool TurnBasedCombatRuntime::consumeMovementActionPoint()
+float TurnBasedCombatRuntime::spendMovementBudget(float deltaSeconds)
 {
-    if (m_movementActionPoints <= 0)
+    if (m_movementActionPoints <= 0.0f || deltaSeconds <= 0.0f)
     {
-        m_movementActionPoints = 0;
-        m_movementFinished = true;
-        return false;
+        m_movementActionPoints = std::max(0.0f, m_movementActionPoints);
+        m_movementFinished = m_movementFinished || m_movementActionPoints <= 0.0f;
+        return 0.0f;
     }
 
-    m_movementActionPoints = std::max(0, m_movementActionPoints - TurnMovementStepActionPoints);
+    const float stepSeconds = std::min(deltaSeconds, m_movementActionPoints / TurnTicksPerSecond);
+    m_movementActionPoints = std::max(0.0f, m_movementActionPoints - stepSeconds * TurnTicksPerSecond);
 
-    if (m_movementActionPoints <= 0)
+    if (m_movementActionPoints <= 0.001f)
     {
-        m_movementActionPoints = 0;
+        m_movementActionPoints = 0.0f;
         m_movementFinished = true;
     }
 
-    return true;
+    return stepSeconds;
 }
 
 void TurnBasedCombatRuntime::clearMovementLatches()

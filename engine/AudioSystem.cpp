@@ -183,6 +183,28 @@ uint64_t AudioSystem::playClip(const std::string &virtualPath, const PlaybackOpt
     return m_playingInstances.back().instanceId;
 }
 
+uint64_t AudioSystem::playStream(std::shared_ptr<AudioStreamSource> pSource, const PlaybackOptions &options)
+{
+    if (pSource == nullptr)
+    {
+        return 0;
+    }
+
+    PlayingInstance instance = {};
+    instance.instanceId = m_nextInstanceId++;
+    instance.pStream = std::move(pSource);
+    instance.volume = std::clamp(options.volume * GlobalSoundGain, 0.0f, 2.0f);
+    instance.positional = options.positional;
+    instance.attenuate = options.attenuate;
+    instance.x = options.x;
+    instance.y = options.y;
+    instance.z = options.z;
+    instance.innerRadius = options.innerRadius;
+    instance.outerRadius = options.outerRadius;
+    m_playingInstances.push_back(std::move(instance));
+    return m_playingInstances.back().instanceId;
+}
+
 void AudioSystem::stopClip(uint64_t instanceId)
 {
     m_playingInstances.erase(
@@ -386,7 +408,8 @@ bool AudioSystem::hasMixableInstances() const
         m_playingInstances.end(),
         [](const PlayingInstance &instance)
         {
-            return !instance.paused && instance.pClip != nullptr && instance.pClip->frameCount > 0;
+            return !instance.paused
+                && (instance.pStream != nullptr || (instance.pClip != nullptr && instance.pClip->frameCount > 0));
         });
 }
 
@@ -396,7 +419,30 @@ void AudioSystem::mixNextChunk(const ListenerState &listenerState)
 
     for (PlayingInstance &instance : m_playingInstances)
     {
-        if (instance.paused || instance.pClip == nullptr || instance.pClip->frameCount == 0)
+        if (instance.paused)
+        {
+            continue;
+        }
+
+        if (instance.pStream != nullptr)
+        {
+            float leftGain = 0.0f;
+            float rightGain = 0.0f;
+            calculateStereoGains(listenerState, instance, leftGain, rightGain);
+            m_streamSamples.resize(static_cast<size_t>(MixChunkFrames * OutputChannels));
+            const uint32_t frameCount = instance.pStream->read(m_streamSamples.data(), MixChunkFrames);
+
+            for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex)
+            {
+                const size_t index = static_cast<size_t>(frameIndex) * OutputChannels;
+                mixedSamples[index] += m_streamSamples[index] * leftGain;
+                mixedSamples[index + 1] += m_streamSamples[index + 1] * rightGain;
+            }
+
+            continue;
+        }
+
+        if (instance.pClip == nullptr || instance.pClip->frameCount == 0)
         {
             continue;
         }
@@ -448,6 +494,11 @@ void AudioSystem::mixNextChunk(const ListenerState &listenerState)
             m_playingInstances.end(),
             [](const PlayingInstance &instance)
             {
+                if (instance.pStream != nullptr)
+                {
+                    return instance.pStream->finished();
+                }
+
                 return instance.pClip == nullptr
                     || (!instance.loop && instance.frameOffset >= static_cast<double>(instance.pClip->frameCount));
             }),

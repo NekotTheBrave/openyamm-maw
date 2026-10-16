@@ -1,5 +1,6 @@
 #include "game/data/GameDataLoader.h"
 #include "game/mod/ModHooks.h"
+#include "game/render/SkyPresets.h"
 
 #include "game/arcomage/ArcomageLoader.h"
 #include "engine/ImageAssetLoader.h"
@@ -9,6 +10,7 @@
 #include "game/content/ContentTableComposer.h"
 #include "game/events/EventRuntime.h"
 #include "game/gameplay/InteractiveDecorationRules.h"
+#include "game/maps/ActorModelManifest.h"
 #include "game/maps/MapIdentity.h"
 #include "game/maps/MapDecorationTextures.h"
 #include "game/StringUtils.h"
@@ -529,52 +531,19 @@ std::string normalizedTableTextureName(const std::string &value)
     return toLowerCopy(trimCopy(value));
 }
 
-std::optional<std::string> skyTextureAssetStem(const std::string &entryName)
+// The legacy sky names the enhanced sky knows (engine/rendering/sky/sky.yml aliases): every name the data can select.
+// MMerge sky names resolve to the first of their world-prefixed candidates the library knows.
+std::unordered_set<std::string> buildKnownSkyNameSet(const Engine::AssetFileSystem &assetFileSystem)
 {
-    const std::string normalizedEntryName = toLowerCopy(entryName);
-
-    if (normalizedEntryName.ends_with(".png") || normalizedEntryName.ends_with(".bmp"))
+    const std::optional<std::string> text = assetFileSystem.readTextFile("engine/rendering/sky/sky.yml");
+    SkyPresetLibrary library;
+    std::string error;
+    if (!text || !library.loadFromYaml(*text, error))
     {
-        return normalizedEntryName.substr(0, normalizedEntryName.size() - 4);
+        throw std::runtime_error("Cannot load the sky library for sky name resolution: " + error);
     }
-
-    return std::nullopt;
-}
-
-std::unordered_set<std::string> buildSkyTextureAssetNameSet(const Engine::AssetFileSystem &assetFileSystem)
-{
-    std::unordered_set<std::string> textureNames;
-
-    for (const std::string &entryName : assetFileSystem.enumerate("sky_textures"))
-    {
-        const std::optional<std::string> textureName = skyTextureAssetStem(entryName);
-
-        if (textureName)
-        {
-            textureNames.insert(*textureName);
-        }
-    }
-
-    return textureNames;
-}
-
-bool skyTextureAssetExists(
-    const Engine::AssetFileSystem &assetFileSystem,
-    const std::unordered_set<std::string> *pSkyTextureAssetNames,
-    const std::string &textureName)
-{
-    if (textureName.empty())
-    {
-        return false;
-    }
-
-    if (pSkyTextureAssetNames != nullptr)
-    {
-        return pSkyTextureAssetNames->find(toLowerCopy(textureName)) != pSkyTextureAssetNames->end();
-    }
-
-    const std::string basePath = "sky_textures/" + textureName;
-    return assetFileSystem.exists(basePath + ".png") || assetFileSystem.exists(basePath + ".bmp");
+    const std::vector<std::string> names = library.skyNames();
+    return {names.begin(), names.end()};
 }
 
 void appendCandidateIfMissing(std::vector<std::string> &candidates, const std::string &candidate)
@@ -705,14 +674,13 @@ std::vector<std::string> buildMergedSkyTextureCandidates(
 }
 
 std::string resolveMergedSkyTextureName(
-    const Engine::AssetFileSystem &assetFileSystem,
-    const std::unordered_set<std::string> *pSkyTextureAssetNames,
+    const std::unordered_set<std::string> &knownSkyNames,
     const std::string &activeWorldId,
     const std::string &textureName)
 {
     for (const std::string &candidate : buildMergedSkyTextureCandidates(activeWorldId, textureName))
     {
-        if (skyTextureAssetExists(assetFileSystem, pSkyTextureAssetNames, candidate))
+        if (knownSkyNames.contains(toLowerCopy(candidate)))
         {
             return candidate;
         }
@@ -1363,6 +1331,13 @@ void appendIndoorScriptTextures(
             continue;
         }
 
+        if (std::optional<OutdoorBitmapTexture> cooked = loadCookedSurfaceTexture(
+                assetFileSystem, textureName, directoryAssetPathsByPath, bitmapPathByKey, nullptr))
+        {
+            indoorTextureSet->textures.push_back(std::move(*cooked));
+            continue;
+        }
+
         int textureWidth = 0;
         int textureHeight = 0;
         const std::optional<std::vector<uint8_t>> pixels =
@@ -1515,7 +1490,7 @@ void GameDataLoader::setActiveWorldId(const std::string &worldId)
     if (m_activeWorldId != normalizedWorldId)
     {
         m_mapAssetLoadSharedCache = {};
-        m_skyTextureAssetNames.reset();
+        m_knownSkyNames.reset();
         m_resolvedMergedSkyTextureNameByKey.clear();
         m_scriptBitmapDirectoryAssetPathsByPath.clear();
         m_scriptBitmapPathByKey.clear();
@@ -1523,6 +1498,67 @@ void GameDataLoader::setActiveWorldId(const std::string &worldId)
     }
 
     m_activeWorldId = normalizedWorldId;
+}
+
+void GameDataLoader::setActorModels(bool enabled, const std::string &overrideManifestPath)
+{
+    if (m_actorModelsEnabled != enabled || m_actorModelManifestOverride != overrideManifestPath)
+    {
+        m_actorModelsEnabled = enabled;
+        m_actorModelManifestOverride = overrideManifestPath;
+        m_pActorModelManifest.reset();
+        m_actorModelManifestWorldId.clear();
+    }
+}
+
+const std::shared_ptr<const ActorModelManifest> &GameDataLoader::actorModelManifest() const
+{
+    return m_pActorModelManifest;
+}
+
+bool GameDataLoader::ensureActorModelManifest(const Engine::AssetFileSystem &assetFileSystem)
+{
+    if (!m_actorModelsEnabled)
+    {
+        m_pActorModelManifest.reset();
+        return true;
+    }
+    if (m_pActorModelManifest != nullptr && m_actorModelManifestWorldId == m_activeWorldId
+        && m_actorModelManifestGeneration == assetFileSystem.contentGeneration())
+    {
+        return true;
+    }
+    std::vector<std::string> paths;
+    std::string activePath;
+    if (!m_actorModelManifestOverride.empty())
+    {
+        paths.push_back(m_actorModelManifestOverride);
+    }
+    else
+    {
+        for (const std::string &worldPackageId : assetFileSystem.enumerate("worlds"))
+        {
+            const std::string worldId = normalizeWorldId(worldPackageId);
+            if (!worldId.empty())
+            {
+                paths.push_back("worlds/" + worldId + "/models/actors.yml");
+            }
+        }
+        std::sort(paths.begin(), paths.end());
+        activePath = "worlds/" + m_activeWorldId + "/models/actors.yml";
+    }
+    std::shared_ptr<ActorModelManifest> pManifest = std::make_shared<ActorModelManifest>();
+    std::string error;
+    if (!pManifest->load(assetFileSystem, paths, activePath, m_monsterTable, error))
+    {
+        std::cerr << "Actor model manifest failed to load: " << error << '\n';
+        m_pActorModelManifest.reset();
+        return false;
+    }
+    m_pActorModelManifest = std::move(pManifest);
+    m_actorModelManifestWorldId = m_activeWorldId;
+    m_actorModelManifestGeneration = assetFileSystem.contentGeneration();
+    return true;
 }
 
 void GameDataLoader::setInitialMapFileName(const std::string &fileName)
@@ -1556,7 +1592,7 @@ bool GameDataLoader::loadInternal(
     m_selectedMapRenderSourcePixelsReleased = false;
     m_lastReleasedMapRenderSourcePixelBytes = 0;
     m_mapAssetLoadSharedCache = {};
-    m_skyTextureAssetNames.reset();
+    m_knownSkyNames.reset();
     m_resolvedMergedSkyTextureNameByKey.clear();
     m_scriptBitmapDirectoryAssetPathsByPath.clear();
     m_scriptBitmapPathByKey.clear();
@@ -2564,6 +2600,20 @@ bool GameDataLoader::loadMonsterTable(const Engine::AssetFileSystem &assetFileSy
     if (!m_monsterTable.loadRelationsFromRows(monsterRelationRows))
     {
         std::cerr << "Failed to parse monster relation table: " << monsterRelationPath << '\n';
+        return false;
+    }
+
+    std::vector<std::vector<std::string>> meleeHitMaterialRows;
+    const std::string meleeHitMaterialPath = engineDataTablePath("melee_hit_materials.txt");
+
+    if (!loadTextTableRows(assetFileSystem, meleeHitMaterialPath, meleeHitMaterialRows))
+    {
+        return false;
+    }
+
+    if (!m_monsterTable.loadMeleeHitMaterialsFromRows(meleeHitMaterialRows))
+    {
+        std::cerr << "Failed to parse melee hit materials: " << meleeHitMaterialPath << '\n';
         return false;
     }
 
@@ -3802,6 +3852,8 @@ bool GameDataLoader::applyMergedRuntimeTables()
         return false;
     }
 
+    m_houseTable.applyMapWorlds(m_mapStats);
+
     if (!m_mapStats.applyMergedOutdoorTravels(m_mergedOutdoorTravelTable))
     {
         std::cerr << "Failed to apply merged outdoor travels.\n";
@@ -4456,6 +4508,10 @@ bool GameDataLoader::loadSelectedMap(
     }
 
     GameDataLoadTimingLogger timingLogger(selectedMap->fileName, "game_data_loader");
+    if (!ensureActorModelManifest(assetFileSystem))
+    {
+        return false;
+    }
     const MapAssetLoader mapAssetLoader;
     std::optional<MapAssetInfo> loadedMap = mapAssetLoader.load(
         assetFileSystem,
@@ -4465,7 +4521,8 @@ bool GameDataLoader::loadSelectedMap(
         mapLoadPurpose,
         {},
         progressPump,
-        &m_mapAssetLoadSharedCache);
+        &m_mapAssetLoadSharedCache,
+        m_pActorModelManifest);
     m_mapAssetLoadSharedCache.trimBitmapData();
 
     if (!loadedMap)
@@ -4888,13 +4945,13 @@ void GameDataLoader::applyMergedContinentSettingsToSelectedMap(const Engine::Ass
         return;
     }
 
-    if (!m_skyTextureAssetNames)
+    if (!m_knownSkyNames)
     {
-        m_skyTextureAssetNames = buildSkyTextureAssetNameSet(assetFileSystem);
+        m_knownSkyNames = buildKnownSkyNameSet(assetFileSystem);
     }
 
     auto resolveMergedSkyTextureNameCached =
-        [this, &assetFileSystem](const std::string &textureName) -> std::string
+        [this](const std::string &textureName) -> std::string
         {
             const std::string cacheKey = m_activeWorldId + "|" + normalizedTableTextureName(textureName);
             const auto cachedNameIt = m_resolvedMergedSkyTextureNameByKey.find(cacheKey);
@@ -4904,11 +4961,7 @@ void GameDataLoader::applyMergedContinentSettingsToSelectedMap(const Engine::Ass
                 return cachedNameIt->second;
             }
 
-            const std::string resolvedName = resolveMergedSkyTextureName(
-                assetFileSystem,
-                m_skyTextureAssetNames ? &*m_skyTextureAssetNames : nullptr,
-                m_activeWorldId,
-                textureName);
+            const std::string resolvedName = resolveMergedSkyTextureName(*m_knownSkyNames, m_activeWorldId, textureName);
             m_resolvedMergedSkyTextureNameByKey[cacheKey] = resolvedName;
             return resolvedName;
         };

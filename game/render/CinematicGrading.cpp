@@ -96,18 +96,21 @@ bool CinematicGrading::initializeAmbientOcclusion()
     {
         return true;
     }
+    m_aoDepthProgram = loadRuntimeProgram("vs_cinematic_grading", "fs_ambient_occlusion_depth");
     m_aoProgram = loadRuntimeProgram("vs_cinematic_grading", "fs_ambient_occlusion");
     m_aoBlurProgram = loadRuntimeProgram("vs_cinematic_grading", "fs_ambient_occlusion_blur");
     m_aoCompositeProgram = loadRuntimeProgram("vs_cinematic_grading", "fs_ambient_occlusion_composite");
     m_depthSampler = bgfx::createUniform("s_aoDepth", bgfx::UniformType::Sampler);
     m_aoSampler = bgfx::createUniform("s_ao", bgfx::UniformType::Sampler);
-    m_aoProjection = bgfx::createUniform("u_aoProjection", bgfx::UniformType::Mat4);
+    m_aoLinearDepthSampler = bgfx::createUniform("s_aoLinearDepth", bgfx::UniformType::Sampler);
+    m_aoRay = bgfx::createUniform("u_aoRay", bgfx::UniformType::Vec4);
     m_aoInverseProjection = bgfx::createUniform("u_aoInverseProjection", bgfx::UniformType::Mat4);
     m_aoParams = bgfx::createUniform("u_aoParams", bgfx::UniformType::Vec4);
     m_aoDepthParams = bgfx::createUniform("u_aoDepthParams", bgfx::UniformType::Vec4);
     m_aoTexel = bgfx::createUniform("u_aoTexel", bgfx::UniformType::Vec4);
-    return bgfx::isValid(m_aoProgram) && bgfx::isValid(m_aoBlurProgram) && bgfx::isValid(m_aoCompositeProgram)
-        && bgfx::isValid(m_depthSampler) && bgfx::isValid(m_aoSampler) && bgfx::isValid(m_aoProjection)
+    return bgfx::isValid(m_aoDepthProgram) && bgfx::isValid(m_aoProgram) && bgfx::isValid(m_aoBlurProgram)
+        && bgfx::isValid(m_aoCompositeProgram) && bgfx::isValid(m_depthSampler) && bgfx::isValid(m_aoSampler)
+        && bgfx::isValid(m_aoLinearDepthSampler) && bgfx::isValid(m_aoRay)
         && bgfx::isValid(m_aoInverseProjection) && bgfx::isValid(m_aoParams)
         && bgfx::isValid(m_aoDepthParams) && bgfx::isValid(m_aoTexel);
 }
@@ -116,7 +119,7 @@ void CinematicGrading::destroyTargets()
 {
     // The composite shares the scene's colour attachment without owning it.
     for (bgfx::FrameBufferHandle handle : {m_aoCompositeFrameBuffer, m_aoBlurFrameBuffer,
-        m_aoFrameBuffer, m_frameBuffer})
+        m_aoFrameBuffer, m_aoDepthFrameBuffer, m_frameBuffer})
     {
         if (bgfx::isValid(handle))
         {
@@ -126,6 +129,7 @@ void CinematicGrading::destroyTargets()
     m_aoCompositeFrameBuffer = BGFX_INVALID_HANDLE;
     m_aoBlurFrameBuffer = BGFX_INVALID_HANDLE;
     m_aoFrameBuffer = BGFX_INVALID_HANDLE;
+    m_aoDepthFrameBuffer = BGFX_INVALID_HANDLE;
     m_frameBuffer = BGFX_INVALID_HANDLE;
     m_width = 0;
     m_height = 0;
@@ -163,11 +167,13 @@ bool CinematicGrading::resize(uint16_t width, uint16_t height, bool ambientOcclu
     {
         const uint16_t halfWidth = uint16_t((width + 1) / 2);
         const uint16_t halfHeight = uint16_t((height + 1) / 2);
+        m_aoDepthFrameBuffer = bgfx::createFrameBuffer(halfWidth, halfHeight, bgfx::TextureFormat::R32F, pointFlags);
         m_aoFrameBuffer = bgfx::createFrameBuffer(halfWidth, halfHeight, bgfx::TextureFormat::RG16F, pointFlags);
         m_aoBlurFrameBuffer = bgfx::createFrameBuffer(halfWidth, halfHeight, bgfx::TextureFormat::RG16F, pointFlags);
         // Detach depth while sampling it in the composite (avoids framebuffer feedback).
         m_aoCompositeFrameBuffer = bgfx::createFrameBuffer(1, attachments, false);
-        if (!bgfx::isValid(m_aoFrameBuffer) || !bgfx::isValid(m_aoBlurFrameBuffer)
+        if (!bgfx::isValid(m_aoDepthFrameBuffer) || !bgfx::isValid(m_aoFrameBuffer)
+            || !bgfx::isValid(m_aoBlurFrameBuffer)
             || !bgfx::isValid(m_aoCompositeFrameBuffer))
         {
             destroyTargets();
@@ -197,7 +203,7 @@ void CinematicGrading::resetViews()
     bgfx::setViewFrameBuffer(GradingView, BGFX_INVALID_HANDLE);
     if (m_aoActive)
     {
-        for (uint16_t view = AmbientOcclusionView; view <= WorldTransparentView; ++view)
+        for (uint16_t view = AmbientOcclusionDepthView; view <= WorldTransparentView; ++view)
         {
             bgfx::setViewFrameBuffer(view, BGFX_INVALID_HANDLE);
         }
@@ -207,14 +213,16 @@ void CinematicGrading::resetViews()
     m_aoPrepared = false;
 }
 
-bool CinematicGrading::begin(int width, int height, bool enabled, int strength, bool ambientOcclusion, int aoStrength)
+bool CinematicGrading::begin(int width, int height, bool enabled, int strength, bool ambientOcclusion, int aoStrength,
+    int sharpening)
 {
     const bool grading = enabled && strength > 0;
+    const bool sharpen = sharpening > 0;
     bool ao = ambientOcclusion && aoStrength > 0;
-    if ((!grading && !ao) || width <= 0 || height <= 0 || m_failed
+    if ((!grading && !sharpen && !ao) || width <= 0 || height <= 0 || m_failed
         || bgfx::getRendererType() == bgfx::RendererType::Noop)
     {
-        if (!grading && !ao && bgfx::isValid(m_frameBuffer))
+        if (!grading && !sharpen && !ao && bgfx::isValid(m_frameBuffer))
         {
             destroyTargets();
         }
@@ -225,13 +233,14 @@ bool CinematicGrading::begin(int width, int height, bool enabled, int strength, 
         constexpr uint16_t required = BGFX_CAPS_FORMAT_TEXTURE_2D | BGFX_CAPS_FORMAT_TEXTURE_FRAMEBUFFER;
         const bgfx::Caps &caps = *bgfx::getCaps();
         ao = (caps.formats[bgfx::TextureFormat::D32F] & required) == required
+            && (caps.formats[bgfx::TextureFormat::R32F] & required) == required
             && (caps.formats[bgfx::TextureFormat::RG16F] & required) == required;
         if (!ao && !m_aoUnsupportedLogged)
         {
-            std::cerr << "Ambient occlusion unavailable: sampled D32F and RG16F render targets are required.\n";
+            std::cerr << "Ambient occlusion unavailable: sampled D32F, R32F and RG16F render targets are required.\n";
             m_aoUnsupportedLogged = true;
         }
-        if (!ao && !grading)
+        if (!ao && !grading && !sharpen)
         {
             destroyTargets();
             return false;
@@ -263,6 +272,7 @@ bool CinematicGrading::begin(int width, int height, bool enabled, int strength, 
     // 70% reproduces the reference grade; higher values extend the same color adjustment.
     m_strength = grading ? float(std::clamp(strength, 0, 100)) / 70.0f : 0.0f;
     m_aoStrength = float(std::clamp(aoStrength, 0, 100)) / 100.0f;
+    m_sharpening = float(std::clamp(sharpening, 0, 100)) / 100.0f;
     m_aoActive = ao;
     m_aoPrepared = false;
     m_active = true;
@@ -275,9 +285,13 @@ void CinematicGrading::prepareWorldView(const float *pView, const float *pProjec
     {
         return;
     }
-    std::copy_n(pProjection, 16, m_projection);
     bx::mtxInverse(m_inverseProjection, pProjection);
-    bgfx::setViewName(WorldTransparentView, "World sprites and effects after AO");
+    // Clip w is pProjection[11] * view z, so view xy = distance * (ndc * ray.xy + ray.zw).
+    m_ray[0] = 1.0f / pProjection[0];
+    m_ray[1] = 1.0f / pProjection[5];
+    m_ray[2] = -pProjection[8] / (pProjection[11] * pProjection[0]);
+    m_ray[3] = -pProjection[9] / (pProjection[11] * pProjection[5]);
+    bgfx::setViewName(WorldTransparentView, "World transparencies after AO");
     bgfx::setViewFrameBuffer(WorldTransparentView, m_frameBuffer);
     bgfx::setViewRect(WorldTransparentView, 0, 0, m_width, m_height);
     bgfx::setViewClear(WorldTransparentView, BGFX_CLEAR_NONE);
@@ -301,28 +315,37 @@ void CinematicGrading::submitAmbientOcclusion()
     const float texel[] = {1.0f / m_width, 1.0f / m_height, 1.0f / halfWidth, 1.0f / halfHeight};
     // Short radius supplements baked illumination; distant geometry does not need contact shading.
     const float params[] = {36.0f, 0.12f, m_aoStrength, 4096.0f};
-    const bgfx::FrameBufferHandle targets[] = {m_aoFrameBuffer, m_aoBlurFrameBuffer, m_aoCompositeFrameBuffer};
-    const bgfx::ProgramHandle programs[] = {m_aoProgram, m_aoBlurProgram, m_aoCompositeProgram};
-    const char *names[] = {"SSAO half resolution", "SSAO depth-aware filter", "SSAO composite"};
-    for (size_t pass = 0; pass < 3; ++pass)
+    const bgfx::FrameBufferHandle targets[] = {m_aoDepthFrameBuffer, m_aoFrameBuffer, m_aoBlurFrameBuffer,
+        m_aoCompositeFrameBuffer};
+    const bgfx::ProgramHandle programs[] = {m_aoDepthProgram, m_aoProgram, m_aoBlurProgram, m_aoCompositeProgram};
+    const char *names[] = {"SSAO linear depth", "SSAO half resolution", "SSAO depth-aware filter", "SSAO composite"};
+    for (size_t pass = 0; pass < 4; ++pass)
     {
-        const uint16_t view = uint16_t(AmbientOcclusionView + pass);
+        const uint16_t view = uint16_t(AmbientOcclusionDepthView + pass);
+        const bool composite = pass == 3;
         bgfx::setViewName(view, names[pass]);
         bgfx::setViewFrameBuffer(view, targets[pass]);
-        bgfx::setViewRect(view, 0, 0, pass == 2 ? m_width : halfWidth, pass == 2 ? m_height : halfHeight);
+        bgfx::setViewRect(view, 0, 0, composite ? m_width : halfWidth, composite ? m_height : halfHeight);
         bgfx::setViewClear(view, BGFX_CLEAR_NONE);
-        bgfx::setUniform(m_aoProjection, m_projection);
+        bgfx::setUniform(m_aoRay, m_ray);
         bgfx::setUniform(m_aoInverseProjection, m_inverseProjection);
         bgfx::setUniform(m_aoDepthParams, depthParams);
         bgfx::setUniform(m_aoParams, params);
         bgfx::setUniform(m_aoTexel, texel);
-        bgfx::setTexture(0, m_depthSampler, bgfx::getTexture(m_frameBuffer, 1));
-        if (pass != 0)
+        if (pass == 0 || composite)
         {
-            bgfx::setTexture(1, m_aoSampler, bgfx::getTexture(pass == 1 ? m_aoFrameBuffer : m_aoBlurFrameBuffer));
+            bgfx::setTexture(0, m_depthSampler, bgfx::getTexture(m_frameBuffer, 1));
+        }
+        if (pass == 1)
+        {
+            bgfx::setTexture(1, m_aoLinearDepthSampler, bgfx::getTexture(m_aoDepthFrameBuffer));
+        }
+        else if (pass != 0)
+        {
+            bgfx::setTexture(1, m_aoSampler, bgfx::getTexture(pass == 2 ? m_aoFrameBuffer : m_aoBlurFrameBuffer));
         }
         bgfx::setVertexBuffer(0, &m_vertices);
-        const uint64_t state = BGFX_STATE_WRITE_RGB | (pass == 2
+        const uint64_t state = BGFX_STATE_WRITE_RGB | (composite
             ? BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ZERO, BGFX_STATE_BLEND_SRC_COLOR) : BGFX_STATE_WRITE_A);
         bgfx::setState(state);
         bgfx::submit(view, programs[pass]);
@@ -339,11 +362,12 @@ void CinematicGrading::submit(bgfx::FrameBufferHandle target)
     {
         submitAmbientOcclusion();
     }
-    bgfx::setViewName(GradingView, m_strength > 0.0f ? "Cinematic grading" : "World presentation");
+    const bool filtered = m_strength > 0.0f || m_sharpening > 0.0f;
+    bgfx::setViewName(GradingView, filtered ? "Cinematic grading" : "World presentation");
     bgfx::setViewFrameBuffer(GradingView, target);
     bgfx::setViewRect(GradingView, 0, 0, m_width, m_height);
     bgfx::setViewClear(GradingView, BGFX_CLEAR_NONE);
-    const float params[4] = {m_strength, float(LutSize - 1) / LutSize, 0.5f / LutSize, 0.0f};
+    const float params[4] = {m_strength, float(LutSize - 1) / LutSize, 0.5f / LutSize, m_sharpening};
     bgfx::setUniform(m_params, params);
     bgfx::setTexture(0, m_sceneSampler, bgfx::getTexture(m_frameBuffer));
     bgfx::setTexture(1, m_lutSampler, m_lut);
@@ -369,27 +393,29 @@ void CinematicGrading::shutdown()
 {
     resetViews();
     destroyTargets();
-    for (bgfx::ProgramHandle handle : {m_aoProgram, m_aoBlurProgram, m_aoCompositeProgram})
+    for (bgfx::ProgramHandle handle : {m_aoDepthProgram, m_aoProgram, m_aoBlurProgram, m_aoCompositeProgram})
     {
         if (bgfx::isValid(handle))
         {
             bgfx::destroy(handle);
         }
     }
-    for (bgfx::UniformHandle handle : {m_depthSampler, m_aoSampler, m_aoProjection, m_aoInverseProjection,
-        m_aoParams, m_aoDepthParams, m_aoTexel})
+    for (bgfx::UniformHandle handle : {m_depthSampler, m_aoSampler, m_aoLinearDepthSampler, m_aoRay,
+        m_aoInverseProjection, m_aoParams, m_aoDepthParams, m_aoTexel})
     {
         if (bgfx::isValid(handle))
         {
             bgfx::destroy(handle);
         }
     }
+    m_aoDepthProgram = BGFX_INVALID_HANDLE;
     m_aoProgram = BGFX_INVALID_HANDLE;
     m_aoBlurProgram = BGFX_INVALID_HANDLE;
     m_aoCompositeProgram = BGFX_INVALID_HANDLE;
     m_depthSampler = BGFX_INVALID_HANDLE;
     m_aoSampler = BGFX_INVALID_HANDLE;
-    m_aoProjection = BGFX_INVALID_HANDLE;
+    m_aoLinearDepthSampler = BGFX_INVALID_HANDLE;
+    m_aoRay = BGFX_INVALID_HANDLE;
     m_aoInverseProjection = BGFX_INVALID_HANDLE;
     m_aoParams = BGFX_INVALID_HANDLE;
     m_aoDepthParams = BGFX_INVALID_HANDLE;

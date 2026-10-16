@@ -18,6 +18,7 @@
 #include <limits>
 #include <random>
 #include <sstream>
+#include <utility>
 
 namespace OpenYAMM::Game
 {
@@ -433,6 +434,7 @@ void GameplayProjectileService::clear()
     m_nextFireSpikeTrapId = 1;
     m_projectiles.clear();
     m_projectileImpacts.clear();
+    m_endedProjectiles.clear();
 }
 
 GameplayProjectileService::Snapshot GameplayProjectileService::snapshot() const
@@ -459,6 +461,7 @@ void GameplayProjectileService::clearActiveProjectiles()
 {
     m_projectiles.clear();
     m_projectileImpacts.clear();
+    m_endedProjectiles.clear();
 }
 
 uint32_t GameplayProjectileService::nextProjectileId() const
@@ -1240,6 +1243,7 @@ GameplayProjectileService::spawnProjectileImpactVisual(
     impactState.objectSpriteFrameIndex = definition.objectSpriteFrameIndex;
     impactState.sourceObjectFlags = projectile.objectFlags;
     impactState.sourceSpellId = projectile.spellId;
+    impactState.sourceMonsterId = projectile.sourceMonsterId;
     impactState.objectName = definition.objectName;
     impactState.objectSpriteName = definition.objectSpriteName;
     impactState.sourceObjectName = projectile.objectName;
@@ -1294,7 +1298,8 @@ GameplayProjectileService::spawnImmediateSpellImpactVisual(
     float y,
     float z,
     bool centerVertically,
-    bool freezeAnimation)
+    bool freezeAnimation,
+    size_t targetActorIndex)
 {
     ProjectileImpactSpawnResult result = {};
 
@@ -1319,6 +1324,7 @@ GameplayProjectileService::spawnImmediateSpellImpactVisual(
         : z;
     impactState.lifetimeTicks = definition.lifetimeTicks;
     impactState.freezeAnimation = freezeAnimation;
+    impactState.targetActorIndex = targetActorIndex;
 
     const ProjectileImpactState &impact = addProjectileImpact(std::move(impactState));
     result.spawned = true;
@@ -1638,19 +1644,31 @@ GameplayProjectileService::buildProjectileDirectActorImpact(
     return impact;
 }
 
-void GameplayProjectileService::expireProjectile(ProjectileState &projectile) const
+void GameplayProjectileService::expireProjectile(
+    ProjectileState &projectile,
+    const std::optional<GameplayWorldPoint> &endPoint)
 {
-    if (!projectile.isExpired)
+    if (projectile.isExpired)
     {
-        GAMEPLAY_PROJECTILE_TRACE_BLOCK(
-            std::ostringstream trace;
-            trace << "projectile_expire";
-            appendProjectileTraceSummary(trace, projectile);
-            gameplayProjectileTraceWrite(trace.str());
-        );
+        return;
     }
 
+    if (endPoint)
+    {
+        projectile.x = endPoint->x;
+        projectile.y = endPoint->y;
+        projectile.z = endPoint->z;
+    }
+
+    GAMEPLAY_PROJECTILE_TRACE_BLOCK(
+        std::ostringstream trace;
+        trace << "projectile_expire";
+        appendProjectileTraceSummary(trace, projectile);
+        gameplayProjectileTraceWrite(trace.str());
+    );
+
     projectile.isExpired = true;
+    m_endedProjectiles.push_back({projectile.projectileId, projectile.x, projectile.y, projectile.z});
 }
 
 GameplayProjectileService::ProjectileFrameResult GameplayProjectileService::updateProjectileFrame(
@@ -1706,6 +1724,44 @@ GameplayProjectileService::ProjectileFrameResult GameplayProjectileService::upda
 
     result.motion = advanceProjectileMotion(projectile, facts.deltaSeconds, facts.gravity);
 
+    if (facts.pWards != nullptr && !facts.pWards->empty())
+    {
+        float collisionFraction = 1.0f;
+
+        if (facts.hasCollision)
+        {
+            const float dx = result.motion.endX - result.motion.startX;
+            const float dy = result.motion.endY - result.motion.startY;
+            const float dz = result.motion.endZ - result.motion.startZ;
+            const float lengthSquared = dx * dx + dy * dy + dz * dz;
+
+            if (lengthSquared > 0.0f)
+            {
+                collisionFraction = std::clamp(
+                    ((facts.collision.point.x - result.motion.startX) * dx
+                        + (facts.collision.point.y - result.motion.startY) * dy
+                        + (facts.collision.point.z - result.motion.startZ) * dz) / lengthSquared,
+                    0.0f,
+                    1.0f);
+            }
+        }
+
+        std::optional<ProjectileWardBlock> wardBlock =
+            findProjectileWardBlock(projectile, result.motion, *facts.pWards, collisionFraction);
+
+        if (wardBlock)
+        {
+            result.fxRequest = ProjectileFrameFxRequest{
+                ProjectileFrameFxKind::ProjectileImpact,
+                wardBlock->point,
+                false};
+            result.endPoint = wardBlock->point;
+            result.wardBlock = std::move(wardBlock);
+            result.expireProjectile = true;
+            return result;
+        }
+    }
+
     if (!facts.hasCollision)
     {
         result.applyMotionEnd = true;
@@ -1752,6 +1808,7 @@ GameplayProjectileService::ProjectileFrameResult GameplayProjectileService::upda
     if (isPrimaryDeathBlossomProjectile(projectile))
     {
         result.deathBlossomFalloutPoint = facts.collision.point;
+        result.endPoint = facts.collision.point;
         result.logCollision = true;
         result.expireProjectile = true;
         return result;
@@ -1818,8 +1875,74 @@ GameplayProjectileService::ProjectileFrameResult GameplayProjectileService::upda
             directActorImpact};
     }
 
+    result.endPoint = facts.collision.point;
     result.expireProjectile = true;
     return result;
+}
+
+std::optional<GameplayProjectileService::ProjectileWardBlock> GameplayProjectileService::findProjectileWardBlock(
+    const ProjectileState &projectile,
+    const ProjectileMotionSegment &motion,
+    const std::vector<ProjectileWardFacts> &wards,
+    float maximumSegmentFraction)
+{
+    const float dx = motion.endX - motion.startX;
+    const float dy = motion.endY - motion.startY;
+    const float dz = motion.endZ - motion.startZ;
+    const float a = dx * dx + dy * dy + dz * dz;
+
+    if (a <= 0.0f)
+    {
+        return std::nullopt;
+    }
+
+    std::optional<ProjectileWardBlock> nearestBlock;
+    float nearestFraction = maximumSegmentFraction;
+
+    for (const ProjectileWardFacts &ward : wards)
+    {
+        const bool ownProjectile =
+            projectile.sourceKind == ProjectileState::SourceKind::Actor && projectile.sourceId == ward.ownerActorId;
+
+        if (ward.radius <= 0.0f || ownProjectile)
+        {
+            continue;
+        }
+
+        const float fx = motion.startX - ward.center.x;
+        const float fy = motion.startY - ward.center.y;
+        const float fz = motion.startZ - ward.center.z;
+        const float c = fx * fx + fy * fy + fz * fz - ward.radius * ward.radius;
+
+        if (c <= 0.0f)
+        {
+            continue;
+        }
+
+        const float b = 2.0f * (fx * dx + fy * dy + fz * dz);
+        const float discriminant = b * b - 4.0f * a * c;
+
+        if (discriminant < 0.0f)
+        {
+            continue;
+        }
+
+        const float fraction = (-b - std::sqrt(discriminant)) / (2.0f * a);
+
+        if (fraction < 0.0f || fraction > nearestFraction)
+        {
+            continue;
+        }
+
+        nearestFraction = fraction;
+        nearestBlock = ProjectileWardBlock{
+            ward.ownerActorIndex,
+            ward.ownerActorId,
+            ward.wardId,
+            {motion.startX + dx * fraction, motion.startY + dy * fraction, motion.startZ + dz * fraction}};
+    }
+
+    return nearestBlock;
 }
 
 bool GameplayProjectileService::canProjectileCollideWithParty(const ProjectileState &projectile) const
@@ -2122,6 +2245,7 @@ void GameplayProjectileService::collectProjectilePresentationState(
         state.radius = projectile.radius;
         state.height = projectile.height;
         state.spellId = projectile.spellId;
+        state.sourceMonsterId = projectile.sourceMonsterId;
         state.objectName = projectile.objectName;
         state.objectSpriteName = projectile.objectSpriteName;
         state.x = projectile.x;
@@ -2150,6 +2274,7 @@ void GameplayProjectileService::collectProjectilePresentationState(
         state.objectSpriteFrameIndex = impact.objectSpriteFrameIndex;
         state.sourceObjectFlags = impact.sourceObjectFlags;
         state.sourceSpellId = impact.sourceSpellId;
+        state.sourceMonsterId = impact.sourceMonsterId;
         state.objectName = impact.objectName;
         state.objectSpriteName = impact.objectSpriteName;
         state.sourceObjectName = impact.sourceObjectName;
@@ -2164,6 +2289,11 @@ void GameplayProjectileService::collectProjectilePresentationState(
         state.freezeAnimation = impact.freezeAnimation;
         impacts.push_back(std::move(state));
     }
+}
+
+std::vector<GameplayProjectileEndPresentationState> GameplayProjectileService::takeEndedProjectiles()
+{
+    return std::exchange(m_endedProjectiles, {});
 }
 
 float GameplayProjectileService::spellImpactDamageRadius(uint32_t spellId)

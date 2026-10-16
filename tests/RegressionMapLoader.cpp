@@ -25,7 +25,8 @@ bool loadRegressionMapLoader(RegressionMapLoader &loader, std::string &failure)
     const std::filesystem::path sourceRoot = OPENYAMM_SOURCE_DIR;
     const std::filesystem::path assetsRoot = sourceRoot / "assets_dev";
 
-    if (!loader.assetFileSystem.initialize(sourceRoot, assetsRoot, Engine::AssetScaleTier::X1))
+    if (!loader.assetFileSystem.initialize(
+            sourceRoot, assetsRoot, Engine::AssetScaleTier::X1, developmentAssetScaleProfile(), ""))
     {
         failure = "could not initialize asset file system for regression map tests";
         return false;
@@ -110,6 +111,13 @@ public:
 };
 
 REGISTER_LISTENER("shared_regression_map", 1, SharedRegressionMapListener);
+}
+
+Engine::AssetScaleProfile developmentAssetScaleProfile()
+{
+    Engine::AssetScaleProfile profile = Engine::createUniformAssetScaleProfile(Engine::AssetScaleTier::X1);
+    profile.textures = Engine::AssetScaleTier::X4;
+    return profile;
 }
 
 bool regressionMapLoaderLoaded()

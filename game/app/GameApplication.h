@@ -1,12 +1,14 @@
 #pragma once
 
 #include "game/app/AppMode.h"
+#include "game/render/ActorModelPreview.h"
 #include "game/render/CinematicGrading.h"
 #include "game/app/GameInputSystem.h"
 #include "game/app/GameSettings.h"
 #include "game/app/GameSession.h"
 #include "engine/ApplicationConfig.h"
 #include "engine/EngineApplication.h"
+#include "game/gameplay/ActorBehaviorCatalog.h"
 #include "game/gameplay/GameplayController.h"
 #include "game/data/GameDataRepository.h"
 #include "game/data/GameDataLoader.h"
@@ -161,9 +163,15 @@ private:
     bool loadGameData(Engine::AssetFileSystem &assetFileSystem);
     bool ensureCommonGameDataLoaded();
     void updateDeferredStartupLoads();
+    // The active scene's (outdoor or indoor) effects and actor models.
+    WorldFxSystem &activeWorldFxSystem();
+    // Builds the active map's actor model bindings on first use and poses the actor models for this frame; false
+    // (application quitting) when a model the map needs fails to load.
+    bool syncActorModels(IGameplayWorldRuntime &world, float deltaSeconds, float liveDeltaSeconds);
     void updateDeferredMainMenuChildWarmup();
     void shutdownApplication();
     bool initializeSelectedMapRuntime(bool initializeView);
+    const ActorBehaviorCatalog *reloadActorBehaviorCatalog();
     bool initializeRenderer();
     bool initializeDebugConsoleRenderer();
     void shutdownDebugConsoleRenderer();
@@ -276,9 +284,11 @@ private:
     Engine::ApplicationConfig m_config;
     Engine::EngineApplication m_engineApplication;
     CinematicGrading m_cinematicGrading;
+    ActorModelPreview m_actorModelPreview;
     GameDataLoader m_gameDataLoader;
     GameDataRepository m_gameDataRepository;
     WorldManifest m_activeWorldManifest;
+    ActorBehaviorCatalog m_actorBehaviorCatalog;
     GameAudioSystem m_gameAudioSystem;
     GameSession m_gameSession;
     GameInputSystem m_gameInputSystem;

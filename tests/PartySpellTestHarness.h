@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/gameplay/GameplayActorHitFeedback.h"
 #include "game/gameplay/GameplayRuntimeInterfaces.h"
 #include "game/party/EventSpellBuffs.h"
 #include "game/party/Party.h"
@@ -7,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -252,6 +254,30 @@ public:
         return m_stopTurnBasedActorMovementCount;
     }
 
+    void setTurnBasedActorRecoveryTicks(int recoveryTicks)
+    {
+        m_turnBasedActorRecoveryTicks = recoveryTicks;
+    }
+
+    // Simulates the world's next actor AI step, which consumes the pending action grants.
+    std::vector<size_t> consumeTurnBasedActorActionGrants()
+    {
+        std::vector<size_t> grants;
+        grants.swap(m_turnBasedActorActionGrants);
+        return grants;
+    }
+
+    Game::ActorTurnBasedMode turnBasedActorMode() const
+    {
+        return m_turnBasedActorMode;
+    }
+
+    std::optional<float> actorAttackCooldownSeconds(size_t actorIndex) const
+    {
+        const auto it = m_actorAttackCooldownSeconds.find(actorIndex);
+        return it != m_actorAttackCooldownSeconds.end() ? std::optional<float>(it->second) : std::nullopt;
+    }
+
     bool syncSpellMovementStatesCalled() const
     {
         return m_syncSpellMovementStatesCalled;
@@ -369,6 +395,11 @@ public:
         return m_partyFootZ;
     }
 
+    float partyEyeZ() const override
+    {
+        return m_partyFootZ + 160.0f;
+    }
+
     void syncSpellMovementStatesFromPartyBuffs() override
     {
         m_syncSpellMovementStatesCalled = true;
@@ -409,6 +440,32 @@ public:
     void stopTurnBasedActorMovement() override
     {
         ++m_stopTurnBasedActorMovementCount;
+    }
+
+    void setTurnBasedActorMode(Game::ActorTurnBasedMode mode) override
+    {
+        m_turnBasedActorMode = mode;
+    }
+
+    void grantTurnBasedActorAction(size_t actorIndex) override
+    {
+        m_turnBasedActorActionGrants.push_back(actorIndex);
+    }
+
+    bool turnBasedActorActionGrantPending() const override
+    {
+        return !m_turnBasedActorActionGrants.empty();
+    }
+
+    int turnBasedActorRecoveryTicks(size_t actorIndex) const override
+    {
+        (void)actorIndex;
+        return m_turnBasedActorRecoveryTicks;
+    }
+
+    void setActorAttackCooldownSeconds(size_t actorIndex, float seconds) override
+    {
+        m_actorAttackCooldownSeconds[actorIndex] = seconds;
     }
 
     void updateWorld(float deltaSeconds) override
@@ -586,6 +643,16 @@ public:
 
         state = m_actors[actorIndex];
         return true;
+    }
+
+    Game::GameplayActorHitFeedback &actorHitFeedback() override
+    {
+        return m_actorHitFeedback;
+    }
+
+    const Game::GameplayActorHitFeedback &actorHitFeedback() const override
+    {
+        return m_actorHitFeedback;
     }
 
     bool actorInspectState(
@@ -1062,6 +1129,7 @@ public:
     }
 
 private:
+    Game::GameplayActorHitFeedback m_actorHitFeedback;
     mutable std::vector<size_t> m_radiusQueryActorIndices;
     std::string m_mapName;
     bool m_indoorMap = false;
@@ -1095,5 +1163,9 @@ private:
     bool m_turnBasedActorActionInProgress = false;
     bool m_worldHitActivationResult = false;
     size_t m_stopTurnBasedActorMovementCount = 0;
+    Game::ActorTurnBasedMode m_turnBasedActorMode = Game::ActorTurnBasedMode::RealTime;
+    std::vector<size_t> m_turnBasedActorActionGrants;
+    int m_turnBasedActorRecoveryTicks = 100;
+    std::map<size_t, float> m_actorAttackCooldownSeconds;
 };
 }

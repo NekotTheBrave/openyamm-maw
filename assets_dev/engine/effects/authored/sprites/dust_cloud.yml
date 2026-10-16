@@ -1,0 +1,22 @@
+schema: openyamm.effectSprite.v2
+id: openyamm:effect-sprite/dust_cloud
+framesPerSecond: 12
+logicalWidth: 128
+logicalHeight: 128
+frames:
+- openyamm:texture/fx/dust_cloud_00
+- openyamm:texture/fx/dust_cloud_01
+- openyamm:texture/fx/dust_cloud_02
+- openyamm:texture/fx/dust_cloud_03
+- openyamm:texture/fx/dust_cloud_04
+- openyamm:texture/fx/dust_cloud_05
+- openyamm:texture/fx/dust_cloud_06
+- openyamm:texture/fx/dust_cloud_07
+- openyamm:texture/fx/dust_cloud_08
+- openyamm:texture/fx/dust_cloud_09
+- openyamm:texture/fx/dust_cloud_10
+- openyamm:texture/fx/dust_cloud_11
+- openyamm:texture/fx/dust_cloud_12
+- openyamm:texture/fx/dust_cloud_13
+- openyamm:texture/fx/dust_cloud_14
+- openyamm:texture/fx/dust_cloud_15

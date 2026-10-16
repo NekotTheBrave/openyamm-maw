@@ -74,7 +74,7 @@ elements:
   - id: CharacterDismissButton
     anchor: top_left
     offset_x: 525
-    offset_y: 380
+    offset_y: 443
     width: 75
     height: 26
     z_index: 300
@@ -92,6 +92,27 @@ elements:
       align_y: middle
       scale: 0.416667
     notes: 'Native action/hit target with live Fondamento label and shared hover, pressed, selected and disabled states.'
+  - id: CharacterAlchemyButton
+    anchor: top_left
+    offset_x: 525
+    offset_y: 409
+    width: 75
+    height: 26
+    z_index: 300
+    interactive: true
+    asset:
+      default: obsidian_button_tab_normal
+      highlighted: obsidian_button_tab_hover
+      pressed: obsidian_button_tab_pressed
+      selected: obsidian_button_tab_selected
+    text:
+      value: Alchemy
+      font: Fondamento
+      color: '#e8d1a4'
+      align_x: center
+      align_y: middle
+      scale: 0.416667
+    notes: Opens the party-wide alchemy bench; sits between Sort and Dismiss in the bottom-right panel.
   - id: CharacterStatsButton
     anchor: bottom_Left
     offset_x: 16
@@ -1195,6 +1216,26 @@ elements:
       interactive: true
       notes: '14 columns × 9 rows; each 32×32 logical. Parent (0,24), grid (7,8): screen (7,32). Held RMB only; release
         closes.'
+    - id: CharacterInventorySortButton
+      anchor: top_left
+      offset_x: 525
+      offset_y: 351
+      width: 75
+      height: 26
+      z_index: 300
+      interactive: true
+      asset:
+        default: obsidian_button_tab_normal
+        highlighted: obsidian_button_tab_hover
+        pressed: obsidian_button_tab_pressed
+      text:
+        value: Sort
+        font: Fondamento
+        color: '#e8d1a4'
+        align_x: center
+        align_y: middle
+        scale: 0.416667
+      notes: 'Above Alchemy in the bottom-right panel (page origin is 0,24); regroups the inventory by item type.'
     - id: CharacterInventoryInfo
       anchor: top_left
       offset_x: 16

@@ -959,15 +959,9 @@ std::string generatedActorDisplayTitle(
         return {};
     }
 
-    const MergedNpcProfessionEntry *pProfession =
-        gameSession.data().mergedNpcProfessionTable().get(resolution.generatedProfessionId);
-
-    if (pProfession == nullptr || pProfession->profession.empty())
-    {
-        return resolution.generatedName;
-    }
-
-    return resolution.generatedName + " the " + pProfession->profession;
+    return gameSession.data().mergedNpcProfessionTable().nameAndTitle(
+        resolution.generatedName,
+        resolution.generatedProfessionId);
 }
 }
 
@@ -1042,11 +1036,15 @@ void IndoorGameView::render(int width, int height, const GameplayInputFrame &inp
 
     GameplayHudRenderBackend hudRenderBackend = {};
     bgfx::ProgramHandle invalidProgramHandle = BGFX_INVALID_HANDLE;
-    bgfx::UniformHandle invalidSamplerHandle = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle invalidUniformHandle = BGFX_INVALID_HANDLE;
     hudRenderBackend.texturedProgramHandle =
         m_pIndoorRenderer != nullptr ? m_pIndoorRenderer->hudTexturedProgramHandle() : invalidProgramHandle;
+    hudRenderBackend.tintedProgramHandle =
+        m_pIndoorRenderer != nullptr ? m_pIndoorRenderer->hudTintedProgramHandle() : invalidProgramHandle;
+    hudRenderBackend.tintUniformHandle =
+        m_pIndoorRenderer != nullptr ? m_pIndoorRenderer->hudTintUniformHandle() : invalidUniformHandle;
     hudRenderBackend.textureSamplerHandle =
-        m_pIndoorRenderer != nullptr ? m_pIndoorRenderer->hudTextureSamplerHandle() : invalidSamplerHandle;
+        m_pIndoorRenderer != nullptr ? m_pIndoorRenderer->hudTextureSamplerHandle() : invalidUniformHandle;
     hudRenderBackend.viewId = HudViewId;
     m_gameSession.gameplayScreenRuntime().bindHudRenderBackend(hudRenderBackend);
     if (preparingResources)
@@ -1671,7 +1669,8 @@ bool IndoorGameView::activateMapActorDialogue(size_t actorIndex)
             resolution->newsId,
             inspectState.displayName,
             *newsText,
-            resolution->portraitPictureId);
+            resolution->portraitPictureId,
+            static_cast<uint32_t>(actorIndex));
     pEventRuntimeState->lastActivationResult =
         "npc news group " + std::to_string(actor.group) + " engaged";
     presentPendingDialog(result, result.allowNpcFallbackContent);

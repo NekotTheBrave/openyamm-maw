@@ -25,6 +25,7 @@
 #include "game/fx/WorldFxRenderResources.h"
 #include "game/fx/WorldFxSystem.h"
 #include "game/fx/EffectRenderer.h"
+#include "game/render/ShieldDomeRenderer.h"
 #include "game/tables/MapStats.h"
 #include "game/tables/MonsterTable.h"
 #include "game/events/EventRuntime.h"
@@ -108,6 +109,8 @@ public:
     bool hasHudRenderResources() const;
     bgfx::ProgramHandle hudTexturedProgramHandle() const;
     bgfx::UniformHandle hudTextureSamplerHandle() const;
+    bgfx::ProgramHandle hudTintedProgramHandle() const;
+    bgfx::UniformHandle hudTintUniformHandle() const;
     void prepareHudView(int width, int height) const;
     void submitHudTextureQuad(
         bgfx::TextureHandle textureHandle,
@@ -124,6 +127,8 @@ public:
     bool isWaterSupportFace(size_t faceIndex) const;
     WorldFxSystem &worldFxSystem();
     const WorldFxSystem &worldFxSystem() const;
+    Engine::ModelRenderer &modelRenderer() { return m_modelRenderer; }
+    EffectRenderer &effectRenderer() { return m_effectRenderer; }
     const EffectRenderer::Diagnostics &effectRenderDiagnostics() const;
     std::optional<GameplayActorPick> gameplayActorPickAtCursor(
         int viewWidth,
@@ -160,6 +165,9 @@ public:
     void shutdown();
 
 private:
+    // The camera as drawn and picked: the party's view plus the melee camera kick (GameplayActorHitFeedback).
+    float viewYawRadians() const;
+    float viewPitchRadians() const;
     void setBillboardFogColor(const float *pFogColor);
     struct TerrainVertex
     {
@@ -202,6 +210,8 @@ private:
         float u;
         float v;
         uint32_t abgr;
+        // Actor hit flash (GameplayActorHitFeedback): fraction of the flash colour mixed over the lit texel.
+        float hitFlash = 0.0f;
 
         static void init();
         static bgfx::VertexLayout ms_layout;
@@ -215,6 +225,15 @@ private:
         uint64_t lightRevision = 0;
         int16_t sectorId = -1;
         bool coloredLights = true;
+        bool valid = false;
+    };
+
+    // A 3D model's sector for light selection, kept while the model's centre stays near the sampled point.
+    struct ModelSectorCacheEntry
+    {
+        uint32_t generation = 0;
+        bx::Vec3 center = {0.0f, 0.0f, 0.0f};
+        int16_t sectorId = -1;
         bool valid = false;
     };
 
@@ -252,6 +271,7 @@ private:
         bx::Vec3 boundsMax = {0.0f, 0.0f, 0.0f};
         bool hasBounds = false;
         uint32_t waterColorAbgr = 0;
+        LiquidKind liquid = LiquidKind::None;
         std::vector<TexturedVertex> vertices;
         std::vector<uint32_t> indices;
     };
@@ -421,6 +441,8 @@ private:
     uint16_t inspectHitEventId(const InspectHit &inspectHit) const;
     std::optional<std::string> resolveEntityDecorationHoverStatusText(const InspectHit &inspectHit) const;
     std::optional<std::string> resolveEventTargetHoverStatusText(const InspectHit &inspectHit) const;
+    // The current event of an interactive decoration hit, whose title the hover shows.
+    std::optional<uint16_t> resolveInteractiveDecorationHitEventId(const InspectHit &inspectHit) const;
     void updateCameraFromInput(const GameplayInputFrame &input, float deltaSeconds, bool allowWorldInput);
     // The sprite a decoration shows now (event SetSprite), and whether it is hidden (cleared or event-hidden).
     uint16_t resolveDecorationBillboardSpriteId(const DecorationBillboard &billboard, bool &hidden) const;
@@ -689,11 +711,13 @@ private:
     bgfx::DynamicVertexBufferHandle m_doorMarkerVertexBufferHandle;
     bgfx::ProgramHandle m_programHandle;
     bgfx::ProgramHandle m_texturedProgramHandle;
+    bgfx::ProgramHandle m_hudTintedProgramHandle;
     bgfx::ProgramHandle m_indoorLitProgramHandle;
     bgfx::ProgramHandle m_billboardProgramHandle;
     bgfx::VertexBufferHandle m_bloodSplatVertexBufferHandle;
     bgfx::TextureHandle m_bloodSplatTextureHandle;
     bgfx::UniformHandle m_textureSamplerHandle;
+    bgfx::UniformHandle m_hudTintUniformHandle;
     bgfx::UniformHandle m_indoorLightPositionsUniformHandle;
     bgfx::UniformHandle m_indoorLightColorsUniformHandle;
     bgfx::UniformHandle m_indoorLightParamsUniformHandle;
@@ -741,8 +765,10 @@ private:
     bool m_bakedStaticColoredLights = true;
     uint32_t m_indoorLightingSelectionFrame = 0;
     std::unordered_map<uint64_t, BillboardLightingCacheEntry> m_billboardLightingCache;
+    std::vector<ModelSectorCacheEntry> m_modelSectorCache;
     WorldFxRenderResources m_worldFxRenderResources;
     EffectRenderer m_effectRenderer;
+    ShieldDomeRenderer m_shieldDomeRenderer;
     Engine::ModelRenderer m_modelRenderer;
     CinematicGrading *m_pPostProcessing = nullptr;
     WorldFxSystem m_worldFxSystem;

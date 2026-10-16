@@ -2,6 +2,7 @@
 
 #include "game/debug/GameplayDebugTrace.h"
 #include "game/gameplay/GameplayActionController.h"
+#include "game/gameplay/GameplayActorHitFeedback.h"
 #include "game/gameplay/GameMechanics.h"
 #include "game/gameplay/GameplayInputFrame.h"
 #include "game/gameplay/GameplayInteractionController.h"
@@ -475,7 +476,9 @@ void GameSession::bindActiveWorldRuntime(IGameplayWorldRuntime *pWorldRuntime)
 {
     if (m_pActiveWorldRuntime != pWorldRuntime)
     {
-        m_turnBasedCombatRuntime.end(m_pActiveWorldRuntime != nullptr ? m_pActiveWorldRuntime->party() : nullptr);
+        m_turnBasedCombatRuntime.end(
+            m_pActiveWorldRuntime != nullptr ? m_pActiveWorldRuntime->party() : nullptr,
+            m_pActiveWorldRuntime);
         m_turnBasedFrameTraceState = {};
     }
 
@@ -870,7 +873,7 @@ void GameSession::updateGameplay(
         bool turnBasedMovementStep = false;
         if (m_turnBasedCombatRuntime.active() && !rightMouseInspectPauseActive)
         {
-            turnBasedMovementStep = m_turnBasedCombatRuntime.noteMovementInput(worldInput);
+            turnBasedMovementStep = m_turnBasedCombatRuntime.noteMovementInput(worldInput, deltaSeconds);
             worldMovementDeltaSeconds = m_turnBasedCombatRuntime.movementDeltaSecondsForFrame(deltaSeconds);
             if (!turnBasedMovementStep && pWorldRuntime->partyNeedsTurnBasedPhysicsUpdate())
             {
@@ -907,6 +910,7 @@ void GameSession::updateGameplay(
         const bool turnBasedWorldPaused =
             m_turnBasedCombatRuntime.active()
             && !m_turnBasedCombatRuntime.shouldUpdateActorAi(pTurnBasedParty);
+        pWorldRuntime->setTurnBasedActorMode(m_turnBasedCombatRuntime.actorMode());
 
         synchronizeTurnBasedPendingWorldActions(
             m_turnBasedCombatRuntime,
@@ -942,6 +946,11 @@ void GameSession::updateGameplay(
         else if (turnBasedWorldPaused)
         {
             pWorldRuntime->updateTurnBasedPausedActorAnimations(deltaSeconds);
+        }
+
+        if (!gameplayWorldPaused)
+        {
+            pWorldRuntime->actorHitFeedback().update(deltaSeconds);
         }
 
         synchronizeTurnBasedPendingWorldActions(

@@ -2083,7 +2083,7 @@ void GameplayDialogueRenderer::renderDialogueBodyText(
     const int visible = std::max(1, static_cast<int>(resolvedText->height / lineHeight));
     interaction.dialogueBodyScrollLines = std::clamp(interaction.dialogueBodyScrollLines,
         0, std::max(0, static_cast<int>(lines.size()) - visible));
-    const bgfx::TextureHandle main = view.ensureHudFontMainTextureColor(font, pDialogueTextLayout->textColorAbgr);
+    const GameplayHudFontLayer main = view.hudFontMainLayer(font, pDialogueTextLayout->textColorAbgr);
     const float x = resolvedText->x + pDialogueTextLayout->textPadX * resolvedText->scale;
     for (int i = 0; i < visible && i + interaction.dialogueBodyScrollLines < lines.size(); ++i)
     {

@@ -11,10 +11,12 @@
 #include "game/fx/WorldFxRenderResources.h"
 #include "game/fx/WorldFxSystem.h"
 #include "game/fx/EffectRenderer.h"
+#include "game/render/ShieldDomeRenderer.h"
 #include "game/outdoor/OutdoorCollisionData.h"
 #include "game/outdoor/OutdoorDistantSea.h"
 #include "game/outdoor/OutdoorLightingRuntime.h"
 #include "game/outdoor/OutdoorSpatialFxRuntime.h"
+#include "game/outdoor/OutdoorTerrainMaterials.h"
 #include "game/outdoor/TerrainDecorationRenderer.h"
 #include "game/outdoor/WeatherAudio.h"
 #include "game/outdoor/WeatherPresentation.h"
@@ -121,6 +123,9 @@ public:
     void setRenderLayers(const RenderLayers &layers);
     // Debug `sky preset`: forces an Enhanced sky preset by name; empty restores automatic selection.
     void setDebugSkyPreset(const std::string &presetName);
+    // Rebuilds the materials terrain on its next frame (style or subdivision changed); returns a status line.
+    void reloadTerrainMaterials();
+    std::string terrainMaterialsStatus() const;
     void setDebugSkyTheme(const std::optional<std::string> &themeName);
     // The next Enhanced sky update jumps to its target instead of cross-fading.
     void snapSky();
@@ -168,7 +173,7 @@ public:
         const OutdoorMapData &outdoorMapData,
         const std::optional<std::vector<uint8_t>> &outdoorLandMask,
         const std::optional<std::vector<uint32_t>> &outdoorTileColors,
-        const std::optional<OutdoorTerrainTextureAtlas> &outdoorTerrainTextureAtlas,
+        const std::optional<OutdoorTerrainTiles> &outdoorTerrainTiles,
         const std::optional<OutdoorBModelTextureSet> &outdoorBModelTextureSet,
         const std::optional<OutdoorDecorationCollisionSet> &outdoorDecorationCollisionSet,
         const std::optional<OutdoorActorCollisionSet> &outdoorActorCollisionSet,
@@ -253,6 +258,8 @@ private:
         float u;
         float v;
         uint32_t abgr;
+        // Actor hit flash (GameplayActorHitFeedback): fraction of the flash colour mixed over the lit texel.
+        float hitFlash = 0.0f;
 
         static void init();
 
@@ -282,22 +289,6 @@ private:
         static bgfx::VertexLayout ms_layout;
     };
 
-    struct ForcePerspectiveVertex
-    {
-        float x;
-        float y;
-        float z;
-        float u;
-        float v;
-        float texW;
-        float screenSpace;
-        float reciprocalW;
-        uint32_t abgr;
-
-        static void init();
-
-        static bgfx::VertexLayout ms_layout;
-    };
 
     struct TexturedBModelBatch
     {
@@ -319,21 +310,10 @@ private:
         uint16_t lightmapPageIndex = 0xffff;
     };
 
-    struct TexturedTerrainChunk
-    {
-        bgfx::VertexBufferHandle vertexBufferHandle = BGFX_INVALID_HANDLE;
-        uint32_t vertexCount = 0;
-        bx::Vec3 boundsMin = {0.0f, 0.0f, 0.0f};
-        bx::Vec3 boundsMax = {0.0f, 0.0f, 0.0f};
-        int32_t cellX = 0;
-        int32_t cellY = 0;
-        uint32_t stableId = 0;
-    };
-
     struct BModelTextureAnimationHandle
     {
         std::string textureName;
-        SurfaceMaterialSemantic surfaceSemantic = SurfaceMaterialSemantic::GenericAnimated;
+        LiquidKind liquid = LiquidKind::None;
         uint32_t waterColorAbgr = 0;
         // Animated textures keep one 2D texture per frame. A single-frame texture of a lightmapped map lives in a
         // size array instead (arrayIndex into m_bmodelTextureArrays, arrayLayer) and has no 2D texture.
@@ -420,28 +400,6 @@ private:
 
     using HudTextureHandle = GameplayHudTextureData;
 
-    struct SkyTextureHandle
-    {
-        std::string textureName;
-        int width = 0;
-        int height = 0;
-        int physicalWidth = 0;
-        int physicalHeight = 0;
-        std::vector<uint8_t> bgraPixels;
-        uint32_t horizonColorAbgr = 0xff000000u;
-        bgfx::TextureHandle textureHandle = BGFX_INVALID_HANDLE;
-    };
-
-    struct AnimatedWaterTerrainTileState
-    {
-        uint16_t layer = 0;
-        bool isWaterSurface = false;
-        std::vector<std::vector<BgraMipLevel>> frameMipLevels;
-        std::vector<uint32_t> frameLengthTicks;
-        uint32_t animationLengthTicks = 0;
-        size_t currentFrameIndex = 0;
-    };
-
     struct ViewDistanceCache
     {
         std::string sourceValue;
@@ -457,7 +415,6 @@ private:
 
     using HudFontGlyphMetrics = GameplayHudFontGlyphMetricsData;
     using HudFontHandle = GameplayHudFontData;
-    using HudFontColorTextureHandle = GameplayHudFontColorTextureData;
     using HudTextureColorTextureHandle = GameplayHudTextureColorTextureData;
 
     using HudLayoutAnchor = UiLayoutManager::LayoutAnchor;
@@ -680,6 +637,8 @@ public:
     const GameSettings &settingsSnapshot() const;
     GameplayWorldUiRenderState gameplayUiRenderState(int width, int height) const;
     WorldFxSystem &worldFxSystem();
+    Engine::ModelRenderer &modelRenderer() { return m_modelRenderer; }
+    EffectRenderer &effectRenderer() { return m_effectRenderer; }
     const EffectRenderer::Diagnostics &effectRenderDiagnostics() const;
 private:
     float effectiveCameraYawRadians() const;
@@ -763,7 +722,6 @@ private:
     bgfx::VertexBufferHandle m_vertexBufferHandle;
     bgfx::IndexBufferHandle m_indexBufferHandle;
     bgfx::DynamicVertexBufferHandle m_skyVertexBufferHandle;
-    bgfx::DynamicVertexBufferHandle m_texturedTerrainVertexBufferHandle;
     bgfx::VertexBufferHandle m_bloodSplatVertexBufferHandle;
     bgfx::VertexBufferHandle m_filledTerrainVertexBufferHandle;
     bgfx::VertexBufferHandle m_bmodelVertexBufferHandle;
@@ -773,12 +731,12 @@ private:
     bgfx::ProgramHandle m_programHandle;
     bgfx::ProgramHandle m_screenTintProgramHandle;
     bgfx::ProgramHandle m_texturedTerrainProgramHandle;
+    // HUD quads multiplied by a colour, such as tinted text.
+    bgfx::ProgramHandle m_hudTintedProgramHandle = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_spellAreaPreviewProgramHandle;
     bgfx::ProgramHandle m_outdoorLitBillboardProgramHandle;
     bgfx::ProgramHandle m_outdoorTexturedFogProgramHandle;
-    bgfx::ProgramHandle m_outdoorTerrainFogProgramHandle;
     bgfx::ProgramHandle m_outdoorTexturedFogShadowProgramHandle = BGFX_INVALID_HANDLE;
-    bgfx::ProgramHandle m_outdoorTerrainShadowProgramHandle = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_outdoorBModelShadowProgramHandle = BGFX_INVALID_HANDLE;
     // The same programs sampling arrayed bmodel textures (per-vertex layer, or u_bmodelTextureLayer for one face).
     bgfx::ProgramHandle m_outdoorBModelLightmapArrayProgramHandle = BGFX_INVALID_HANDLE;
@@ -813,20 +771,26 @@ private:
         OutdoorSelectedFxLights lights;
     };
     std::vector<TerrainDecorationBatch> m_terrainDecorationBatches;
+    // The decorations' visible instance ranges, reused between refreshes.
+    std::vector<TerrainDecorationPatch> m_terrainDecorationDraws;
     uint64_t m_terrainDecorationRefreshTick = 0;
     uint32_t m_terrainDecorationLightCount = 0;
     std::optional<std::array<std::string, 256>> m_terrainDecorationTileNames;
     bool m_terrainDecorationsInitializationAttempted = false;
+    OutdoorTerrainMaterials m_terrainMaterials;
+    // How each raw tile id takes part in the terrain, kept so the materials can be rebuilt without a reload.
+    std::optional<std::array<OutdoorTerrainTile, 256>> m_terrainMaterialTiles;
+    bool m_terrainMaterialsInitializationAttempted = false;
+    // The water renderer's per-cell terrain liquids (restored while the materials are rebuilt; with a seabed the
+    // materials replace the water among them).
+    std::vector<WaterSurfaceGeometry> m_terrainLiquidGeometry;
     bgfx::ProgramHandle m_outdoorBModelLightmapProgramHandle;
-    bgfx::ProgramHandle m_outdoorForcePerspectiveProgramHandle;
-    bgfx::TextureHandle m_terrainTextureArrayHandle;
     bgfx::TextureHandle m_bloodSplatTextureHandle;
-    bgfx::TextureHandle m_forcePerspectiveSolidTextureHandle;
     std::vector<bgfx::TextureHandle> m_bmodelLightmapTextureHandles;
     std::vector<bgfx::TextureHandle> m_directSunTextureHandles;
     bgfx::TextureHandle m_bmodelWhiteLightmapTextureHandle;
     bgfx::UniformHandle m_terrainTextureSamplerHandle;
-    bgfx::UniformHandle m_terrainWaterSamplerHandle;
+    bgfx::UniformHandle m_hudTintUniformHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_bmodelLightmapSamplerHandle;
     bgfx::UniformHandle m_bakedSkySamplerHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_bakedSunDirectSamplerHandle = BGFX_INVALID_HANDLE;
@@ -859,7 +823,6 @@ private:
     uint32_t m_bmodelFaceCount;
     uint32_t m_entityMarkerVertexCount;
     uint32_t m_spawnMarkerVertexCount;
-    std::vector<TexturedTerrainChunk> m_texturedTerrainChunks;
     std::vector<TexturedBModelBatch> m_texturedBModelBatches;
     std::vector<BModelTextureAnimationHandle> m_bmodelTextureAnimations;
     std::vector<BModelTextureArray> m_bmodelTextureArrays;
@@ -873,6 +836,7 @@ private:
     std::deque<BillboardTextureHandle> m_billboardTextureHandles;
     WorldFxRenderResources m_worldFxRenderResources;
     EffectRenderer m_effectRenderer;
+    ShieldDomeRenderer m_shieldDomeRenderer;
     Engine::ModelRenderer m_modelRenderer;
     // Baked sunlight probes per 3D model instance. A probe depends only on position (line of sight to the baked
     // probe grid), so it is re-sampled after the model moves; time-of-day colour is still applied every frame.
@@ -941,15 +905,6 @@ private:
     };
     OutdoorSpriteRenderDiagnostics m_outdoorSpriteRenderDiagnostics = {};
     std::unordered_map<int16_t, std::unordered_map<std::string, size_t>> m_billboardTextureIndexByPalette;
-    std::vector<SkyTextureHandle> m_skyTextureHandles;
-    std::unordered_map<std::string, size_t> m_skyTextureIndexByName;
-    std::unordered_set<std::string> m_runtimeSkyLoadWarningNames;
-    std::vector<ForcePerspectiveVertex> m_cachedSkyVertices;
-    std::string m_cachedSkyTextureName;
-    float m_lastSkyUpdateElapsedTime = -1.0f;
-    std::vector<AnimatedWaterTerrainTileState> m_animatedWaterTerrainTiles;
-    std::optional<uint32_t> m_lastAnimatedWaterAnimationTicks;
-    bool m_lastAnimatedWaterShaderEnabled = false;
     SpriteLoadCache m_spriteLoadCache;
     std::unordered_set<std::string> m_runtimeBillboardLoadWarningKeys;
     std::vector<uint16_t> m_pendingSpriteFrameWarmups;

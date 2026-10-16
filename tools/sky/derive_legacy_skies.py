@@ -2,10 +2,11 @@
 """Derive Enhanced sky presets and colour cloud layers from the original MM6-MM8 sky textures.
 
 For every sky texture the game data can select, this writes:
-  assets_dev/engine/rendering/sky/legacy/<name>.png   RGBA colour layer: the original painting, with the open-sky
-                                                      background keyed to transparent (fully painted skies stay opaque)
+  assets_source/engine/rendering/sky/legacy/<name>.png  RGBA colour layer: the original painting, with the open-sky
+                                                        background keyed to transparent (fully painted skies stay
+                                                        opaque); tools/cook_sky_textures.py cooks it for the runtime
   a generated preset block in assets_dev/engine/rendering/sky/sky.yml (between the GENERATED LEGACY markers)
-  legacy_skies.json                                   extracted colours and provenance
+  assets_source/engine/rendering/sky/legacy_skies.json  extracted colours and provenance
 
 Daytime colours come from the texture itself; dawn, dusk and night blend into the shared base ramps. Skies that a
 place shows all day (fixed: e.g. Dagger Wound's sunsetclouds) keep their own colours through the day and only dim.
@@ -26,8 +27,8 @@ from PIL import Image
 from scipy.ndimage import gaussian_filter
 
 ROOT = Path(__file__).resolve().parents[2]
-SKY = ROOT / 'assets_dev/engine/rendering/sky'
-SKY_YML = SKY / 'sky.yml'
+SKY = ROOT / 'assets_source/engine/rendering/sky'
+SKY_YML = ROOT / 'assets_dev/engine/rendering/sky/sky.yml'
 BEGIN = '  # BEGIN GENERATED LEGACY PRESETS (tools/sky/derive_legacy_skies.py)\n'
 END = '  # END GENERATED LEGACY PRESETS\n'
 ALIAS_BEGIN = '  # BEGIN GENERATED LEGACY ALIASES (tools/sky/derive_legacy_skies.py)\n'
@@ -35,7 +36,7 @@ ALIAS_END = '  # END GENERATED LEGACY ALIASES\n'
 
 # Every sky name the data can select (continent_settings.txt ladders, bolster_maps.txt custom skies, hardcoded
 # fallbacks and event overrides), resolved per world by GameDataLoader::buildMergedSkyTextureCandidates.
-WORLD_SEARCH = ['mm6', 'mm7', 'mm8', 'mmmerge', 'mm9']
+WORLD_SEARCH = ['mm6', 'mm7', 'mm8', 'mm9']
 
 # Skies painted edge to edge (no open background) and skies a place shows at every hour.
 FULL_COVERAGE = {'6sky19', 'sky19', 'sunsetclouds', 'stormclds', 'sky6pm', 'sky01', 'sky04', 'skycity01'}
@@ -76,7 +77,7 @@ def find_hd_master(name):
 def find_texture(name):
     for world in WORLD_SEARCH:
         for folder in ('textures_x2', 'textures'):
-            for path in glob.glob(str(ROOT / f'assets_dev/worlds/{world}/{folder}/*')):
+            for path in glob.glob(str(ROOT / f'assets_source/worlds/{world}/{folder}/*')):
                 if os.path.splitext(os.path.basename(path))[0].lower() == name:
                     return Path(path)
     return None

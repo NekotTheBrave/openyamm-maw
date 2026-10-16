@@ -11,6 +11,7 @@ from pathlib import Path
 import shutil
 import struct
 
+from bake_assets import dependency_file
 from convert_lighting_v3 import fnv
 from refresh_sprite_table_dependency import dependencies
 
@@ -59,7 +60,7 @@ def main():
             continue
         for name, digest, _ in dependencies(output):
             if name not in hashes:
-                hashes[name] = fnv((args.assets_root / name).read_bytes())
+                hashes[name] = fnv(dependency_file(args.assets_root, name).read_bytes())
             if hashes[name] != digest:
                 raise ValueError(f'{path}: retained dependency is stale: {name}; rebake required')
         backup = args.backup_root / path.relative_to(args.assets_root)

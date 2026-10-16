@@ -1,10 +1,11 @@
 #include "engine/AssetFileSystem.h"
 #include "engine/FontAsset.h"
-#include "game/app/GameSettings.h"
 #include "game/ui/UiLayoutManager.h"
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -24,15 +25,15 @@ struct FontFixture
     {
         const std::filesystem::path source = std::filesystem::path(OPENYAMM_SOURCE_DIR) / "assets_dev/engine/fonts";
         std::filesystem::create_directories(root / "engine/fonts/truetype");
-        std::filesystem::copy_file(source / "icons/ARRUS.FNT", root / "engine/fonts/arrus.fnt");
-        std::filesystem::copy_file(source / "icons/create.fnt", root / "engine/fonts/create.fnt");
-        std::filesystem::copy_file(source / "icons/Lucida.fnt", root / "engine/fonts/lucida.fnt");
-        std::filesystem::copy_file(source / "icons/SMALLNUM.FNT", root / "engine/fonts/smallnum.fnt");
-        std::filesystem::copy_file(source / "icons/COMIC.FNT", root / "engine/fonts/comic.fnt");
-        std::filesystem::copy_file(source / "icons/Book2.FNT", root / "engine/fonts/book2.fnt");
-        std::filesystem::copy_file(source / "icons/AUTONOTE.FNT", root / "engine/fonts/autonote.fnt");
-        std::filesystem::copy_file(source / "icons/ENDGAME.FNT", root / "engine/fonts/endgame.fnt");
-        std::filesystem::copy_file(source / "icons/SPELL.FNT", root / "engine/fonts/spell.fnt");
+        std::filesystem::copy_file(source / "english_text/Arrus.fnt", root / "engine/fonts/arrus.fnt");
+        std::filesystem::copy_file(source / "english_text/create.fnt", root / "engine/fonts/create.fnt");
+        std::filesystem::copy_file(source / "english_text/Lucida.fnt", root / "engine/fonts/lucida.fnt");
+        std::filesystem::copy_file(source / "english_text/SMALLNUM.fnt", root / "engine/fonts/smallnum.fnt");
+        std::filesystem::copy_file(source / "english_text/COMIC.FNT", root / "engine/fonts/comic.fnt");
+        std::filesystem::copy_file(source / "english_text/Book2.FNT", root / "engine/fonts/book2.fnt");
+        std::filesystem::copy_file(source / "english_text/AUTONOTE.FNT", root / "engine/fonts/autonote.fnt");
+        std::filesystem::copy_file(source / "english_text/ENDGAME.FNT", root / "engine/fonts/endgame.fnt");
+        std::filesystem::copy_file(source / "english_text/SPELL.FNT", root / "engine/fonts/spell.fnt");
         for (const char *pFile : {"arrus.yml", "openyamm_arrus_faithful.ttf",
             "create.yml", "openyamm_create_faithful.ttf", "lucida.yml", "openyamm_lucida_faithful.ttf",
             "smallnum.yml", "openyamm_smallnum_faithful.ttf", "comic.yml", "openyamm_comic_faithful.ttf",
@@ -53,15 +54,33 @@ struct FontFixture
     }
 };
 
-int textWidth(const Engine::FontAtlas &font, const std::string &text)
+int textWidth(const std::array<Engine::FontGlyphMetrics, 256> &metrics, const std::string &text)
 {
     int width = 0;
     for (unsigned char character : text)
     {
-        const Engine::FontGlyphMetrics &metrics = font.glyphMetrics[character];
-        width += metrics.leftSpacing + metrics.width + metrics.rightSpacing;
+        width += metrics[character].leftSpacing + metrics[character].width + metrics[character].rightSpacing;
     }
     return width;
+}
+
+int32_t fntInt32(const std::vector<uint8_t> &bytes, size_t offset)
+{
+    return int32_t(uint32_t(bytes[offset]) | (uint32_t(bytes[offset + 1]) << 8) | (uint32_t(bytes[offset + 2]) << 16)
+        | (uint32_t(bytes[offset + 3]) << 24));
+}
+
+// The layout metrics an original MM7 FNT stores: 32-byte header, then left spacing, width and right spacing per byte.
+std::array<Engine::FontGlyphMetrics, 256> fntGlyphMetrics(const std::vector<uint8_t> &bytes)
+{
+    std::array<Engine::FontGlyphMetrics, 256> metrics = {};
+    for (size_t character = 0; character < metrics.size(); ++character)
+    {
+        metrics[character].leftSpacing = fntInt32(bytes, 32 + character * 12);
+        metrics[character].width = fntInt32(bytes, 32 + character * 12 + 4);
+        metrics[character].rightSpacing = fntInt32(bytes, 32 + character * 12 + 8);
+    }
+    return metrics;
 }
 }
 
@@ -86,8 +105,8 @@ TEST_CASE("menu outline fonts load independently of legacy metrics")
         {
             CHECK(fractionalAdvance);
         }
-        CHECK(textWidth(image->atlas, "WWW") > textWidth(image->atlas, "iii"));
-        CHECK(textWidth(image->atlas, "Begin Adventure") > 0);
+        CHECK(textWidth(image->atlas.glyphMetrics, "WWW") > textWidth(image->atlas.glyphMetrics, "iii"));
+        CHECK(textWidth(image->atlas.glyphMetrics, "Begin Adventure") > 0);
         bool ink = false;
         for (size_t i = 3; i < image->atlas.mainAtlasPixels.size(); i += 4)
             ink = ink || image->atlas.mainAtlasPixels[i] != 0;
@@ -168,7 +187,7 @@ TEST_CASE("enemy label font loads its authored semibold weight and rejects inval
         Engine::loadTrueTypeFontAtlas(fixture.assets, "alegreya_semibold", error);
     REQUIRE_MESSAGE(semibold, error);
     CHECK(semibold->atlas.fontHeight == 24);
-    CHECK(textWidth(semibold->atlas, "Guardian of VARN 617/617") * 0.42f < 144.0f);
+    CHECK(textWidth(semibold->atlas.glyphMetrics, "Guardian of VARN 617/617") * 0.42f < 144.0f);
     CHECK(semibold->atlas.mainAtlasPixels.size() < 2 * 1024 * 1024);
 
     const auto writeWeight = [&](int weight)
@@ -313,34 +332,32 @@ TEST_CASE("font atlas TTF preserves native layout and rasterizes all CP1252 cell
     FontFixture fixture;
     const std::optional<std::vector<uint8_t>> bytes = fixture.assets.readBinaryFile(pPath);
     REQUIRE(bytes);
+    const std::array<Engine::FontGlyphMetrics, 256> native = fntGlyphMetrics(*bytes);
+    int cellWidth = 1;
+    for (int character = (*bytes)[0]; character <= (*bytes)[1]; ++character)
+    {
+        cellWidth = std::max(cellWidth, native[character].width);
+    }
     std::string error;
-    const std::optional<Engine::FontAtlasImage> bitmap =
-        Engine::loadFontAtlas(fixture.assets, *bytes, pName, {}, error);
-    REQUIRE_MESSAGE(bitmap, error);
-    Engine::FontSettings settings;
-    settings.preferTtf = true;
-    settings.ttfFonts = {"arrus", "create", "lucida", "smallnum", "comic", "book2", "autonote", "endgame", "spell"};
-    const std::optional<Engine::FontAtlasImage> ttf =
-        Engine::loadFontAtlas(fixture.assets, *bytes, pName, settings, error);
+    const std::optional<Engine::FontAtlasImage> ttf = Engine::loadFontAtlas(fixture.assets, *bytes, pName, error);
     REQUIRE_MESSAGE(ttf, error);
     CHECK(ttf->atlas.fontHeight == height);
     CHECK(ttf->atlas.atlasScale == 4);
-    CHECK(ttf->atlas.atlasWidth == (bitmap->atlas.atlasCellWidth + 10) * 16 * 4);
-    CHECK(ttf->atlas.atlasHeight == (bitmap->atlas.fontHeight + 10) * 16 * 4);
-    CHECK(ttf->atlas.firstChar == bitmap->atlas.firstChar);
-    CHECK(ttf->atlas.lastChar == bitmap->atlas.lastChar);
+    CHECK(ttf->atlas.atlasWidth == (cellWidth + 10) * 16 * 4);
+    CHECK(ttf->atlas.atlasHeight == (height + 10) * 16 * 4);
+    CHECK(ttf->atlas.firstChar == (*bytes)[0]);
+    CHECK(ttf->atlas.lastChar == (*bytes)[1]);
     for (int character = 0; character < 256; ++character)
     {
-        const Engine::FontGlyphMetrics &original = bitmap->atlas.glyphMetrics[character];
         const Engine::FontGlyphMetrics &replacement = ttf->atlas.glyphMetrics[character];
-        CHECK(original.leftSpacing == replacement.leftSpacing);
-        CHECK(original.width == replacement.width);
-        CHECK(original.rightSpacing == replacement.rightSpacing);
+        CHECK(native[character].leftSpacing == replacement.leftSpacing);
+        CHECK(native[character].width == replacement.width);
+        CHECK(native[character].rightSpacing == replacement.rightSpacing);
     }
     for (const std::string &text : {"Welcome to New Sorpigal, traveller!", "Illusion, magic & adventure.",
         "A very long conversation about goblins and dragons.", "\x93\xc9lise\x94 \x97 \x80"})
     {
-        CHECK(textWidth(ttf->atlas, text) == textWidth(bitmap->atlas, text));
+        CHECK(textWidth(ttf->atlas.glyphMetrics, text) == textWidth(native, text));
     }
     const bool noteFace = std::string(pName) == "AUTONOTE";
     size_t partialAlphaCount = 0;
@@ -384,106 +401,28 @@ TEST_CASE("font atlas TTF preserves native layout and rasterizes all CP1252 cell
         }
         CHECK(coverageMatches);
     }
-
-    // Compare native foreground/shadow pixels against the FNT, including reserved byte slots.
-    bool nativePixelsMatch = true;
-    for (int character = bitmap->atlas.firstChar; character <= bitmap->atlas.lastChar; ++character)
-    {
-        const size_t offsetPosition = 32 + 256 * 12 + character * 4;
-        const uint32_t glyphOffset = uint32_t((*bytes)[offsetPosition])
-            | (uint32_t((*bytes)[offsetPosition + 1]) << 8)
-            | (uint32_t((*bytes)[offsetPosition + 2]) << 16)
-            | (uint32_t((*bytes)[offsetPosition + 3]) << 24);
-        const int width = bitmap->atlas.glyphMetrics[character].width;
-        for (int y = 0; y < height; ++y)
-        {
-            for (int x = 0; x < width; ++x)
-            {
-                const uint8_t value = (*bytes)[32 + 4096 + glyphOffset + y * width + x];
-                const size_t pixel = (size_t((character / 16) * height + y) * bitmap->atlas.atlasWidth
-                    + (character % 16) * bitmap->atlas.atlasCellWidth + x) * 4;
-                for (int channel = 0; channel < 4; ++channel)
-                {
-                    nativePixelsMatch &= bitmap->atlas.mainAtlasPixels[pixel + channel] == (value > 1 ? 255 : 0);
-                }
-                nativePixelsMatch &= bitmap->shadowPixels[pixel + 3] == (value == 1 ? 255 : 0);
-            }
-        }
-    }
-    CHECK(nativePixelsMatch);
 }
 
-TEST_CASE("font atlas selection is explicit and broken selected replacements report an error")
+TEST_CASE("legacy font atlas requires its TTF replacement and reports broken descriptors")
 {
     FontFixture fixture;
     const std::optional<std::vector<uint8_t>> bytes = fixture.assets.readBinaryFile("fonts/arrus.fnt");
     REQUIRE(bytes);
-    Engine::FontSettings settings;
-    CHECK_FALSE(settings.usesTrueType("Arrus"));
-    settings.preferTtf = true;
-    CHECK(settings.usesTrueType("ARRUS"));
-    CHECK_FALSE(settings.usesTrueType("Create"));
     std::string error;
-    const std::optional<Engine::FontAtlasImage> unlisted =
-        Engine::loadFontAtlas(fixture.assets, *bytes, "Create", settings, error);
-    REQUIRE_MESSAGE(unlisted, error);
-    CHECK(unlisted->atlas.atlasScale == 1);
+    const std::optional<Engine::FontAtlasImage> arrus = Engine::loadFontAtlas(fixture.assets, *bytes, "Arrus", error);
+    REQUIRE_MESSAGE(arrus, error);
+    CHECK(arrus->atlas.atlasScale == 4);
 
+    CHECK_FALSE(Engine::loadFontAtlas(fixture.assets, *bytes, "Legal", error));
+    CHECK(error.find("missing TTF descriptor") != std::string::npos);
     std::ofstream(fixture.root / "engine/fonts/truetype/arrus.yml")
         << "file: openyamm_arrus_faithful.ttf\nlogical_height: 19\nbaseline: 14\n"
         << "encoding: windows-1252\npresentation: unknown\n";
-    CHECK_FALSE(Engine::loadFontAtlas(fixture.assets, *bytes, "Arrus", settings, error));
+    CHECK_FALSE(Engine::loadFontAtlas(fixture.assets, *bytes, "Arrus", error));
     CHECK(error.find("unsupported TTF presentation") != std::string::npos);
     std::ofstream(fixture.root / "engine/fonts/truetype/arrus.yml") << "file: bad.ttf\n";
-    CHECK_FALSE(Engine::loadFontAtlas(fixture.assets, *bytes, "Arrus", settings, error));
+    CHECK_FALSE(Engine::loadFontAtlas(fixture.assets, *bytes, "Arrus", error));
     CHECK(error.find("invalid TTF descriptor") != std::string::npos);
-    settings.preferTtf = false;
-    CHECK(Engine::loadFontAtlas(fixture.assets, *bytes, "Arrus", settings, error));
-    CHECK_FALSE(Engine::loadFontAtlas(fixture.assets, {0, 1, 2}, "Arrus", settings, error));
+    CHECK_FALSE(Engine::loadFontAtlas(fixture.assets, {0, 1, 2}, "Arrus", error));
     CHECK(error == "invalid legacy FNT");
-}
-
-TEST_CASE("font atlas retains compact MMX bitmap parsing")
-{
-    Engine::AssetFileSystem assets;
-    std::vector<uint8_t> bytes(32 + 1280 + 4, 0);
-    bytes[0] = 65;
-    bytes[1] = 65;
-    bytes[2] = 8;
-    bytes[5] = 2;
-    bytes[32 + 65] = 2;
-    bytes[32 + 1280] = 2;
-    bytes[32 + 1280 + 3] = 1;
-    std::string error;
-    const std::optional<Engine::FontAtlasImage> font = Engine::loadFontAtlas(assets, bytes, "test", {}, error);
-    REQUIRE_MESSAGE(font, error);
-    CHECK(font->atlas.glyphMetrics[65].width == 2);
-    const size_t firstPixel = (size_t(4 * 2) * font->atlas.atlasWidth + 2) * 4;
-    CHECK(font->atlas.mainAtlasPixels[firstPixel + 3] == 255);
-    CHECK(font->shadowPixels[firstPixel + (font->atlas.atlasWidth + 1) * 4 + 3] == 255);
-    bytes.pop_back();
-    CHECK_FALSE(Engine::loadFontAtlas(assets, bytes, "test", {}, error));
-}
-
-TEST_CASE("font settings round trip normalizes the selected font list and preserves bitmap mode")
-{
-    FontFixture fixture;
-    const std::filesystem::path path = fixture.root / "settings.ini";
-    std::ofstream(path) << "[fonts]\nprefer_ttf=true\nttf_fonts=Arrus, CREATE, arrus, ,\n";
-    std::string error;
-    std::optional<Game::GameSettings> settings = Game::loadGameSettings(path, error);
-    REQUIRE_MESSAGE(settings, error);
-    CHECK(settings->fonts.preferTtf);
-    CHECK(settings->fonts.ttfFonts == std::vector<std::string>{"arrus", "create"});
-    REQUIRE(Game::saveGameSettings(path, *settings, error));
-    std::optional<Game::GameSettings> reloaded = Game::loadGameSettings(path, error);
-    REQUIRE(reloaded);
-    CHECK(reloaded->fonts == settings->fonts);
-    settings->fonts.preferTtf = false;
-    settings->fonts.ttfFonts.clear();
-    REQUIRE(Game::saveGameSettings(path, *settings, error));
-    reloaded = Game::loadGameSettings(path, error);
-    REQUIRE(reloaded);
-    CHECK_FALSE(reloaded->fonts.preferTtf);
-    CHECK(reloaded->fonts.ttfFonts.empty());
 }

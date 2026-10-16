@@ -3,6 +3,7 @@
 #include "engine/AssetScaleTier.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -28,6 +29,8 @@ struct ApplicationConfig
     int windowHeight;
     WindowMode windowMode;
     bool verticalSync;
+    // Upper limit of anisotropic texture filtering; 1 turns it off.
+    uint8_t maxAnisotropy;
     bool fpsTrace;
     bool performanceTrace;
     bool hitchTrace;

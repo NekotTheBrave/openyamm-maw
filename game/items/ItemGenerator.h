@@ -5,6 +5,7 @@
 #include <functional>
 #include <optional>
 #include <random>
+#include <string>
 
 namespace OpenYAMM::Game
 {
@@ -27,6 +28,8 @@ struct ItemGenerationRequest
     ItemGenerationMode mode = ItemGenerationMode::Generic;
     bool allowRareItems = true;
     bool rareItemsOnly = false;
+    // World of the map the item is generated for; world-gated items (ItemDefinition::worldIds) need a match.
+    std::string worldId;
 };
 
 class ItemGenerator

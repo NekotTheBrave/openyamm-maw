@@ -204,9 +204,6 @@
 201	pending	zdwj01.blv	0	0	0	672	0	0	1	1	6	0	0	0	0	0	0	1	 1-1	0	0	1	 1-4	0	0	1	 1-4	42	0		0	0	-
 202	Devil Outpost	zdwj02.blv	0	0	0	672	0	0	1	1	6	10	0	0	0	Demon	Demon	2	 2-3	0	0	1	 1-4	0	0	1	 1-4	42	0		0	0	-
 203	New World Computing	znwc.blv	0	0	0	7	0	0	1	1	6	0	0	0	0	0	0	1	 1-1	0	0	1	 1-4	0	0	1	 1-4	37	0		0	0	-
-204	The Breach	Breach.odm	0	0	0	-1	0	0	1	7	6	0	100	0	0	Will ' O Wisp	Will ' O Wisp	1	 1-1	0	0	1	 1-4	0	0	1	 1-4	37	0		0	0	-
-205	The Breach	BrAlvar.odm	0	0	2	-1	0	0	2	7	6	80	10	10	80	Fire Elemental	Fire Elemental	5	 1-3	ATroll	ATroll	5	 1-3	Cactus	Cactus	1	 1-3	3	PSYCHOTIC		0	0	-
-206	Basement of the Breach	BrBase.blv	0	0	0	1	0	0	0	1	1	50	100	0	0	Cactus	Cactus	1	 1-3	0	0	1	 1-4	0	0	1	 1-4	42	0		0	0	-
 207	The Strange Temple	7nwc.blv	0	0	1	672	7	10	1	1	1	0	0	0	0	0	0	1	 1-3	0	0	3	 1-3	0	0	1	 1-3	34	STONEROOM	0			-
 9001	Thjorgard City	thjorgardcity.odm	0	0	2	600	0	0	2	3	1	0	0	0	0													90008	PLAINS			0	x	mm9	1	ThjorgardCity	8	3	0					7	A2	0	1
 9002	Thjorgard	thjorgard.odm	0	0	3	600	0	0	3	4	2	10	50	35	15	Ogre Warrior	Ogre Warrior			Rat	Rat			Skeleton Warrior	Skeleton Warrior			90008	PLAINS			0	x	mm9	2	Thjorgard	8	3	0					7	A2	1	0

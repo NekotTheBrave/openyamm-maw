@@ -1,0 +1,75 @@
+# Liquids drawn by the liquid shader (game/render/WaterRenderer.cpp, game/shaders/fs_water.sc and fs_indoor_water.sc).
+# A terrain tile or face texture matching a liquid loads no art: the shader draws it from its kind and colour.
+#   kind: water (waves, reflections, shore), tar (dark, slow, glossy, bubbling) or lava (self-lit crust and cracks)
+#   color: [red, green, blue] - water and tar: the lit body tint; lava: the glow of its cracks
+#   terrain_transition_overlay: terrain edge tiles over the liquid keep their overlay art, and its alpha is the
+#     liquid's coverage
+# Water colours keep the tint of each world's original water tile (its mean colour, lit as before).
+liquids:
+  - id: water_mm6
+    kind: water
+    color: [24, 58, 70]
+    applies_to: [terrain, face]
+    match:
+      texture_names: [6wtrtyl]
+      # 6hdwtr: faces naming a legacy animation frame directly.
+      texture_prefixes: [6wtrdr, 6hdwtr]
+    terrain_transition_overlay: true
+
+  # Fluid faces of their own water art; the colours keep the tint each had as Fluid-flagged water.
+  - id: water_mm6_temple
+    kind: water
+    color: [30, 63, 73]
+    applies_to: [face]
+    match:
+      texture_names: [orwtrtyl]
+
+  - id: sewage_mm6
+    kind: water
+    color: [20, 49, 53]
+    applies_to: [face]
+    match:
+      texture_names: [swprrf2, swprrf3]
+
+  - id: water_mm7
+    kind: water
+    color: [22, 53, 71]
+    applies_to: [terrain, face]
+    match:
+      texture_names: [7wtrtyl]
+      texture_prefixes: [7hwtrdr, 7wtrdr, 7hdwtr]
+    terrain_transition_overlay: true
+
+  - id: slime_water_mm7
+    kind: water
+    color: [28, 54, 59]
+    applies_to: [face]
+    match:
+      texture_names: [7slimywtr]
+
+  - id: water_mm8
+    kind: water
+    color: [28, 58, 68]
+    applies_to: [terrain, face]
+    match:
+      texture_names: [wtrtyl, hwtrtyl]
+      texture_prefixes: [wtrdr, hwtrdr, hdwtr]
+    terrain_transition_overlay: true
+
+  - id: lava
+    kind: lava
+    color: [255, 92, 18]
+    applies_to: [terrain, face]
+    match:
+      texture_names: [lavtyl, lavatyl]
+      texture_prefixes: [hdlav]
+    terrain_transition_overlay: true
+
+  - id: tar
+    kind: tar
+    color: [17, 14, 11]
+    applies_to: [terrain, face]
+    match:
+      texture_names: [oiltyl, tartyl]
+      texture_prefixes: [hwoil]
+    terrain_transition_overlay: true
