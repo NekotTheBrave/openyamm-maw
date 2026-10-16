@@ -227,13 +227,24 @@ end
 
 local commands = {}
 
+-- An item given (evt.Add("Items", n)) is in the hand when the command returns, as in the original: MAW sets a
+-- Dimensional Map's dungeon and power on Mouse.Item right after giving it. Outside an event the command's own event
+-- hands it over as it ends; inside one (a topic's handler) it is handed over here.
+local itemVariables = {Items = true, Inventory = true}
+
 local function variableCommand(name)
     commands[name] = function(...)
         local values = parameters({"VarNum", "Value"}, ...)
         local value = number(values[2])
 
         return withinEvent(function()
-            return modrt.eventCall("evt." .. name, variable(values[1], value), value)
+            local results = table.pack(modrt.eventCall("evt." .. name, variable(values[1], value), value))
+
+            if name == "Add" and inEvent and itemVariables[values[1]] then
+                modrt.handOverEventItems()
+            end
+
+            return table.unpack(results, 1, results.n)
         end)
     end
 end
@@ -281,6 +292,12 @@ simpleCommand("SetTexture", {"Facet", "Name"}, {number, passString})
 simpleCommand("SetSnow", {"EffectId", "On"}, {number, boolean})
 simpleCommand("PlaySound", {"Id", "X", "Y"})
 simpleCommand("CanPlayerAct", {"Id"})
+-- Not MMExtension's (Merge has NPCFollowers.Add/Remove, which OpenYAMM does natively): the engine's own, to hire an
+-- NPC as a follower and send one away (MAW's Dragon Hatchling).
+simpleCommand("AddFollowerNpc", {"NPC", "Profession", "Cost"})
+simpleCommand("RemoveFollowerNpc", {"NPC"})
+simpleCommand("GetGlobalVar", {"Name", "Default"}, {passString, number})
+simpleCommand("SetGlobalVar", {"Name", "Value"}, {passString, number})
 
 function commands.MoveToMap(...)
     local v = parameters({"X", "Y", "Z", "Direction", "LookAngle", "SpeedZ", "HouseId", "Icon", "Name"}, ...)

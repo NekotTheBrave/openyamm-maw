@@ -1,0 +1,73 @@
+id: mod_runtime.maw.dragon_hatchling
+title: MAW's Dragon Hatchling says what the dragon ate and can release him
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# The Baby Dragon (NPC 396) of OpenYAMM's Dragon Hatchling quest (global event 789), with MAW's changes
+# (zMaw-DragonHatchling.lua): feeding says how much he has eaten, that the party lacks food, and once he has eaten
+# enough how many days are left; grown, he follows the party; following, he can be released for good. The quest's
+# state is the engine's cross-continent variables. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out02.odm
+    party:
+      gold: 1000
+      food: 12
+      members:
+      - name: Tester
+        class: Knight
+        level: 10
+        skills: []
+        equipment: {}
+# The engine gives him the topic as his dialog is entered where he lives (its NPC enter hook); here it is set.
+- mod_lua:
+    code: |
+      Game.NPC[396].Events[0] = 789
+      return Game.NPC[396].Events[0]
+    expect: "789"
+- speak_npc:
+    source_id: 396
+- select_topic:
+    action_id: 789
+- mod_lua:
+    code: |
+      return Party.Food, evt.GetGlobalVar("MMerge.CrossContinents.DragonFood", 0), ModRT.totalErrorCount
+    expect: "7\t5\t0"
+- select_topic:
+    action_id: 789
+- select_topic:
+    action_id: 789
+- mod_lua:
+    code: |
+      -- Too little food the third time: nothing eaten.
+      return Party.Food, evt.GetGlobalVar("MMerge.CrossContinents.DragonFood", 0), ModRT.totalErrorCount
+    expect: "2\t10\t0"
+# Fed enough but not a month yet: days left; a month on: grown, then he joins.
+- mod_lua:
+    code: |
+      evt.SetGlobalVar("MMerge.CrossContinents.DragonFood", 100)
+      evt.SetGlobalVar("MMerge.CrossContinents.DragonFirstFeedMinutes", math.floor(Game.Time / const.Minute) - 20 * 1440)
+      return "set"
+    expect: "set"
+- select_topic:
+    action_id: 789
+- mod_lua:
+    code: |
+      return evt.GetGlobalVar("MMerge.CrossContinents.DragonGrown", 0), ModRT.totalErrorCount
+    expect: "0\t0"
+- mod_lua:
+    code: |
+      evt.SetGlobalVar("MMerge.CrossContinents.DragonFirstFeedMinutes", math.floor(Game.Time / const.Minute) - 30 * 1440)
+      return "set"
+    expect: "set"
+- select_topic:
+    action_id: 789
+- select_topic:
+    action_id: 789
+- mod_lua:
+    code: |
+      return evt.GetGlobalVar("MMerge.CrossContinents.DragonGrown", 0),
+        evt.GetGlobalVar("MMerge.CrossContinents.DragonJoined", 0), tostring(Game.NPC[396].Hired), ModRT.totalErrorCount
+    expect: "1\t1\ttrue\t0"

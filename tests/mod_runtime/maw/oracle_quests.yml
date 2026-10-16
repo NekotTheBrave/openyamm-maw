@@ -1,0 +1,98 @@
+id: mod_runtime.maw.oracle_quests
+title: MAW's skill reset and Dimensional Maps quest at the Oracle
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW gives the Oracle (NPC 314), Judge Grey (413) and the Seer (794) two topics of Merge's quest framework:
+# "Skill reset info" (zzMAWRespec.lua: for 1000 gold a level, every skill back to 1 and its points refunded, the
+# masteries kept for when the skill grows back) and "Dimensional Maps" (zzMaw_DimensionalMapsQuest.lua: from level 100
+# a Dimensional Map of a tier, then a reward once its dungeon is cleared). Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out02.odm
+    party:
+      gold: 50000
+      food: 10
+      members:
+      - name: Tester
+        class: Knight
+        level: 10
+        skills: []
+        equipment: {}
+- speak_npc:
+    source_id: 314
+- assert:
+    dialog:
+      active: true
+      actions:
+      - label: I lost it!
+      - label: Hint
+      - label: Skill reset info
+      - label: Dimensional Maps
+# The skill reset: the topic explains, then offers the reset.
+- mod_lua:
+    code: |
+      local p = Party[0]
+      p.Skills[const.Skills.Sword] = JoinSkill(5, const.Expert)
+      p.SkillPoints = 0
+      GoldBefore = Party.Gold
+      return SplitSkill(p.Skills[const.Skills.Sword])
+    expect: "5\t2"
+- select_topic:
+    action_id: 998
+- assert:
+    dialog:
+      active: true
+      actions:
+      - label: I lost it!
+      - label: Hint
+      - label: I want to reset
+      - label: Dimensional Maps
+- select_topic:
+    action_id: 998
+- mod_lua:
+    code: |
+      local p = Party[0]
+      local level, mastery = SplitSkill(p.Skills[const.Skills.Sword])
+      local kept = vars.oldPlayerMasteries[p:GetIndex()][const.Skills.Sword]
+      return level, GoldBefore - Party.Gold, p.SkillPoints >= 14, kept, ModRT.totalErrorCount
+    expect: "1\t10000\ttrue\t2\t0"
+# Dimensional Maps: below level 100 the Oracle sends the party away; at 100 it gives a map (into the hand), and once
+# the map's dungeon is cleared, a reward and the next tier.
+- select_topic:
+    action_id: 999
+- mod_lua:
+    code: |
+      return tostring(vars.dimensionalMapsQuest.Map), Mouse.Item.Number, ModRT.totalErrorCount
+    expect: "nil\t0\t0"
+- mod_lua:
+    code: |
+      Party[0].LevelBase = 100
+      return Party[0].LevelBase
+    expect: "100"
+- select_topic:
+    action_id: 999
+- mod_lua:
+    code: |
+      local q = vars.dimensionalMapsQuest
+      local it = Mouse.Item
+      return it.Number, it.BonusStrength == q.Map.BonusStrength, it.MaxCharges, q.TierLevel, ModRT.totalErrorCount
+    expect: "290\ttrue\t8\t100\t0"
+- mod_lua:
+    code: |
+      Mouse.Item.Number = 0
+      local q = vars.dimensionalMapsQuest
+      q.Cleared, q.Level, q.MapName = true, 50, "Abandoned Temple"
+      GoldBefore, ExpBefore = Party.Gold, Party[0].Experience
+      return "cleared"
+    expect: "cleared"
+- select_topic:
+    action_id: 999
+- mod_lua:
+    code: |
+      local q = vars.dimensionalMapsQuest
+      return Party.Gold - GoldBefore >= 50000, Party[0].Experience > ExpBefore, tostring(q.Map), q.TierLevel,
+        ModRT.totalErrorCount
+    expect: "true\ttrue\tnil\t120\t0"

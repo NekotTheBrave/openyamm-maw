@@ -173,6 +173,9 @@ end
 
 -- Skill ids as Merge numbers them (the row order of "Class Skills.txt"). The engine side resolves these names to
 -- OpenYAMM's own skill names.
+-- How many skills the original's character record holds.
+local MergeSkillCount = 39
+
 local skillNamesById = {
     [0] = "Staff", "Sword", "Dagger", "Axe", "Spear", "Bow", "Mace", "Blaster", "Shield", "Leather", "Chain",
     "Plate", "Fire", "Air", "Water", "Earth", "Spirit", "Mind", "Body", "Light", "Dark", "DarkElfAbility",
@@ -427,6 +430,10 @@ local function skillsObject(playerIndex, path)
             local level, mastery = SplitSkill(floor(value))
             return modrt.playerSkillSet(playerIndex, name, level, mastery)
         end,
+        -- The original's array of the 39 skills (0 Staff ... 38 Learning); the skills a mod adds are reached by
+        -- number all the same (MAW's Skillz). Its High was missing, so scripts walking it (MAW's skill reset) saw none.
+        get = sizeFields(function() return MergeSkillCount end),
+        range = function() return 0, MergeSkillCount - 1 end,
     })
 end
 
@@ -857,6 +864,8 @@ local blankPlayer = cached(function(index)
     local skills = boundObject("Party.PlayersArray[].Skills", {
         index = function() return 0 end,
         newindex = function() return true end,
+        get = sizeFields(function() return MergeSkillCount end),
+        range = function() return 0, MergeSkillCount - 1 end,
     })
     local items = boundObject("Party.PlayersArray[].Items", {
         index = function() return emptyItem end,

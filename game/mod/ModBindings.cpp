@@ -3941,6 +3941,20 @@ int nativeEventCall(lua_State *pLuaState)
     return resultCount;
 }
 
+// modrt.handOverEventItems(): hands the items the running event gave to the party (into the hand, the one held before
+// into the pack) now rather than when the event ends: a script giving an item works on it in the hand at once.
+int nativeHandOverEventItems(lua_State *pLuaState)
+{
+    const ModHost *pHost = hostFromUpvalue(pLuaState);
+
+    if (pHost != nullptr && pHost->handOverEventItems)
+    {
+        pHost->handOverEventItems();
+    }
+
+    return 0;
+}
+
 // modrt.runCommandEvent([eventId]): runs a map event as the game runs one (what the player clicked on, say); without
 // an id, the event the mod's queued event commands are the handler of (ModCommandEventId). Whether it ran.
 int nativeRunCommandEvent(lua_State *pLuaState)
@@ -5673,6 +5687,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"worldItemMove", nativeWorldItemMove},
         {"worldItemRemove", nativeWorldItemRemove},
         {"portraitSpellFx", nativePortraitSpellFx},
+        {"handOverEventItems", nativeHandOverEventItems},
         {"worldItemSetNumber", nativeWorldItemSetNumber},
         {"chestGet", nativeChestGet},
         {"chestSet", nativeChestSet},
