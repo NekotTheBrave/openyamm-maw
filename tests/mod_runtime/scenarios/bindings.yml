@@ -109,12 +109,13 @@ steps:
     expect: "42\t3\t3\tkept\t0.5\tnil\ttrue"
 
 # --- the map: indoor or outdoor, and the bounds of the map table -----------------------------------------------------
-# The table's High ends at the Merge's maps; OpenYAMM's own maps, numbered from 9001, are reached by number.
+# The table's High ends at the Merge's maps; OpenYAMM's own maps, numbered from 9001, are reached by number. The run
+# ends at 203 since upstream dropped the Breach maps (204 to 206) from its table; MAW's table still has them.
 - mod_lua:
     code: |
       return Map.IsOutdoor(), Map.IsIndoor(), Map.IndoorOrOutdoor, Game.MapStats.High,
         Game.MapStats[9001].Name, tostring(Game.MapStats[208])
-    expect: "true\tfalse\t2\t207\tThjorgard City\tnil"
+    expect: "true\tfalse\t2\t203\tThjorgard City\tnil"
 # Game.Time follows the world's clock as it runs (MAW's timers, its regeneration and buff upkeep among them, run on
 # the time passed): it was the session's clock, which during play is brought up to the world's only on saving or
 # changing maps, so in the game window it stood still.
