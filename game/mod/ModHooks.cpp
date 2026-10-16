@@ -533,10 +533,18 @@ bool modCanOpenChest(uint32_t chestId, bool trapped)
     return pModHooks == nullptr || pModHooks->canOpenChest(chestId, trapped);
 }
 
-bool modCanHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal)
+bool modCanHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal, std::string *pTopic)
 {
     IModHooks *pModHooks = activeModHooks();
-    return pModHooks == nullptr || pModHooks->canHireNpcFollower(npcId, houseId, refusal);
+    std::string topic;
+    const bool allow = pModHooks == nullptr || pModHooks->canHireNpcFollower(npcId, houseId, refusal, topic);
+
+    if (pTopic != nullptr)
+    {
+        *pTopic = topic;
+    }
+
+    return allow;
 }
 
 float modShopItemTreatment(bool repair, uint32_t houseId, const InventoryItem &item, float engineMultiplier)

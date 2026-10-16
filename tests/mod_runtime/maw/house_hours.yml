@@ -27,3 +27,13 @@ steps:
       Game.Houses[1].CloseHour = Game.Houses[1].CloseHour
       return Game.Houses[1].OpenHour, ModRT.totalErrorCount
     expect: "5\t0"
+# A house's Val, its price multiplier, is the house table's too: every price of the house goes by it (MAW sets it to
+# 1 in the shops of a party with a Grandmaster merchant, and for Road to Insanity's training halls).
+- mod_lua:
+    code: |
+      local before = Game.Houses[1].Val
+      Game.Houses[1].Val = 1
+      local written = modrt.houseGet(1, "Val")
+      Game.Houses[1].Val = before
+      return before > 0, written, modrt.houseGet(1, "Val") == before, ModRT.totalErrorCount
+    expect: "true\t1\ttrue\t0"

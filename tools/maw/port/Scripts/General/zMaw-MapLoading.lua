@@ -10,7 +10,26 @@
 -- kinds are left as they are. MAW's own BeforeLoadMap handlers then run as they are: they write the same values
 -- again (the Dimension Map's extra is not added twice: mapMonsterDensity is cleared).
 
+-- MAW's randomizer handler of BeforeLoadMap (zzzzMalekith-Randomizer.lua): the shuffle of every map's monsters.
+local function runRandomizerShuffle()
+    for _, handler in ipairs(events.handlers("BeforeLoadMap")) do
+        local info = debug.getinfo(handler, "S")
+
+        if info and info.source:find("Malekith%-Randomizer") then
+            handler()
+        end
+    end
+end
+
 function events.MapLoading(t)
+    -- A new game's first map: MAW turns the randomizer on when it hears the game began (BeforeNewGameAutosave),
+    -- which the port raises once that map is made, too late for its monsters. It is turned on here, and MAW's
+    -- shuffle made, before the game reads the map's row; MAW's handler makes the same shuffle again after.
+    if ModRT.State.newGamePending and Game.RandomizerMode and not vars.RandomizerMode then
+        vars.RandomizerMode = true
+        runRandomizerShuffle()
+    end
+
     local map = Game.MapStats[t.MapStatsIndex]
 
     if map and not vars.RandomizerMode then

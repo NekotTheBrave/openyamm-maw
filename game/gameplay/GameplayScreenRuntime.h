@@ -234,6 +234,10 @@ public:
     void openQuickReferenceOverlay();
     void closeQuickReferenceOverlay();
     void closeHouseShopOverlay();
+    // A mod's request to leave the house or NPC talk that is open (Game:ExitHouseScreen, ExitCurrentScreen), carried
+    // out by applyRequestedModDialogExit at the start of the next gameplay update.
+    void requestModDialogExit();
+    void applyRequestedModDialogExit();
     void markHouseShopTransactionPerformed(uint32_t houseId);
     void openFollowerNpcDialogue(size_t followerSlotIndex);
     void openFollowerNpcDialogueByIndex(size_t followerIndex);
@@ -502,6 +506,8 @@ public:
     bool renderHouseVideoFrame(float x, float y, float quadWidth, float quadHeight) const;
 
 private:
+    bool m_modDialogExitRequested = false;
+
     struct DelayedSpeechReaction
     {
         size_t memberIndex = 0;

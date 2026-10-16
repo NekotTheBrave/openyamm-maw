@@ -124,13 +124,30 @@ function odm(name)
     evt.MoveToMap{Name = name .. ".odm"}
 end
 
--- The Merge's way of catching the objects a piece of engine code creates (a monster's drops, a spell's missiles):
--- BeginGrabObjects() before, GrabObjects() after returns them. Objects on the map are not bound yet, so nothing is
--- caught and scripts that go on to adjust the objects find none.
+-- The Merge's way of catching the objects a piece of engine code creates (a monster's drops, an item dropped from the
+-- hand): BeginGrabObjects() before, GrabObjects() after returns them (Map.Objects), in the order they came. The items
+-- lying on the map are only ever added at the end, so those from the place counted at the start on are new ones, also
+-- when others were taken off meanwhile (that only moves the new ones down, and the first may then be missed).
+-- Missiles are not objects here: they are not caught (MAW aims a spell cast at no monster at the closest one, which
+-- the game does itself).
+local grabStart = nil
+
 function BeginGrabObjects()
+    grabStart = modrt.worldItemGet(0, "#") or 0
 end
 
 function GrabObjects()
+    if grabStart == nil then
+        return
+    end
+
+    local grabbed = {}
+
+    for index = grabStart, (modrt.worldItemGet(0, "#") or 0) - 1 do
+        grabbed[#grabbed + 1] = Map.Objects[index]
+    end
+
+    return table.unpack(grabbed)
 end
 
 ---------------------------------------------------------------------------------------------------------------------

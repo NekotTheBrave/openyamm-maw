@@ -1,0 +1,65 @@
+id: mod_runtime.maw.grab_objects
+title: BeginGrabObjects and GrabObjects catch the items put on the map, and scripts take them off
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# The Merge's BeginGrabObjects() and GrabObjects(): the objects made between the two, in order. MAW takes some off
+# the map again with obj.Type = 0, obj.TypeIndex = 0, obj.Item.Number = 0 (zzMaw-Monsters.lua's MonsterKilled cuts
+# four in five of some death drops; zzMaw-Maps.lua keeps a Dimensional Map from being dropped in Beyond Madness).
+# An object taken off reads as no item until the script call is over, then leaves the map; the other places keep
+# their numbers meanwhile. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out01.odm
+- mod_lua:
+    code: |
+      GrabCount = Map.Objects.High + 1
+      BeginGrabObjects()
+      SummonItem(1069, Party.X + 300, Party.Y, Party.Z, 0)
+      SummonItem(290, Party.X - 300, Party.Y, Party.Z, 0)
+      local a, b, c = GrabObjects()
+      local first = a.Item.Number
+      a.Type = 0
+      a.TypeIndex = 0
+      a.Item.Number = 0
+      return first, a.Item.Number, b.Item.Number, c == nil, ModRT.totalErrorCount
+    expect: "1069\t0\t290\ttrue\t0"
+# Once the call is over the potion is gone and the map lies in the potion's place.
+- mod_lua:
+    code: |
+      return Map.Objects.High + 1 - GrabCount, Map.Objects[GrabCount].Item.Number
+    expect: "1\t290"
+# Nothing made since: nothing caught.
+- mod_lua:
+    code: |
+      BeginGrabObjects()
+      return GrabObjects() == nil
+    expect: "true"
+# Beyond Madness: a Dimensional Map dropped from the hand comes back into it (the game raises Action 14 before it puts
+# the item down; the drop is stood in for here, and MAW's check runs on the next tick).
+- mod_lua:
+    code: |
+      vars.madnessMode = true
+      GrabCount = Map.Objects.High + 1
+      modrt.heldItemSet({Number = 290})
+      Mouse.Item.MaxCharges = 15
+      Mouse.Item.Bonus = 3
+      events.call("Action", {Action = 14, Param = 0, Param2 = 0, Handled = false})
+      local dropped = SummonItem(290, Party.X + 200, Party.Y, Party.Z, 0)
+      dropped.Item.MaxCharges = 15
+      dropped.Item.Bonus = 3
+      modrt.heldItemSet()
+      return Mouse.Item.Number, ModRT.totalErrorCount
+    expect: "0\t0"
+- mod_lua:
+    code: |
+      events.call("Tick")
+      return Mouse.Item.Number, Mouse.Item.MaxCharges, Mouse.Item.Bonus, ModRT.totalErrorCount
+    expect: "290\t15\t3\t0"
+- mod_lua:
+    code: |
+      vars.madnessMode = nil
+      return Map.Objects.High + 1 - GrabCount
+    expect: "0"

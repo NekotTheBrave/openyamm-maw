@@ -1833,6 +1833,8 @@ bool hasActiveActorSpellEffectOverride(const GameplayActorSpellEffectState &stat
         || state.shrinkRemainingSeconds > 0.0f
         || state.armorClassHalvedRemainingSeconds > 0.0f
         || state.darkGraspRemainingSeconds > 0.0f
+        || state.meleeOnlyRemainingSeconds > 0.0f
+        || state.damageHalvedRemainingSeconds > 0.0f
         || state.dayOfProtectionRemainingSeconds > 0.0f
         || state.hourOfPowerRemainingSeconds > 0.0f
         || state.painReflectionRemainingSeconds > 0.0f
@@ -9607,7 +9609,9 @@ std::optional<ActorAiFacts> IndoorWorldRuntime::collectIndoorActorAiFacts(
     facts.stats.attackConstraints.attack2IsRanged = pStats->attack2HasMissile || bolster.generatedAttack2IsRanged;
     facts.stats.attack2MissileTypeOverride = bolster.generatedAttack2MissileType;
     facts.stats.attackConstraints.blindActive = aiState.spellEffects.blindRemainingSeconds > 0.0f;
-    facts.stats.attackConstraints.darkGraspActive = aiState.spellEffects.darkGraspRemainingSeconds > 0.0f;
+    // MeleeOnly keeps the monster from its ranged attacks as Dark Grasp does.
+    facts.stats.attackConstraints.darkGraspActive = aiState.spellEffects.darkGraspRemainingSeconds > 0.0f
+        || aiState.spellEffects.meleeOnlyRemainingSeconds > 0.0f;
     facts.stats.attackConstraints.rangedCommitAllowed = true;
 
     facts.runtime.motionState = aiState.motionState;
@@ -12090,6 +12094,8 @@ bool IndoorWorldRuntime::actorInspectState(
         state.fearRemainingSeconds = pEffectState->fearRemainingSeconds;
         state.shrinkRemainingSeconds = pEffectState->shrinkRemainingSeconds;
         state.darkGraspRemainingSeconds = pEffectState->darkGraspRemainingSeconds;
+        state.meleeOnlyRemainingSeconds = pEffectState->meleeOnlyRemainingSeconds;
+        state.damageHalvedRemainingSeconds = pEffectState->damageHalvedRemainingSeconds;
         state.dayOfProtectionRemainingSeconds = pEffectState->dayOfProtectionRemainingSeconds;
         state.hourOfPowerRemainingSeconds = pEffectState->hourOfPowerRemainingSeconds;
         state.painReflectionRemainingSeconds = pEffectState->painReflectionRemainingSeconds;

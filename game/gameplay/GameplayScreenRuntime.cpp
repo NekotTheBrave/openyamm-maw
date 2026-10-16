@@ -614,6 +614,13 @@ uint32_t GameplayScreenRuntime::closeActiveEventDialog()
     EventRuntimeState *pEventRuntimeState =
         worldRuntime() != nullptr ? worldRuntime()->eventRuntimeState() : nullptr;
     const uint32_t hostHouseId = pEventRuntimeState != nullptr ? pEventRuntimeState->dialogueState.hostHouseId : 0;
+
+    // The mod hears of the exit while the house or the talk is still the current screen, as in the original.
+    if (activeEventDialog().isActive)
+    {
+        modPlayerAction(Mm8Action::Exit);
+    }
+
     GameplayDialogUiFlowState state = dialogUiFlowState();
     ::OpenYAMM::Game::closeActiveEventDialog(
         state,
@@ -1772,6 +1779,40 @@ void GameplayScreenRuntime::handleDialogueCloseRequest()
         closeActiveEventDialog();
         interactionState().activateInspectLatch = true;
     }
+}
+
+void GameplayScreenRuntime::requestModDialogExit()
+{
+    m_modDialogExitRequested = true;
+}
+
+void GameplayScreenRuntime::applyRequestedModDialogExit()
+{
+    if (!m_modDialogExitRequested)
+    {
+        return;
+    }
+
+    m_modDialogExitRequested = false;
+
+    if (!activeEventDialog().isActive)
+    {
+        return;
+    }
+
+    if (inventoryNestedOverlay().active)
+    {
+        closeInventoryNestedOverlay();
+    }
+
+    if (houseShopOverlay().active)
+    {
+        closeHouseShopOverlay();
+    }
+
+    stopHouseVideoPlayback();
+    closeActiveEventDialog();
+    interactionState().activateInspectLatch = true;
 }
 
 void GameplayScreenRuntime::closeHouseShopOverlay()

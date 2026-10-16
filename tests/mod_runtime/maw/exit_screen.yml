@@ -1,0 +1,45 @@
+id: mod_runtime.maw.exit_screen
+title: Scripts leave a talk with an NPC, and the game raises the exit action as a dialog closes
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# Game:ExitHouseScreen() and Merge's ExitCurrentScreen() leave a house or a talk with an NPC (at the start of the next
+# frame: the script may be running inside the dialog's handling of a topic); the character screen they close at once
+# (dimension_map.yml). Closing a dialog raises events.Action 113 while it is still up, as the original does for the
+# exit of any screen. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out07.odm
+    party:
+      gold: 0
+      food: 10
+      members:
+      - name: Tester
+        class: Knight
+        level: 10
+        skills: []
+        equipment: {}
+- speak_npc:
+    source_id: 41
+- assert:
+    dialog:
+      active: true
+- mod_lua:
+    code: |
+      ExitsSeen = 0
+      function events.Action(t)
+        if t.Action == 113 then ExitsSeen = ExitsSeen + 1 end
+      end
+      ExitCurrentScreen()
+      return ExitsSeen
+    expect: "0"
+- advance_runtime: {seconds: 0.2}
+- assert:
+    dialog:
+      active: false
+- mod_lua:
+    code: |
+      return ExitsSeen, ModRT.totalErrorCount
+    expect: "1\t0"

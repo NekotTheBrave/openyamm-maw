@@ -522,6 +522,7 @@ AttackImpactOutcome finishAttackImpact(
     bool shrinkActive,
     float shrinkDamageMultiplier,
     bool darkGraspActive,
+    bool damageHalvedActive,
     int damageBonus)
 {
     AttackImpactOutcome result = {};
@@ -538,6 +539,12 @@ AttackImpactOutcome finishAttackImpact(
     }
 
     if (darkGraspActive && abilityIsMelee)
+    {
+        result.damage /= 2;
+    }
+
+    // The original's DamageHalved (mods): every attack's damage, the missiles' too.
+    if (damageHalvedActive)
     {
         result.damage /= 2;
     }
@@ -1414,6 +1421,8 @@ bool hasActiveSpellEffectTimer(const GameplayActorSpellEffectState &state)
         || state.controlRemainingSeconds > 0.0f
         || state.shrinkRemainingSeconds > 0.0f
         || state.darkGraspRemainingSeconds > 0.0f
+        || state.meleeOnlyRemainingSeconds > 0.0f
+        || state.damageHalvedRemainingSeconds > 0.0f
         || state.dayOfProtectionRemainingSeconds > 0.0f
         || state.hourOfPowerRemainingSeconds > 0.0f
         || state.painReflectionRemainingSeconds > 0.0f
@@ -3092,6 +3101,7 @@ void applyAttackImpactOutcome(const ActorAiFacts &actor, ActorAiUpdate &update)
         actor.status.spellEffects.shrinkRemainingSeconds > 0.0f,
         actor.status.spellEffects.shrinkDamageMultiplier,
         actor.status.spellEffects.darkGraspRemainingSeconds > 0.0f,
+        actor.status.spellEffects.damageHalvedRemainingSeconds > 0.0f,
         actorService.effectiveAttackDamageBonus(actor.runtime.queuedAttackAbility, spellEffects));
 
     update.state.attackImpactTriggered = true;

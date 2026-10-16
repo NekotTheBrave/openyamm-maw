@@ -574,6 +574,8 @@ void GameplayActorService::updateSpellEffectTimers(
     state.armorClassHalvedRemainingSeconds =
         std::max(0.0f, state.armorClassHalvedRemainingSeconds - deltaSeconds);
     state.darkGraspRemainingSeconds = std::max(0.0f, state.darkGraspRemainingSeconds - deltaSeconds);
+    state.meleeOnlyRemainingSeconds = std::max(0.0f, state.meleeOnlyRemainingSeconds - deltaSeconds);
+    state.damageHalvedRemainingSeconds = std::max(0.0f, state.damageHalvedRemainingSeconds - deltaSeconds);
     state.dayOfProtectionRemainingSeconds = std::max(0.0f, state.dayOfProtectionRemainingSeconds - deltaSeconds);
     state.hourOfPowerRemainingSeconds = std::max(0.0f, state.hourOfPowerRemainingSeconds - deltaSeconds);
     state.painReflectionRemainingSeconds = std::max(0.0f, state.painReflectionRemainingSeconds - deltaSeconds);
@@ -928,6 +930,8 @@ bool GameplayActorService::clearSpellEffects(
         || state.shrinkRemainingSeconds > 0.0f
         || state.armorClassHalvedRemainingSeconds > 0.0f
         || state.darkGraspRemainingSeconds > 0.0f
+        || state.meleeOnlyRemainingSeconds > 0.0f
+        || state.damageHalvedRemainingSeconds > 0.0f
         || state.dayOfProtectionRemainingSeconds > 0.0f
         || state.hourOfPowerRemainingSeconds > 0.0f
         || state.painReflectionRemainingSeconds > 0.0f
@@ -957,6 +961,8 @@ bool GameplayActorService::clearSpellEffects(
     state.shrinkArmorClassMultiplier = 1.0f;
     state.armorClassHalvedRemainingSeconds = 0.0f;
     state.darkGraspRemainingSeconds = 0.0f;
+    state.meleeOnlyRemainingSeconds = 0.0f;
+    state.damageHalvedRemainingSeconds = 0.0f;
     state.dayOfProtectionRemainingSeconds = 0.0f;
     state.dayOfProtectionPower = 0;
     state.hourOfPowerRemainingSeconds = 0.0f;

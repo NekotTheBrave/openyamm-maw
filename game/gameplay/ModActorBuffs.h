@@ -9,8 +9,8 @@ namespace OpenYAMM::Game
 {
 // A monster's spell effects in the original's numbering (const.MonsterBuff), over the engine's effect fields, which
 // both world runtimes keep under the same names (outdoors on the actor, indoors in its spell effect state). Effects
-// the engine has no field for (Summoned, Stoned, Mass Distortion, Mistform) are not there. The original's
-// MeleeOnly and DamageHalved are both parts of Dark Grasp here.
+// the engine has no field for (Summoned, Stoned, Mass Distortion, Mistform; MAW sets none of them) are not there.
+// MeleeOnly and DamageHalved are effects of their own (MAW's Death Knight's grasp), not the engine's Dark Grasp.
 template <typename Effects>
 bool readModActorBuff(const Effects &effects, int buffId, GameplayModActorBuff &buff)
 {
@@ -53,8 +53,8 @@ bool readModActorBuff(const Effects &effects, int buffId, GameplayModActorBuff &
         case 19: return timed(effects.painReflectionRemainingSeconds, 0);
         case 20: return timed(effects.hammerhandsRemainingSeconds, effects.hammerhandsPower);
         case 21: return timed(effects.armorClassHalvedRemainingSeconds, 0);
-        case 22:
-        case 23: return timed(effects.darkGraspRemainingSeconds, 0);
+        case 22: return timed(effects.meleeOnlyRemainingSeconds, 0);
+        case 23: return timed(effects.damageHalvedRemainingSeconds, 0);
         case 24: return timed(effects.blindRemainingSeconds, 0);
         default: return false;
     }
@@ -73,14 +73,17 @@ bool writeModActorBuff(Effects &effects, int buffId, const GameplayModActorBuff 
             return true;
         }
 
+        // As the game's control spells: a monster under control is not against the party. Taken off, the effect
+        // ends at the monster's next update, which gives it its own hostility back.
         if (seconds > 0.0f)
         {
             effects.controlMode = static_cast<Mode>(mode);
             effects.controlRemainingSeconds = seconds;
+            effects.hostileToParty = false;
+            effects.hasDetectedParty = false;
         }
         else if (effects.controlMode == static_cast<Mode>(mode))
         {
-            effects.controlMode = static_cast<Mode>(0);
             effects.controlRemainingSeconds = 0.0f;
         }
 
@@ -135,8 +138,8 @@ bool writeModActorBuff(Effects &effects, int buffId, const GameplayModActorBuff 
         case 19: return timed(effects.painReflectionRemainingSeconds, nullptr);
         case 20: return timed(effects.hammerhandsRemainingSeconds, &effects.hammerhandsPower);
         case 21: return timed(effects.armorClassHalvedRemainingSeconds, nullptr);
-        case 22:
-        case 23: return timed(effects.darkGraspRemainingSeconds, nullptr);
+        case 22: return timed(effects.meleeOnlyRemainingSeconds, nullptr);
+        case 23: return timed(effects.damageHalvedRemainingSeconds, nullptr);
         case 24: return timed(effects.blindRemainingSeconds, nullptr);
         default: return false;
     }

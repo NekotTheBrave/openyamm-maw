@@ -409,6 +409,54 @@ end)
 rawset(evt, "str", strTable)
 rawset(evt, "Players", playerSelectors)
 
+-- evt.Player: the member the event's commands act on, a party slot from 0 (MAW's Kriegspire well gives experience
+-- to Party[evt.Player]): the one evt.ForPlayer chose, else the selected member. A write chooses one, as
+-- evt.ForPlayer does. evt is otherwise the stand-in root every unknown field of which reads as a stand-in.
+do
+    local function eventPlayer()
+        if type(forPlayer) == "number" and forPlayer >= 0 and forPlayer <= Party.High then
+            return forPlayer
+        end
+
+        local current = Game.CurrentPlayer
+        return type(current) == "number" and current >= 0 and current or 0
+    end
+
+    local stubMeta = getmetatable(evt)
+    local evtMeta = {}
+
+    for key, value in pairs(stubMeta) do
+        evtMeta[key] = value
+    end
+
+    evtMeta.__index = function(self, key)
+        if key == "Player" then
+            return eventPlayer()
+        end
+
+        return stubMeta.__index(self, key)
+    end
+    evtMeta.__newindex = function(self, key, value)
+        if key == "Player" then
+            forPlayer = player(value)
+            return
+        end
+
+        return stubMeta.__newindex(self, key, value)
+    end
+
+    rawset(evt, "Player", nil)
+    setmetatable(evt, evtMeta)
+end
+
+-- evt.HouseDoor(event, house): Merge's door of a house (Core/evt.lua): the map's event names the house and enters it.
+rawset(evt, "HouseDoor", function(eventId, houseId)
+    evt.house[eventId] = houseId
+    evt.map[eventId] = function()
+        evt.EnterHouse(houseId)
+    end
+end)
+
 -- evt.map.clear(n): MMExtension keeps event n's handlers at n*256.
 local clearAll = mapEvents.clear
 

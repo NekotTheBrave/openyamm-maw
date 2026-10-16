@@ -1853,10 +1853,10 @@ local function getStatisticEffect(value)
     return modrt.statisticEffect(floor(tonumber(value) or 0))
 end
 
--- Game.Houses[id]: a house of the house table. Val is its price multiplier; a script's Val stays with the scripts
--- and reaches the engine where it asks them for a house's prices (GetShopItemTreatment: identifying, repairing).
--- OpenHour and CloseHour are the house's own (MAW opens at 5 what opens at 6); a number missing from the table
--- reads as no house.
+-- Game.Houses[id]: a house of the house table. Val is its price multiplier, which every price of the house goes by
+-- once a script set it, until it sets it back (MAW: a Grandmaster merchant's shops, Doom's identifying and
+-- repairing, Road to Insanity's training halls). OpenHour and CloseHour are the house's own (MAW opens at 5 what
+-- opens at 6); a number missing from the table reads as no house, whose Val stays with the scripts.
 local houseVals = {}
 
 function Bindings.houseVal(id)
@@ -1877,7 +1877,9 @@ local houses = boundObject("Game.Houses", {
             end,
             __newindex = function(_, field, value)
                 if field == "Val" then
-                    houseVals[id] = tonumber(value)
+                    if not (tonumber(value) and modrt.houseSet(id, "Val", tonumber(value))) then
+                        houseVals[id] = tonumber(value)
+                    end
                 elseif (field == "OpenHour" or field == "CloseHour") and tonumber(value) then
                     modrt.houseSet(id, field, floor(tonumber(value)))
                 end
@@ -2021,8 +2023,8 @@ Game = boundObject("Game", {
         return nil
     end,
     methods = {
-        -- Called as Game:ExitHouseScreen(): leaves the screen that is open (the character screen; not yet a house's
-        -- dialog).
+        -- Called as Game:ExitHouseScreen(): leaves the screen that is open: the character screen at once, a house or
+        -- a talk with an NPC at the start of the next frame.
         ExitHouseScreen = function()
             modrt.exitScreen()
         end,
@@ -2136,11 +2138,21 @@ local function monsterSpellBuffs(index)
     })
 end
 
+-- The original's Ally for a monster that fights for the party (its summons, reanimated and controlled monsters).
+-- Written, it puts the monster on the party's side for good, as the game's Enslave does for a while (MAW's extra
+-- Summon Wisp wisps); read, it is what any monster on the party's side has, the game's own wisps among them.
+local PartyAlly = 9999
+local PartyAllySeconds = 1e9
+
 local function mapMonster(index)
     local monster = mapMonsterCache[index]
 
     if monster == nil then
         monster = monsterRecord("Map.Monsters[]", function(field)
+            if field == "Ally" and modrt.mapMonsterGet(index, "PartySide") then
+                return PartyAlly
+            end
+
             local value = modrt.mapMonsterGet(index, field)
 
             if value ~= nil then
@@ -2150,6 +2162,10 @@ local function mapMonster(index)
             local kind = modrt.mapMonsterGet(index, "Id")
             return kind and modrt.monsterTxtGet(kind, field) or nil
         end, function(field, value)
+            if field == "Ally" and tonumber(value) == PartyAlly then
+                return modrt.monsterBuffSet(index, const.MonsterBuff.Enslave, PartyAllySeconds, nil)
+            end
+
             local written = modrt.mapMonsterSet(index, field, value)
 
             if written and (field == "Bonus" or field == "BonusMul") then
@@ -2246,6 +2262,12 @@ local function mapObject(index)
         end,
         set = function(key, value)
             if key == "Number" then
+                -- 0 takes the item off the map, as the original's empty object.
+                if tonumber(value) == 0 then
+                    modrt.worldItemRemove(index)
+                    return true
+                end
+
                 return tonumber(value) ~= nil and modrt.worldItemSetNumber(index, floor(tonumber(value)))
             end
 
@@ -2277,6 +2299,9 @@ local function mapObject(index)
                     position[key] = tonumber(value)
                     modrt.worldItemMove(index, position.X, position.Y, position.Z)
                 end
+            elseif (key == "Type" or key == "TypeIndex") and tonumber(value) == 0 then
+                -- The original's way of removing an object (MAW: obj.Type = 0, obj.TypeIndex = 0).
+                modrt.worldItemRemove(index)
             end
         end,
     })

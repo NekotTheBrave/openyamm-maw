@@ -171,8 +171,11 @@ GetCurrentAnyNPC = GetCurrentNPC
 -- The game builds the dialog's topics again after each topic, so there is nothing to do here.
 function UpdateNPCQuests() end
 
--- Closing the dialog from a script is not supported; the player leaves it.
-function ExitScreen() end
+-- Leaves the dialog (the house or the talk), at the start of the next frame; the arguments (whether it is a house,
+-- and how) are not needed here.
+function ExitScreen()
+    modrt.exitScreen()
+end
 ExitCurrentScreen = ExitScreen
 
 -- Sets the dialog's branch to `branch`; `persist` keeps it for the next time the NPC is spoken with. Without

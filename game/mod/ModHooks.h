@@ -41,6 +41,8 @@ struct ModPlayerActionResult
 // The original's numbers for the actions the event is raised for.
 namespace Mm8Action
 {
+// The held item is dropped into the world (raised before it is put down).
+constexpr int DropHeldItem = 14;
 constexpr int Attack = 23;
 // Param 0: the quick spell key; param 1: the attack spell in place of an attack.
 constexpr int QuickSpell = 25;
@@ -351,9 +353,10 @@ public:
     // leaves the map and goes nowhere else.
     virtual bool pickObject(size_t worldItemIndex, const InventoryItem &item) = 0;
     // Whether NPC `npcId` will follow the party for hire, asked in house `houseId` (0 outside a house); false with
-    // what the NPC says instead in `refusal`. MAW's Doom: no one but in two houses (its NPCFollowers.lua, a Merge
-    // override the port does not run).
-    virtual bool canHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal) = 0;
+    // what the NPC says instead in `refusal`. `topic`, when the mod names one, is the hire topic's name in the NPC's
+    // dialog in place of the game's. MAW's Doom: no one but in two houses, "Following you would be foolish" (its
+    // NPCFollowers.lua, a Merge override the port does not run).
+    virtual bool canHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal, std::string &topic) = 0;
     // The price multiplier of house `houseId` for identifying (`repair` false) or repairing `item` (the original's
     // GetShopItemTreatment, where a mod sets Game.Houses[house].Val): identifying costs 50 times it, repairing the
     // item's value divided by 6 less it. MAW's Doom makes identifying cost the item's IdRepSt squared times 50 and
@@ -555,7 +558,7 @@ void modShopItemsGenerated(uint32_t houseId);
 // Whether the mod took the item the party picks up (false without a mod); see IModHooks::pickObject.
 bool modPickObject(size_t worldItemIndex, const InventoryItem &item);
 // Whether the NPC will follow the party for hire (true without a mod); see IModHooks::canHireNpcFollower.
-bool modCanHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal);
+bool modCanHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal, std::string *pTopic = nullptr);
 // The house's price multiplier for identifying or repairing the item (the engine's without a mod); see
 // IModHooks::shopItemTreatment.
 float modShopItemTreatment(bool repair, uint32_t houseId, const InventoryItem &item, float engineMultiplier);

@@ -55,3 +55,35 @@ steps:
       return m.SpellBuffs[6].ExpireTime, slow.Power, slow.ExpireTime > Game.Time, m.SpellBuffs[5].ExpireTime,
         m.SpellBuffs.Count
     expect: "0\t4\ttrue\t12345\t26"
+# MeleeOnly (22) and DamageHalved (23) are effects of their own: MAW's Death Knight's grasp halves a monster's damage,
+# and only at Grandmaster takes its ranged attacks away. They were both the engine's Dark Grasp, which also halves
+# armour and speed. Kept in a save.
+- mod_lua:
+    code: |
+      local m = Map.Monsters[Target]
+      m.SpellBuffs[const.MonsterBuff.DamageHalved].ExpireTime = Game.Time + 128 * 60
+      return m.SpellBuffs[const.MonsterBuff.MeleeOnly].ExpireTime, m.SpellBuffs[23].ExpireTime > Game.Time
+    expect: "0\ttrue"
+- mod_lua:
+    code: |
+      local m = Map.Monsters[Target]
+      m.SpellBuffs[const.MonsterBuff.MeleeOnly].ExpireTime = Game.Time + 128 * 30
+      MeleeLeft = m.SpellBuffs[22].ExpireTime - Game.Time
+      HalvedLeft = m.SpellBuffs[23].ExpireTime - Game.Time
+      return MeleeLeft > 128 * 29, HalvedLeft > 128 * 59
+    expect: "true\ttrue"
+- save_game: mod_monster_buffs
+- mod_lua:
+    code: |
+      local m = Map.Monsters[Target]
+      m.SpellBuffs[22].ExpireTime = 0
+      m.SpellBuffs[23].ExpireTime = 0
+      return m.SpellBuffs[22].ExpireTime, m.SpellBuffs[23].ExpireTime
+    expect: "0\t0"
+- load_game: mod_monster_buffs
+- mod_lua:
+    code: |
+      local m = Map.Monsters[Target]
+      local melee, halved = m.SpellBuffs[22].ExpireTime - Game.Time, m.SpellBuffs[23].ExpireTime - Game.Time
+      return melee > 128 * 25 and melee <= MeleeLeft, halved > 128 * 55 and halved <= HalvedLeft
+    expect: "true\ttrue"

@@ -742,6 +742,7 @@ void GameSession::updateGameplay(
 
     bindCurrentGameplayInputFrame(&input);
     m_sharedInputFrameResult = {};
+    m_gameplayScreenRuntime.applyRequestedModDialogExit();
 
     const uint64_t sharedFrameStateBeginTickCount = collectPerformanceDiagnostics ? SDL_GetTicksNS() : 0;
     GameplayScreenFrameUpdateConfig frameUpdateConfig = {};

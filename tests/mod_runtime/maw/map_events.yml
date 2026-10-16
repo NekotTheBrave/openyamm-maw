@@ -55,3 +55,21 @@ steps:
       local more = evt.Cmp{"MapVar4", Value = 8}
       return cmp, more
     expect: "true\tfalse"
+# evt.Player is the member the event's commands act on (the selected one, or the one evt.ForPlayer chose): MAW's
+# Kriegspire well (Maps/outb1.lua, its port) trades 5000 gold for 5000 experience to Party[evt.Player]. It was a
+# stand-in, so the well took the gold and failed. Merge's evt.HouseDoor makes a map event a house's door.
+- load_map:
+    map: outb1.odm
+- mod_lua:
+    code: |
+      evt.Set{"MapVar0", 1}
+      Party.Gold = 6000
+      local before = Party[0].Experience
+      local errors = ModRT.totalErrorCount
+      local ran = modrt.runCommandEvent(101)
+      evt.ForPlayer(0)
+      local chosen = evt.Player
+      evt.HouseDoor(250, 1)
+      return ran, Party.Gold, Party[0].Experience - before >= 5000, chosen, evt.house[250], evt.map[250] ~= nil,
+        ModRT.totalErrorCount - errors
+    expect: "true\t1000\ttrue\t0\t1\ttrue\t0"

@@ -69,13 +69,14 @@ steps:
       ModRT.Bindings.eventItem = realItem
       return identify, repair, base > 0, GetCurrentHouse(), ModRT.totalErrorCount
     expect: "9\t5\ttrue\t0\t0"
-# No one follows a Doom party for hire, but in houses 1466 and 1486 (MAW's NPCFollowers.lua).
+# No one follows a Doom party for hire, but in houses 1466 and 1486 (MAW's NPCFollowers.lua), and the hire topic
+# says so.
 - mod_lua:
     code: |
-      local allow, text = ModRT.Stats.canHireNpcFollower(1, 0)
-      local inHouse = ModRT.Stats.canHireNpcFollower(1, 1466)
-      return tostring(allow), text, tostring(inHouse)
-    expect: "false\tI wouldn't join in your reckless adventure, not even for all the wealth in the world.\ttrue"
+      local allow, text, topic = ModRT.Stats.canHireNpcFollower(1, 0)
+      local inHouse, _, houseTopic = ModRT.Stats.canHireNpcFollower(1, 1466)
+      return tostring(allow), text, tostring(inHouse), topic, tostring(houseTopic)
+    expect: "false\tI wouldn't join in your reckless adventure, not even for all the wealth in the world.\ttrue\tFollowing you would be foolish\tnil"
 # In Normal mode chests open as the engine has them.
 - mod_lua:
     code: ModRT.GameMode.set("Normal")

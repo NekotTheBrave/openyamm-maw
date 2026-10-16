@@ -381,13 +381,15 @@ function Stats.canOpenChest(chestId, trapped)
     return event.CanOpen ~= false
 end
 
--- NPC `npcId` is asked to follow the party for hire in house `houseId` (0 outside a house). Not an MMExtension
--- event (Merge decides it in its NPCFollowers.lua, which OpenYAMM does natively): CanHireNPCFollower with NPC, House,
--- Allow and Text, what the NPC says instead when Allow is false. Returns Allow and Text.
+-- NPC `npcId` is asked to follow the party for hire in house `houseId` (0 outside a house), or its dialog shows the
+-- hire topic. Not an MMExtension event (Merge decides it in its NPCFollowers.lua, which OpenYAMM does natively):
+-- CanHireNPCFollower with NPC, House, Allow, Text (what the NPC says instead when Allow is false) and Topic (the
+-- hire topic's name, the game's when nil). Returns Allow, Text and Topic.
 function Stats.canHireNpcFollower(npcId, houseId)
     local event = {NPC = npcId, House = houseId, Allow = true}
     ModRT.fire("CanHireNPCFollower", event)
-    return event.Allow ~= false, event.Text ~= nil and tostring(event.Text) or nil
+    return event.Allow ~= false, event.Text ~= nil and tostring(event.Text) or nil,
+        event.Topic ~= nil and tostring(event.Topic) or nil
 end
 
 -- House `houseId` names its price for identifying (`repair` false) or repairing ModRT.Bindings.eventItem: the

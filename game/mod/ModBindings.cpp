@@ -1448,6 +1448,28 @@ std::vector<Character *> &usedUpItemOwners()
     return owners;
 }
 
+// The items lying on the map that a script took off it during the script call under way (by their place), and the
+// map they lie on: they read as no item until the call is over, then leave the map, so the places a script holds
+// stay the same while it goes on.
+struct RemovedWorldItems
+{
+    IGameplayWorldRuntime *pWorld = nullptr;
+    std::vector<size_t> indices;
+};
+
+RemovedWorldItems &removedWorldItems()
+{
+    static RemovedWorldItems removed;
+    return removed;
+}
+
+bool worldItemRemoved(const IGameplayWorldRuntime *pWorld, size_t index)
+{
+    const RemovedWorldItems &removed = removedWorldItems();
+    return removed.pWorld == pWorld
+        && std::find(removed.indices.begin(), removed.indices.end(), index) != removed.indices.end();
+}
+
 bool itemViewArgument(lua_State *pLuaState, ItemView &view)
 {
     const std::string group = luaL_checkstring(pLuaState, 2);
@@ -4439,6 +4461,26 @@ int nativeMapMonsterGet(lua_State *pLuaState)
     // "shown as hostile" is the same answer; "shown on the map" is every monster that is not hidden.
     const bool hostileFlag = field == "Hostile" || field == "ShowAsHostile";
 
+    // Not the original's: whether the monster fights for the party (the game's summons, charmed and enslaved
+    // monsters; the original marks them Ally 9999).
+    if (field == "PartySide")
+    {
+        GameplayActorInspectState state = {};
+
+        if (actorIndex < 0 || !pWorld->actorInspectState(static_cast<size_t>(actorIndex), 0, state))
+        {
+            return 0;
+        }
+
+        lua_pushboolean(
+            pLuaState,
+            state.controlMode == GameplayActorControlMode::Charm
+                || state.controlMode == GameplayActorControlMode::Enslaved
+                || state.controlMode == GameplayActorControlMode::ControlUndead
+                || state.controlMode == GameplayActorControlMode::Reanimated);
+        return 1;
+    }
+
     if (hostileFlag || field == "IsDead" || field == "Invisible" || field == "ShowOnMap")
     {
         GameplayRuntimeActorState state = {};
@@ -5065,8 +5107,9 @@ int nativeHouseGet(lua_State *pLuaState)
     return 0;
 }
 
-// modrt.houseSet(id, field, value): a house's OpenHour or CloseHour (the same hour: open all day), for the rest of
-// the game. MAW opens at 5 the houses that open at 6.
+// modrt.houseSet(id, field, value): a house's OpenHour or CloseHour (the same hour: open all day), or its price
+// multiplier Val, until the game is closed (the original's house table is not saved either). MAW opens at 5 the
+// houses that open at 6, and sets Val for its merchants, Doom's prices and Road to Insanity's training.
 int nativeHouseSet(lua_State *pLuaState)
 {
     const GameDataLoader *pData = dataFromHost(pLuaState);
@@ -5074,14 +5117,21 @@ int nativeHouseSet(lua_State *pLuaState)
     const std::string field = luaL_checkstring(pLuaState, 2);
     bool written = false;
 
-    if (pData != nullptr && houseId >= 0 && (field == "OpenHour" || field == "CloseHour"))
+    if (pData != nullptr && houseId >= 0 && (field == "OpenHour" || field == "CloseHour" || field == "Val"))
     {
         // The table belongs to the game's data loader, which hands it out read-only; it is not a constant object.
         std::unordered_map<uint32_t, HouseEntry> &entries =
             const_cast<HouseTable &>(pData->getHouseTable()).entriesForWrite();
         const std::unordered_map<uint32_t, HouseEntry>::iterator it = entries.find(static_cast<uint32_t>(houseId));
 
-        if (it != entries.end())
+        if (it != entries.end() && field == "Val")
+        {
+            // The price multiplier, which every price of the house goes by (buying, selling, identifying,
+            // repairing, training, the temple's), as the original's Val in its house table.
+            it->second.priceMultiplier = static_cast<float>(std::max(0.0, luaL_checknumber(pLuaState, 3)));
+            written = true;
+        }
+        else if (it != entries.end())
         {
             const int hour = std::clamp(clampedInteger<int>(integerArgument(pLuaState, 3)), 0, 24);
             (field == "OpenHour" ? it->second.openHour : it->second.closeHour) = hour;
@@ -5120,7 +5170,8 @@ int nativeWorldItemGet(lua_State *pLuaState)
     if (field == "Number")
     {
         GameplayWorldItemInspectState state = {};
-        const bool item = pWorld->worldItemInspectState(static_cast<size_t>(index), state) && !state.isGold;
+        const bool item = !worldItemRemoved(pWorld, static_cast<size_t>(index))
+            && pWorld->worldItemInspectState(static_cast<size_t>(index), state) && !state.isGold;
         lua_pushinteger(pLuaState, item ? static_cast<lua_Integer>(state.item.objectDescriptionId) : 0);
         return 1;
     }
@@ -5236,6 +5287,35 @@ int nativeWorldItemMove(lua_State *pLuaState)
                 static_cast<float>(luaL_checknumber(pLuaState, 2)),
                 static_cast<float>(luaL_checknumber(pLuaState, 3)),
                 static_cast<float>(luaL_checknumber(pLuaState, 4))));
+    return 1;
+}
+
+// modrt.worldItemRemove(index): takes the item lying there off the map (a script setting an object's Type or its
+// item's Number to 0). It reads as no item until the script call is over, when it goes (removeUsedUpModItems), so
+// the other places keep their numbers meanwhile. Whether there was an item to take.
+int nativeWorldItemRemove(lua_State *pLuaState)
+{
+    IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+    const int64_t index = integerArgument(pLuaState, 1);
+    GameplayWorldItemInspectState state = {};
+
+    if (pWorld == nullptr || index < 0 || worldItemRemoved(pWorld, static_cast<size_t>(index))
+        || !pWorld->worldItemInspectState(static_cast<size_t>(index), state))
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    RemovedWorldItems &removed = removedWorldItems();
+
+    if (removed.pWorld != pWorld)
+    {
+        removed = {};
+        removed.pWorld = pWorld;
+    }
+
+    removed.indices.push_back(static_cast<size_t>(index));
+    lua_pushboolean(pLuaState, true);
     return 1;
 }
 
@@ -5448,6 +5528,18 @@ void removeUsedUpModItems()
     }
 
     owners.clear();
+
+    RemovedWorldItems &removed = removedWorldItems();
+    std::sort(removed.indices.begin(), removed.indices.end(), std::greater<size_t>());
+    removed.indices.erase(std::unique(removed.indices.begin(), removed.indices.end()), removed.indices.end());
+
+    for (size_t index : removed.indices)
+    {
+        GameplayWorldItemInspectState taken = {};
+        removed.pWorld->takeWorldItemInspectState(index, taken);
+    }
+
+    removed = {};
 }
 
 InventoryItem *modEventItem()
@@ -5562,6 +5654,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"houseSet", nativeHouseSet},
         {"worldItemGet", nativeWorldItemGet},
         {"worldItemMove", nativeWorldItemMove},
+        {"worldItemRemove", nativeWorldItemRemove},
         {"worldItemSetNumber", nativeWorldItemSetNumber},
         {"chestGet", nativeChestGet},
         {"chestSet", nativeChestSet},

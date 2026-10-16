@@ -202,6 +202,12 @@ function Events.new(label)
         return list and #list or 0
     end
 
+    -- Not MMExtension's: a copy of an event's handlers, in the order they run (the port runs one mod file's handler
+    -- of an event alone).
+    function object.handlers(name)
+        return copyList(handlers[name] or {})
+    end
+
     return setmetatable(object, {
         __newindex = function(_, name, handler)
             add(name, handler)

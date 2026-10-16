@@ -10971,6 +10971,16 @@ void GameplayPartyOverlayRenderer::renderActorInspectOverlay(GameplayScreenRunti
             activeEffects.push_back("Dark Grasp");
         }
 
+        if (actorState.damageHalvedRemainingSeconds > 0.0f)
+        {
+            activeEffects.push_back("Damage Halved");
+        }
+
+        if (actorState.meleeOnlyRemainingSeconds > 0.0f)
+        {
+            activeEffects.push_back("Melee Only");
+        }
+
         if (actorState.dayOfProtectionRemainingSeconds > 0.0f)
         {
             activeEffects.push_back("Day of Protection");

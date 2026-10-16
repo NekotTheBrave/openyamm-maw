@@ -31,6 +31,25 @@ steps:
           level: 1
           mastery: 1
         equipment: {}
+# The map the game starts on has the shuffled monsters too: MAW shuffles in BeforeLoadMap, which the port raises
+# after a map is made, and hears of the new game once the first map is; the port shuffles before that map is made.
+- mod_lua:
+    code: |
+      local index = Map.MapStatsIndex
+      local m, original = Game.MapStats[index], BackupMapStats[index]
+      local pics = {}
+      for _, pic in ipairs({m.Monster1Pic, m.Monster2Pic, m.Monster3Pic}) do
+        if pic ~= "0" then pics[#pics + 1] = pic:lower() end
+      end
+      local shuffled = 0
+      for i = 0, Map.Monsters.High do
+        local picture = (Game.MonstersTxt[Map.Monsters[i].Id].Picture or ""):lower()
+        for _, pic in ipairs(pics) do
+          if picture:sub(1, #pic) == pic then shuffled = shuffled + 1 break end
+        end
+      end
+      return tostring(vars.RandomizerMode), m.Monster1Pic ~= original.Monster1Pic, shuffled > 0, ModRT.totalErrorCount
+    expect: "true\ttrue\ttrue\t0"
 - load_map:
     map: out02.odm
 - mod_lua:

@@ -100,10 +100,12 @@ constexpr char SaveMagic[8] = {'O', 'Y', 'S', 'A', 'V', 'E', '1', '\0'};
 // version word, so this fork's format changes never collide with upstream's version numbers. A save written with
 // mods active therefore reads as "too new" to an upstream build, which is the right answer: it carries data
 // upstream would drop. Without mods the revision is 0 and the file is exactly upstream's format.
-constexpr uint32_t ModSaveRevision = 1;
+constexpr uint32_t ModSaveRevision = 2;
 constexpr uint32_t ModSaveRevisionShift = 24;
 constexpr uint32_t ModSaveRevisionItemData = 1;
 constexpr uint32_t ModSaveRevisionModState = 1;
+// A monster's MeleeOnly and DamageHalved effects (the original's, which mods set), apart from Dark Grasp.
+constexpr uint32_t ModSaveRevisionMonsterEffects = 2;
 
 std::string toLowerCopy(const std::string &value)
 {
@@ -1274,6 +1276,12 @@ void writeValue(BinaryWriter &writer, const GameplayActorSpellEffectState &value
     writeValue(writer, value.fatePower);
     writeValue(writer, value.heroismRemainingSeconds);
     writeValue(writer, value.heroismPower);
+
+    if (writer.modRevision() >= ModSaveRevisionMonsterEffects)
+    {
+        writeValue(writer, value.meleeOnlyRemainingSeconds);
+        writeValue(writer, value.damageHalvedRemainingSeconds);
+    }
 }
 
 bool readValue(BinaryReader &reader, GameplayActorSpellEffectState &value)
@@ -1312,7 +1320,10 @@ bool readValue(BinaryReader &reader, GameplayActorSpellEffectState &value)
                 && readValue(reader, value.fateRemainingSeconds)
                 && readValue(reader, value.fatePower)
                 && readValue(reader, value.heroismRemainingSeconds)
-                && readValue(reader, value.heroismPower)));
+                && readValue(reader, value.heroismPower)))
+        && (reader.modRevision() < ModSaveRevisionMonsterEffects
+            || (readValue(reader, value.meleeOnlyRemainingSeconds)
+                && readValue(reader, value.damageHalvedRemainingSeconds)));
 }
 
 void writeValue(BinaryWriter &writer, const IndoorWorldRuntime::BloodSplatState::Vertex &value)
@@ -3038,6 +3049,12 @@ void writeValue(BinaryWriter &writer, const OutdoorWorldRuntime::MapActorState &
     writeValue(writer, value.mm9HelpCooldownSeconds);
     writeValue(writer, value.mm9PlayerHitCount);
     writeValue(writer, value.proceduralDeathLoot);
+
+    if (writer.modRevision() >= ModSaveRevisionMonsterEffects)
+    {
+        writeValue(writer, value.meleeOnlyRemainingSeconds);
+        writeValue(writer, value.damageHalvedRemainingSeconds);
+    }
 }
 
 bool readValue(BinaryReader &reader, OutdoorWorldRuntime::MapActorState &value)
@@ -3191,7 +3208,10 @@ bool readValue(BinaryReader &reader, OutdoorWorldRuntime::MapActorState &value)
                 && readValue(reader, value.mm9HelpCooldownSeconds)
                 && readValue(reader, value.mm9PlayerHitCount)))
         && (reader.version() < SaveVersionActorProceduralDeathLoot
-            || readValue(reader, value.proceduralDeathLoot));
+            || readValue(reader, value.proceduralDeathLoot))
+        && (reader.modRevision() < ModSaveRevisionMonsterEffects
+            || (readValue(reader, value.meleeOnlyRemainingSeconds)
+                && readValue(reader, value.damageHalvedRemainingSeconds)));
 }
 
 void writeValue(BinaryWriter &writer, const OutdoorWorldRuntime::ChestItemState &value)

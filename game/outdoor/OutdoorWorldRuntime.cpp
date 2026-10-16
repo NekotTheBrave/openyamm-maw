@@ -3649,6 +3649,8 @@ GameplayActorSpellEffectState buildGameplayActorSpellEffectState(const OutdoorWo
     state.shrinkArmorClassMultiplier = actor.shrinkArmorClassMultiplier;
     state.armorClassHalvedRemainingSeconds = actor.armorClassHalvedRemainingSeconds;
     state.darkGraspRemainingSeconds = actor.darkGraspRemainingSeconds;
+    state.meleeOnlyRemainingSeconds = actor.meleeOnlyRemainingSeconds;
+    state.damageHalvedRemainingSeconds = actor.damageHalvedRemainingSeconds;
     state.dayOfProtectionRemainingSeconds = actor.dayOfProtectionRemainingSeconds;
     state.dayOfProtectionPower = actor.dayOfProtectionPower;
     state.hourOfPowerRemainingSeconds = actor.hourOfPowerRemainingSeconds;
@@ -3712,6 +3714,8 @@ void applyGameplayActorSpellEffectState(
     actor.shrinkArmorClassMultiplier = state.shrinkArmorClassMultiplier;
     actor.armorClassHalvedRemainingSeconds = state.armorClassHalvedRemainingSeconds;
     actor.darkGraspRemainingSeconds = state.darkGraspRemainingSeconds;
+    actor.meleeOnlyRemainingSeconds = state.meleeOnlyRemainingSeconds;
+    actor.damageHalvedRemainingSeconds = state.damageHalvedRemainingSeconds;
     actor.dayOfProtectionRemainingSeconds = state.dayOfProtectionRemainingSeconds;
     actor.dayOfProtectionPower = state.dayOfProtectionPower;
     actor.hourOfPowerRemainingSeconds = state.hourOfPowerRemainingSeconds;
@@ -8716,7 +8720,9 @@ std::optional<ActorAiFacts> OutdoorWorldRuntime::collectOutdoorActorAiFacts(
     facts.stats.attackConstraints.attack2IsRanged = pStats->attack2HasMissile || actor.generatedAttack2IsRanged;
     facts.stats.attack2MissileTypeOverride = actor.generatedAttack2MissileType;
     facts.stats.attackConstraints.blindActive = actor.blindRemainingSeconds > 0.0f;
-    facts.stats.attackConstraints.darkGraspActive = actor.darkGraspRemainingSeconds > 0.0f;
+    // MeleeOnly keeps the monster from its ranged attacks as Dark Grasp does.
+    facts.stats.attackConstraints.darkGraspActive =
+        actor.darkGraspRemainingSeconds > 0.0f || actor.meleeOnlyRemainingSeconds > 0.0f;
     facts.stats.attackConstraints.rangedCommitAllowed = combatTarget.attackLineOfSight;
 
     facts.runtime.motionState = actorAiMotionStateFromOutdoor(actor.aiState);
@@ -15063,6 +15069,8 @@ bool OutdoorWorldRuntime::actorInspectState(
     state.fearRemainingSeconds = pActor->fearRemainingSeconds;
     state.shrinkRemainingSeconds = pActor->shrinkRemainingSeconds;
     state.darkGraspRemainingSeconds = pActor->darkGraspRemainingSeconds;
+    state.meleeOnlyRemainingSeconds = pActor->meleeOnlyRemainingSeconds;
+    state.damageHalvedRemainingSeconds = pActor->damageHalvedRemainingSeconds;
     state.dayOfProtectionRemainingSeconds = pActor->dayOfProtectionRemainingSeconds;
     state.hourOfPowerRemainingSeconds = pActor->hourOfPowerRemainingSeconds;
     state.painReflectionRemainingSeconds = pActor->painReflectionRemainingSeconds;

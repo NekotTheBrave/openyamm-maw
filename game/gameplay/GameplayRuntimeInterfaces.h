@@ -507,6 +507,8 @@ struct GameplayActorInspectState
     float fearRemainingSeconds = 0.0f;
     float shrinkRemainingSeconds = 0.0f;
     float darkGraspRemainingSeconds = 0.0f;
+    float meleeOnlyRemainingSeconds = 0.0f;
+    float damageHalvedRemainingSeconds = 0.0f;
     float dayOfProtectionRemainingSeconds = 0.0f;
     float hourOfPowerRemainingSeconds = 0.0f;
     float painReflectionRemainingSeconds = 0.0f;
@@ -537,6 +539,10 @@ struct GameplayActorSpellEffectState
     float shrinkArmorClassMultiplier = 1.0f;
     float armorClassHalvedRemainingSeconds = 0.0f;
     float darkGraspRemainingSeconds = 0.0f;
+    // The original's MeleeOnly and DamageHalved monster effects, which only mods set (MAW's Death Knight's grasp:
+    // half damage, and at Grandmaster no ranged attacks). Dark Grasp, the engine's spell, does both and more.
+    float meleeOnlyRemainingSeconds = 0.0f;
+    float damageHalvedRemainingSeconds = 0.0f;
     float dayOfProtectionRemainingSeconds = 0.0f;
     int dayOfProtectionPower = 0;
     float hourOfPowerRemainingSeconds = 0.0f;

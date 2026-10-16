@@ -292,6 +292,8 @@ public:
         float shrinkArmorClassMultiplier = 1.0f;
         float armorClassHalvedRemainingSeconds = 0.0f;
         float darkGraspRemainingSeconds = 0.0f;
+        float meleeOnlyRemainingSeconds = 0.0f;
+        float damageHalvedRemainingSeconds = 0.0f;
         float dayOfProtectionRemainingSeconds = 0.0f;
         int dayOfProtectionPower = 0;
         float hourOfPowerRemainingSeconds = 0.0f;

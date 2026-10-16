@@ -2077,7 +2077,7 @@ bool ModRuntime::canOpenChest(uint32_t chestId, bool trapped)
     return canOpen;
 }
 
-bool ModRuntime::canHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal)
+bool ModRuntime::canHireNpcFollower(uint32_t npcId, uint32_t houseId, std::string &refusal, std::string &topic)
 {
     if (!m_active || !beginDispatch("canHireNpcFollower"))
     {
@@ -2088,16 +2088,21 @@ bool ModRuntime::canHireNpcFollower(uint32_t npcId, uint32_t houseId, std::strin
     lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(houseId));
     bool allow = true;
 
-    if (endDispatch(2, 2))
+    if (endDispatch(2, 3))
     {
-        allow = lua_isnil(m_pLuaState, -2) || lua_toboolean(m_pLuaState, -2) != 0;
+        allow = lua_isnil(m_pLuaState, -3) || lua_toboolean(m_pLuaState, -3) != 0;
+
+        if (lua_type(m_pLuaState, -2) == LUA_TSTRING)
+        {
+            refusal = lua_tostring(m_pLuaState, -2);
+        }
 
         if (lua_type(m_pLuaState, -1) == LUA_TSTRING)
         {
-            refusal = lua_tostring(m_pLuaState, -1);
+            topic = lua_tostring(m_pLuaState, -1);
         }
 
-        lua_pop(m_pLuaState, 2);
+        lua_pop(m_pLuaState, 3);
     }
 
     return allow;

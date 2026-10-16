@@ -2933,6 +2933,14 @@ GameApplication::GameApplication(const Engine::ApplicationConfig &config)
         if (screenRuntime.characterScreenReadOnly().open)
         {
             screenRuntime.closeCharacterScreen();
+            return;
+        }
+
+        // A house or a talk with an NPC is left at the start of the next gameplay update: the script asking may be
+        // running inside the dialog's own handling of a topic.
+        if (screenRuntime.activeEventDialog().isActive)
+        {
+            screenRuntime.requestModDialogExit();
         }
     };
     modHost.houseShopPage = [this]()

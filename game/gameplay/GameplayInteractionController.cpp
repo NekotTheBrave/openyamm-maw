@@ -532,6 +532,13 @@ bool dropHeldItemToActiveWorld(
         return false;
     }
 
+    // The mod's Action event first, as in the original (MAW keeps a Dimensional Map from being dropped in Beyond
+    // Madness: it takes the dropped one back into the hand). A handler that takes the drop over leaves the item held.
+    if (modPlayerAction(Mm8Action::DropHeldItem).handled || !heldItem.active)
+    {
+        return false;
+    }
+
     GameplayHeldItemDropRequest resolvedDropRequest = *dropRequest;
     resolvedDropRequest.item = heldItem.item;
 

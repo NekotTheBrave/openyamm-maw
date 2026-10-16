@@ -56,3 +56,30 @@ steps:
       obj.Item.Bonus = 40
       return obj ~= nil, obj.Item.Number, SummonItem(250000, Party.X, Party.Y, Party.Z) == nil
     expect: "true\t220\ttrue"
+# Ally 9999 is the original's mark for a monster that fights for the party. MAW summons wisps beyond the game's own
+# that way (zzMaw-Spells.lua: Hostile = false, Ally = 9999 on what SummonMonster gives); they stay on the party's
+# side for good, and read 9999 back, as the game's summons and controlled monsters do.
+- mod_lua:
+    code: |
+      local x, y = Party.X + 300, Party.Y - 200
+      local m, index = SummonMonster(1, x, y, Map.GetGroundLevel(x, y))
+      Friend = index
+      local hostileBefore = m.Hostile
+      m.Hostile = false
+      m.Ally = 9999
+      PartyHP = Party[0].HP
+      return hostileBefore, m.Ally, m.Hostile, Map.Monsters[0].Ally ~= 9999
+    expect: "true\t9999\tfalse\ttrue"
+- advance_runtime: {seconds: 5}
+- mod_lua:
+    code: |
+      local m = Map.Monsters[Friend]
+      return m.Ally, m.Hostile, m.HP > 0, Party[0].HP == PartyHP
+    expect: "9999\tfalse\ttrue\ttrue"
+- save_game: mod_summon_friend
+- load_game: mod_summon_friend
+- mod_lua:
+    code: |
+      local m = Map.Monsters[Friend]
+      return m.Ally, m.Hostile
+    expect: "9999\tfalse"

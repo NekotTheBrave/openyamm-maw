@@ -1728,6 +1728,13 @@ EventDialogContent buildEventDialogContent(
                         action.kind = EventDialogActionKind::NpcHireOffer;
                         action.id = pNpc->professionId;
                         action.label = "Join";
+
+                        // A mod may name the topic otherwise (MAW's Doom, where no one follows the party).
+                        if (std::string refusal, topic;
+                            !modCanHireNpcFollower(pNpc->id, context.hostHouseId, refusal, &topic) && !topic.empty())
+                        {
+                            action.label = topic;
+                        }
                         action.enabled = npcRuntimeState.hiredNpcFollowers.size() < MaxNpcFollowerCount;
                         action.disabledReason = action.enabled ? std::string() : "You already have enough followers.";
                         dialog.actions.push_back(std::move(action));
