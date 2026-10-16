@@ -1980,12 +1980,44 @@ GameplayInteractionController::updateWorldInteractionFrame(
         }
     }
 
+    // The original's left click (an option, on by default): a click on what can be used (an item, a chest, a door, a
+    // house, someone to talk to) uses it when the button is let go on it; while it is held there, the click does not
+    // attack (MAW players bind Attack to the left button). Anywhere else the click attacks as before. Upstream
+    // dropped this on 2026-04-25 (f2cf7d807); the Use key still works either way.
+    bool clickHeldOnUsable = false;
+
+    if (runtime.settingsSnapshot().clickToInteract && worldReady && pWorldRuntime != nullptr && !rightMousePressed)
+    {
+        const MouseClickInteractionResult clickResult =
+            updateMouseClickInteraction(
+                worldInteractionInputState,
+                MouseClickInteractionInput{
+                    .leftMousePressed = leftMousePressed,
+                    .pointerOverPartyPortrait = pointerPolicy.pointerOverPartyPortrait,
+                    .currentHit = pickCurrentHit(),
+                    .pRuntime = &runtime,
+                    .pWorldRuntime = pWorldRuntime,
+                    .interactionMethod = GameplayInteractionMethod::Mouse,
+                });
+
+        if (clickResult.activated)
+        {
+            result.mouseActivationActivated = true;
+            refreshWorldHover(standardHoverInput, pWorldRuntime);
+            runtime.clearContextActionState();
+        }
+
+        clickHeldOnUsable = worldInteractionInputState.inspectMouseActivateLatch
+            && pWorldRuntime->canActivateWorldHit(
+                worldInteractionInputState.pressedWorldHit, GameplayInteractionMethod::Mouse);
+    }
+
     const GameplayActionController::AttackActionDecision attackActionDecision =
         GameplayActionController::updateAttackAction(
             attackActionState,
             quickSpellState,
             GameplayActionController::AttackActionConfig{
-                .attackPressed = pointerPolicy.attackPressed,
+                .attackPressed = pointerPolicy.attackPressed && !clickHeldOnUsable && !result.mouseActivationActivated,
                 .hasReadyMember = hasReadyMember,
             });
 

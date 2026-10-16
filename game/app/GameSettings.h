@@ -304,6 +304,9 @@ struct GameSettings
 #else
     bool contextActionPopup = false;
 #endif
+    // A left click on what can be used (an item, a chest, a door, a house, someone to talk to) uses it, as in the
+    // original; elsewhere it attacks as before. Off, only the Use key does.
+    bool clickToInteract = true;
 
     static GameSettings createDefault();
 };

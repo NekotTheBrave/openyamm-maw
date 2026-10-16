@@ -51,6 +51,10 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
     {
         return settings.contextActionPopup ? "true" : "false";
     }
+    if (id == "click_to_interact")
+    {
+        return settings.clickToInteract ? "true" : "false";
+    }
     if (id == "skip_event_cutscenes")
     {
         return settings.skipEventCutscenes ? "true" : "false";
@@ -350,6 +354,15 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
             return false;
         }
         settings.contextActionPopup = value == "true";
+        return true;
+    }
+    if (id == "click_to_interact")
+    {
+        if (value != "true" && value != "false")
+        {
+            return false;
+        }
+        settings.clickToInteract = value == "true";
         return true;
     }
     if (id == "skip_event_cutscenes")

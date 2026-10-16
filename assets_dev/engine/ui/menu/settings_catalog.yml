@@ -95,6 +95,12 @@ settings:
   name: Context action menu
   type: toggle
   desc: Offer contextual actions for the object under the pointer.
+- id: click_to_interact
+  section: gameplay
+  group: Interaction
+  name: Click to interact
+  type: toggle
+  desc: Left click uses what is under the pointer, as in the original; elsewhere it attacks.
 - id: skip_event_cutscenes
   section: gameplay
   group: Story

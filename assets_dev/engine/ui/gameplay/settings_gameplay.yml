@@ -429,7 +429,7 @@ elements:
     - id: SettingsGameplayGroup4
       anchor: top_left
       offset_x: 0.0
-      offset_y: 547.6421
+      offset_y: 586.5674
       width: 525.3333
       height: 18.1333
       z_index: 10
@@ -1055,10 +1055,66 @@ elements:
         pad_x: 3.2
       notes: Bind to gameplay.context_action_popup; see contracts/settings.yml. Ranges need a track and thumb renderer;
         selection controls need native dropdown/focus behavior. Controller supplies live text.
+    - id: SettingsGameplayClickToInteractLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 543.3759
+      width: 267.8752
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Click to interact
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsGameplayClickToInteractDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 559.5839
+      width: 437.3333
+      height: 11.5168
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Left click uses what is under the pointer, as in the original; elsewhere it attacks.
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsGameplayClickToInteractControl
+      anchor: top_left
+      offset_x: 453.3333
+      offset_y: 541.155
+      width: 70.4
+      height: 32.158
+      z_index: 10
+      visible: true
+      interactive: true
+      asset:
+        default: hud_x2/menus/omenu_toggle_off.png
+        selected: hud_x2/menus/omenu_toggle_on.png
+      text:
+        value: '{click_to_interact}'
+        font: menu_lucida
+        color: '#b8b8a9'
+        align_x: center
+        align_y: middle
+        scale: 0.64
+        pad_x: 3.2
+      notes: Bind to gameplay.context_action_popup; see contracts/settings.yml. Ranges need a track and thumb renderer;
+        selection controls need native dropdown/focus behavior. Controller supplies live text.
     - id: SettingsGameplaySkipEventCutscenesLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 573.2421
+      offset_y: 612.1674
       width: 234.7669
       height: 14.0752
       z_index: 10
@@ -1075,7 +1131,7 @@ elements:
     - id: SettingsGameplaySkipEventCutscenesDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 589.4506
+      offset_y: 628.3759
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -1092,7 +1148,7 @@ elements:
     - id: SettingsGameplaySkipEventCutscenesControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 571.0212
+      offset_y: 609.9465
       width: 70.4
       height: 32.158
       z_index: 10

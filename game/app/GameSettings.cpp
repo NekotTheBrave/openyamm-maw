@@ -883,6 +883,16 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         }
     }
 
+    if (const std::optional<std::string> value = getIniValue(document, "gameplay", "click_to_interact"))
+    {
+        bool parsed = settings.clickToInteract;
+
+        if (parseBoolValue(*value, parsed))
+        {
+            settings.clickToInteract = parsed;
+        }
+    }
+
     if (const std::optional<std::string> value = getIniValue(document, "gameplay", "combat_text"))
     {
         bool parsed = settings.combatText;
@@ -1980,7 +1990,8 @@ bool saveGameSettings(const std::filesystem::path &path, const GameSettings &set
         << "melee_hit_flash=" << (settings.meleeHitFlash ? "true" : "false") << '\n'
         << "melee_camera_kick=" << (settings.meleeCameraKick ? "true" : "false") << '\n'
         << "corpses=" << corpseStyleValue(settings.corpseStyle) << '\n'
-        << "context_action_popup=" << (settings.contextActionPopup ? "true" : "false") << "\n\n"
+        << "context_action_popup=" << (settings.contextActionPopup ? "true" : "false") << '\n'
+        << "click_to_interact=" << (settings.clickToInteract ? "true" : "false") << "\n\n"
         << "[startup]\n"
         << "start_in_main_menu=" << (settings.startInMainMenu ? "true" : "false") << '\n'
         << "save_file=" << settings.startupSaveFile << "\n\n"
