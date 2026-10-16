@@ -1,0 +1,31 @@
+id: mod_runtime.maw.skill_tooltips
+title: The skill page's information box shows MAW's texts built for the character
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW builds a skill's box texts per character as the box is shown (MawCore/SkillTooltip.lua), from a patch of the
+# original's code; the game asks for them (BuildSkillInformationBox, zMaw-SkillTexts.lua). Regeneration shows the
+# hit points it gives back now and the next level's more, Meditation the spell points; a skill without a builder
+# keeps its texts. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      members:
+      - name: Healer
+        class: Cleric
+        level: 10
+        skills: []
+        equipment: {}
+- mod_lua:
+    code: |
+      Party[0].Skills[const.Skills.Regeneration] = JoinSkill(4, 1)
+      Party[0].Skills[const.Skills.Meditation] = JoinSkill(4, 1)
+      local regen = ModRT.Stats.skillInformationBox(0, const.Skills.Regeneration, "", "", "", "", "")
+      local medit = ModRT.Stats.skillInformationBox(0, const.Skills.Meditation, "", "", "", "", "")
+      local _, normal = ModRT.Stats.skillInformationBox(0, const.Skills.Sword, "", "n", "", "", "")
+      return regen:find("Current HP Regeneration", 1, true) ~= nil, regen:find("Next Level Bonus", 1, true) ~= nil,
+        medit:find("Current SP Regeneration", 1, true) ~= nil, normal ~= "", ModRT.totalErrorCount
+    expect: "true\ttrue\ttrue\ttrue\t0"

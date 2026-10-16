@@ -3,6 +3,7 @@
 #include "game/gameplay/GameMechanics.h"
 #include "game/tables/MonsterTable.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -333,6 +334,11 @@ public:
     // statistics, 7 hit points ... 18 ranged damage, 19 to 24 the resistances), as the mod leaves it (the original's
     // BuildStatInformationBox). `text` comes in as the engine's.
     virtual void statInformationBox(int stat, std::string &text) = 0;
+    // The texts of the skill page's information box for `character`'s skill (the engine's canonical name): the
+    // description, then the Normal, Expert, Master and Grandmaster lines, as the mod leaves them (MAW builds them
+    // per character: its regeneration and meditation now and at the next level). They come in as the engine's.
+    virtual void skillInformationBox(
+        const Character &character, const std::string &skillName, std::array<std::string, 5> &parts) = 0;
     // A character is about to learn a spell from a book: the mastery of its school it takes (the original's
     // CanLearnSpell, NeedMastery: 1 to 4, above 4 not at all). `engineMastery` is the engine's.
     virtual int canLearnSpell(const Character &character, uint32_t spellId, int engineMastery) = 0;
@@ -475,6 +481,8 @@ float modTrainingMinutes(float engineMinutes);
 
 // Runs the mod's BuildStatInformationBox event over `text`; it stays the engine's without a mod.
 void modStatInformationBox(int stat, std::string &text);
+// Runs the mod's skill box texts over `parts`; see IModHooks::skillInformationBox.
+void modSkillInformationBox(const Character &character, const std::string &skillName, std::array<std::string, 5> &parts);
 
 // Runs the mod's UseMouseItem event for the held item used on a party member: whether the game may use it its own
 // way (true without a mod).

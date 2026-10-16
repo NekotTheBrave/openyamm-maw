@@ -2672,6 +2672,60 @@ void ModRuntime::statInformationBox(int stat, std::string &text)
     }
 }
 
+void ModRuntime::skillInformationBox(
+    const Character &character, const std::string &skillName, std::array<std::string, 5> &parts)
+{
+    Party *pParty = m_active && m_host.party ? m_host.party() : nullptr;
+    const std::optional<size_t> slot =
+        pParty != nullptr ? findModPartySlot(*pParty, character) : std::optional<size_t>();
+
+    if (!slot)
+    {
+        return;
+    }
+
+    // The skill's Merge number, from the engine's name for it.
+    std::optional<size_t> skillId;
+
+    for (size_t id = 0; id < 256 && !skillId; ++id)
+    {
+        if (const char *pName = mergeSkillName(id); pName != nullptr && canonicalSkillName(pName) == skillName)
+        {
+            skillId = id;
+        }
+    }
+
+    if (!skillId || !beginDispatch("skillInformationBox"))
+    {
+        return;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(*slot));
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(*skillId));
+
+    for (const std::string &part : parts)
+    {
+        lua_pushlstring(m_pLuaState, part.data(), part.size());
+    }
+
+    if (endDispatch(2 + static_cast<int>(parts.size()), static_cast<int>(parts.size())))
+    {
+        for (size_t index = 0; index < parts.size(); ++index)
+        {
+            const int stackIndex = -static_cast<int>(parts.size()) + static_cast<int>(index);
+
+            if (lua_isstring(m_pLuaState, stackIndex))
+            {
+                size_t length = 0;
+                const char *pText = lua_tolstring(m_pLuaState, stackIndex, &length);
+                parts[index].assign(pText, length);
+            }
+        }
+
+        lua_pop(m_pLuaState, static_cast<int>(parts.size()));
+    }
+}
+
 float ModRuntime::trainingMinutes(float engineMinutes)
 {
     if (!m_active || !m_host.party || m_host.party() == nullptr || !beginDispatch("trainingTime"))

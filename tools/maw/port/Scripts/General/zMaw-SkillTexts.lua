@@ -169,3 +169,22 @@ function events.TeacherText(t)
 
 	t.Text = text
 end
+
+-- The skill page's information box: MAW builds its texts per character when the box is shown
+-- (MawCore/SkillTooltip.lua: its builders, e.g. regeneration and meditation now and at the next level, else the
+-- skill's own texts), from a patch of the original's code that does nothing here. The game asks for them instead.
+function events.BuildSkillInformationBox(t)
+    local tooltip = MawCore and MawCore.SkillTooltip
+
+    if not (tooltip and tooltip.partText and t.Player) then
+        return
+    end
+
+    for part = 1, 5 do
+        local ok, text = pcall(tooltip.partText, t.Player, t.Skill, part)
+
+        if ok and type(text) == "string" and text ~= "" then
+            t.Parts[part] = text
+        end
+    end
+end

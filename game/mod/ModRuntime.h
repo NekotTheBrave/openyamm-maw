@@ -93,6 +93,8 @@ public:
     void teacherText(ModTeachSkillMasteryEvent &event) override;
     float trainingMinutes(float engineMinutes) override;
     void statInformationBox(int stat, std::string &text) override;
+    void skillInformationBox(
+        const Character &character, const std::string &skillName, std::array<std::string, 5> &parts) override;
     int canLearnSpell(const Character &character, uint32_t spellId, int engineMastery) override;
     bool useMouseItem(size_t memberIndex) override;
     bool potionEffect(uint32_t potionId, int power) override;

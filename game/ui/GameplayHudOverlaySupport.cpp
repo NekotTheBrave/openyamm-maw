@@ -827,6 +827,41 @@ void GameplayHudOverlaySupport::updateCharacterInspectOverlay(
                         "Skill added to Attack Bonus (quintuple effect); +1 damage per skill point";
                 }
 
+                // The mod's word on the texts, for this character (MAW's live numbers: regeneration, meditation and
+                // more). Built on every frame the box shows, so the mod's answer for the same character, skill and
+                // texts is reused for a quarter of a second, as the stats page's.
+                {
+                    struct CachedSkillBox
+                    {
+                        const Character *pCharacter = nullptr;
+                        std::string skillName;
+                        std::array<std::string, 5> engineParts;
+                        std::array<std::string, 5> parts;
+                        std::chrono::steady_clock::time_point time;
+                    };
+                    static CachedSkillBox cached;
+                    const std::array<std::string, 5> engineParts = {
+                        overlay.body, normalDescription, expertDescription, masterDescription, grandmasterDescription};
+                    const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+
+                    if (cached.pCharacter != pCharacter || cached.skillName != row.canonicalName
+                        || cached.engineParts != engineParts || now - cached.time > std::chrono::milliseconds(250))
+                    {
+                        cached.pCharacter = pCharacter;
+                        cached.skillName = row.canonicalName;
+                        cached.engineParts = engineParts;
+                        cached.parts = engineParts;
+                        cached.time = now;
+                        modSkillInformationBox(*pCharacter, row.canonicalName, cached.parts);
+                    }
+
+                    overlay.body = cached.parts[0];
+                    normalDescription = cached.parts[1];
+                    expertDescription = cached.parts[2];
+                    masterDescription = cached.parts[3];
+                    grandmasterDescription = cached.parts[4];
+                }
+
                 // A skill described as the original's tables (MAW's: columns set with tab stops and spaces, the
                 // headings in the description) gets the original's rows too: the short names, the texts from one
                 // column, 66 pixels in, where the columns of the description's heading line up with them (read off

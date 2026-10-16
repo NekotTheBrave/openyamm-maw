@@ -309,6 +309,8 @@ local function dispatchKind(kind, ...)
         return ModRT.Stats.trainingTime(...)
     elseif kind == "statInformationBox" then
         return ModRT.Stats.statInformationBox(...)
+    elseif kind == "skillInformationBox" then
+        return ModRT.Stats.skillInformationBox(...)
     elseif kind == "canLearnSpell" then
         return ModRT.Stats.canLearnSpell(...)
     elseif kind == "useMouseItem" then

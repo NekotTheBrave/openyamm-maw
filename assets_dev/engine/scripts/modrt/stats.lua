@@ -429,6 +429,22 @@ function Stats.statInformationBox(stat, text)
     return tostring(event.Text or text)
 end
 
+-- The skill page's information box for party slot `slot`'s skill `skillId` (Merge's number): its description and its
+-- four mastery lines, the engine's coming in. Not an MMExtension event (MAW builds the box in its own code there):
+-- BuildSkillInformationBox with Player, PlayerIndex, Skill and Parts (1 the description, 2 to 5 Normal to
+-- Grandmaster), which handlers change. Returns the five texts.
+function Stats.skillInformationBox(slot, skillId, ...)
+    local parts = {...}
+    local event = {Player = Party[slot], PlayerIndex = slot, Skill = skillId, Parts = parts}
+    ModRT.fire("BuildSkillInformationBox", event)
+
+    for index = 1, 5 do
+        parts[index] = tostring(parts[index] or "")
+    end
+
+    return table.unpack(parts, 1, 5)
+end
+
 -- The active member (Game.CurrentPlayer) has trained a level: the original's CalcTrainingTime, with Time in ticks
 -- (256 to the game minute). Takes and returns game minutes.
 function Stats.trainingTime(minutes)

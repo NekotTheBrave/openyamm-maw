@@ -559,6 +559,14 @@ int modCanLearnSpell(const Character &character, uint32_t spellId, int engineMas
     return pModHooks != nullptr ? pModHooks->canLearnSpell(character, spellId, engineMastery) : engineMastery;
 }
 
+void modSkillInformationBox(const Character &character, const std::string &skillName, std::array<std::string, 5> &parts)
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->skillInformationBox(character, skillName, parts);
+    }
+}
+
 void modStatInformationBox(int stat, std::string &text)
 {
     if (IModHooks *pModHooks = activeModHooks())
