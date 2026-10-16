@@ -1,0 +1,5 @@
+-- OpenYAMM port: MAW's crash diagnostics (added upstream 2026-10-15) are left out.
+--
+-- MAW's file watches the original game for crashes: LuaJIT's ffi, MMExtension's memory and hooks into mm8.exe, and a
+-- MawDiag.txt beside the game. None of that exists here (the port's own errors go to logs/mod_runtime.log), and it
+-- runs unless MAWSettings.lua sets crashDiagnostics off, so this file takes its place and does nothing.
