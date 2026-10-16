@@ -1,0 +1,51 @@
+id: mod_runtime.maw.monster_full_health
+title: A map's monsters come at full health with MAW's hit points
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# Found in play (2026-10-15): indoors every monster came in at part of its health (a Dire Wolf Yearling 35 of 58).
+# MAW works out the kinds' hit points in its BeforeLoadMap, which the port raises after the map's monsters are made,
+# and then each monster's maximum, keeping the share of health it has (MonsterHP.apply). Indoor monsters kept no
+# maximum of their own: it was always their kind's, so it went up when MAW's did and their health stayed. Each
+# monster now has its own, as in the original (MapActorAiState::maxHp, with a mod loaded). Dire Wolf Den (d08) and,
+# outdoors, Ravenshore (out02), whose monsters always had one. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out02.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 30
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      function NotFull()
+        local below, total = 0, 0
+        for i = 0, Map.Monsters.High do
+          local m = Map.Monsters[i]
+          if not m.IsDead and m.HP > 0 then
+            total = total + 1
+            if m.HP < m.FullHP then below = below + 1 end
+          end
+        end
+        return below, total > 0
+      end
+      return NotFull()
+    expect: "0\ttrue"
+- load_map:
+    map: d08.blv
+- mod_lua:
+    code: |
+      local below, any = NotFull()
+      local m = Map.Monsters[1]
+      return below, any, m.FullHP == m.FullHitPoints, ModRT.totalErrorCount
+    expect: "0\ttrue\ttrue\t0"

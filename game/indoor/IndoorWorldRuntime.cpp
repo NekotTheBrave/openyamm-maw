@@ -4597,19 +4597,39 @@ void IndoorWorldRuntime::syncMapActorAiStates()
                     m_pGameplayActorService,
                     m_pActorSpriteFrameTable);
             actorState.bolsterRewardMultiplier = bolster.rewardMultiplier;
+
+            if (activeModHooks() != nullptr)
+            {
+                actorState.maxHp = actor.hp;
+            }
+
             m_mapActorAiStates.push_back(std::move(actorState));
             continue;
         }
 
-        m_mapActorAiStates.push_back(
+        IndoorWorldRuntime::MapActorAiState actorState =
             buildIndoorMapActorAiState(
                 actor,
                 actorIndex,
                 m_pMonsterTable,
                 m_pSpellTable,
                 m_pGameplayActorService,
-                m_pActorSpriteFrameTable));
+                m_pActorSpriteFrameTable);
+
+        if (activeModHooks() != nullptr && pStats != nullptr)
+        {
+            actorState.maxHp = std::max<int>(actor.hp, pStats->hitPoints);
+        }
+
+        m_mapActorAiStates.push_back(std::move(actorState));
     }
+}
+
+int IndoorWorldRuntime::mapActorMaxHp(size_t actorIndex, int kindMaxHp) const
+{
+    return actorIndex < m_mapActorAiStates.size() && m_mapActorAiStates[actorIndex].maxHp
+        ? *m_mapActorAiStates[actorIndex].maxHp
+        : kindMaxHp;
 }
 
 void IndoorWorldRuntime::ensureIndoorSectorActivationMask()
@@ -9346,7 +9366,7 @@ std::optional<ActorAiFacts> IndoorWorldRuntime::collectIndoorActorAiFacts(
     facts.stats.aiType = aiState.aiType;
     facts.stats.monsterLevel = aiState.modStats.levelOr(pStats->level);
     facts.stats.currentHp = actor.hp;
-    facts.stats.maxHp = bolster.maxHp;
+    facts.stats.maxHp = mapActorMaxHp(actorIndex, bolster.maxHp);
     facts.stats.armorClass = pActorService->effectiveArmorClass(bolster.armorClass, aiState.spellEffects);
     facts.stats.radius = radius;
     facts.stats.height = height;
@@ -11037,7 +11057,7 @@ bool IndoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField 
         case GameplayModActorField::CurrentHp: value = actor.hp; return true;
         case GameplayModActorField::MaxHp:
         {
-            // Indoor actors do not store a maximum; it is the monster table's value.
+            // The monster's own maximum (set when it was made, with a mod loaded), else the monster table's value.
             const MonsterTable::MonsterStatsEntry *pStats =
                 m_pMonsterTable != nullptr ? m_pMonsterTable->findStatsById(resolveIndoorActorStatsId(actor)) : nullptr;
 
@@ -11046,7 +11066,7 @@ bool IndoorWorldRuntime::modActorField(size_t actorIndex, GameplayModActorField 
                 return false;
             }
 
-            value = pStats->hitPoints;
+            value = mapActorMaxHp(actorIndex, pStats->hitPoints);
             return true;
         }
         case GameplayModActorField::X: value = actor.x; return true;
@@ -11243,6 +11263,12 @@ bool IndoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFie
                         : nullptr;
                     actor.hp = static_cast<int16_t>(
                         std::clamp(pStats != nullptr ? pStats->hitPoints : 1, 1, static_cast<int>(INT16_MAX)));
+
+                    if (actorIndex < m_mapActorAiStates.size() && m_mapActorAiStates[actorIndex].maxHp)
+                    {
+                        m_mapActorAiStates[actorIndex].maxHp = static_cast<int>(actor.hp);
+                    }
+
                     settle(ActorAiMotionState::Standing, ActorAiAnimationState::Standing);
                 }
 
@@ -11295,8 +11321,16 @@ bool IndoorWorldRuntime::setModActorField(size_t actorIndex, GameplayModActorFie
             m_mapActorAiStates[actorIndex].aiType =
                 static_cast<GameplayActorAiType>(std::clamp<int64_t>(value, 0, 3));
             return true;
-        case GameplayModActorField::MonsterId:
         case GameplayModActorField::MaxHp:
+            // The monster's own maximum (MAW sets each monster's from its level).
+            if (actorIndex >= m_mapActorAiStates.size())
+            {
+                return false;
+            }
+
+            m_mapActorAiStates[actorIndex].maxHp = static_cast<int>(std::clamp<int64_t>(value, 1, 30000));
+            return true;
+        case GameplayModActorField::MonsterId:
         case GameplayModActorField::CarriedItem:
             return false;
     }
@@ -11719,7 +11753,7 @@ bool IndoorWorldRuntime::actorInspectState(
             },
             *pStats,
             pMonsterEntry);
-    state.maxHp = std::max(0, bolster.maxHp);
+    state.maxHp = std::max(0, mapActorMaxHp(actorIndex, bolster.maxHp));
     state.attack1Damage.diceRolls = bolster.attack1DamageDiceRolls;
     state.attack1Damage.diceSides = bolster.attack1DamageDiceSides;
     state.attack1Damage.bonus = bolster.attack1DamageBonus;
@@ -11969,7 +12003,8 @@ bool IndoorWorldRuntime::applyReflectedDamageToActor(
     if (previousHp > 0 && nextHp <= 0)
     {
         beginMapActorDyingState(actorIndex, actor);
-        const int maxHp = pStats != nullptr && pStats->hitPoints > 0 ? pStats->hitPoints : previousHp;
+        const int maxHp =
+            mapActorMaxHp(actorIndex, pStats != nullptr && pStats->hitPoints > 0 ? pStats->hitPoints : previousHp);
         const MapActorAiState &aiState = m_mapActorAiStates[actorIndex];
         const bx::Vec3 knockback = actorKnockbackVelocity(
             aiState.preciseX,
@@ -12236,7 +12271,8 @@ bool IndoorWorldRuntime::applyPartySpellToActor(
         }
 
         const int hpLimit = std::max(1, targetMonsterLevel * 10);
-        const int maxHp = pStats != nullptr && pStats->hitPoints > 0 ? pStats->hitPoints : hpLimit;
+        const int maxHp =
+            mapActorMaxHp(actorIndex, pStats != nullptr && pStats->hitPoints > 0 ? pStats->hitPoints : hpLimit);
         actor.hp = static_cast<int16_t>(std::clamp(hpLimit, 1, maxHp));
         actor.currentActionAnimation = indoorActionAnimationFromActorAi(ActorAiAnimationState::Standing);
         actor.attributes |= static_cast<uint32_t>(EvtActorAttribute::Active)
@@ -12429,7 +12465,8 @@ bool IndoorWorldRuntime::applyPartySpellToActor(
     if (previousHp > 0 && actor.hp <= 0)
     {
         beginMapActorDyingState(actorIndex, actor);
-        const int maxHp = pStats != nullptr && pStats->hitPoints > 0 ? pStats->hitPoints : previousHp;
+        const int maxHp =
+            mapActorMaxHp(actorIndex, pStats != nullptr && pStats->hitPoints > 0 ? pStats->hitPoints : previousHp);
         const bx::Vec3 knockback = actorKnockbackVelocity(
             aiState.preciseX,
             aiState.preciseY,
@@ -14172,7 +14209,8 @@ bool IndoorWorldRuntime::applyPartyAttackMeleeDamage(
         beginMapActorDyingState(actorIndex, actor);
         const MonsterTable::MonsterStatsEntry *pStats =
             m_pMonsterTable != nullptr ? m_pMonsterTable->findStatsById(resolvedMonsterId) : nullptr;
-        const int maxHp = pStats != nullptr && pStats->hitPoints > 0 ? pStats->hitPoints : previousHp;
+        const int maxHp =
+            mapActorMaxHp(actorIndex, pStats != nullptr && pStats->hitPoints > 0 ? pStats->hitPoints : previousHp);
         const MapActorAiState &aiState = m_mapActorAiStates[actorIndex];
         const bx::Vec3 knockback = actorKnockbackVelocity(
             aiState.preciseX,
@@ -14231,7 +14269,8 @@ bool IndoorWorldRuntime::applyPartyAttackMeleeDamage(
         beginMapActorHitReaction(actorIndex, actor, &source);
         const MonsterTable::MonsterStatsEntry *pStats =
             m_pMonsterTable != nullptr ? m_pMonsterTable->findStatsById(resolvedMonsterId) : nullptr;
-        const int maxHp = pStats != nullptr && pStats->hitPoints > 0 ? pStats->hitPoints : previousHp;
+        const int maxHp =
+            mapActorMaxHp(actorIndex, pStats != nullptr && pStats->hitPoints > 0 ? pStats->hitPoints : previousHp);
         const MapActorAiState &aiState = m_mapActorAiStates[actorIndex];
         const bx::Vec3 knockback = actorKnockbackVelocity(
             aiState.preciseX,
@@ -14346,7 +14385,8 @@ void IndoorWorldRuntime::applyPartyAttackMeleeEffects(
             std::max(spellEffects.stunRemainingSeconds, 0.5f + 0.35f * static_cast<float>(skillLevel));
         const MonsterTable::MonsterStatsEntry *pStats =
             m_pMonsterTable != nullptr ? m_pMonsterTable->findStatsById(resolveIndoorActorStatsId(actor)) : nullptr;
-        const int maxHp = pStats != nullptr && pStats->hitPoints > 0 ? pStats->hitPoints : std::max<int>(1, actor.hp);
+        const int maxHp = mapActorMaxHp(
+            actorIndex, pStats != nullptr && pStats->hitPoints > 0 ? pStats->hitPoints : std::max<int>(1, actor.hp));
         const bx::Vec3 knockback = actorKnockbackVelocity(
             aiState.preciseX,
             aiState.preciseY,

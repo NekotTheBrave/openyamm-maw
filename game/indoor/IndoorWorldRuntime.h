@@ -67,6 +67,10 @@ public:
         std::optional<uint16_t> modMoveSpeed;
         // Its level and resistances, likewise.
         ModActorStatOverrides modStats;
+        // With a mod loaded, its own maximum hit points, set when it is made, as the original's monsters carry one:
+        // a mod changes its kind's hit points after the map's monsters are made (MAW, whose BeforeLoadMap comes after
+        // here) and writes each monster's maximum itself. Without, the kind's (and the engine's bolster).
+        std::optional<int> maxHp;
         float bolsterRewardMultiplier = 1.0f;
         GameplayActorAiType aiType = GameplayActorAiType::Normal;
         bool canFly = false;
@@ -671,6 +675,8 @@ private:
     bool materializeTreasureSpawn(size_t spawnIndex, const IndoorSpawn &spawn);
     void materializeInitialMonsterSpawns();
     void syncMapActorAiStates();
+    // Monster `actorIndex`'s maximum hit points: its own (MapActorAiState::maxHp) or else `kindMaxHp`.
+    int mapActorMaxHp(size_t actorIndex, int kindMaxHp) const;
     RuntimeGeometryCache &runtimeGeometryCache() const;
     std::shared_ptr<const PathMap> indoorPathMap() const;
     bool indoorActorPathfindingEnabled() const;
