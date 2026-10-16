@@ -24,7 +24,6 @@ checkout without the submodule) the Obsidian files are kept as committed and onl
   tools/cook_ui_textures.py --force               re-cook everything
 """
 import argparse
-import fcntl
 import hashlib
 import json
 import os
@@ -37,7 +36,7 @@ import tempfile
 import yaml
 from PIL import Image
 
-from cook_surface_textures import header_source_hash, file_stat, sha256
+from cook_surface_textures import header_source_hash, file_stat, sha256, lock_exclusive
 
 ROOT = Path(__file__).resolve().parent.parent
 PROFILES = {"desktop": ("bc7", ROOT / "assets_dev"), "android": ("astc_4x4", ROOT / "assets_cooked/android")}
@@ -239,7 +238,7 @@ def main():
     lock_path = receipts_path(output).with_suffix(".lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        lock_exclusive(lock)
         cook(roots, args.cooker, args.force, args.plan)
 
 

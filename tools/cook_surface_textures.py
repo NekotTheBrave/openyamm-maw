@@ -33,7 +33,11 @@ source or the cook settings change, or COOK_REVISION is bumped; unchanged files 
 modification time, so the incremental cook the build runs (target openyamm_cook_surface_textures) costs about a second.
 """
 import argparse
-import fcntl
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+    import msvcrt
 import fnmatch
 import hashlib
 import json
@@ -267,8 +271,22 @@ def main():
     lock_path = receipts_path(output).with_suffix(".lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        lock_exclusive(lock)
         cook(args.sources, output, args.profile, args.cooker, args.only, args.force, args.plan)
+
+
+def lock_exclusive(lock):
+    """Holds an exclusive lock on the open file until it closes; waits for another holder to let go."""
+    if fcntl is not None:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return
+    # Windows (MAW port): no fcntl; msvcrt locks a byte range, and LK_LOCK gives up after ten tries a second apart.
+    while True:
+        try:
+            msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
+            return
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":

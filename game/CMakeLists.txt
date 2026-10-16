@@ -452,12 +452,12 @@ if (NOT CMAKE_CROSSCOMPILING)
             COMMENT "Preparing changed sprite atlas runtime pages"
             VERBATIM)
     endif()
-    # (MAW port: the assets_source submodule is private; without its checkout, an empty folder, nothing is cooked and
-    # the committed cooked files are used.)
+    # (MAW port: these cooks run when assets_source holds the sources, a submodule checkout or the extracted archive
+    # of github.com/pjasicek/openyamm-source-assets; without them, an empty folder, the committed cooked files are used.)
     # World surface textures: the x4 sources in assets_source cook into assets_dev; the build keeps them current
     # (incremental, about a second when nothing changed). See tools/cook_surface_textures.py. Like the other build-time
     # cooks it needs the assets_source checkout; release checkouts package the committed cooked files.
-    if (EXISTS "${CMAKE_SOURCE_DIR}/assets_source/.git" AND IS_DIRECTORY "${OPENYAMM_DEV_ASSETS_DIR}/worlds")
+    if (IS_DIRECTORY "${CMAKE_SOURCE_DIR}/assets_source/worlds" AND IS_DIRECTORY "${OPENYAMM_DEV_ASSETS_DIR}/worlds")
         add_custom_target(openyamm_cook_surface_textures
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/cook_surface_textures.py" --profile desktop
                 --sources "${CMAKE_SOURCE_DIR}/assets_source" --output "${OPENYAMM_DEV_ASSETS_DIR}"
@@ -487,7 +487,7 @@ if (NOT CMAKE_CROSSCOMPILING)
     endif()
     # Obsidian HUD art (sources in assets_source) and portrait face set atlases (tools/cook_ui_textures.py), cooked
     # into assets_dev for desktop.
-    if (EXISTS "${CMAKE_SOURCE_DIR}/assets_source/.git" AND IS_DIRECTORY "${OPENYAMM_DEV_ASSETS_DIR}/engine/icons_x2")
+    if (IS_DIRECTORY "${CMAKE_SOURCE_DIR}/assets_source/engine/icons_x2" AND IS_DIRECTORY "${OPENYAMM_DEV_ASSETS_DIR}/engine/icons_x2")
         add_custom_target(openyamm_cook_ui_textures
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/cook_ui_textures.py"
                 --assets "${OPENYAMM_DEV_ASSETS_DIR}" --cooker "$<TARGET_FILE:openyamm_model_texture_cook>"

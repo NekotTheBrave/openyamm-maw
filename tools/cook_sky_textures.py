@@ -21,7 +21,6 @@ runs and packages; the packager swaps in the android files for that profile.
   tools/cook_sky_textures.py --force            re-cook everything
 """
 import argparse
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -31,7 +30,7 @@ import tempfile
 
 import yaml
 
-from cook_surface_textures import file_stat, header_source_hash, sha256
+from cook_surface_textures import file_stat, header_source_hash, sha256, lock_exclusive
 
 ROOT = Path(__file__).resolve().parent.parent
 SKY = "engine/rendering/sky"
@@ -184,7 +183,7 @@ def main():
     lock_path = receipts_path("lock").with_suffix(".lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        lock_exclusive(lock)
         for profile in profiles:
             cook(profile, args.cooker, args.force, args.plan, args.assets)
 
