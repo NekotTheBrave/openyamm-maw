@@ -2951,6 +2951,12 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
                     return;
                 }
 
+                // An item the game has no use for goes to the mod's UseMouseItem before it is put on.
+                if (context.itemService().tryModUseHeldItem(context, memberIndex))
+                {
+                    return;
+                }
+
                 const ItemDefinition *pItemDefinition =
                     context.itemTable()->get(context.heldInventoryItem().item.objectDescriptionId);
 
@@ -3038,6 +3044,12 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
                 if (useAction != InventoryItemUseAction::None && useAction != InventoryItemUseAction::Equip)
                 {
                     context.itemService().tryUseHeldItemOnPartyMember(context, memberIndex, true);
+                    return;
+                }
+
+                // An item the game has no use for goes to the mod's UseMouseItem before it is put on.
+                if (context.itemService().tryModUseHeldItem(context, memberIndex))
+                {
                     return;
                 }
 

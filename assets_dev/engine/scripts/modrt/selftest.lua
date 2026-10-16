@@ -97,6 +97,14 @@ function ModRT.selfTest()
     equal("removed handler no longer runs", removed, 1)
     check("exists reflects removal", not ev.exists("Beta"))
 
+    -- MMExtension's events.Remove(name, 1): the handler calling it removes itself (MAW's one-shot Tick handlers).
+    local oneShot, kept = 0, 0
+    function ev.Epsilon() oneShot = oneShot + 1; ev.Remove("Epsilon", 1) end
+    function ev.Epsilon() kept = kept + 1 end
+    ev.call("Epsilon")
+    ev.call("Epsilon")
+    equal("a handler removes itself by stack level", oneShot .. "," .. kept, "1,2")
+
     local ran = {}
     ev.add("Gamma", function() ran[#ran + 1] = "a"; ev.add("Gamma", function() ran[#ran + 1] = "late" end) end)
     ev.add("Gamma", function() ran[#ran + 1] = "b" end)

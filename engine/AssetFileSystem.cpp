@@ -1790,11 +1790,20 @@ std::vector<std::string> AssetFileSystem::resolveVirtualPathCandidates(const std
         }
     };
 
+    // The chosen scale, then the base one, then the larger ones: some assets exist at x2 only (many dungeon textures,
+    // Dire Wolf Den's cave walls among them), and at x1 their faces drew black. A file's scale is read from its
+    // directory, so a larger one is shown at its logical size.
     const auto appendPathWithTierFallbacks =
         [this, &appendCandidateWithAndroidApkPrefixes](const std::string &candidate)
     {
         appendCandidateWithAndroidApkPrefixes(remapTieredVirtualPath(candidate, m_assetScaleProfile));
         appendCandidateWithAndroidApkPrefixes(baseTieredVirtualPath(candidate));
+
+        for (const AssetScaleTier tier : {AssetScaleTier::X2, AssetScaleTier::X4})
+        {
+            appendCandidateWithAndroidApkPrefixes(
+                remapTieredVirtualPath(candidate, createUniformAssetScaleProfile(tier)));
+        }
     };
 
     if (packageQualified)

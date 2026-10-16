@@ -98,6 +98,32 @@ end
 function ClearConsoleEvents()
 end
 
+-- MMExtension's XYZ (Structs/After/Functions.lua): XYZ(t) gives t's X, Y and Z; XYZ(t, x, y, z) sets them; with
+-- neither it enumerates "X", "Y", "Z" (`for X in XYZ do`). MAW's monster fixes and spells take positions so.
+function XYZ(t, x, y, z)
+    if z then
+        t.X, t.Y, t.Z = x, y, z
+    elseif t then
+        return t.X, t.Y, t.Z
+    elseif not x then
+        return "X"
+    elseif x == "X" then
+        return "Y"
+    elseif x == "Y" then
+        return "Z"
+    end
+end
+
+-- The Merge's console helpers (Global/Editor Console.lua): to map `name` (without its extension), at its party start
+-- (evt.MoveToMap with no place). MAW's Dimension Maps take the party into their dungeon this way.
+function blv(name)
+    evt.MoveToMap{Name = name .. ".blv"}
+end
+
+function odm(name)
+    evt.MoveToMap{Name = name .. ".odm"}
+end
+
 -- The Merge's way of catching the objects a piece of engine code creates (a monster's drops, a spell's missiles):
 -- BeginGrabObjects() before, GrabObjects() after returns them. Objects on the map are not bound yet, so nothing is
 -- caught and scripts that go on to adjust the objects find none.

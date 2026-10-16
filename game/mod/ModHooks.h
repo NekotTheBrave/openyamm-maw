@@ -375,6 +375,14 @@ public:
     virtual void monsterInformationBox(ModMonsterInfoBox &box) = 0;
     // The size monster `actorIndex` is drawn at, as a factor of the game's (the original's MonsterSpriteScale).
     virtual float monsterSpriteScale(size_t actorIndex) = 0;
+    // The game is about to load map `mapStatsIndex` (Game.MapStats), reading its row of the map table for the
+    // monsters its spawn points make. Not an MMExtension event: its BeforeLoadMap comes before that in the original,
+    // the port's after the map is loaded, so what a mod writes to the table for the map being entered goes here.
+    virtual void mapLoading(uint32_t mapStatsIndex, const std::string &fileName) = 0;
+    // A map the party has been to before is made afresh as it is entered (its refill days are up, or it refills on
+    // every visit). In the original the scripts' variables for the map (mapvars) are kept with the map's state and
+    // go with it: MAW's map completion starts again (a Dimension Map's dungeon, a dungeon it resets).
+    virtual void mapRefilled(const std::string &fileName) = 0;
     // The held item is used on the party member in `memberIndex` (the original's UseMouseItem; Mouse.Item is the
     // item): whether the game may go on with its own use of it.
     virtual bool useMouseItem(size_t memberIndex) = 0;
@@ -382,6 +390,10 @@ public:
     // event item is (the original's evt.PotionEffects[potionId](false, item, power)): whether the mod has an effect
     // for that potion, which then took the use over.
     virtual bool potionEffect(uint32_t potionId, int power) = 0;
+    // The held item is used on the item the event item is, and the original shows that item's information box
+    // meanwhile (BuildItemInformationBox, with Mouse.Item the held item): MAW's crafting items act on a Dimension Map,
+    // and its Crafting Cube on equipment, there. What the handlers write to the item stays; the texts are not used.
+    virtual void itemInformationBoxForUse() = 0;
     // Map events a mod adds to or takes over from the map's own (the original's evt.map[id] handlers and
     // Game.MapEvtLines:RemoveEvent(id)): whether the mod has anything for event `eventId` of the current map.
     virtual bool hasMapEvent(uint16_t eventId) = 0;
@@ -467,6 +479,7 @@ bool modUseMouseItem(size_t memberIndex);
 // Runs the mod's potion effect for the held potion used on `target`: whether the mod took the use over (false
 // without a mod, or when it has no effect for that potion).
 bool modPotionEffect(uint32_t potionId, int power, InventoryItem &target);
+void modItemInformationBoxForUse(InventoryItem &target);
 
 // A text a mod puts on one of the original's screens (CustomUI.CreateText), at the original's 640x480 position.
 struct ModHudText
@@ -509,6 +522,8 @@ bool modMapEventRemoved(uint16_t eventId);
 // The factor the mod draws monster `actorIndex` at (1 without a mod). The mod is asked about a monster once a second;
 // the map's monsters are drawn every frame.
 float modMonsterSpriteScale(size_t actorIndex);
+void modMapLoading(uint32_t mapStatsIndex, const std::string &fileName);
+void modMapRefilled(const std::string &fileName);
 
 // The mod's answer to a town hall's bounty hunt topic, when the mod runs the hunts itself; none without a mod.
 std::optional<std::string> modTownHallBounty();

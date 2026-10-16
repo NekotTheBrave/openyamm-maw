@@ -54,5 +54,7 @@ struct ModHost
     // The shop page open, in the original's numbers (Game.HouseScreen): 2 a shop's goods, 95 its special goods, 0
     // none.
     std::function<int()> houseShopPage;
+    // Leaves the screen a script asks to leave (Game:ExitHouseScreen()): the character screen, when it is open.
+    std::function<void()> exitScreen;
 };
 }

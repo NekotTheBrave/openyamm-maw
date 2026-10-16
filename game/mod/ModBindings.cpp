@@ -3950,6 +3950,39 @@ int nativeRunCommandEvent(lua_State *pLuaState)
     return 1;
 }
 
+// modrt.useHeldItemOnItem(player, group, index): what the game does when the held item is used on that item (a
+// right-click with it held) after a potion effect: its information box's events on the item itself, with Mouse.Item
+// the held item (MAW's crafting items on a Dimension Map, its Crafting Cube on equipment). For checks: no scenario
+// step clicks.
+int nativeUseHeldItemOnItem(lua_State *pLuaState)
+{
+    ItemView view = {};
+
+    if (!itemViewArgument(pLuaState, view) || view.pInventoryItem == nullptr)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    modItemInformationBoxForUse(*view.pInventoryItem);
+    lua_pushboolean(pLuaState, true);
+    return 1;
+}
+
+// modrt.exitScreen(): Game:ExitHouseScreen(), leaving the screen that is open: the character screen (MAW leaves it
+// before a Dimension Map takes the party away). A house's dialog is not left this way yet.
+int nativeExitScreen(lua_State *pLuaState)
+{
+    const ModHost *pHost = hostFromUpvalue(pLuaState);
+
+    if (pHost != nullptr && pHost->exitScreen)
+    {
+        pHost->exitScreen();
+    }
+
+    return 0;
+}
+
 int nativeHeldItemSet(lua_State *pLuaState)
 {
     const ModHost *pHost = hostFromUpvalue(pLuaState);
@@ -5495,6 +5528,8 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"inventoryPut", nativeInventoryPut},
         {"heldItemPresent", nativeHeldItemPresent},
         {"heldItemSet", nativeHeldItemSet},
+        {"useHeldItemOnItem", nativeUseHeldItemOnItem},
+        {"exitScreen", nativeExitScreen},
         {"eventCall", nativeEventCall},
         {"runCommandEvent", nativeRunCommandEvent},
         {"skillRegister", nativeSkillRegister},

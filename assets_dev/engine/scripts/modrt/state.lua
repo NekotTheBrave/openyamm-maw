@@ -104,6 +104,23 @@ State.freshSession = true
 State.newGamePending = true
 local syncing = false
 
+-- The game made map `fileName` afresh as the party enters it (a map visited before, refilled). Its `mapvars` and the
+-- special attacks scripts gave its monsters go, as they go with the map's state in the original: MAW's map
+-- completion starts again. Called before the scripts hear of the arrival (syncMap); a map the scripts still take for
+-- the current one is arrived at anew.
+function State.mapRefilled(fileName)
+    local mapName = tostring(fileName or ""):lower()
+    State.mapVarsByMap[mapName] = nil
+
+    if State.runtime.monsterSpecials then
+        State.runtime.monsterSpecials[mapName] = nil
+    end
+
+    if State.currentMap == mapName then
+        State.currentMap = nil
+    end
+end
+
 -- Notices that the party is on a different map than the scripts last knew: switches `mapvars` to that map's
 -- table and raises the map events. The engine has already loaded the map by then, so "before" and "after" both
 -- run after the fact, in MMExtension's order. Nothing happens until the map's world is ready.

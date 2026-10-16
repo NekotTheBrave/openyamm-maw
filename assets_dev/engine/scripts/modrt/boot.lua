@@ -386,6 +386,11 @@ local function dispatchKind(kind, ...)
         return ModRT.MapEvents.runGlobal(...)
     elseif kind == "globalEventDone" then
         return ModRT.MapEvents.globalDone(...)
+    elseif kind == "mapRefilled" then
+        return ModRT.State.mapRefilled(...)
+    elseif kind == "mapLoading" then
+        local index, fileName = ...
+        return ModRT.fire("MapLoading", {MapStatsIndex = index, FileName = fileName})
     elseif kind == "monsterSpriteScale" then
         return ModRT.Stats.monsterSpriteScale(...)
     elseif kind == "canIdentifyMonster" then

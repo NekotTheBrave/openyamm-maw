@@ -96,6 +96,7 @@ public:
     int canLearnSpell(const Character &character, uint32_t spellId, int engineMastery) override;
     bool useMouseItem(size_t memberIndex) override;
     bool potionEffect(uint32_t potionId, int power) override;
+    void itemInformationBoxForUse() override;
     bool canWearItem(const Character &character, uint32_t itemId) override;
     bool canOpenChest(uint32_t chestId, bool trapped) override;
     void partyDefeated() override;
@@ -127,6 +128,8 @@ public:
     int globalEvent(uint16_t eventId, bool topicClick) override;
     bool globalEventDone(uint16_t eventId) override;
     float monsterSpriteScale(size_t actorIndex) override;
+    void mapLoading(uint32_t mapStatsIndex, const std::string &fileName) override;
+    void mapRefilled(const std::string &fileName) override;
     bool hasMapEvent(uint16_t eventId) override;
     int mapEvent(uint16_t eventId) override;
     bool mapEventHint(uint16_t eventId, std::string &hint) override;

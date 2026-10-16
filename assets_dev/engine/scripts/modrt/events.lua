@@ -1,7 +1,7 @@
 -- The `events` object mods register handlers on, with the calling conventions MMExtension scripts rely on:
 --   function events.Name(t) ... end     adds a handler (assignment appends, it does not replace)
 --   events.call("Name", ...)            runs the handlers; the last non-nil return value wins
---   events.Remove("Name", handler)      removes one handler
+--   events.Remove("Name", handler)      removes one handler (a number: the function at that stack level, 1 the caller)
 -- Handlers added or removed while an event is running do not disturb that run.
 
 local ModRT = ModRT
@@ -78,6 +78,18 @@ function Events.new(label)
 
         if not list then
             return nil
+        end
+
+        -- MMExtension's events.Remove(name, level): a number is the function at that level of the call stack, 1 the
+        -- one calling Remove; a handler removes itself so (MAW's one-shot Tick handlers). Without this they stayed
+        -- registered and ran on every tick.
+        if type(handler) == "number" then
+            local info = debug.getinfo(math.floor(handler) + 1, "f")
+            handler = info and info.func
+
+            if not handler then
+                return nil
+            end
         end
 
         if handler == nil then

@@ -1,0 +1,45 @@
+id: mod_runtime.maw.merge_helpers
+title: MMExtension's helpers MAW calls on its timers and keys
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# Found in play (2026-10-15, logs/mod_runtime.log): MAW's out-of-bounds check for monsters (zzMaw-Monsters.lua, on
+# its timer) failed on XYZ (Merge's Structs/After/Functions.lua, a base file the port does not run), and its
+# next-character key handler (zzClasses.lua, Action 176) on Game.Party (MMExtension's other name for Party). With a
+# party of two, so that the next character is someone. Game:ExitHouseScreen() leaves the character screen (MAW does it
+# before a Dimension Map takes the party away). Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: d05.blv
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 5
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+      - name: Wilma
+        class: Sorcerer
+        level: 5
+        skills:
+        - name: Staff
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      local x, y, z = XYZ(Party)
+      local names = {}
+      for name in XYZ do names[#names + 1] = name end
+      checkOutOfBound()
+      ModRT.Stats.action(176, 0, 0, false)
+      Game:ExitHouseScreen()
+      return x == Party.X and z == Party.Z, table.concat(names), Game.Party.High, ModRT.totalErrorCount
+    expect: "true\tXYZ\t1\t0"

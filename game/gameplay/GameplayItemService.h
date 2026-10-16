@@ -20,6 +20,10 @@ public:
         GameplayScreenRuntime &runtime,
         size_t memberIndex,
         bool keepCharacterScreenOpen);
+    // The held item, which the game itself has no use for, dropped on a character's doll: the mod's UseMouseItem
+    // (the original raises it for the doll as for a portrait; MAW's Dimension Maps are used so). Whether the mod
+    // took it (used it up, or kept the game from going on to put it on).
+    bool tryModUseHeldItem(GameplayScreenRuntime &runtime, size_t memberIndex);
 
     bool tryUseHeldItemOnInventoryItem(
         GameplayScreenRuntime &runtime,

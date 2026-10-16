@@ -377,6 +377,16 @@ bool modMapEventRemoved(uint16_t eventId)
     return pModHooks != nullptr && eventId != 0 && pModHooks->mapEventRemoved(eventId);
 }
 
+void modItemInformationBoxForUse(InventoryItem &target)
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        InventoryItem *pPreviousEventItem = setModEventItem(&target);
+        pModHooks->itemInformationBoxForUse();
+        setModEventItem(pPreviousEventItem);
+    }
+}
+
 bool modPotionEffect(uint32_t potionId, int power, InventoryItem &target)
 {
     IModHooks *pModHooks = activeModHooks();
@@ -390,6 +400,22 @@ bool modPotionEffect(uint32_t potionId, int power, InventoryItem &target)
     const bool handled = pModHooks->potionEffect(potionId, power);
     setModEventItem(pPreviousEventItem);
     return handled;
+}
+
+void modMapRefilled(const std::string &fileName)
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->mapRefilled(fileName);
+    }
+}
+
+void modMapLoading(uint32_t mapStatsIndex, const std::string &fileName)
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->mapLoading(mapStatsIndex, fileName);
+    }
 }
 
 float modMonsterSpriteScale(size_t actorIndex)

@@ -1316,11 +1316,20 @@ int32_t currentLocationDay(float gameMinutes)
     return static_cast<int32_t>(std::floor(std::max(0.0f, gameMinutes) / GameMinutesPerLocationDay)) + 1;
 }
 
+// `zeroRefillsEveryVisit`: with a mod loaded, and not while a save is loaded, 0 refill days are the original's: the
+// map refills every time the party comes to it (its arenas and mazes; MAW sets them for a Dimension Map's dungeon
+// and a dungeon it resets). Upstream reads 0 as never.
 bool timedMapRespawnDue(
     const MapStatsEntry &map,
     const MapDeltaLocationInfo &locationInfo,
-    int32_t currentLocationDay)
+    int32_t currentLocationDay,
+    bool zeroRefillsEveryVisit)
 {
+    if (map.respawnIntervalDays == 0 && zeroRefillsEveryVisit)
+    {
+        return locationInfo.lastRespawnDay > 0;
+    }
+
     return map.respawnIntervalDays > 0
         && locationInfo.lastRespawnDay > 0
         && currentLocationDay - locationInfo.lastRespawnDay >= map.respawnIntervalDays;
@@ -1369,13 +1378,15 @@ const IndoorSceneRuntime::Snapshot *findSavedIndoorSceneState(
 bool savedSelectedMapStateNeedsFreshAssets(
     const GameSession &session,
     const MapAssetInfo &mapAssetInfo,
-    int32_t currentLocationDay)
+    int32_t currentLocationDay,
+    bool zeroRefillsEveryVisit)
 {
     if (mapAssetInfo.outdoorMapData)
     {
         const OutdoorWorldRuntime::Snapshot *pSnapshot = findSavedOutdoorWorldState(session, mapAssetInfo);
         return pSnapshot != nullptr
-            && timedMapRespawnDue(mapAssetInfo.map, pSnapshot->locationInfo, currentLocationDay);
+            && timedMapRespawnDue(
+                mapAssetInfo.map, pSnapshot->locationInfo, currentLocationDay, zeroRefillsEveryVisit);
     }
 
     if (mapAssetInfo.indoorMapData)
@@ -1386,7 +1397,8 @@ bool savedSelectedMapStateNeedsFreshAssets(
             && timedMapRespawnDue(
                 mapAssetInfo.map,
                 pSnapshot->mapDeltaData->locationInfo,
-                currentLocationDay);
+                currentLocationDay,
+                zeroRefillsEveryVisit);
     }
 
     return false;
@@ -2952,6 +2964,15 @@ GameApplication::GameApplication(const Engine::ApplicationConfig &config)
         if (screen.hasPendingEventDialog() && !screen.activeEventDialog().isActive)
         {
             screen.ensurePendingEventDialogPresented(true);
+        }
+    };
+    modHost.exitScreen = [this]()
+    {
+        GameplayScreenRuntime &screenRuntime = m_gameSession.gameplayScreenRuntime();
+
+        if (screenRuntime.characterScreenReadOnly().open)
+        {
+            screenRuntime.closeCharacterScreen();
         }
     };
     modHost.houseShopPage = [this]()
@@ -7434,8 +7455,17 @@ bool GameApplication::initializeSelectedMapRuntime(bool initializeView)
             findSavedOutdoorWorldState(m_gameSession, *selectedMap);
         const bool outdoorTimedRespawn =
             pSavedOutdoorState != nullptr
-                && timedMapRespawnDue(selectedMap->map, pSavedOutdoorState->locationInfo, currentMapDay);
+                && timedMapRespawnDue(
+                    selectedMap->map,
+                    pSavedOutdoorState->locationInfo,
+                    currentMapDay,
+                    activeModHooks() != nullptr && !m_loadingSavedGameRuntime);
         const bool restoreSavedOutdoorState = pSavedOutdoorState != nullptr && !outdoorTimedRespawn;
+
+        if (pSavedOutdoorState != nullptr && !restoreSavedOutdoorState)
+        {
+            modMapRefilled(selectedMap->map.fileName);
+        }
         const int32_t previousOutdoorProcessedRespawnCount =
             pSavedOutdoorState != nullptr ? pSavedOutdoorState->locationInfo.respawnCount : 0;
         MapDeltaLocationInfo outdoorLocationInfo =
@@ -7664,10 +7694,16 @@ bool GameApplication::initializeSelectedMapRuntime(bool initializeView)
             && timedMapRespawnDue(
                 selectedMap->map,
                 pSavedIndoorState->mapDeltaData->locationInfo,
-                currentMapDay);
+                currentMapDay,
+                activeModHooks() != nullptr && !m_loadingSavedGameRuntime);
         // Arena encounters last for one visit. Loading a save resumes that visit; returning refills it.
         const bool restoreSavedIndoorState = pSavedIndoorState != nullptr && !indoorTimedRespawn
             && (!selectedMap->map.runtimeRestrictions.isArena || m_loadingSavedGameRuntime);
+
+        if (pSavedIndoorState != nullptr && !restoreSavedIndoorState)
+        {
+            modMapRefilled(selectedMap->map.fileName);
+        }
         const int32_t previousIndoorProcessedRespawnCount =
             pSavedIndoorState != nullptr
                 && pSavedIndoorState->mapDeltaData
@@ -8025,7 +8061,8 @@ bool GameApplication::loadCurrentSessionMap(
         && savedSelectedMapStateNeedsFreshAssets(
             m_gameSession,
             *selectedMap,
-            currentLocationDay(m_gameSession.gameMinutes()));
+            currentLocationDay(m_gameSession.gameMinutes()),
+            activeModHooks() != nullptr && !m_loadingSavedGameRuntime);
     const bool forceReloadSelectedMapForRenderer =
         selectedMapMatchesSession
         && initializeView

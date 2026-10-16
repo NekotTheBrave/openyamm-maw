@@ -857,9 +857,26 @@ bool ModRuntime::initialize(const Engine::AssetFileSystem &assetFileSystem)
     std::error_code errorCode;
     m_dataDirectory = std::filesystem::absolute(m_configPath.parent_path(), errorCode) / "mods" / m_mods.front().id
         / "files";
+
+    // The checks (tests/mod_runtime/run.sh) keep the files the scripts write (MAW's run-wide death counter) and their
+    // logs elsewhere, so that the player's files and last session's log and report are kept.
+    const char *pDataDirectory = SDL_getenv("OPENYAMM_MOD_DATA_DIR");
+
+    if (pDataDirectory != nullptr && *pDataDirectory != '\0')
+    {
+        m_dataDirectory = pathFromUtf8(pDataDirectory);
+    }
+
     std::filesystem::create_directories(m_dataDirectory, errorCode);
     m_readRoots.push_back(m_dataDirectory);
     m_logDirectory = m_configPath.parent_path() / LogDirectoryName;
+    const char *pLogDirectory = SDL_getenv("OPENYAMM_MOD_LOG_DIR");
+
+    if (pLogDirectory != nullptr && *pLogDirectory != '\0')
+    {
+        m_logDirectory = pathFromUtf8(pLogDirectory);
+    }
+
     std::filesystem::create_directories(m_logDirectory, errorCode);
     m_logFile.open(m_logDirectory / LogFileName, std::ios::trunc);
     std::cout << "ModRuntime: " << m_mods.size() << " mod(s) enabled by " << m_configPath.generic_string() << '\n';
@@ -1776,6 +1793,29 @@ void ModRuntime::canIdentifyMonster(size_t actorIndex, ModMonsterIdentify &ident
 
         lua_pop(m_pLuaState, 1);
     }
+}
+
+void ModRuntime::mapRefilled(const std::string &fileName)
+{
+    if (!m_active || !beginDispatch("mapRefilled"))
+    {
+        return;
+    }
+
+    lua_pushlstring(m_pLuaState, fileName.data(), fileName.size());
+    endDispatch(1, 0);
+}
+
+void ModRuntime::mapLoading(uint32_t mapStatsIndex, const std::string &fileName)
+{
+    if (!m_active || !beginDispatch("mapLoading"))
+    {
+        return;
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(mapStatsIndex));
+    lua_pushlstring(m_pLuaState, fileName.data(), fileName.size());
+    endDispatch(2, 0);
 }
 
 float ModRuntime::monsterSpriteScale(size_t actorIndex)
@@ -2948,6 +2988,27 @@ void ModRuntime::itemTooltip(const InventoryItem &item, ModItemTooltip &texts, b
     m_itemTooltipCache.itemKey = itemKey;
     m_itemTooltipCache.engineTexts = engineTexts;
     m_itemTooltipCache.modTexts = texts;
+}
+
+void ModRuntime::itemInformationBoxForUse()
+{
+    if (!m_active || !m_host.party || m_host.party() == nullptr || !beginDispatch("itemTooltip"))
+    {
+        return;
+    }
+
+    for (int index = 0; index < 5; ++index)
+    {
+        lua_pushliteral(m_pLuaState, "");
+    }
+
+    if (endDispatch(5, 5))
+    {
+        lua_pop(m_pLuaState, 5);
+    }
+
+    // The item may have changed; its box is asked again.
+    m_itemTooltipCache.valid = false;
 }
 
 int ModRuntime::skillStatBonus(const Character &character, int statId, int engineBonus)

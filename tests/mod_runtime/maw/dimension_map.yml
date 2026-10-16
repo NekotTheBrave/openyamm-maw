@@ -1,0 +1,127 @@
+id: mod_runtime.maw.dimension_map
+title: A Dimension Map takes the party into its dungeon, filled with other monsters at the map's level
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's Dimension Map (item 290, zzMaw-Maps.lua): the item names a map (BonusStrength), its affixes (Bonus how many,
+# BonusExpireTime, Bonus2, Charges) and its power (MaxCharges; the map level is power x 10 + 20, with MAW's
+# additions). Used on a party member (UseMouseItem), it is used up and takes the party to the map's start
+# (Merge's blv/odm); the map refills (RefillDays 0 for this visit), its three monster kinds are three random ones, and
+# there are more of them by the affixes. The kinds and numbers are written to the map table as the game is about to
+# load the map (the port's MapLoading, zMaw-MapLoading.lua), since the port's BeforeLoadMap comes after. The
+# Abandoned Temple (d05) is visited first, as a map usually names a dungeon already done. The refilled dungeon's
+# mapvars start afresh, as in the original, where they go with the map's state: MAW's map completion (100% on the
+# first visit) starts again, and with it its reward. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Leora
+        class: Knight
+        level: 50
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- load_map:
+    map: d05.blv
+- mod_lua:
+    code: |
+      function Kinds()
+        local kinds, count = {}, 0
+        for i = 0, Map.Monsters.High do
+          local m = Map.Monsters[i]
+          if not m.IsDead then
+            kinds[(Game.MonstersTxt[m.Id].Picture or ""):gsub(" [ABC]$", "")] = true
+            count = count + 1
+          end
+        end
+        return kinds, count
+      end
+      Original, OriginalCount = Kinds()
+      Target = Map.MapStatsIndex
+      -- Cleared on this visit, as far as MAW's map completion is concerned.
+      mapvars.completed, mapvars.completition = true, 100
+      return Map.Name, OriginalCount > 0
+    expect: "d05.blv\ttrue"
+- load_map:
+    map: out01.odm
+# The map's tooltip is MAW's: the dungeon's name, its level and affixes.
+- mod_lua:
+    code: |
+      modrt.heldItemSet({Number = 290})
+      local it = Mouse.Item
+      it.BonusStrength = Target
+      it.Bonus = 3
+      it.BonusExpireTime = 1
+      it.Bonus2 = 5
+      it.Charges = 12
+      it.MaxCharges = 15
+      local box = it:BuildInformationBox({Name = "", Type = "", BasicStat = "", Enchantment = "", Description = ""})
+      return box.Name, box.Enchantment:match("Map Level: %d+") ~= nil, ModRT.totalErrorCount
+    expect: "Abandoned Temple Map\ttrue\t0"
+- mod_lua:
+    code: |
+      ModRT.Stats.useMouseItem(0)
+      return Mouse.Item.Number, ModRT.totalErrorCount
+    expect: "0\t0"
+- advance_runtime: {seconds: 1}
+- mod_lua:
+    code: |
+      local kinds, count = Kinds()
+      local new, old = 0, 0
+      for kind in pairs(kinds) do
+        if Original[kind] then old = old + 1 else new = new + 1 end
+      end
+      local lowest = math.huge
+      for i = 0, Map.Monsters.High do
+        if not Map.Monsters[i].IsDead then lowest = math.min(lowest, Map.Monsters[i].Level) end
+      end
+      return Map.Name, mapvars.mapAffixes.Power, #mapvars.mapAffixes, new > 0, old, count > 0, lowest >= 100,
+        tostring(mapvars.completed), ModRT.totalErrorCount
+    expect: "d05.blv\t15\t4\ttrue\t0\ttrue\ttrue\tnil\t0"
+# Coming back to the dungeon later, its own monster kinds are back in the map table before the game reads it (MAW
+# puts them back in its BeforeLoadMap, which in the original comes before the spawn points; the port's MapLoading).
+- load_map:
+    map: out01.odm
+- load_map:
+    map: d05.blv
+- mod_lua:
+    code: |
+      local map = Game.MapStats[Target]
+      return map.Monster1Pic == baseSpawnMonsters[Target][1], map.Monster2Pic == baseSpawnMonsters[Target][2],
+        ModRT.totalErrorCount
+    expect: "true\ttrue\t0"
+# MAW's crafting items on a map, used from the hand on it (a right-click; the game raises the map's information box
+# events on the map itself, where MAW's UseItem acts, zzAlchemy.lua): the Emerald of Power (1065) raises its power by
+# 5, the Hourglass of Time (1062) adds an affix; each is used up. The Crafting Cube (1070) on equipment raises its
+# power the same way.
+- mod_lua:
+    code: |
+      modrt.inventoryTake(0)
+      modrt.inventoryPut(0, {Number = 290})
+      local map = Party[0].Items[1]
+      map.BonusStrength, map.Bonus, map.MaxCharges, map.BonusExpireTime = Target, 2, 15, 1
+      modrt.heldItemSet({Number = 1065})
+      modrt.useHeldItemOnItem(0, "inv", 0)
+      local power, emerald = map.MaxCharges, Mouse.Item.Number
+      modrt.heldItemSet({Number = 1062})
+      modrt.useHeldItemOnItem(0, "inv", 0)
+      return power, emerald, map.Bonus, Mouse.Item.Number, ModRT.totalErrorCount
+    expect: "20\t0\t3\t0\t0"
+- mod_lua:
+    code: |
+      modrt.inventoryTake(0)
+      modrt.inventoryPut(0, {Number = 1})
+      local sword = Party[0].Items[1]
+      local before = sword.MaxCharges
+      modrt.heldItemSet({Number = 1070})
+      modrt.useHeldItemOnItem(0, "inv", 0)
+      return sword.MaxCharges > before, Mouse.Item.Number, ModRT.totalErrorCount
+    expect: "true\t0\t0"

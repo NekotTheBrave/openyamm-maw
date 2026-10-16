@@ -1,4 +1,5 @@
 #include "game/data/GameDataLoader.h"
+#include "game/mod/ModHooks.h"
 
 #include "game/arcomage/ArcomageLoader.h"
 #include "engine/ImageAssetLoader.h"
@@ -4429,6 +4430,12 @@ bool GameDataLoader::loadSelectedMap(
     {
         std::cerr << "Failed to select map from map registry: id=" << mapId << '\n';
         return false;
+    }
+
+    // The mods hear of the map before its row is read (MAW writes a Dimension Map's monsters to it then).
+    if (mapLoadPurpose != MapLoadPurpose::DecorationPlacements)
+    {
+        modMapLoading(static_cast<uint32_t>(mapId), selectedMap->fileName);
     }
 
     // The registry is a copy of the map table made at startup; a mod writes the table itself (Game.MapStats: MAW's

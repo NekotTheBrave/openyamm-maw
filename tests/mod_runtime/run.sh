@@ -20,6 +20,9 @@ mode="${1:-all}"
 log="$(mktemp)"
 failed=0
 
+# The runtime's own log and report go here, not beside mods.yml, where they are the player's last session's.
+export OPENYAMM_MOD_LOG_DIR="$root/$tests/logs"
+
 if [ ! -x "$game" ]; then
     echo "missing $game: build the game first (see MAW_PORT_PLAN.md, M0)"
     exit 2
@@ -137,6 +140,14 @@ if [ -f mods.yml ]; then
     checkConfig="mods.checks.yml"
     sed -E 's/^([[:space:]]*difficulty:).*/\1 MAW/' mods.yml > "$checkConfig"
     export OPENYAMM_MODS_CONFIG="$PWD/$checkConfig"
+
+    # The files the scripts write (MAW's run-wide death counter, one line for every new game) go to a fresh folder,
+    # not the player's mods/maw/files; the player's MAW settings are copied in, as the checks have always used them.
+    dataDir="$root/$tests/logs/maw_files"
+    rm -rf "$dataDir"
+    mkdir -p "$dataDir"
+    cp mods/maw/files/MAWSettings.lua "$dataDir/" 2>/dev/null
+    export OPENYAMM_MOD_DATA_DIR="$dataDir"
     maw_load
 
     # The arena scenario is not run with MAW: the game picks arena monsters by their level in the monster table,
@@ -150,7 +161,7 @@ if [ -f mods.yml ]; then
         scenario "$(basename "$path" .yml) (MAW)" "$path"
     done
 
-    unset OPENYAMM_MODS_CONFIG
+    unset OPENYAMM_MODS_CONFIG OPENYAMM_MOD_DATA_DIR
     rm -f "$checkConfig"
 else
     echo "mods.yml not found: MAW checks skipped"

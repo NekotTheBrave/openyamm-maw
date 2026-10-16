@@ -1934,7 +1934,7 @@ Game = boundObject("Game", {
         HouseScreen = true, GlobalTxt = true, CurrentCharScreen = true, NPCText = true, HouseRules = true,
         SpellsTxt = true, StatsDescriptions = true, NPC = true, NPCTopic = true, QuestsTxt = true,
         TurnBased = true, TurnBasedPhase = true, Houses = true, ShopItems = true, ShopSpecialItems = true,
-        HostileTxt = true, MonListBin = true,
+        HostileTxt = true, MonListBin = true, Party = true,
     },
     get = function(key)
         if key == "ItemsTxt" then
@@ -1994,6 +1994,9 @@ Game = boundObject("Game", {
             return hostileTxt
         elseif key == "MonListBin" then
             return monListBin
+        elseif key == "Party" then
+            -- MMExtension's other name for Party (MAW's next-character key reads Game.Party.High).
+            return Party
         elseif key == "Classes" then
             return classes
         elseif key == "ClassNames" then
@@ -2018,6 +2021,11 @@ Game = boundObject("Game", {
         return nil
     end,
     methods = {
+        -- Called as Game:ExitHouseScreen(): leaves the screen that is open (the character screen; not yet a house's
+        -- dialog).
+        ExitHouseScreen = function()
+            modrt.exitScreen()
+        end,
         ShowStatusText = function(text)
             if ModRT.Stats.inAction then
                 ModRT.Stats.actionStatusText = tostring(text or "")

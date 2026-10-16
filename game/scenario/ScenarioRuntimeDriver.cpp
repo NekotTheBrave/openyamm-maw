@@ -788,6 +788,16 @@ bool ScenarioRuntimeDriver::executeModLua(const std::string &code, std::string &
         return false;
     }
 
+    // A map move the scripts asked for (evt.MoveToMap given outside an event: MAW's Dimension Maps) is made as the
+    // game makes it on its next frame.
+    const EventRuntimeState *pEventRuntimeState = eventRuntimeState();
+
+    if ((pEventRuntimeState != nullptr && pEventRuntimeState->pendingMapMove.has_value())
+        || ScenarioGameApplicationAccess::gameSession(m_application).pendingMapMove().has_value())
+    {
+        return processPendingMapMove(failure);
+    }
+
     return true;
 }
 

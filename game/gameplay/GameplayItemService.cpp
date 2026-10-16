@@ -421,6 +421,28 @@ void GameplayItemService::updateConnectorStoneRecharge(
     }
 }
 
+bool GameplayItemService::tryModUseHeldItem(GameplayScreenRuntime &runtime, size_t memberIndex)
+{
+    GameplayUiController::HeldInventoryItemState &heldItem = m_session.gameplayUiController().heldInventoryItem();
+    Party *pParty = runtime.party();
+
+    if (!heldItem.active || pParty == nullptr || activeModHooks() == nullptr)
+    {
+        return false;
+    }
+
+    const bool gameMayUse = modUseMouseItem(memberIndex);
+
+    if (heldItem.active && heldItem.item.objectDescriptionId == 0)
+    {
+        heldItem = {};
+        pParty->clearHeldItemForQueries();
+        return true;
+    }
+
+    return !gameMayUse;
+}
+
 bool GameplayItemService::tryUseHeldItemOnPartyMember(
     GameplayScreenRuntime &runtime,
     size_t memberIndex,
@@ -640,6 +662,22 @@ bool GameplayItemService::tryUseHeldItemOnPartyMember(
     return true;
 }
 
+// The original shows the item's information box when the held item is used on it, and a mod's handlers of it may use
+// the held item there (MAW's crafting items on a Dimension Map, its Crafting Cube on equipment): whether they did,
+// which they show by using it up or changing it.
+bool useHeldItemThroughItemBox(InventoryItem &heldItem, InventoryItem &target)
+{
+    if (activeModHooks() == nullptr || heldItem.objectDescriptionId == 0)
+    {
+        return false;
+    }
+
+    const InventoryItem heldBefore = heldItem;
+    modItemInformationBoxForUse(target);
+    return heldItem.objectDescriptionId != heldBefore.objectDescriptionId
+        || heldItem.standardEnchantPower != heldBefore.standardEnchantPower;
+}
+
 const MergedPotionSettingEntry *modPotionForHeldItem(
     const MergedPotionSettingTable &potionSettingTable,
     uint32_t heldItemId)
@@ -676,8 +714,16 @@ bool GameplayItemService::tryUseHeldItemOnEquippedItem(
         modPotionForHeldItem(*pPotionSettingTable, heldItem.item.objectDescriptionId);
     std::optional<InventoryItem> target = pParty->equippedItem(memberIndex, slot);
 
-    if (pPotion == nullptr || !target.has_value()
-        || !modPotionEffect(pPotion->potionId, heldItem.item.standardEnchantPower, *target))
+    if (!target.has_value())
+    {
+        return false;
+    }
+
+    const bool potionEffect =
+        pPotion != nullptr && modPotionEffect(pPotion->potionId, heldItem.item.standardEnchantPower, *target);
+    const bool usedByItemBox = useHeldItemThroughItemBox(heldItem.item, *target);
+
+    if (!potionEffect && !usedByItemBox)
     {
         return false;
     }
@@ -747,8 +793,11 @@ bool GameplayItemService::tryUseHeldItemOnInventoryItem(
             }
         }
 
-        if (pPotion != nullptr && pTarget != nullptr
-            && modPotionEffect(pPotion->potionId, heldItem.item.standardEnchantPower, *pTarget))
+        const bool potionEffect = pPotion != nullptr && pTarget != nullptr
+            && modPotionEffect(pPotion->potionId, heldItem.item.standardEnchantPower, *pTarget);
+        const bool usedByItemBox = pTarget != nullptr && useHeldItemThroughItemBox(heldItem.item, *pTarget);
+
+        if (potionEffect || usedByItemBox)
         {
             if (heldItem.item.objectDescriptionId == 0)
             {
