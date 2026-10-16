@@ -353,6 +353,46 @@ local function dispatchKind(kind, ...)
         end
 
         return nil
+    elseif kind == "settingsOptions" or kind == "settingsOptionSet" then
+        -- A mod's own tab of the settings window: ModRT.SettingsTitle, and ModRT.SettingsOptions, a list of
+        -- {Name, Group, Description, Choices (none: an on/off switch, Get and Set with a boolean), Get = f, Set = f,
+        -- Enabled = f (optional)}.
+        ModRT.ensureSession()
+        local options = ModRT.SettingsOptions or {}
+
+        if kind == "settingsOptions" then
+            local list = {Title = ModRT.SettingsTitle or "Mod"}
+
+            for _, option in ipairs(options) do
+                local value = option.Get()
+
+                if option.Choices == nil then
+                    value = value and "true" or "false"
+                end
+
+                list[#list + 1] = {
+                    Name = option.Name, Group = option.Group or "", Description = option.Description or "",
+                    Choices = option.Choices, Value = tostring(value),
+                    Enabled = option.Enabled == nil or option.Enabled() and true or false,
+                }
+            end
+
+            return list
+        end
+
+        local name, value = ...
+
+        for _, option in ipairs(options) do
+            if option.Name == name then
+                if option.Choices == nil then
+                    option.Set(value == "true")
+                else
+                    option.Set(value)
+                end
+            end
+        end
+
+        return nil
     elseif kind == "difficultyChoices" or kind == "difficultyGet" or kind == "difficultySet"
         or kind == "gameModeChoices" or kind == "gameModeGet" or kind == "gameModeSet" then
         -- A mod that has difficulties registers them as ModRT.Difficulty = {choices = f, get = f, set = f}, and its

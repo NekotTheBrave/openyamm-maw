@@ -1,0 +1,85 @@
+id: mod_runtime.maw.settings_tab
+title: MAW's options on its tab of the settings window change the game and MAW's settings file
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's tab of the settings window (zzzMaw-SettingsTab.lua; the engine asks ModRT.SettingsOptions through the
+# settingsOptions and settingsOptionSet dispatches). Its settings page's switches belong to the game being played
+# (vars.MAWSETTINGS) and stay changed when a dialog closes, where MAW's page copies its own back (Action 113); its
+# settings file's options are written to MAWSettings.lua (the check's copy, in the logs). Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out07.odm
+    party:
+      gold: 0
+      food: 10
+      members:
+      - name: Tester
+        class: Knight
+        level: 10
+        skills: []
+        equipment: {}
+- mod_lua:
+    code: |
+      local list = ModRT.dispatch("settingsOptions")
+      local function find(name)
+        for _, option in ipairs(list) do
+          if option.Name == name then return option end
+        end
+      end
+      local buff, loot, deaths = find("Buff rework"), find("Loot filter"), find("Death counter")
+      return list.Title, buff.Group, buff.Value, tostring(buff.Enabled), loot.Value, #loot.Choices, deaths.Value,
+        tostring(find("Melee only") ~= nil), ModRT.totalErrorCount
+    expect: "MAW\tThis game\ttrue\ttrue\tOFF\t7\ttrue\tfalse\t0"
+- mod_lua:
+    code: |
+      ModRT.dispatch("settingsOptionSet", "Buff rework", "false")
+      ModRT.dispatch("settingsOptionSet", "Loot filter", "Rare")
+      return vars.MAWSETTINGS.buffRework, vars.MAWSETTINGS.lootFilter, ModRT.totalErrorCount
+    expect: "OFF\tRare\t0"
+# A dialog closing raises Action 113: MAW's settings page puts its own copy back, the tab's choice stays.
+- speak_npc:
+    source_id: 41
+- mod_lua:
+    code: |
+      ExitCurrentScreen()
+      return "closing"
+    expect: "closing"
+- advance_runtime: {seconds: 0.2}
+- assert:
+    dialog:
+      active: false
+- mod_lua:
+    code: |
+      return vars.MAWSETTINGS.buffRework, vars.MAWSETTINGS.lootFilter, ModRT.totalErrorCount
+    expect: "OFF\tRare\t0"
+# A settings file option: the global MAW reads and the file, the rest of the file kept.
+- mod_lua:
+    code: |
+      local function fileText()
+        local file = io.open("MAWSettings.lua", "r")
+        local text = file:read("*a")
+        file:close()
+        return text
+      end
+      local before = fileText()
+      ModRT.dispatch("settingsOptionSet", "Death counter", "false")
+      local changed = fileText()
+      local loaded = loadstring and loadstring(changed) or load(changed)
+      local settings = loaded()
+      local global = showDeathCounter
+      ModRT.dispatch("settingsOptionSet", "Death counter", "true")
+      local back = fileText()
+      return tostring(settings.showDeathCounter), tostring(global), tostring(showDeathCounter), tostring(back == before),
+        tostring(changed:find("showDeathCounter = false", 1, true) ~= nil), tostring(settings.chargeKey),
+        ModRT.totalErrorCount
+    expect: "false\tfalse\ttrue\ttrue\ttrue\t69\t0"
+- mod_lua:
+    code: |
+      ModRT.dispatch("settingsOptionSet", "Completion messages", "false")
+      local value = disableCompletitionMessage
+      ModRT.dispatch("settingsOptionSet", "Completion messages", "true")
+      return tostring(value), tostring(disableCompletitionMessage), ModRT.totalErrorCount
+    expect: "true\tfalse\t0"

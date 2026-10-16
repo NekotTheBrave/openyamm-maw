@@ -223,6 +223,27 @@ elements:
       scale: 0.43333
       pad_x: 8.5333
     notes: Switch section without losing draft values. Selected state follows current section.
+  - id: SettingsKeyboardTabMod
+    anchor: top_left
+    offset_x: 91.7333
+    offset_y: 341.1168
+    width: 97.6
+    height: 34.1333
+    z_index: 10
+    visible: true
+    interactive: true
+    asset:
+      default: hud_x2/menus/omenu_tab.png
+      selected: hud_x2/menus/omenu_tab_selected.png
+    text:
+      value: Mod
+      font: fondamento
+      color: '#f5dfae'
+      align_x: left
+      align_y: middle
+      scale: 0.43333
+      pad_x: 8.5333
+    notes: Switch section without losing draft values. Selected state follows current section.
   - id: SettingsKeyboardHeading
     anchor: top_left
     offset_x: 220.8

@@ -163,6 +163,26 @@ void modSetNewGameOption(const std::string &name, const std::string &value)
     }
 }
 
+std::string modSettingsOptions(std::vector<ModSettingsOption> &options)
+{
+    options.clear();
+
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        return pModHooks->settingsOptions(options);
+    }
+
+    return {};
+}
+
+void modSetSettingsOption(const std::string &name, const std::string &value)
+{
+    if (IModHooks *pModHooks = activeModHooks())
+    {
+        pModHooks->setSettingsOption(name, value);
+    }
+}
+
 std::vector<std::string> modGameModeChoices()
 {
     IModHooks *pModHooks = activeModHooks();

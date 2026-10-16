@@ -2328,6 +2328,86 @@ void ModRuntime::setNewGameOption(const std::string &name, const std::string &va
     }
 }
 
+std::string ModRuntime::settingsOptions(std::vector<ModSettingsOption> &options)
+{
+    if (!m_active || !beginDispatch("settingsOptions") || !endDispatch(0, 1))
+    {
+        return {};
+    }
+
+    std::string title;
+    const auto stringField = [this](const char *pName)
+    {
+        lua_getfield(m_pLuaState, -1, pName);
+        std::string value = lua_type(m_pLuaState, -1) == LUA_TSTRING ? lua_tostring(m_pLuaState, -1) : "";
+        lua_pop(m_pLuaState, 1);
+        return value;
+    };
+
+    if (lua_istable(m_pLuaState, -1))
+    {
+        title = stringField("Title");
+        const lua_Integer count = luaL_len(m_pLuaState, -1);
+
+        for (lua_Integer index = 1; index <= count; ++index)
+        {
+            lua_rawgeti(m_pLuaState, -1, index);
+
+            if (lua_istable(m_pLuaState, -1))
+            {
+                ModSettingsOption option = {};
+                option.name = stringField("Name");
+                option.group = stringField("Group");
+                option.description = stringField("Description");
+                option.value = stringField("Value");
+                lua_getfield(m_pLuaState, -1, "Enabled");
+                option.enabled = lua_toboolean(m_pLuaState, -1) != 0;
+                lua_pop(m_pLuaState, 1);
+                lua_getfield(m_pLuaState, -1, "Choices");
+
+                if (lua_istable(m_pLuaState, -1))
+                {
+                    const lua_Integer choiceCount = luaL_len(m_pLuaState, -1);
+
+                    for (lua_Integer choice = 1; choice <= choiceCount; ++choice)
+                    {
+                        lua_rawgeti(m_pLuaState, -1, choice);
+
+                        if (lua_type(m_pLuaState, -1) == LUA_TSTRING)
+                        {
+                            option.choices.emplace_back(lua_tostring(m_pLuaState, -1));
+                        }
+
+                        lua_pop(m_pLuaState, 1);
+                    }
+                }
+
+                lua_pop(m_pLuaState, 1);
+
+                if (!option.name.empty())
+                {
+                    options.push_back(std::move(option));
+                }
+            }
+
+            lua_pop(m_pLuaState, 1);
+        }
+    }
+
+    lua_pop(m_pLuaState, 1);
+    return options.empty() ? std::string() : title;
+}
+
+void ModRuntime::setSettingsOption(const std::string &name, const std::string &value)
+{
+    if (m_active && beginDispatch("settingsOptionSet"))
+    {
+        lua_pushlstring(m_pLuaState, name.data(), name.size());
+        lua_pushlstring(m_pLuaState, value.data(), value.size());
+        endDispatch(2, 0);
+    }
+}
+
 std::vector<std::string> ModRuntime::gameModeChoices()
 {
     return dispatchChoices("gameModeChoices");

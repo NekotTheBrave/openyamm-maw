@@ -129,6 +129,19 @@ for setting in catalog["settings"]:
         element = "Settings" + name(section) + name(setting["id"]) + suffix
         if element not in ids[section]:
             missing.append(element)
+# Every page has a tab for every section, the mod's own tab ("mod", shown when the active mod has options) among
+# them, and the mod's page has the template row its options are laid out from.
+sections = [section["id"] for section in catalog["sections"]] + ["mod"]
+for page in set(sections) | {"keyboard"}:
+    if page not in ids:
+        ids[page] = element_ids(yaml.safe_load(open(f"assets_dev/engine/ui/gameplay/settings_{page}.yml",
+                                                    encoding="utf-8")), set())
+    for section in sections:
+        if "Settings" + name(page) + "Tab" + name(section) not in ids[page]:
+            missing.append("Settings" + name(page) + "Tab" + name(section))
+for suffix in ("Heading", "ScrollViewport", "Group", "RowLabel", "RowDescription", "RowToggle", "RowSelect"):
+    if "SettingsMod" + suffix not in ids["mod"]:
+        missing.append("SettingsMod" + suffix)
 print("; ".join(missing) if missing else "ok")
 EOF
 )"

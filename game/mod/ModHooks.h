@@ -224,6 +224,19 @@ struct ModNewGameOption
     std::string value;
 };
 
+// An option a mod shows on its own tab of the settings window (MAW's settings page and settings file): its name,
+// group and description; its choices, none for an on/off switch (value "true" or "false"); the value it has; and
+// whether it can be changed now (MAW's per-game switches only in a game).
+struct ModSettingsOption
+{
+    std::string name;
+    std::string group;
+    std::string description;
+    std::vector<std::string> choices;
+    std::string value;
+    bool enabled = true;
+};
+
 // A button a mod puts on a screen of the original's (CustomUI.CreateButton): its icon and its place at the original's
 // 640x480 positions.
 struct ModHudButton
@@ -439,6 +452,10 @@ public:
     // starts with what is chosen.
     virtual void newGameOptions(std::vector<ModNewGameOption> &options) = 0;
     virtual void setNewGameOption(const std::string &name, const std::string &value) = 0;
+    // The options a mod shows on its own tab of the settings window, and the tab's title (none: no tab); and changing
+    // one, which takes effect at once.
+    virtual std::string settingsOptions(std::vector<ModSettingsOption> &options) = 0;
+    virtual void setSettingsOption(const std::string &name, const std::string &value) = 0;
     virtual std::vector<std::string> gameModeChoices() = 0;
     virtual std::string gameMode() = 0;
     virtual void setGameMode(const std::string &name) = 0;
@@ -610,6 +627,8 @@ void modSetDifficulty(const std::string &name);
 // The mod's further options for a new game (none without a mod), and choosing one; see IModHooks::newGameOptions.
 std::vector<ModNewGameOption> modNewGameOptions();
 void modSetNewGameOption(const std::string &name, const std::string &value);
+std::string modSettingsOptions(std::vector<ModSettingsOption> &options);
+void modSetSettingsOption(const std::string &name, const std::string &value);
 // The same for the game modes; see IModHooks::gameModeChoices.
 std::vector<std::string> modGameModeChoices();
 std::string modGameMode();

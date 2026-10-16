@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/app/GameSettings.h"
+#include "game/mod/ModHooks.h"
 #include "game/ui/MenuDesignScreen.h"
 
 #include <filesystem>
@@ -55,6 +56,8 @@ class MainMenuScreen : public MenuDesignScreen
     void drawHome();
     void drawSettings(float deltaSeconds);
     void drawKeyboard(const std::string &prefix, const Rect &viewport);
+    void drawModOptions(const std::string &prefix, const Rect &viewport);
+    void refreshModOptions();
     void loadCatalog();
     void editSetting(const Setting &setting, const std::string &value);
     void chooseSetting(const Setting &setting);
@@ -72,6 +75,9 @@ class MainMenuScreen : public MenuDesignScreen
     std::vector<Setting> m_settings;
     std::vector<Binding> m_bindings;
     std::vector<Section> m_sections;
+    // The active mod's own tab (section "mod"): its title and options, which take effect as they are changed.
+    std::string m_modTitle;
+    std::vector<ModSettingsOption> m_modOptions;
     std::optional<std::filesystem::path> m_latestSave;
     std::string m_latestSaveMap;
     std::string m_latestSaveLocation;

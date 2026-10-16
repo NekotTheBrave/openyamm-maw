@@ -86,6 +86,11 @@ void MainMenuScreen::loadCatalog()
     {
         m_sections.push_back({item["id"].as<std::string>(), item["name"].as<std::string>()});
     }
+    refreshModOptions();
+    if (!m_modTitle.empty())
+    {
+        m_sections.push_back({"mod", m_modTitle});
+    }
     for (const YAML::Node &item : catalog["settings"])
     {
         Setting setting;
@@ -553,7 +558,7 @@ void MainMenuScreen::drawSettings(float deltaSeconds)
             return;
         }
     }
-    if (action(prefix + "DefaultsButton"))
+    if (action(prefix + "DefaultsButton", m_section != "mod"))
     {
         restoreDefaults();
     }
@@ -571,13 +576,20 @@ void MainMenuScreen::drawSettings(float deltaSeconds)
     {
         applySettings();
     }
+    const std::string upToDate =
+        m_section == "mod" ? m_modTitle + " options take effect at once." : "Your settings are up to date.";
     label(prefix + "DirtyStatus", !m_status.empty()   ? m_status
-                                  : dirtyCount() == 0 ? "Your settings are up to date."
+                                  : dirtyCount() == 0 ? upToDate
                                                       : std::to_string(dirtyCount()) + " unapplied changes");
     const Rect viewport = designRect(prefix + "ScrollViewport");
     if (m_section == "keyboard")
     {
         drawKeyboard(prefix, viewport);
+        return;
+    }
+    if (m_section == "mod")
+    {
+        drawModOptions(prefix, viewport);
         return;
     }
     float contentHeight = 0;
@@ -683,6 +695,91 @@ void MainMenuScreen::drawSettings(float deltaSeconds)
         }
     }
     setDesignClip(std::nullopt);
+}
+
+void MainMenuScreen::refreshModOptions()
+{
+    m_modTitle = modSettingsOptions(m_modOptions);
+}
+
+void MainMenuScreen::drawModOptions(const std::string &prefix, const Rect &viewport)
+{
+    // The options are laid out one under another from the layout's template row, a heading before each group, at
+    // the pitch of the other sections' rows.
+    constexpr float RowPitch = 38.9248f;
+    constexpr float FirstRow = 25.6f;
+    constexpr float GroupGap = 43.192f;
+    label(prefix + "Heading", m_modTitle);
+    std::vector<float> rows;
+    std::vector<std::pair<float, std::string>> groups;
+    float y = 0;
+    for (size_t i = 0; i < m_modOptions.size(); ++i)
+    {
+        if (i == 0 || m_modOptions[i].group != m_modOptions[i - 1].group)
+        {
+            y = i == 0 ? 0 : rows.back() + GroupGap;
+            groups.emplace_back(y, m_modOptions[i].group);
+            y += FirstRow;
+        }
+        else
+        {
+            y += RowPitch;
+        }
+        rows.push_back(y);
+    }
+    const float contentHeight = rows.empty() ? 0 : rows.back() + 42;
+    scrollViewport(viewport, contentHeight, m_scroll);
+    setDesignClip(viewport);
+    for (const auto &[groupY, name] : groups)
+    {
+        label(prefix + "Group", name, 0, groupY - m_scroll);
+    }
+    std::optional<std::pair<std::string, std::string>> change;
+    for (size_t i = 0; i < m_modOptions.size(); ++i)
+    {
+        const ModSettingsOption &option = m_modOptions[i];
+        const float offset = rows[i] - FirstRow - m_scroll;
+        label(prefix + "RowLabel", option.name, option.enabled ? 0 : 0xff8a9396u, offset);
+        label(prefix + "RowDescription", option.description, 0, offset);
+        const std::string id = prefix + "Option" + std::to_string(i);
+        if (option.choices.empty())
+        {
+            Rect rect = designRect(prefix + "RowToggle");
+            rect.y += offset * designScale();
+            const bool on = option.value == "true";
+            if (button(id, rect, "", on ? "toggle_on" : "toggle_off", option.enabled))
+            {
+                change.emplace(option.name, on ? "false" : "true");
+            }
+            textInRect({rect.x + 35 * designScale(), rect.y, rect.width - 40 * designScale(), rect.height},
+                       on ? "On" : "Off", "menu_lucida", 13.3333f, option.enabled ? 0xffc6dfeau : 0xff6b777au, true);
+        }
+        else
+        {
+            Rect rect = designRect(prefix + "RowSelect");
+            rect.y += offset * designScale();
+            if (selectBox(id, rect, option.value, option.enabled))
+            {
+                const std::string name = option.name;
+                const std::vector<std::string> choices = option.choices;
+                confirm(name, "Choose a value", choices,
+                        [this, name, choices](int index)
+                        {
+                            if (index >= 0)
+                            {
+                                modSetSettingsOption(name, choices[size_t(index)]);
+                                refreshModOptions();
+                            }
+                        }, true);
+            }
+        }
+    }
+    setDesignClip(std::nullopt);
+    if (change)
+    {
+        modSetSettingsOption(change->first, change->second);
+        refreshModOptions();
+    }
 }
 
 void MainMenuScreen::drawKeyboard(const std::string &prefix, const Rect &viewport)
