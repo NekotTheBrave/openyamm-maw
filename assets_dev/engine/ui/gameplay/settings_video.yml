@@ -395,7 +395,7 @@ elements:
     - id: SettingsVideoGroup2
       anchor: top_left
       offset_x: 0.0
-      offset_y: 623.7253
+      offset_y: 679.7253
       width: 525.3333
       height: 18.1333
       z_index: 10
@@ -412,7 +412,7 @@ elements:
     - id: SettingsVideoGroup3
       anchor: top_left
       offset_x: 0.0
-      offset_y: 923.7253
+      offset_y: 979.7253
       width: 525.3333
       height: 18.1333
       z_index: 10
@@ -1995,10 +1995,66 @@ elements:
         pad_x: 3.2
       notes: Bind to gameplay.melee_hit_effects; see contracts/settings.yml. Ranges need a track and thumb renderer;
         selection controls need native dropdown/focus behavior. Controller supplies live text.
-    - id: SettingsVideoMeleeHitFeedbackLabel
+    - id: SettingsVideoSwordSwingsLabel
       anchor: top_left
       offset_x: 1.6
       offset_y: 1394.5754
+      width: 219.1168
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Sword swings
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsVideoSwordSwingsDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 1410.7834
+      width: 437.3333
+      height: 11.5168
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Show a 2D swing in front of the party at every melee attack (the multiplayer package's).
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsVideoSwordSwingsControl
+      anchor: top_left
+      offset_x: 453.3333
+      offset_y: 1392.3545
+      width: 70.4
+      height: 32.158
+      z_index: 10
+      visible: true
+      interactive: true
+      asset:
+        default: hud_x2/menus/omenu_toggle_off.png
+        selected: hud_x2/menus/omenu_toggle_on.png
+      text:
+        value: '{sword_swings}'
+        font: menu_lucida
+        color: '#b8b8a9'
+        align_x: center
+        align_y: middle
+        scale: 0.64
+        pad_x: 3.2
+      notes: Bind to gameplay.melee_hit_effects; see contracts/settings.yml. Ranges need a track and thumb renderer;
+        selection controls need native dropdown/focus behavior. Controller supplies live text.
+    - id: SettingsVideoMeleeHitFeedbackLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 1433.5007
       width: 219.1168
       height: 14.0752
       z_index: 10
@@ -2015,7 +2071,7 @@ elements:
     - id: SettingsVideoMeleeHitFeedbackDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 1410.7834
+      offset_y: 1449.7087
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -2032,7 +2088,7 @@ elements:
     - id: SettingsVideoMeleeHitFeedbackControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 1392.3545
+      offset_y: 1431.2798
       width: 70.4
       height: 32.158
       z_index: 10
@@ -2054,7 +2110,7 @@ elements:
     - id: SettingsVideoMeleeHitFlashLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 1433.5007
+      offset_y: 1472.426
       width: 219.1168
       height: 14.0752
       z_index: 10
@@ -2071,7 +2127,7 @@ elements:
     - id: SettingsVideoMeleeHitFlashDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 1449.7087
+      offset_y: 1488.634
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -2088,7 +2144,7 @@ elements:
     - id: SettingsVideoMeleeHitFlashControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 1431.2798
+      offset_y: 1470.2051
       width: 70.4
       height: 32.158
       z_index: 10
@@ -2110,7 +2166,7 @@ elements:
     - id: SettingsVideoMeleeCameraKickLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 1472.426
+      offset_y: 1511.3513
       width: 219.1168
       height: 14.0752
       z_index: 10
@@ -2127,7 +2183,7 @@ elements:
     - id: SettingsVideoMeleeCameraKickDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 1488.634
+      offset_y: 1527.5593
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -2144,7 +2200,7 @@ elements:
     - id: SettingsVideoMeleeCameraKickControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 1470.2051
+      offset_y: 1509.1304
       width: 70.4
       height: 32.158
       z_index: 10
@@ -2166,7 +2222,7 @@ elements:
     - id: SettingsVideoCorpsesLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 1511.3508
+      offset_y: 1550.2761
       width: 219.1168
       height: 14.0752
       z_index: 10
@@ -2183,7 +2239,7 @@ elements:
     - id: SettingsVideoCorpsesDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 1527.5588
+      offset_y: 1566.4841
       width: 397.2
       height: 11.5168
       z_index: 10
@@ -2200,7 +2256,7 @@ elements:
     - id: SettingsVideoCorpsesControl
       anchor: top_left
       offset_x: 412.8
-      offset_y: 1513.4761
+      offset_y: 1552.4014
       width: 110.9333
       height: 23.4667
       z_index: 10

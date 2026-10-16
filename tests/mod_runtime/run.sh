@@ -100,6 +100,44 @@ EOF
     else
         report "menu layouts parse" FAILED "$output"
     fi
+
+    # Every option of the settings catalog has its row on its page (ui/gameplay/settings_<section>.yml: Label,
+    # Description and Control): the settings window ends the game on one that has none (2026-10-16, two new options).
+    output="$("$python" - <<'EOF'
+import yaml
+catalog = yaml.safe_load(open("assets_dev/engine/ui/menu/settings_catalog.yml", encoding="utf-8"))
+def name(text):
+    return "".join(part[:1].upper() + part[1:] for part in text.replace("-", "_").split("_") if part)
+def element_ids(node, found):
+    if isinstance(node, dict):
+        if "id" in node:
+            found.add(node["id"])
+        for value in node.values():
+            element_ids(value, found)
+    elif isinstance(node, list):
+        for value in node:
+            element_ids(value, found)
+    return found
+ids = {}
+missing = []
+for setting in catalog["settings"]:
+    section = setting["section"]
+    if section not in ids:
+        page = yaml.safe_load(open(f"assets_dev/engine/ui/gameplay/settings_{section}.yml", encoding="utf-8"))
+        ids[section] = element_ids(page, set())
+    for suffix in ("Label", "Description", "Control"):
+        element = "Settings" + name(section) + name(setting["id"]) + suffix
+        if element not in ids[section]:
+            missing.append(element)
+print("; ".join(missing) if missing else "ok")
+EOF
+)"
+
+    if [ "$output" = "ok" ]; then
+        report "settings options have their rows" ok ""
+    else
+        report "settings options have their rows" FAILED "missing $output"
+    fi
 }
 
 maw_load() {

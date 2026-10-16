@@ -218,6 +218,27 @@ function known.fill(address, size, value)
     end
 end
 
+-- The original's functions a script calls by address that the engine has its own of. Arguments as mem.call's after
+-- the calling convention: `this` first for a method.
+local engineFunctions = {
+    -- A spell's animation over a party member's portrait (this, spell, party slot): MAW's buff rework, its heals,
+    -- Shared Life and Cover show theirs so.
+    [0x4A6FCE] = function(this, spellId, slot)
+        modrt.portraitSpellFx(math.floor(tonumber(spellId) or 0), math.floor(tonumber(slot) or -1))
+        return 0
+    end,
+}
+
+function known.call(address, convention, ...)
+    local engineFunction = engineFunctions[toAddress(address)]
+
+    if engineFunction then
+        return engineFunction(...)
+    end
+
+    return fallback.call(address, convention, ...)
+end
+
 mem = setmetatable({}, {
     __index = function(_, key)
         local value = known[key]

@@ -613,6 +613,15 @@ public:
     // shower or scatter keep their paths.
     static void setHomingProjectilesEnabled(bool enabled);
     static bool homingProjectilesEnabled();
+    // MM6's look for monsters' missiles (MAW's "M&M6 Projectiles", an option of the game:
+    // features.mm6_monster_missiles): a monster's attack missile (not its spells) of the elements, the laser and the
+    // fire bolt is Merge's MM6 object in place of the engine's, drawn as its sprite, with MM6's impact.
+    static void setMm6MonsterMissilesEnabled(bool enabled);
+    static bool mm6MonsterMissilesEnabled();
+    // The MM6 object for a monster's attack missile object, and the MM6 impact for an MM6 missile object; nothing
+    // when the option is off or the object has none.
+    static std::optional<int> mm6MonsterMissileObjectId(int objectId);
+    static std::optional<int> mm6MonsterMissileImpactObjectId(int mm6ObjectId);
     static bool projectileCanHome(const ProjectileState &projectile);
     // Whether the projectile flies within half a degree (seen from above) of the point.
     static bool projectileHeadsAt(const ProjectileState &projectile, float x, float y);

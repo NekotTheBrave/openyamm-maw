@@ -5319,6 +5319,23 @@ int nativeWorldItemRemove(lua_State *pLuaState)
     return 1;
 }
 
+// modrt.portraitSpellFx(spell, slot): plays the spell's animation over the portrait of party slot `slot` (0 on).
+int nativePortraitSpellFx(lua_State *pLuaState)
+{
+    const ModHost *pHost = hostFromUpvalue(pLuaState);
+    const int64_t spellId = integerArgument(pLuaState, 1);
+    const int64_t slot = integerArgument(pLuaState, 2);
+    Party *pParty = partyFromHost(pLuaState);
+
+    if (pHost != nullptr && pHost->portraitSpellFx && pParty != nullptr && spellId > 0 && slot >= 0
+        && static_cast<size_t>(slot) < pParty->members().size())
+    {
+        pHost->portraitSpellFx(static_cast<uint32_t>(spellId), static_cast<size_t>(slot));
+    }
+
+    return 0;
+}
+
 // modrt.hoveredMonster(): the map monster under the mouse pointer (the game's hover), nil for none.
 int nativeHoveredMonster(lua_State *pLuaState)
 {
@@ -5655,6 +5672,7 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"worldItemGet", nativeWorldItemGet},
         {"worldItemMove", nativeWorldItemMove},
         {"worldItemRemove", nativeWorldItemRemove},
+        {"portraitSpellFx", nativePortraitSpellFx},
         {"worldItemSetNumber", nativeWorldItemSetNumber},
         {"chestGet", nativeChestGet},
         {"chestSet", nativeChestSet},

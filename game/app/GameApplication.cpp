@@ -2943,6 +2943,13 @@ GameApplication::GameApplication(const Engine::ApplicationConfig &config)
             screenRuntime.requestModDialogExit();
         }
     };
+    modHost.portraitSpellFx = [this](uint32_t spellId, size_t partySlot)
+    {
+        PartySpellCastResult result = {};
+        result.spellId = spellId;
+        result.affectedCharacterIndices = {partySlot};
+        m_gameSession.gameplayUiRuntime().triggerPortraitSpellFx(result);
+    };
     modHost.houseShopPage = [this]()
     {
         const GameplayUiController::HouseShopOverlayState &shop =
@@ -7233,6 +7240,7 @@ void GameApplication::applyCurrentSettingsToActiveRuntime()
     m_outdoorGameView.setSettingsSnapshot(m_settings);
     m_indoorGameView.setSettingsSnapshot(m_settings);
     GameplayProjectileService::setHomingProjectilesEnabled(m_settings.homingProjectiles);
+    GameplayProjectileService::setMm6MonsterMissilesEnabled(m_settings.mm6MonsterMissiles);
 
     if (m_pOutdoorWorldRuntime != nullptr)
     {

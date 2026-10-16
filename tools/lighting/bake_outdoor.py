@@ -8,7 +8,9 @@ import csv
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
+import shutil
 import struct
 import subprocess
 import sys
@@ -26,6 +28,12 @@ from bake_assets import bake_texture_paths, dependency_file
 
 sys.path.insert(0, str(ROOT / 'util'))
 from map_export import parse_odm_file
+
+# The Python with PyYAML that reads scene metadata (Blender's own has none): OPENYAMM_BAKE_PYTHON, else
+# /usr/bin/python3, else the python3 or python on PATH (MAW port: Windows has no /usr/bin/python3).
+YAML_PYTHON = (os.environ.get('OPENYAMM_BAKE_PYTHON')
+               or ('/usr/bin/python3' if Path('/usr/bin/python3').exists() else None)
+               or shutil.which('python3') or shutil.which('python') or '/usr/bin/python3')
 
 
 def fnv(data):
@@ -123,9 +131,13 @@ def main():
     parser.add_argument('--decoration-shadows', action=argparse.BooleanOptionalAction, default=None,
                         help='Bake static decoration shadows into the sun terms only: 3D decoration models '
                              '(worlds/<world>/models/decorations.yml) as meshes, other decorations as sprite cards')
-    parser.add_argument('--game-binary', type=Path, default=ROOT / 'build/game/openyamm',
+    parser.add_argument('--game-binary', type=Path,
+                        default=ROOT / ('build/game/openyamm.exe' if os.name == 'nt' else 'build/game/openyamm'),
                         help='OpenYAMM build that exports the 3D decoration placements')
     parser.add_argument('--preview-only', action='store_true')
+    # MAW port: a mod's own maps (mods/maw/assets) are baked from there; textures stay the game's.
+    parser.add_argument('--source-root', type=Path, default=ROOT / 'assets_dev',
+                        help='Asset tree that holds worlds/<world>/maps/<map> (a mod\'s assets folder)')
     migration = parser.add_mutually_exclusive_group()
     migration.add_argument('--model-probes-only', type=Path,
                         help='Extend an installed v3 bake with model lighting; retain every surface and sprite sample')
@@ -154,11 +166,12 @@ def main():
     if not isinstance(profile.get('decoration_shadows', False), bool):
         raise ValueError('decoration_shadows must be a boolean')
     world, map_name = profile['world'], profile['map']
-    source = ROOT / 'assets_dev/worlds' / world / 'maps' / map_name
+    source_root = args.source_root.resolve()
+    source = source_root / 'worlds' / world / 'maps' / map_name
     native = parse_odm_file(source)['payload']
     # Read the same scene metadata as runtime; Blender does not bundle PyYAML.
     metadata = json.loads(subprocess.check_output([
-        '/usr/bin/python3', '-c',
+        YAML_PYTHON, '-c',
         'import json,sys,yaml; print(json.dumps(yaml.safe_load(open(sys.argv[1]))))',
         str(source.with_suffix('.scene.yml'))], text=True))
     if metadata.get('mechanisms') or metadata.get('scene_profile', 'classic_odm') != 'classic_odm':
@@ -178,8 +191,9 @@ def main():
     deps = {}
     def dependency(path):
         # Recorded relative to the runtime tree; source art in assets_source keeps the same relative path.
-        base = ROOT / 'assets_source' if path.is_relative_to(ROOT / 'assets_source') else ROOT / 'assets_dev'
-        rel = str(path.relative_to(base))
+        base = (ROOT / 'assets_source' if path.is_relative_to(ROOT / 'assets_source')
+                else source_root if path.is_relative_to(source_root) else ROOT / 'assets_dev')
+        rel = path.relative_to(base).as_posix()  # the runtime reads forward slashes (Windows too)
         deps[rel] = fnv(path.read_bytes())
     dependency(source)
     dependency(source.with_suffix('.scene.yml'))
@@ -199,7 +213,7 @@ def main():
         recipe_data[stage+'_producer_sha256'] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
         recipe_data[stage+'_backend'] = bpy.app.version_string
     (out / recipe.name).write_text(json.dumps(recipe_data, sort_keys=True, indent=2)+'\n')
-    deps[str(recipe.relative_to(ROOT / 'assets_dev'))] = fnv((out / recipe.name).read_bytes())
+    deps[recipe.relative_to(source_root).as_posix()] = fnv((out / recipe.name).read_bytes())
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete(use_global=False)
     scene = bpy.context.scene
@@ -368,7 +382,7 @@ def main():
         effective_profile = out / 'effective_profile.json'
         effective_profile.write_text(json.dumps(profile, indent=2) + '\n')
         decoration_report = json.loads(subprocess.check_output([
-            '/usr/bin/python3', str(Path(__file__).with_name('bake_decorations.py')),
+            YAML_PYTHON, str(Path(__file__).with_name('bake_decorations.py')),
             '--profile', str(effective_profile), '--output', str(out / 'decoration_masks')], text=True))
         for path in decoration_report['dependencies']:
             dependency(ROOT / 'assets_dev' / path)
@@ -576,8 +590,8 @@ def main():
         if cursor != len(retained):
             raise ValueError('Invalid installed extension length')
         # The atlas bake keeps its provenance. Only the recipe hash and model probes change.
-        old_dependencies[str(recipe.relative_to(ROOT / 'assets_dev'))] = deps[
-            str(recipe.relative_to(ROOT / 'assets_dev'))]
+        old_dependencies[recipe.relative_to(source_root).as_posix()] = deps[
+            recipe.relative_to(source_root).as_posix()]
         deps = old_dependencies
     faces = b''.join(struct.pack('<QIIHHI', (r['model']<<32)|r['face'], r['model'],r['face'],r['page'],
                                 int(r['page'] != 65535), sum(len(q['uvs']) for q in records[:i]))

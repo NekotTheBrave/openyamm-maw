@@ -908,6 +908,8 @@ public:
     bool moveWorldItem(size_t worldItemIndex, float x, float y, float z) override;
     bool setPartyPosition(float x, float y, float footZ) override;
     bool setWorldItemKind(size_t worldItemIndex, uint32_t itemId) override;
+    bool spawnSpriteEffect(
+        const std::string &spriteName, float x, float y, float z, uint32_t lifetimeTicks) override;
     size_t mapChestCount() const override;
     std::vector<uint8_t> *mapChestItemRecords(size_t chestId) override;
     GameplayWorldHoverCacheState worldHoverCacheState() const override;

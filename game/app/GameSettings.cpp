@@ -968,6 +968,16 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         }
     }
 
+    if (const std::optional<std::string> value = getIniValue(document, "gameplay", "sword_swings"))
+    {
+        bool parsed = settings.swordSwings;
+
+        if (parseBoolValue(*value, parsed))
+        {
+            settings.swordSwings = parsed;
+        }
+    }
+
     if (const std::optional<std::string> value = getIniValue(document, "gameplay", "melee_hit_flash"))
     {
         bool parsed = settings.meleeHitFlash;
@@ -1341,6 +1351,16 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         if (parseBoolValue(*value, parsed))
         {
             settings.homingProjectiles = parsed;
+        }
+    }
+
+    if (const std::optional<std::string> value = getIniValue(document, "features", "mm6_monster_missiles"))
+    {
+        bool parsed = settings.mm6MonsterMissiles;
+
+        if (parseBoolValue(*value, parsed))
+        {
+            settings.mm6MonsterMissiles = parsed;
         }
     }
 
@@ -1956,6 +1976,7 @@ bool saveGameSettings(const std::filesystem::path &path, const GameSettings &set
         << "melee_hit_blood_effects=" << (settings.meleeHitBloodEffects ? "true" : "false") << '\n'
         << "melee_hit_feedback=" << (settings.meleeHitFeedback ? "true" : "false") << '\n'
         << "melee_hit_effects=" << (settings.meleeHitEffects ? "true" : "false") << '\n'
+        << "sword_swings=" << (settings.swordSwings ? "true" : "false") << '\n'
         << "melee_hit_flash=" << (settings.meleeHitFlash ? "true" : "false") << '\n'
         << "melee_camera_kick=" << (settings.meleeCameraKick ? "true" : "false") << '\n'
         << "corpses=" << corpseStyleValue(settings.corpseStyle) << '\n'
@@ -1966,6 +1987,7 @@ bool saveGameSettings(const std::filesystem::path &path, const GameSettings &set
         << "[features]\n"
         << "bolster_monsters=" << (settings.bolsterMonsters ? "true" : "false") << '\n'
         << "homing_projectiles=" << (settings.homingProjectiles ? "true" : "false") << '\n'
+        << "mm6_monster_missiles=" << (settings.mm6MonsterMissiles ? "true" : "false") << '\n'
         << "difficulty=" << settings.difficulty << '\n'
         << "indoor_pathfinding=" << (settings.indoorPathfinding ? "true" : "false") << '\n'
         << "outdoor_pathfinding=" << (settings.outdoorPathfinding ? "true" : "false") << '\n'

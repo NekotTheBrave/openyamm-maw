@@ -873,6 +873,59 @@ bool GameplayProjectileService::homingProjectilesEnabled()
     return g_homingProjectiles;
 }
 
+namespace
+{
+bool g_mm6MonsterMissiles = true;
+}
+
+void GameplayProjectileService::setMm6MonsterMissilesEnabled(bool enabled)
+{
+    g_mm6MonsterMissiles = enabled;
+}
+
+bool GameplayProjectileService::mm6MonsterMissilesEnabled()
+{
+    return g_mm6MonsterMissiles;
+}
+
+std::optional<int> GameplayProjectileService::mm6MonsterMissileObjectId(int objectId)
+{
+    if (!g_mm6MonsterMissiles)
+    {
+        return std::nullopt;
+    }
+
+    // MAW's table (zzMaw-Monsters.lua, MM6 PROJECTILES): air, earth, fire, water, light, dark, laser, fire bolt.
+    switch (objectId)
+    {
+        case 500: return 734;
+        case 505: return 739;
+        case 510: return 712;
+        case 515: return 732;
+        case 535: return 740;
+        case 540: return 737;
+        case 555: return 736;
+        case 1010: return 712;
+        default: return std::nullopt;
+    }
+}
+
+std::optional<int> GameplayProjectileService::mm6MonsterMissileImpactObjectId(int mm6ObjectId)
+{
+    // MAW's explosionRemap, by the missile it belongs to.
+    switch (mm6ObjectId)
+    {
+        case 734: return 723;
+        case 739: return 721;
+        case 712: return 711;
+        case 732: return 718;
+        case 740: return 715;
+        case 737: return 719;
+        case 736: return 722;
+        default: return std::nullopt;
+    }
+}
+
 bool GameplayProjectileService::projectileCanHome(const ProjectileState &projectile)
 {
     // Meteor Shower, Sparks, Starburst, Poison Spray, Ice Blast and Shrapmetal, as MAW leaves them.

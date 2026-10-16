@@ -970,6 +970,17 @@ std::optional<SpriteFrameTable> parseCommonSpriteFrameTable(const Engine::AssetF
         return std::nullopt;
     }
 
+    // Sprite frame groups a mod adds from its assets (MAW port: the multiplayer package's sword swings), sprite ids
+    // 24000 on.
+    const std::string modFramesPath = "Data/rendering/sprite_frame_data_mods.yml";
+    const std::optional<std::string> modFrames = assetFileSystem.readTextFile(modFramesPath);
+
+    if (modFrames && !spriteFrameTable.loadFromYaml(*modFrames, errorMessage, true))
+    {
+        std::cerr << "Failed to load mod sprite frame data from " << modFramesPath << ": " << errorMessage << '\n';
+        return std::nullopt;
+    }
+
     std::vector<std::string> worldPackages = assetFileSystem.enumerate("worlds");
     std::sort(worldPackages.begin(), worldPackages.end());
 

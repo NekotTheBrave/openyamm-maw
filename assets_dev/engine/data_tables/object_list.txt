@@ -539,3 +539,17 @@ explosion	null	12001	16	16	0	0	0	0x00000000	0	0	0	LifeTime,FTLifeTime,NoPickup,N
 Breath Weapon 2	spell100	12010	16	16	768	4000	853	0x00000000	0	0	0	LifeTime,NoPickup,NoGravity,FlagOnIntercept
 explosion	spell100x	12011	16	16	8	0	861	0x00000000	0	0	0	LifeTime,FTLifeTime,NoPickup,NoGravity
 MM9 Treasure Bag	bag01	19001	49	60	0	0	17877	0x00000000	0	0	0	NoGravity
+MM6 FireSmallX	firex04	711	16	16	40	0	16837	0x00000000	0	0	0	LifeTime,FTLifeTime,NoPickup,NoGravity
+MM6 FireBolt	fire04	712	16	16	768	4000	16831	0x00000000	0	0	0	LifeTime,NoPickup,NoGravity,FlagOnIntercept
+MM6 ElecX	airx02	715	16	16	80	0	16909	0x00000000	0	0	0	LifeTime,FTLifeTime,NoPickup,NoGravity
+MM6 ColdX	mslx05	718	16	16	80	0	17372	0x00000000	0	0	0	LifeTime,FTLifeTime,NoPickup,NoGravity
+MM6 AcidX	cold04	719	16	16	80	0	16973	0x00000000	0	0	0	LifeTime,FTLifeTime,NoPickup,NoGravity
+MM6 RockX	earthx08	721	16	16	80	0	17067	0x00000000	0	0	0	LifeTime,FTLifeTime,NoPickup,NoGravity
+MM6 EnergyX	earthx10	722	16	16	80	0	17078	0x00000000	0	0	0	LifeTime,FTLifeTime,NoPickup,NoGravity
+MM6 CloudX	mslx04	723	16	16	80	0	17360	0x00000000	0	0	0	LifeTime,FTLifeTime,NoPickup,NoGravity
+MM6 Cold	cold02	732	16	16	768	4000	16963	0x00000000	0	0	0	LifeTime,NoPickup,NoGravity,FlagOnIntercept
+MM6 ElecBall	msl04	734	16	16	768	4000	17354	0x00000000	0	0	0	LifeTime,NoPickup,NoGravity,FlagOnIntercept
+MM6 PurpleBall	msl08	736	16	16	768	4000	17399	0x00000000	0	0	0	LifeTime,NoPickup,NoGravity,FlagOnIntercept
+MM6 DarkBall	dark07	737	16	16	768	4000	17240	0x00000000	0	0	0	LifeTime,NoPickup,NoGravity,FlagOnIntercept
+MM6 RockBlast	msl09	739	16	16	768	4000	17410	0x00000000	0	0	0	LifeTime,NoPickup,NoGravity,FlagOnIntercept
+MM6 LightBall	cold06	740	16	16	768	4000	16985	0x00000000	0	0	0	LifeTime,NoPickup,NoGravity,FlagOnIntercept

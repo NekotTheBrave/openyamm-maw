@@ -32,6 +32,12 @@ settings:
   name: Homing projectiles
   type: toggle
   desc: Missiles and spells follow their targets, the party's and the monsters'.
+- id: mm6_monster_missiles
+  section: gameplay
+  group: Challenge
+  name: MM6 monster missiles
+  type: toggle
+  desc: Monsters' arrows and elemental missiles look as they did in Might and Magic VI.
 - id: difficulty
   section: gameplay
   group: Challenge
@@ -330,6 +336,12 @@ settings:
   name: Melee hit effects
   type: toggle
   desc: Show a slash, thrust or crush where melee attacks connect.
+- id: sword_swings
+  section: video
+  group: Colour & effects
+  name: Sword swings
+  type: toggle
+  desc: Show a 2D swing in front of the party at every melee attack (the multiplayer package's).
 - id: melee_hit_feedback
   section: video
   group: Colour & effects

@@ -1693,6 +1693,22 @@ bool resolveIndoorMonsterProjectileDefinition(
             return false;
         }
 
+        // MM6's look, when the option is on and the table has the MM6 object.
+        if (const std::optional<int> mm6ObjectId =
+                GameplayProjectileService::mm6MonsterMissileObjectId(pProjectileEntry->objectId);
+            mm6ObjectId
+            && fillIndoorProjectileDefinitionFromObject(
+                *mm6ObjectId,
+                GameplayProjectileService::mm6MonsterMissileImpactObjectId(*mm6ObjectId).value_or(0),
+                objectTable,
+                definition))
+        {
+            definition.visualMode = GameplayProjectileVisualMode::SpriteBillboard;
+            return true;
+        }
+
+        definition = {};
+
         if (!fillIndoorProjectileDefinitionFromObject(
             pProjectileEntry->objectId,
             pProjectileEntry->impactObjectId,
@@ -15238,6 +15254,33 @@ size_t IndoorWorldRuntime::worldItemCount() const
 {
     const MapDeltaData *pMapDeltaData = mapDeltaData();
     return pMapDeltaData != nullptr ? pMapDeltaData->spriteObjects.size() : 0;
+}
+
+bool IndoorWorldRuntime::spawnSpriteEffect(
+    const std::string &spriteName, float x, float y, float z, uint32_t lifetimeTicks)
+{
+    if (m_pGameplayProjectileService == nullptr)
+    {
+        return false;
+    }
+
+    const std::optional<uint16_t> spriteId = m_pProjectileSpriteFrameTable != nullptr
+        ? m_pProjectileSpriteFrameTable->findFrameIndexBySpriteName(spriteName)
+        : std::nullopt;
+
+    if (!spriteId)
+    {
+        return false;
+    }
+
+    GameplayProjectileService::ProjectileImpactVisualDefinition definition = {};
+    definition.objectSpriteId = *spriteId;
+    definition.lifetimeTicks = lifetimeTicks;
+    definition.hasVisual = true;
+    definition.centerAnchored = true;
+    definition.objectName = spriteName;
+    definition.objectSpriteName = spriteName;
+    return (*m_pGameplayProjectileService).spawnWaterSplashImpactVisual(definition, x, y, z).spawned;
 }
 
 bool IndoorWorldRuntime::setWorldItemKind(size_t worldItemIndex, uint32_t itemId)

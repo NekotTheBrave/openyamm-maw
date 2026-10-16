@@ -261,6 +261,39 @@ std::optional<MeleeContactEffectPlacement> placeMeleeBlow(
     return buildMeleeContactEffect(input);
 }
 
+// The multiplayer package's sword swing (MAW's install, SwordSwing.lua): one of four swings, 40 in front of the party
+// toward the monster at about the camera's height, for a quarter of a second, at every melee attack, hit or miss.
+void showSwordSwing(
+    const GameplayActionController::PartyAttackConfig &config,
+    const GameplayActionController::PartyAttackActorFacts &target)
+{
+    if (config.pRuntime == nullptr || config.pWorldRuntime == nullptr
+        || !config.pRuntime->settingsSnapshot().swordSwings)
+    {
+        return;
+    }
+
+    static constexpr std::array<const char *, 4> Swings = {"na1g", "nb1g", "nc1g", "nd1g"};
+    const float deltaX = target.position.x - config.partyPosition.x;
+    const float deltaY = target.position.y - config.partyPosition.y;
+    const float distance = std::max(1.0f, std::sqrt(deltaX * deltaX + deltaY * deltaY));
+    // The camera's height over the party (the original's Party.LastEyeLevel), from the view matrix: the eye is
+    // -R^T t of it. Without one (no view yet), the height missiles start at.
+    const std::array<float, 16> &view = config.fallbackQuery.viewMatrix;
+    const float eyeZ = -(view[8] * view[12] + view[9] * view[13] + view[10] * view[14]);
+    const bool hasView = view[0] != 0.0f || view[5] != 0.0f || view[10] != 0.0f;
+    const float eyeHeight = hasView ? eyeZ - config.partyPosition.z
+                                    : std::max(0.0f, config.rangedSource.z - config.partyPosition.z);
+    const float z = (target.position.z + config.partyPosition.z * 5.0f) / 6.0f + eyeHeight - 10.0f;
+    config.pWorldRuntime->spawnSpriteEffect(
+        // Its own pick, so the attack's rolls stay as they are.
+        Swings[(config.randomSeed + target.actorIndex) % Swings.size()],
+        config.partyPosition.x + deltaX / distance * 40.0f,
+        config.partyPosition.y + deltaY / distance * 40.0f,
+        z,
+        32);
+}
+
 // The blow's effect and its element accents, when hit effects are on.
 void queueMeleeBlowEffects(
     const GameplayActionController::PartyAttackConfig &config,
@@ -1033,6 +1066,11 @@ GameplayActionController::PartyAttackExecutionResult GameplayActionController::e
     if (attack.mode == CharacterAttackMode::Melee)
     {
         actionPerformed = attack.canAttack;
+
+        if (target && targetInMeleeRange && attack.canAttack)
+        {
+            showSwordSwing(config, *target);
+        }
 
         if (target
             && targetInMeleeRange

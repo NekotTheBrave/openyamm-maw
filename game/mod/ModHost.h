@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <string>
 
@@ -57,5 +59,7 @@ struct ModHost
     // Leaves the screen a script asks to leave (Game:ExitHouseScreen(), ExitCurrentScreen()): the character screen
     // at once, a house's or an NPC's dialog at the start of the next frame.
     std::function<void()> exitScreen;
+    // Plays a spell's animation over a party member's portrait (the original's, which MAW's buff rework calls).
+    std::function<void(uint32_t spellId, size_t partySlot)> portraitSpellFx;
 };
 }

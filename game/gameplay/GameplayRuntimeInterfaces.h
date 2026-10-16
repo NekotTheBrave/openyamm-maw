@@ -1216,6 +1216,17 @@ public:
         (void)source;
     }
     virtual bool spawnPartyAttackProjectile(const GameplayPartyAttackProjectileRequest &request) = 0;
+    // Shows the sprite frame group `spriteName` at a point for `lifetimeTicks` (128 to the second), as an impact is
+    // shown (the sword swings). False when the group is not in the sprite frame table.
+    virtual bool spawnSpriteEffect(const std::string &spriteName, float x, float y, float z, uint32_t lifetimeTicks)
+    {
+        (void)spriteName;
+        (void)x;
+        (void)y;
+        (void)z;
+        (void)lifetimeTicks;
+        return false;
+    }
     virtual bool castPartyAttackSpell(const GameplayPartyAttackSpellRequest &request) = 0;
     virtual std::vector<GameplayCombatFeedbackEvent> drainCombatFeedbackEvents()
     {

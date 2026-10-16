@@ -15,6 +15,10 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
     {
         return settings.homingProjectiles ? "true" : "false";
     }
+    if (id == "mm6_monster_missiles")
+    {
+        return settings.mm6MonsterMissiles ? "true" : "false";
+    }
     if (id == "difficulty")
     {
         return settings.difficulty;
@@ -151,6 +155,10 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
     {
         return settings.meleeHitEffects ? "true" : "false";
     }
+    if (id == "sword_swings")
+    {
+        return settings.swordSwings ? "true" : "false";
+    }
     if (id == "melee_hit_feedback")
     {
         return settings.meleeHitFeedback ? "true" : "false";
@@ -265,6 +273,15 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
             return false;
         }
         settings.homingProjectiles = value == "true";
+        return true;
+    }
+    if (id == "mm6_monster_missiles")
+    {
+        if (value != "true" && value != "false")
+        {
+            return false;
+        }
+        settings.mm6MonsterMissiles = value == "true";
         return true;
     }
     if (id == "difficulty")
@@ -558,6 +575,15 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
             return false;
         }
         settings.meleeHitEffects = value == "true";
+        return true;
+    }
+    if (id == "sword_swings")
+    {
+        if (value != "true" && value != "false")
+        {
+            return false;
+        }
+        settings.swordSwings = value == "true";
         return true;
     }
     if (id == "melee_hit_feedback")

@@ -2073,7 +2073,21 @@ bool resolveProjectileDefinition(
             return false;
         }
 
-        const ObjectEntry *pObjectEntry = objectTable.findByObjectId(static_cast<int16_t>(pProjectileEntry->objectId));
+        // MM6's look, when the option is on and the table has the MM6 object.
+        int missileObjectId = pProjectileEntry->objectId;
+        int impactObjectId = pProjectileEntry->impactObjectId;
+        bool mm6Missile = false;
+
+        if (const std::optional<int> mm6ObjectId =
+                GameplayProjectileService::mm6MonsterMissileObjectId(pProjectileEntry->objectId);
+            mm6ObjectId && objectTable.findByObjectId(static_cast<int16_t>(*mm6ObjectId)) != nullptr)
+        {
+            missileObjectId = *mm6ObjectId;
+            impactObjectId = GameplayProjectileService::mm6MonsterMissileImpactObjectId(*mm6ObjectId).value_or(0);
+            mm6Missile = true;
+        }
+
+        const ObjectEntry *pObjectEntry = objectTable.findByObjectId(static_cast<int16_t>(missileObjectId));
 
         if (pObjectEntry == nullptr)
         {
@@ -2081,7 +2095,7 @@ bool resolveProjectileDefinition(
         }
 
         const std::optional<uint16_t> objectDescriptionId =
-            objectTable.findDescriptionIdByObjectId(static_cast<int16_t>(pProjectileEntry->objectId));
+            objectTable.findDescriptionIdByObjectId(static_cast<int16_t>(missileObjectId));
 
         if (!objectDescriptionId)
         {
@@ -2091,7 +2105,7 @@ bool resolveProjectileDefinition(
         definition.objectDescriptionId = *objectDescriptionId;
         definition.objectSpriteId = pObjectEntry->spriteId;
         definition.objectFlags = pObjectEntry->flags;
-        definition.visualMode = useFxRecipes
+        definition.visualMode = useFxRecipes && !mm6Missile
             ? GameplayProjectileService::monsterProjectileVisualModeForObjectId(pProjectileEntry->objectId)
             : GameplayProjectileVisualMode::SpriteBillboard;
         definition.radius = static_cast<uint16_t>(std::max<int>(pObjectEntry->radius, 16));
@@ -2101,12 +2115,11 @@ bool resolveProjectileDefinition(
         definition.objectName = pObjectEntry->internalName;
         definition.objectSpriteName = pObjectEntry->spriteName;
 
-        if (pProjectileEntry->impactObjectId > 0)
+        if (impactObjectId > 0)
         {
-            const ObjectEntry *pImpactEntry =
-                objectTable.findByObjectId(static_cast<int16_t>(pProjectileEntry->impactObjectId));
+            const ObjectEntry *pImpactEntry = objectTable.findByObjectId(static_cast<int16_t>(impactObjectId));
             const std::optional<uint16_t> impactDescriptionId =
-                objectTable.findDescriptionIdByObjectId(static_cast<int16_t>(pProjectileEntry->impactObjectId));
+                objectTable.findDescriptionIdByObjectId(static_cast<int16_t>(impactObjectId));
 
             if (pImpactEntry != nullptr && impactDescriptionId)
             {
@@ -18016,6 +18029,28 @@ void OutdoorWorldRuntime::removeDepletedSemanticLootContainer(uint32_t container
             return worldItem.semanticLootContainer
                 && worldItem.semanticLootContainerId == containerId;
         });
+}
+
+bool OutdoorWorldRuntime::spawnSpriteEffect(
+    const std::string &spriteName, float x, float y, float z, uint32_t lifetimeTicks)
+{
+    const std::optional<uint16_t> spriteId = m_pProjectileSpriteFrameTable != nullptr
+        ? m_pProjectileSpriteFrameTable->findFrameIndexBySpriteName(spriteName)
+        : std::nullopt;
+
+    if (!spriteId)
+    {
+        return false;
+    }
+
+    GameplayProjectileService::ProjectileImpactVisualDefinition definition = {};
+    definition.objectSpriteId = *spriteId;
+    definition.lifetimeTicks = lifetimeTicks;
+    definition.hasVisual = true;
+    definition.centerAnchored = true;
+    definition.objectName = spriteName;
+    definition.objectSpriteName = spriteName;
+    return (projectileService()).spawnWaterSplashImpactVisual(definition, x, y, z).spawned;
 }
 
 bool OutdoorWorldRuntime::setWorldItemKind(size_t worldItemIndex, uint32_t itemId)

@@ -378,7 +378,7 @@ elements:
     - id: SettingsGameplayGroup1
       anchor: top_left
       offset_x: 0.0
-      offset_y: 146.6416
+      offset_y: 185.5669
       width: 525.3333
       height: 18.1333
       z_index: 10
@@ -395,7 +395,7 @@ elements:
     - id: SettingsGameplayGroup2
       anchor: top_left
       offset_x: 0.0
-      offset_y: 215.4331
+      offset_y: 254.3584
       width: 525.3333
       height: 18.1333
       z_index: 10
@@ -412,7 +412,7 @@ elements:
     - id: SettingsGameplayGroup3
       anchor: top_left
       offset_x: 0.0
-      offset_y: 439.9253
+      offset_y: 478.8506
       width: 525.3333
       height: 18.1333
       z_index: 10
@@ -429,7 +429,7 @@ elements:
     - id: SettingsGameplayGroup4
       anchor: top_left
       offset_x: 0.0
-      offset_y: 508.7168
+      offset_y: 547.6421
       width: 525.3333
       height: 18.1333
       z_index: 10
@@ -555,10 +555,66 @@ elements:
         pad_x: 3.2
       notes: Bind to features.homing_projectiles; see contracts/settings.yml. Ranges need a track and thumb renderer;
         selection controls need native dropdown/focus behavior. Controller supplies live text.
+    - id: SettingsGameplayMm6MonsterMissilesLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 103.4501
+      width: 281.7248
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: MM6 monster missiles
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsGameplayMm6MonsterMissilesDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 119.6586
+      width: 437.3333
+      height: 11.5168
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Monsters' arrows and elemental missiles look as they did in Might and Magic VI.
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsGameplayMm6MonsterMissilesControl
+      anchor: top_left
+      offset_x: 453.3333
+      offset_y: 101.2297
+      width: 70.4
+      height: 32.158
+      z_index: 10
+      visible: true
+      interactive: true
+      asset:
+        default: hud_x2/menus/omenu_toggle_off.png
+        selected: hud_x2/menus/omenu_toggle_on.png
+      text:
+        value: '{mm6_monster_missiles}'
+        font: menu_lucida
+        color: '#b8b8a9'
+        align_x: center
+        align_y: middle
+        scale: 0.64
+        pad_x: 3.2
+      notes: Bind to features.mm6_monster_missiles; see contracts/settings.yml. Ranges need a track and thumb renderer;
+        selection controls need native dropdown/focus behavior. Controller supplies live text.
     - id: SettingsGameplayDifficultyLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 103.4496
+      offset_y: 142.3749
       width: 281.7248
       height: 14.0752
       z_index: 10
@@ -575,7 +631,7 @@ elements:
     - id: SettingsGameplayDifficultyDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 119.6581
+      offset_y: 158.5834
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -592,7 +648,7 @@ elements:
     - id: SettingsGameplayDifficultyControl
       anchor: top_left
       offset_x: 412.8
-      offset_y: 105.5749
+      offset_y: 144.5002
       width: 110.9333
       height: 23.4667
       z_index: 10
@@ -613,7 +669,7 @@ elements:
     - id: SettingsGameplayQuestMarkersLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 172.2416
+      offset_y: 211.1669
       width: 242.5915
       height: 14.0752
       z_index: 10
@@ -630,7 +686,7 @@ elements:
     - id: SettingsGameplayQuestMarkersDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 188.4496
+      offset_y: 227.3749
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -647,7 +703,7 @@ elements:
     - id: SettingsGameplayQuestMarkersControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 170.0207
+      offset_y: 208.946
       width: 70.4
       height: 32.158
       z_index: 10
@@ -669,7 +725,7 @@ elements:
     - id: SettingsGameplayCombatTextLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 241.0331
+      offset_y: 279.9584
       width: 229.3499
       height: 14.0752
       z_index: 10
@@ -686,7 +742,7 @@ elements:
     - id: SettingsGameplayCombatTextDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 257.2416
+      offset_y: 296.1669
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -703,7 +759,7 @@ elements:
     - id: SettingsGameplayCombatTextControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 238.8122
+      offset_y: 277.7375
       width: 70.4
       height: 32.158
       z_index: 10
@@ -725,7 +781,7 @@ elements:
     - id: SettingsGameplayEnemyHealthBarsLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 279.9579
+      offset_y: 318.8832
       width: 167.9499
       height: 14.0752
       z_index: 10
@@ -742,7 +798,7 @@ elements:
     - id: SettingsGameplayEnemyHealthBarsDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 296.1664
+      offset_y: 335.0917
       width: 397.2
       height: 11.5168
       z_index: 10
@@ -759,7 +815,7 @@ elements:
     - id: SettingsGameplayEnemyHealthBarsControl
       anchor: top_left
       offset_x: 412.8
-      offset_y: 282.0832
+      offset_y: 321.0085
       width: 110.9333
       height: 23.4667
       z_index: 10
@@ -780,7 +836,7 @@ elements:
     - id: SettingsGameplayEnemyHealthBarValuesLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 318.8832
+      offset_y: 357.8085
       width: 143.2752
       height: 14.0752
       z_index: 10
@@ -797,7 +853,7 @@ elements:
     - id: SettingsGameplayEnemyHealthBarValuesDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 335.0912
+      offset_y: 374.0165
       width: 397.2
       height: 11.5168
       z_index: 10
@@ -814,7 +870,7 @@ elements:
     - id: SettingsGameplayEnemyHealthBarValuesControl
       anchor: top_left
       offset_x: 412.8
-      offset_y: 321.0085
+      offset_y: 359.9338
       width: 110.9333
       height: 23.4667
       z_index: 10
@@ -835,7 +891,7 @@ elements:
     - id: SettingsGameplayEnemyHealthBarDamageTrailLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 357.808
+      offset_y: 396.7333
       width: 270
       height: 14.0752
       z_index: 10
@@ -852,7 +908,7 @@ elements:
     - id: SettingsGameplayEnemyHealthBarDamageTrailDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 374.0165
+      offset_y: 412.9418
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -869,7 +925,7 @@ elements:
     - id: SettingsGameplayEnemyHealthBarDamageTrailControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 355.5876
+      offset_y: 394.5129
       width: 70.4
       height: 32.158
       z_index: 10
@@ -890,7 +946,7 @@ elements:
     - id: SettingsGameplayShowHitsLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 396.7333
+      offset_y: 435.6586
       width: 155.9083
       height: 14.0752
       z_index: 10
@@ -907,7 +963,7 @@ elements:
     - id: SettingsGameplayShowHitsDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 412.9418
+      offset_y: 451.8671
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -924,7 +980,7 @@ elements:
     - id: SettingsGameplayShowHitsControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 394.5129
+      offset_y: 433.4382
       width: 70.4
       height: 32.158
       z_index: 10
@@ -946,7 +1002,7 @@ elements:
     - id: SettingsGameplayContextActionPopupLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 465.5253
+      offset_y: 504.4506
       width: 267.8752
       height: 14.0752
       z_index: 10
@@ -963,7 +1019,7 @@ elements:
     - id: SettingsGameplayContextActionPopupDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 481.7333
+      offset_y: 520.6586
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -980,7 +1036,7 @@ elements:
     - id: SettingsGameplayContextActionPopupControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 463.3044
+      offset_y: 502.2297
       width: 70.4
       height: 32.158
       z_index: 10
@@ -1002,7 +1058,7 @@ elements:
     - id: SettingsGameplaySkipEventCutscenesLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 534.3168
+      offset_y: 573.2421
       width: 234.7669
       height: 14.0752
       z_index: 10
@@ -1019,7 +1075,7 @@ elements:
     - id: SettingsGameplaySkipEventCutscenesDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 550.5253
+      offset_y: 589.4506
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -1036,7 +1092,7 @@ elements:
     - id: SettingsGameplaySkipEventCutscenesControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 532.0959
+      offset_y: 571.0212
       width: 70.4
       height: 32.158
       z_index: 10

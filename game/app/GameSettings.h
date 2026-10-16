@@ -211,6 +211,8 @@ struct GameSettings
     // Projectiles home on their targets, the party's on the monster aimed at and the monsters' on the party (MAW's
     // homing projectiles, on by default as there).
     bool homingProjectiles = true;
+    // Monsters' missiles look as in MM6 (MAW's "M&M6 Projectiles", on by default as there).
+    bool mm6MonsterMissiles = true;
     // The difficulty a new game starts at, by the name the active mod gives it (MAW's Easy ... Nightmare); empty for
     // the mod's own default. A game keeps its own; the options change the current game's when one is being played.
     std::string difficulty;
@@ -289,6 +291,9 @@ struct GameSettings
     bool meleeHitFeedback = true;
     // Slash, thrust or crush effect at the contact point of a landed melee blow.
     bool meleeHitEffects = true;
+    // The 2D sword swing of the multiplayer package (MAW's install: SwordSwings.sprites.lod) in front of the party at
+    // every melee attack; needs the mod's art (tools/maw/convert_sprites.py).
+    bool swordSwings = false;
     // Brief flash over the struck creature.
     bool meleeHitFlash = false;
     // Small camera turn along the blow on critical hits and kills.

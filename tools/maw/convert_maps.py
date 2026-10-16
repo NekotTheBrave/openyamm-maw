@@ -9,14 +9,19 @@ one whose maps folder holds the map in the engine's assets.
 An outdoor map's baked lighting names the geometry file it was baked for by a hash of the whole file, spawn points
 included. Where MAW's map lights the same as the engine's (same terrain, models and decorations; MAW moved spawn
 points or set texture animation flags), the engine's bake is copied with the hash of MAW's file. Otherwise the map
-needs baking for MAW's geometry (tools/lighting/bake_outdoor.py), and is reported.
+needs baking for MAW's geometry: with --bake it is baked (tools/lighting/bake_outdoor.py in Blender, with the
+engine's own recipe for the map, from its .bake.json) and installed beside MAW's file; without, it is reported.
 
     python tools/maw/convert_maps.py --maw <Maw-Mod-MMMerge-main> --out mods/maw/assets [--maps d08 out05]
+        [--bake [--blender <blender executable>]]
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import os
+import shutil
 import struct
 import subprocess
 import sys
@@ -107,11 +112,42 @@ def outdoor_geometry_changed(engine_odm: Path, maw_odm: Path) -> list[str]:
     return changes
 
 
+def bake_outdoor(blender: str, world_id: str, stem: str, maps_dir: Path, out_root: Path, work: Path) -> str | None:
+    """Bakes MAW's outdoor map with the engine's recipe for the same map and installs the bake; the error, if any."""
+    recipe = ENGINE_WORLDS / world_id / "maps" / f"{stem}.bake.json"
+
+    if not recipe.is_file():
+        return "the engine has no recipe for it"
+
+    profile = work / f"{stem}.profile.json"
+    profile.write_text(json.dumps(json.loads(recipe.read_text())["profile"], indent=2) + "\n")
+    output = work / f"{stem}.bake"
+    # The bake reads scene metadata with a Python that has PyYAML: this one.
+    environment = dict(os.environ, OPENYAMM_BAKE_PYTHON=os.environ.get("OPENYAMM_BAKE_PYTHON", sys.executable))
+    result = subprocess.run(
+        [blender, "--background", "--factory-startup", "--python-exit-code", "1",
+         "--python", str(REPO_ROOT / "tools" / "lighting" / "bake_outdoor.py"), "--",
+         "--profile", str(profile), "--output", str(output), "--source-root", str(out_root.resolve())],
+        cwd=REPO_ROOT, capture_output=True, text=True, env=environment)
+
+    if result.returncode != 0:
+        return "bake failed: " + (result.stderr.strip() or result.stdout.strip())[-2000:]
+
+    for name in (f"{stem}.lighting", f"{stem}.bake.json"):
+        shutil.copyfile(output / name, maps_dir / name)
+
+    return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--maw", required=True, help="MAW checkout (has Data/zMaw.games.lod)")
     parser.add_argument("--out", required=True, help="the mod's asset overlay, e.g. mods/maw/assets")
     parser.add_argument("--maps", nargs="*", help="map names to convert (default: every map MAW ships)")
+    parser.add_argument("--bake", action="store_true",
+                        help="bake the outdoor maps whose lit geometry MAW changed (Blender with Cycles)")
+    parser.add_argument("--blender", default=os.environ.get("OPENYAMM_BLENDER", "blender"),
+                        help="Blender executable for --bake (OPENYAMM_BLENDER; 5.2.2 made the engine's bakes)")
     args = parser.parse_args()
 
     lod = read_lod(Path(args.maw) / "Data" / "zMaw.games.lod")
@@ -163,8 +199,16 @@ def main() -> int:
             changed = outdoor_geometry_changed(engine_maps / geometry, geometry_path)
             lighting = engine_maps / f"{stem}.lighting"
 
-            if changed:
-                note = f"; needs a lighting bake ({', '.join(changed)} changed)"
+            if changed and args.bake:
+                error = bake_outdoor(args.blender, world_id, stem, maps_dir, out_root, Path(work_dir.name))
+
+                if error:
+                    note = f"; lighting bake for MAW's {', '.join(changed)} failed: {error}"
+                    failures += 1
+                else:
+                    note = f"; lighting baked for MAW's {', '.join(changed)}"
+            elif changed:
+                note = f"; needs a lighting bake ({', '.join(changed)} changed; --bake)"
                 failures += 1
             elif lighting.is_file():
                 baked = bytearray(lighting.read_bytes())

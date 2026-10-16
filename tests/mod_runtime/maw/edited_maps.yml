@@ -29,7 +29,7 @@ steps:
       return Map.Name, m.X, m.Y
     expect: "d08.blv\t768\t-512"
 # out05 lights as the game's map does (the game's bake, restamped for MAW's file); oute3's terrain and models
-# changed, so it loads with the classic lighting until one is baked for it.
+# changed, so it has its own bake (convert_maps.py --bake), and without one loads with the classic lighting.
 - load_map:
     map: out05.odm
 - mod_lua:
