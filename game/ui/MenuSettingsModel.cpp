@@ -37,9 +37,7 @@ constexpr GraphicsQualityOption GraphicsQualityOptions[] = {
     {"rain_ripples", {"true", "true", "true"}},
     {"view_distance", {"default", "default", "default"}},
 };
-// MAW port: 1 on every preset. Subdivided terrain is smoothed up through raised model water (Emerald Isle's pools
-// draw black patches at 2 or 4).
-constexpr std::array<int, 3> GraphicsQualityTerrainSubdivisions = {1, 1, 1};
+constexpr std::array<int, 3> GraphicsQualityTerrainSubdivisions = {2, 4, 4};
 constexpr std::array<bool, 3> GraphicsQualityTerrainAntiTiling = {false, true, true};
 constexpr std::array<float, 3> GraphicsQualitySkyResolutionScales = {0.5f, 1.0f, 1.0f};
 }

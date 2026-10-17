@@ -166,7 +166,7 @@ struct GameSettings
     bool waterReflections = true;
     bool waterSpriteReflections = false;
     // Rendered terrain subdivisions per native cell: 1, 2 or 4.
-    int terrainSubdivision = 1;
+    int terrainSubdivision = 4;
     // A second, rotated sample per ground material hides its repeat (two more texture reads each).
     bool terrainAntiTiling = true;
     // Enhanced sky render resolution relative to the view (0.25-1); the Android profile uses 0.5.
