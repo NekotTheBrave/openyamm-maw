@@ -1,0 +1,62 @@
+id: mod_runtime.maw.reentry_hp
+title: A dungeon's monsters are at full health when the party comes back, at MAW's maximum for the difficulty
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# Found in play: entering a dungeon at one difficulty, leaving, raising the difficulty and coming back left its
+# monsters part-hurt. Coming back to a map sends its living monsters home and heals them (the engine's re-entry
+# reset); indoors it healed them to their kind's maximum from the monster table, not to the maximum MAW gives each
+# monster, so MAW, which keeps a monster's share of its health when it works the map out again, kept them hurt.
+# Outdoors they are healed to their own maximum already. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+- mod_lua:
+    code: |
+      ModRT.Difficulty.set("Easy")
+      function Living()
+        local out = {}
+        for i = 0, Map.Monsters.High do
+          local m = Map.Monsters[i]
+          if m.NameId == 0 and m.HP > 0 then
+            out[i] = {Id = m.Id, HP = m.HP, FullHP = m.FullHP}
+          end
+        end
+        return out
+      end
+      return Game.BolsterAmount
+    expect: "0"
+- load_map: {map: 6d07.blv}
+- mod_lua:
+    code: |
+      First = Living()
+      local count, full = 0, 0
+      for _, m in pairs(First) do
+        count = count + 1
+        if m.HP == m.FullHP then full = full + 1 end
+      end
+      return count > 10, count == full
+    expect: "true\ttrue"
+- load_map: {map: oute3.odm}
+- mod_lua:
+    code: |
+      ModRT.Difficulty.set("MAW")
+      return Game.BolsterAmount
+    expect: "100"
+- load_map: {map: 6d07.blv}
+- mod_lua:
+    code: |
+      local now = Living()
+      local count, full, larger = 0, 0, 0
+      for i, m in pairs(First) do
+        local n = now[i]
+        if n and n.Id == m.Id then
+          count = count + 1
+          if n.HP == n.FullHP then full = full + 1 end
+          if n.FullHP > m.FullHP then larger = larger + 1 end
+        end
+      end
+      return count > 10, count == full, count == larger, ModRT.totalErrorCount
+    expect: "true\ttrue\ttrue\t0"

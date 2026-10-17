@@ -17679,8 +17679,12 @@ void IndoorWorldRuntime::applyMapReentryReset()
             {
                 actor.sectorId = aiState.sectorId;
             }
+            // Healed to the monster's own maximum when a mod has given it one (MAW sets each monster's from its
+            // level), as outdoors; else to its kind's.
             actor.hp = static_cast<int16_t>(std::clamp(
-                pStats != nullptr ? bolster.maxHp : std::max<int>(1, actor.hp),
+                aiState.maxHp ? *aiState.maxHp
+                : pStats != nullptr ? bolster.maxHp
+                                    : std::max<int>(1, actor.hp),
                 1,
                 32767));
             actor.bolsterRewardMultiplier = pStats != nullptr ? bolster.rewardMultiplier : 1.0f;
