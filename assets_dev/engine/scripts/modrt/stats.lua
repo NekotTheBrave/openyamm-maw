@@ -219,6 +219,15 @@ function Stats.useMouseItem(slot)
     return event.Allow ~= false
 end
 
+-- The game's five-minute regeneration tick reaches the party member in `slot`: the original's Regeneration (each
+-- member neither dead nor eradicated). HP and SP start at 0 and are what the handlers add to the game's own; the
+-- engine applies them as the original does (hit points up to the most, waking an unconscious member). Returns them.
+function Stats.regeneration(slot)
+    local event = {HP = 0, SP = 0, Player = Party[slot], PlayerIndex = slot}
+    ModRT.fire("Regeneration", event)
+    return math.floor(tonumber(event.HP) or 0), math.floor(tonumber(event.SP) or 0)
+end
+
 -- The held potion is used on an item in the backpack (ModRT.Bindings.eventItem): its evt.PotionEffects function, if
 -- the mod has one, as the original calls it (isDrunk false, the item, the potion's power). Returns whether there was
 -- one.

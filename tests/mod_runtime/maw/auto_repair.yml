@@ -1,0 +1,63 @@
+id: mod_runtime.maw.auto_repair
+title: MAW repairs the party's broken items as the game regenerates, up to the party's best Repair
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's autorepair (zzMAW-Skills.lua) runs on the original's Regeneration event, raised for each living party member
+# on the game's five-minute regeneration tick: a broken item, equipped or carried, is repaired when the party's best
+# Repair (skill times mastery, of members able to act) reaches its repair difficulty (IdRepSt). The tick comes with
+# the game's time as it is played (half a game minute a second), so 11 seconds are played: advance_game_time moves
+# the clock only. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: out01.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Smith
+        class: Knight
+        level: 10
+        skills:
+        - name: RepairItem
+          level: 10
+          mastery: 3
+        equipment:
+          main_hand: 61
+# One broken weapon in hand, one in the backpack.
+- mod_lua:
+    code: |
+      modrt.inventoryPut(0, {Number = 61})
+      local pl = Party[0]
+      Broken = {}
+      for k = 1, pl.Items.High do
+        if pl.Items[k].Number == 61 then
+          pl.Items[k].Broken = true
+          Broken[#Broken + 1] = k
+        end
+      end
+      local repair = select(1, SplitSkill(pl:GetSkill(const.Skills.Repair))) * select(2, SplitSkill(pl:GetSkill(const.Skills.Repair)))
+      return #Broken, tostring(pl.Items[Broken[1]].Broken), tostring(pl.Items[Broken[2]].Broken),
+        tostring(pl.Items[Broken[1]]:T().IdRepSt <= repair), ModRT.totalErrorCount
+    expect: "2\ttrue\ttrue\ttrue\t0"
+- advance_runtime: {seconds: 11}
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      return tostring(pl.Items[Broken[1]].Broken), tostring(pl.Items[Broken[2]].Broken), ModRT.totalErrorCount
+    expect: "false\tfalse\t0"
+# Without Repair nothing is mended.
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      pl.Skills[const.Skills.Repair] = 0
+      pl.Items[Broken[1]].Broken = true
+      return tostring(pl.Items[Broken[1]].Broken)
+    expect: "true"
+- advance_runtime: {seconds: 11}
+- mod_lua:
+    code: |
+      return tostring(Party[0].Items[Broken[1]].Broken), ModRT.totalErrorCount
+    expect: "true\t0"

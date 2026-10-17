@@ -335,6 +335,12 @@ bool modUseMouseItem(size_t memberIndex)
     return pModHooks == nullptr || pModHooks->useMouseItem(memberIndex);
 }
 
+std::pair<int, int> modRegeneration(size_t memberIndex)
+{
+    IModHooks *pModHooks = activeModHooks();
+    return pModHooks != nullptr ? pModHooks->regeneration(memberIndex) : std::pair<int, int>{0, 0};
+}
+
 namespace
 {
 std::unordered_map<std::string, std::string> &modRules()

@@ -97,6 +97,7 @@ public:
         const Character &character, const std::string &skillName, std::array<std::string, 5> &parts) override;
     int canLearnSpell(const Character &character, uint32_t spellId, int engineMastery) override;
     bool useMouseItem(size_t memberIndex) override;
+    std::pair<int, int> regeneration(size_t memberIndex) override;
     bool potionEffect(uint32_t potionId, int power) override;
     void itemInformationBoxForUse() override;
     bool canWearItem(const Character &character, uint32_t itemId) override;

@@ -5974,6 +5974,53 @@ void Party::advanceTimedStates(float deltaSeconds)
         }
     }
 
+    // A mod's regeneration (the original's Regeneration event, each tick for each member neither dead nor
+    // eradicated; MAW repairs broken items there): what it adds is applied as the original does. A long rest or
+    // journey runs a day's ticks at most.
+    constexpr int MaxModRegenerationTicks = 24 * 12;
+
+    for (int tick = 0; tick < std::min(regenerationTicks, MaxModRegenerationTicks); ++tick)
+    {
+        for (size_t memberIndex = 0; memberIndex < m_members.size(); ++memberIndex)
+        {
+            if (m_members[memberIndex].conditions.test(static_cast<size_t>(CharacterCondition::Dead))
+                || m_members[memberIndex].conditions.test(static_cast<size_t>(CharacterCondition::Eradicated)))
+            {
+                continue;
+            }
+
+            const auto [health, spellPoints] = modRegeneration(memberIndex);
+
+            if (memberIndex >= m_members.size())
+            {
+                break;
+            }
+
+            Character &member = m_members[memberIndex];
+
+            if (health != 0)
+            {
+                member.health = std::min(member.health + health, std::max(member.health, currentMaximumHealth(member)));
+
+                if (member.health > 0 && member.conditions.test(static_cast<size_t>(CharacterCondition::Unconscious)))
+                {
+                    member.conditions.reset(static_cast<size_t>(CharacterCondition::Unconscious));
+                    member.conditionStartGameMinutes[static_cast<size_t>(CharacterCondition::Unconscious)] = 0.0f;
+                }
+            }
+
+            if (spellPoints > 0)
+            {
+                member.spellPoints = std::min(
+                    member.spellPoints + spellPoints, std::max(member.spellPoints, currentMaximumSpellPoints(member)));
+            }
+            else if (spellPoints < 0)
+            {
+                member.spellPoints = std::max(member.spellPoints + spellPoints, 0);
+            }
+        }
+    }
+
     while (m_periodicEffectElapsedGameSeconds >= GameSecondsPerWeek)
     {
         m_periodicEffectElapsedGameSeconds -= GameSecondsPerWeek;

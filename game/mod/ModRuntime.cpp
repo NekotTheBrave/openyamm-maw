@@ -1728,6 +1728,26 @@ bool ModRuntime::useMouseItem(size_t memberIndex)
     return allow;
 }
 
+std::pair<int, int> ModRuntime::regeneration(size_t memberIndex)
+{
+    if (!m_active || !m_host.party || m_host.party() == nullptr || !beginDispatch("regeneration"))
+    {
+        return {0, 0};
+    }
+
+    lua_pushinteger(m_pLuaState, static_cast<lua_Integer>(memberIndex));
+    std::pair<int, int> result = {0, 0};
+
+    if (endDispatch(1, 2))
+    {
+        result.first = static_cast<int>(lua_tointeger(m_pLuaState, -2));
+        result.second = static_cast<int>(lua_tointeger(m_pLuaState, -1));
+        lua_pop(m_pLuaState, 2);
+    }
+
+    return result;
+}
+
 bool ModRuntime::potionEffect(uint32_t potionId, int power)
 {
     if (!m_active || !m_host.party || m_host.party() == nullptr || !beginDispatch("potionEffect"))
