@@ -10875,10 +10875,16 @@ void IndoorWorldRuntime::aggroNearbyMapActorFaction(size_t actorIndex)
 
         const bool sameEventGroup = victim.group != 0 && victim.group == otherActor.group;
         const int16_t otherMonsterId = resolveIndoorActorStatsId(otherActor);
-        const bool sameMonsterFaction = m_pMonsterTable->isLikelySameFaction(victimMonsterId, otherMonsterId);
         const MonsterTable::MonsterStatsEntry *pOtherStats = m_pMonsterTable->findStatsById(otherMonsterId);
         const bool sameCivilianAggression =
             actorSharesCivilianAggression(victim.group, pVictimStats, otherActor.group, pOtherStats);
+        // The relation table's labels name sprite families, and MM6 draws some hostile humans as peasants (its
+        // apprentice mages are "PeasantM2"): a monster and a peasant are not of one faction by their labels alone.
+        // Peasants are alerted by an attack on a peasant or a guard (or one of their own group), as in the original.
+        const bool victimPeasant = pVictimStats != nullptr && pVictimStats->hasKind(MonsterKind::Peasant);
+        const bool otherPeasant = pOtherStats != nullptr && pOtherStats->hasKind(MonsterKind::Peasant);
+        const bool sameMonsterFaction =
+            victimPeasant == otherPeasant && m_pMonsterTable->isLikelySameFaction(victimMonsterId, otherMonsterId);
 
         if (!sameEventGroup && !sameMonsterFaction && !sameCivilianAggression)
         {

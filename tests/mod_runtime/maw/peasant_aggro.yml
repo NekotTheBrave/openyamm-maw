@@ -1,0 +1,101 @@
+id: mod_runtime.maw.peasant_aggro
+title: Attacking a monster leaves nearby peasants friendly; attacking a peasant alerts them
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# When the party hits a monster, the engine alerts nearby monsters of its side: the same event group, peasants and
+# guards when one of them is hit, and a guess from the relation table's labels (the first word). Those labels name
+# sprite families, and MM6 draws its apprentice and journeyman mages as peasants ("PeasantM2", the peasants
+# "PeasantM1"): hitting a mage in New Sorpigal turned the peasants around it hostile, counted against map completion
+# (found in play). Peasants and other monsters are no longer of one side by their labels. Hits are made to land; the
+# targets stand around the party, the peasants 600 away. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 100
+      food: 5
+      members:
+      - name: Striker
+        class: Knight
+        level: 60
+        might: 30
+        endurance: 3000
+        accuracy: 200
+        skills:
+        - name: Sword
+          level: 6
+          mastery: 2
+        equipment:
+          main_hand: 1
+- mod_lua:
+    code: |
+      function events.PlayerHitOrMiss(t) t.Result = true end
+      -- Up to 12 targets of a kind around the party (whichever is in front is hit), and 6 other friendly peasants
+      -- 600 away, out of reach.
+      function Setup(targetName, targetHostile)
+        Targets, Peasants = {}, {}
+        local taken = {}
+        for i = 0, Map.Monsters.High do
+          local m = Map.Monsters[i]
+          if #Targets < 12 and not m.IsDead and m.Hostile == targetHostile and Game.MonstersTxt[m.Id].Name == targetName then
+            local angle = #Targets * math.pi / 6
+            Targets[#Targets + 1] = i
+            taken[i] = true
+            m.X = math.floor(Party.X + math.cos(angle) * 130)
+            m.Y = math.floor(Party.Y + math.sin(angle) * 130)
+            m.Z = Party.Z
+          end
+        end
+        for i = 0, Map.Monsters.High do
+          local m = Map.Monsters[i]
+          if #Peasants < 6 and not taken[i] and not m.IsDead and not m.Hostile
+              and Game.MonstersTxt[m.Id].Name == "Peasant" then
+            local angle = #Peasants * math.pi / 3
+            Peasants[#Peasants + 1] = i
+            m.X = math.floor(Party.X + math.cos(angle) * 600)
+            m.Y = math.floor(Party.Y + math.sin(angle) * 600)
+            m.Z = Party.Z
+          end
+        end
+        return #Targets, #Peasants
+      end
+      -- Targets hit, and peasants turned hostile.
+      function Report()
+        local hostile, hit = 0, 0
+        for _, i in ipairs(Peasants) do if Map.Monsters[i].Hostile then hostile = hostile + 1 end end
+        for _, i in ipairs(Targets) do
+          local m = Map.Monsters[i]
+          if m.HP < m.FullHP or m.IsDead then hit = hit + 1 end
+        end
+        return hit, hostile
+      end
+      return Setup("Apprentice Mage", true)
+    expect: "12	6"
+- press_action: {action: attack, seconds: 3}
+- mod_lua:
+    code: |
+      local hit, hostile = Report()
+      return hit > 0, hostile
+    expect: "true	0"
+# A peasant hit: the other peasants near it turn hostile, as in the original.
+- mod_lua:
+    code: |
+      -- The mages go out of the way; the attack key aims at hostile monsters, so the peasants in front are ones
+      -- already angered.
+      for _, i in ipairs(Targets) do
+        Map.Monsters[i].X = Party.X + 9000
+        Map.Monsters[i].Y = Party.Y + 9000
+      end
+      local targets, peasants = Setup("Peasant", false)
+      for _, i in ipairs(Targets) do Map.Monsters[i].Hostile = true end
+      return targets, peasants
+    expect: "12	6"
+- press_action: {action: attack, seconds: 3}
+- mod_lua:
+    code: |
+      local hit, hostile = Report()
+      return hit > 0, hostile > 0, ModRT.totalErrorCount
+    expect: "true	true	0"
