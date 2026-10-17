@@ -1,0 +1,35 @@
+id: mod_runtime.maw.cheat_log
+title: MAW's editor block notes only calls to the editor, not to every stand-in
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW blocks the original's editor by wrapping getmetatable(Editor).__call and noting each attempt in vars.r1
+# (zzMaw-Monsters.lua, rewrapped on every map load). Editor is a stand-in in the port; all stand-ins shared one
+# metatable, so every call to any of them was noted: millions of entries, a 98 MB save and seconds lost at every
+# map change (found in play). Each root stand-in has its own metatable now (stubs.lua), and older games' logs are cut
+# to their last 100 entries when a map loads (zMaw-CheatLog.lua). Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+- load_map: {map: 6d07.blv}
+- mod_lua:
+    code: |
+      local before = vars.r1 and #vars.r1 or 0
+      for i = 1, 50 do Editor.Anything(i) end
+      local after = vars.r1 and #vars.r1 or 0
+      return before, after, getmetatable(Editor) ~= getmetatable(Editor.Anything), ModRT.totalErrorCount
+    expect: "0\t0\ttrue\t0"
+# An older game's log is cut down as a map loads.
+- mod_lua:
+    code: |
+      vars.r1 = {}
+      for i = 1, 5000 do vars.r1[i] = "entry " .. i end
+      return #vars.r1
+    expect: "5000"
+- load_map: {map: oute3.odm}
+- mod_lua:
+    code: |
+      return #vars.r1, vars.r1[#vars.r1], ModRT.totalErrorCount
+    expect: "100\tentry 5000\t0"

@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdio>
 #include <cctype>
 #include <cmath>
 #include <exception>
@@ -424,7 +425,6 @@ constexpr PlayerUnsignedField PlayerUnsignedFields[] = {
     {"SpeedBase", &Character::speed},
     {"AccuracyBase", &Character::accuracy},
     {"LuckBase", &Character::luck},
-    {"Face", &Character::portraitPictureId},
     {"BirthYear", &Character::birthYear},
     {"RosterId", &Character::rosterId},
     {"RaceId", &Character::raceId},
@@ -515,6 +515,15 @@ int nativePlayerGet(lua_State *pLuaState)
     if (pCharacter == nullptr)
     {
         return 0;
+    }
+
+    // The original's Face is the character's row of the portrait table (Game.CharacterPortraits), from 0; the
+    // engine's picture number is another count past the rows without pictures of their own (the wetsuit).
+    if (field == "Face")
+    {
+        lua_pushinteger(pLuaState, static_cast<lua_Integer>(
+            pCharacter->characterDataId > 0 ? pCharacter->characterDataId - 1 : pCharacter->portraitPictureId));
+        return 1;
     }
 
     for (const PlayerUnsignedField &entry : PlayerUnsignedFields)
@@ -838,6 +847,26 @@ int nativePlayerSet(lua_State *pLuaState)
     {
         pCharacter->recoverySecondsRemaining =
             static_cast<float>(std::clamp<int64_t>(integerArgument(pLuaState, 3), 0, 1000000)) / 60.0f;
+        lua_pushboolean(pLuaState, true);
+        return 1;
+    }
+
+    if (field == "Face")
+    {
+        // A row of the portrait table: its pictures are those its "pcNN-" prefix names.
+        const uint32_t row = clampedInteger<uint32_t>(integerArgument(pLuaState, 3));
+        const GameDataLoader *pData = dataFromHost(pLuaState);
+        const CharacterDollEntry *pEntry =
+            pData != nullptr ? pData->getCharacterDollTable().getCharacter(row + 1) : nullptr;
+        pCharacter->characterDataId = row + 1;
+        pCharacter->portraitPictureId = row;
+        int picture = 0;
+
+        if (pEntry != nullptr && std::sscanf(pEntry->facePicturesPrefix.c_str(), "pc%d", &picture) == 1 && picture > 0)
+        {
+            pCharacter->portraitPictureId = static_cast<uint32_t>(picture - 1);
+        }
+
         lua_pushboolean(pLuaState, true);
         return 1;
     }
@@ -4380,7 +4409,8 @@ int nativePortraitGet(lua_State *pLuaState)
         return 0;
     }
 
-    if (field == "Race" && pEntry->raceId >= 0)
+    // -1 for the rows of no race (the wetsuit, and two of MM8's), as the original's table has it.
+    if (field == "Race")
     {
         lua_pushinteger(pLuaState, pEntry->raceId);
         return 1;

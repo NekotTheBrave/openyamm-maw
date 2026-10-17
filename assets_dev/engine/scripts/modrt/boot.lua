@@ -18,6 +18,8 @@ local handlerFailures = setmetatable({}, {__mode = "k"})
 local callDepth = 0
 local MaxLoggedRepeats = 3
 local MaxHandlerFailures = 3
+local slowHandlerReports = {}
+ModRT.slowHandlerMilliseconds = 100
 
 function ModRT.log(level, text)
     modrt.log(level, tostring(text))
@@ -63,11 +65,24 @@ function ModRT.protectedCall(func, context, ...)
     end
 
     callDepth = callDepth + 1
+    local started = modrt.clock()
     local ok, value = xpcall(func, debug.traceback, ...)
+    local milliseconds = (modrt.clock() - started) * 1000
     callDepth = callDepth - 1
 
     if outermost then
         debug.sethook()
+    end
+
+    -- A handler that holds the game up is noted in the log (the first few times each), with where it is.
+    if milliseconds >= ModRT.slowHandlerMilliseconds then
+        local source = ModRT.handlerSources[func] or "?"
+        local key = tostring(context) .. " @ " .. source
+        slowHandlerReports[key] = (slowHandlerReports[key] or 0) + 1
+
+        if slowHandlerReports[key] <= MaxLoggedRepeats then
+            ModRT.log("info", string.format("[slow] %s: %d ms", key, math.floor(milliseconds + 0.5)))
+        end
     end
 
     if not ok then

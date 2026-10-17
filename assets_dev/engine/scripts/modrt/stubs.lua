@@ -182,6 +182,15 @@ end
 -- Installs a stand-in as a global root, with optional preset fields that behave normally.
 function Stubs.installRoot(name, presets)
     local stub = newStub(name)
+    -- A root of its own metatable: scripts rewrite a root's (MAW wraps getmetatable(Editor).__call to block the
+    -- original's editor), which must not reach every other stand-in through the one they share.
+    local meta = {}
+
+    for key, value in pairs(stubMeta) do
+        meta[key] = value
+    end
+
+    setmetatable(stub, meta)
 
     if presets then
         for key, value in pairs(presets) do

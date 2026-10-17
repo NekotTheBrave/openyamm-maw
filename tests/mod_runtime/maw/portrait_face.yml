@@ -1,0 +1,32 @@
+id: mod_runtime.maw.portrait_face
+title: A character's Face is its row of the portrait table, as the original's, elves included
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MMExtension's Player.Face is the character's row of the portrait table (Game.CharacterPortraits, from 0); the port
+# had given the engine's picture number, the same until the wetsuit row (30), which has no pictures, and one less
+# after it: an elf (row 31, Elf F1) read as the wetsuit, race -1, and MAW's racial skills failed on every skill
+# asked for (found in play: 176 errors a second). Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      pl.Face = 31
+      local elf = pl.Face
+      pl.Face = 22
+      return elf, Game.CharacterPortraits[elf].Race, pl.Face, Game.CharacterPortraits[pl.Face].Race,
+        Game.CharacterPortraits[30].Race, ModRT.totalErrorCount
+    expect: "31\t7\t22\t4\t-1\t0"
+# An elf's skills go through MAW's racial skills without errors.
+- mod_lua:
+    code: |
+      local pl = Party[0]
+      pl.Face = 31
+      local errors = ModRT.totalErrorCount
+      for skill = 0, 38 do pl:GetSkill(skill) end
+      return ModRT.totalErrorCount - errors
+    expect: "0"
