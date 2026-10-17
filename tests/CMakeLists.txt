@@ -67,6 +67,8 @@ add_executable(openyamm_unit_tests
     ModelAnimationTests.cpp
     ModelSunShadowTests.cpp
     ModelEnvironmentTests.cpp
+    LightGridTests.cpp
+    IndoorLightReachTests.cpp
     MonsterTableRegressionTests.cpp
     MobileJumpDoubleTapGestureTests.cpp
     MobileJoystickDirectionTests.cpp
@@ -123,6 +125,7 @@ add_executable(openyamm_unit_tests
     ../engine/ParallelFor.cpp
     ../engine/render/CookedTexture.cpp
     ../engine/render/ModelEnvironment.cpp
+    ../engine/render/LightGrid.cpp
     ../engine/render/TextureBlockCodec.cpp
     ../engine/models/CgltfImplementation.cpp
     ../engine/models/GltfModelLoader.cpp
@@ -211,10 +214,13 @@ add_executable(openyamm_unit_tests
     ../game/indoor/IndoorMovementController.cpp
     ../game/indoor/IndoorPartyRuntime.cpp
     ../game/indoor/IndoorPathfindingBuilder.cpp
+    ../game/indoor/IndoorLightReach.cpp
     ../game/indoor/IndoorPortalGraph.cpp
     ../game/indoor/IndoorPortalVisibility.cpp
     ../game/fx/ParticleRecipes.cpp
     ../game/fx/ProjectileEffectBindings.cpp
+    ../game/fx/ProjectileModelBindings.cpp
+    ../game/fx/ItemModelBindings.cpp
     ../game/fx/SpellAuraEffectBindings.cpp
     ../game/fx/EffectSystem.cpp
     ../game/fx/import/EffectDefinitionLoader.cpp

@@ -57,8 +57,9 @@ enum class ProjectileRecipe
     MonsterDarkBolt,
     Arrow,
     FireArrow,
-    // Spells the classic style draws with their native sprites or not at all; the recipes only let the enhanced
-    // style bind them (see projectileRecipeIsBindingOnly).
+    // Spells with no particle recipe of their own; the recipes only let engine/effects/projectiles.yml bind them
+    // (see projectileRecipeIsBindingOnly). Charm to Control Undead are debuffs applied at once, which fly only when a
+    // map event casts them.
     DeadlySwarm,
     MassDistortion,
     SpiritLash,
@@ -66,6 +67,12 @@ enum class ProjectileRecipe
     SoulDrinker,
     Lifedrain,
     ShrinkingRay,
+    Charm,
+    Blind,
+    Telepathy,
+    Berserk,
+    Enslave,
+    ControlUndead,
     Armageddon,
     GenericParticleTrail,
     GenericFireTrail,

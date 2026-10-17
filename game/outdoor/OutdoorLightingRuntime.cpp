@@ -14,9 +14,7 @@ constexpr float OutdoorLocalFxLightSelectionPadding = 96.0f;
 constexpr float OutdoorMaxUniformFxLightIntensity = 2.5f;
 constexpr float OutdoorFxLightingAmbient = 1.0f;
 constexpr float OutdoorFxLightingScale = 1.6f;
-constexpr float OutdoorFxClusterCellSize = 1536.0f;
-constexpr uint32_t OutdoorFxClusterThreshold = 4;
-constexpr uint32_t MaxOutdoorFxClusters = 8;
+constexpr float OutdoorFxClusterCellSize = 768.0f;
 constexpr float MaxOutdoorFxClusterRadius = 960.0f;
 constexpr float OutdoorLargeLightRadius = 8192.0f;
 
@@ -123,6 +121,7 @@ WorldFxLightEmitter outdoorEmitterFromRenderLight(const RenderLight &light)
 
 std::vector<WorldFxLightEmitter> buildClusteredOutdoorFxLights(
     const std::vector<WorldFxLightEmitter> &sourceLights,
+    uint32_t clusterThreshold,
     uint32_t &clusteredInputLightCount,
     uint32_t &outputClusterLightCount)
 {
@@ -139,8 +138,8 @@ std::vector<WorldFxLightEmitter> buildClusteredOutdoorFxLights(
 
     FxLightClusterConfig clusterConfig = {};
     clusterConfig.cellSize = OutdoorFxClusterCellSize;
-    clusterConfig.thresholdPerSector = OutdoorFxClusterThreshold;
-    clusterConfig.maxClustersPerSector = MaxOutdoorFxClusters;
+    clusterConfig.thresholdPerSector = clusterThreshold;
+    clusterConfig.maxClustersPerSector = clusterThreshold;
     clusterConfig.maxRadius = MaxOutdoorFxClusterRadius;
     clusterConfig.maxIntensity = OutdoorMaxUniformFxLightIntensity;
     clusterConfig.allowSectorlessLights = true;
@@ -219,18 +218,20 @@ void OutdoorLightingRuntime::reset()
     m_outputClusterLightCount = 0;
 }
 
-void OutdoorLightingRuntime::build(const WorldFxSystem &worldFxSystem)
+void OutdoorLightingRuntime::build(const WorldFxSystem &worldFxSystem, uint32_t clusterThreshold)
 {
-    build(worldFxSystem.lightEmitters());
+    build(worldFxSystem.lightEmitters(), clusterThreshold);
 }
 
-void OutdoorLightingRuntime::build(const std::vector<WorldFxLightEmitter> &lightEmitters)
+void OutdoorLightingRuntime::build(const std::vector<WorldFxLightEmitter> &lightEmitters, uint32_t clusterThreshold)
 {
     reset();
+    m_clusterThreshold = clusterThreshold;
 
     m_sourceLightCount = static_cast<uint32_t>(lightEmitters.size());
     m_lights = buildClusteredOutdoorFxLights(
         lightEmitters,
+        clusterThreshold,
         m_clusteredInputLightCount,
         m_outputClusterLightCount);
 
@@ -346,6 +347,35 @@ OutdoorSelectedFxLights OutdoorLightingRuntime::selectForBounds(
         0.0f
     }};
     return result;
+}
+
+OutdoorSelectedFxLights OutdoorLightingRuntime::ambientOnlyLights()
+{
+    OutdoorSelectedFxLights result = {};
+    result.params = {{0.0f, OutdoorFxLightingAmbient, OutdoorFxLightingScale, 0.0f}};
+    return result;
+}
+
+std::vector<Engine::LightGridLight> OutdoorLightingRuntime::gridLights() const
+{
+    std::vector<Engine::LightGridLight> lights;
+    lights.reserve(m_lights.size());
+    for (const WorldFxLightEmitter &light : m_lights)
+    {
+        const float intensity = emitterUniformIntensity(light);
+        if (light.radius <= 1.0f || intensity <= 0.01f)
+        {
+            continue;
+        }
+        Engine::LightGridLight gridLight;
+        gridLight.position = {light.x, light.y, light.z};
+        gridLight.radius = light.radius;
+        gridLight.color = {redChannel(light.colorAbgr), greenChannel(light.colorAbgr), blueChannel(light.colorAbgr)};
+        gridLight.intensity = intensity * OutdoorFxLightingScale;
+        gridLight.dynamic = light.kind != RenderLightKind::Static;
+        lights.push_back(gridLight);
+    }
+    return lights;
 }
 
 std::array<float, 3> OutdoorLightingRuntime::sampleLightingRgb(const bx::Vec3 &position) const

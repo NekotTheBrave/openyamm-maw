@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <stdexcept>
 
 namespace OpenYAMM::Engine
@@ -16,6 +17,7 @@ namespace
 {
 constexpr float Pi = 3.14159265358979323846f;
 constexpr uint16_t EnvironmentSize = 128;
+constexpr uint16_t RoomEnvironmentSize = 32;
 constexpr uint32_t SampleCount = 128;
 
 float radicalInverse(uint32_t value)
@@ -44,6 +46,95 @@ bx::Vec3 cubeDirection(uint8_t face, float u, float v)
         {1, -v, -u}, {-1, -v, u}, {u, 1, v}, {u, -1, -v}, {u, -v, 1}, {-u, -v, -1}
     }};
     return bx::normalize(directions[face]);
+}
+
+// GGX-prefiltered mip chain of a radiance function (mip m = roughness m / (levels - 1)), scaled to unit average
+// luminance.
+std::vector<ModelEnvironmentMip> filterRadiance(uint16_t topSize, float luminance,
+    const std::function<std::array<float, 3>(const bx::Vec3 &)> &radiance)
+{
+    // The shader reads roughness r at mip r x (levels - 1), so the levels span roughness 0..1 whatever the size.
+    uint32_t levelCount = 0;
+    for (uint16_t size = topSize; size > 0; size /= 2)
+    {
+        ++levelCount;
+    }
+    std::vector<ModelEnvironmentMip> mips;
+    std::vector<std::vector<bx::Vec3>> halfDirectionsByMip;
+    for (uint16_t size = topSize; size > 0; size /= 2)
+    {
+        ModelEnvironmentMip mip;
+        mip.size = size;
+        const float roughness = float(mips.size()) / float(levelCount - 1);
+        std::vector<bx::Vec3> halfDirections;
+        halfDirections.reserve(SampleCount);
+        for (uint32_t sample = 0; sample < SampleCount; ++sample)
+        {
+            halfDirections.push_back(sampleHalfDirection(sample, roughness));
+        }
+        for (std::vector<uint16_t> &pixels : mip.rgbaHalfFaces)
+        {
+            pixels.resize(size_t(size) * size * 4);
+        }
+        mips.push_back(std::move(mip));
+        halfDirectionsByMip.push_back(std::move(halfDirections));
+    }
+    // Every face of every mip is independent: filter them on the load workers.
+    parallelFor(mips.size() * 6, [&](size_t task)
+    {
+        const size_t mipIndex = task / 6;
+        const uint8_t face = uint8_t(task % 6);
+        const uint16_t size = mips[mipIndex].size;
+        const std::vector<bx::Vec3> &halfDirections = halfDirectionsByMip[mipIndex];
+        std::vector<uint16_t> &pixels = mips[mipIndex].rgbaHalfFaces[face];
+        for (uint16_t row = 0; row < size; ++row)
+        {
+            for (uint16_t column = 0; column < size; ++column)
+            {
+                const bx::Vec3 normal = cubeDirection(face,
+                    2.0f * (column + 0.5f) / size - 1.0f, 2.0f * (row + 0.5f) / size - 1.0f);
+                std::array<float, 3> color = {};
+                if (mipIndex == 0)
+                {
+                    color = radiance(normal);
+                }
+                else
+                {
+                    const bx::Vec3 up = std::abs(normal.z) < 0.999f ? bx::Vec3{0, 0, 1} : bx::Vec3{1, 0, 0};
+                    const bx::Vec3 tangent = bx::normalize(bx::cross(up, normal));
+                    const bx::Vec3 bitangent = bx::cross(normal, tangent);
+                    float weight = 0;
+                    for (const bx::Vec3 &sample : halfDirections)
+                    {
+                        const bx::Vec3 half = bx::add(bx::add(bx::mul(tangent, sample.x),
+                            bx::mul(bitangent, sample.y)), bx::mul(normal, sample.z));
+                        const bx::Vec3 light = bx::sub(bx::mul(half, 2.0f * bx::dot(normal, half)), normal);
+                        const float cosine = std::max(bx::dot(normal, light), 0.0f);
+                        if (cosine > 0)
+                        {
+                            const std::array<float, 3> incoming = radiance(light);
+                            for (size_t channel = 0; channel < 3; ++channel)
+                            {
+                                color[channel] += incoming[channel] * cosine;
+                            }
+                            weight += cosine;
+                        }
+                    }
+                    for (float &channel : color)
+                    {
+                        channel /= std::max(weight, 0.0001f);
+                    }
+                }
+                const size_t offset = (size_t(row) * size + column) * 4;
+                for (size_t channel = 0; channel < 3; ++channel)
+                {
+                    pixels[offset + channel] = bx::halfFromFloat(color[channel] / luminance);
+                }
+                pixels[offset + 3] = bx::halfFromFloat(1.0f);
+            }
+        }
+    });
+    return mips;
 }
 
 std::array<float, 3> sampleCloudPlane(const ModelSkyEnvironment &sky,
@@ -105,82 +196,41 @@ std::vector<ModelEnvironmentMip> prepareModelSkyEnvironment(const ModelSkyEnviro
     }
     // Probe irradiance supplies scene brightness; normalize the cloud pattern once without losing its colour.
     const float luminance = std::max(average[0] * 0.2126f + average[1] * 0.7152f + average[2] * 0.0722f, 0.01f);
-    std::vector<ModelEnvironmentMip> mips;
-    std::vector<std::vector<bx::Vec3>> halfDirectionsByMip;
-    for (uint16_t size = EnvironmentSize; size > 0; size /= 2)
+    return filterRadiance(EnvironmentSize, luminance, [&](const bx::Vec3 &direction)
     {
-        ModelEnvironmentMip mip;
-        mip.size = size;
-        const float roughness = float(mips.size()) / 7.0f;
-        std::vector<bx::Vec3> halfDirections;
-        halfDirections.reserve(SampleCount);
-        for (uint32_t sample = 0; sample < SampleCount; ++sample)
-        {
-            halfDirections.push_back(sampleHalfDirection(sample, roughness));
-        }
-        for (std::vector<uint16_t> &pixels : mip.rgbaHalfFaces)
-        {
-            pixels.resize(size_t(size) * size * 4);
-        }
-        mips.push_back(std::move(mip));
-        halfDirectionsByMip.push_back(std::move(halfDirections));
-    }
-    // Every face of every mip is independent: filter them on the load workers.
-    parallelFor(mips.size() * 6, [&](size_t task)
+        return sampleCloudPlane(sky, linearPixels, average, direction);
+    });
+}
+
+std::vector<ModelEnvironmentMip> prepareModelRoomEnvironment()
+{
+    // A neutral enclosed room: dark floor, lighter walls with a few soft brighter patches (torches, openings) and a
+    // dim ceiling, so metal shows a room-like reflection instead of a flat colour. Luminance averages about 1, like the
+    // sky cube, because the renderer tints it per frame by the room's ambient and light colour.
+    const auto radiance = [](const bx::Vec3 &direction)
     {
-        const size_t mipIndex = task / 6;
-        const uint8_t face = uint8_t(task % 6);
-        const uint16_t size = mips[mipIndex].size;
-        const std::vector<bx::Vec3> &halfDirections = halfDirectionsByMip[mipIndex];
-        std::vector<uint16_t> &pixels = mips[mipIndex].rgbaHalfFaces[face];
-        for (uint16_t row = 0; row < size; ++row)
+        const float up = direction.z;
+        float level = up < 0.0f ? 0.45f + 0.35f * (1.0f + up) : 1.0f - 0.35f * up;
+        const float azimuth = std::atan2(direction.y, direction.x);
+        const float band = std::exp(-up * up * 18.0f);
+        const float patches = std::pow(std::max(std::cos(azimuth * 3.0f + 0.7f), 0.0f), 6.0f);
+        level += band * (0.25f + 1.6f * patches);
+        return std::array<float, 3>{level, level, level};
+    };
+    float total = 0.0f;
+    uint32_t samples = 0;
+    for (uint8_t face = 0; face < 6; ++face)
+    {
+        for (int row = 0; row < 16; ++row)
         {
-            for (uint16_t column = 0; column < size; ++column)
+            for (int column = 0; column < 16; ++column)
             {
-                const bx::Vec3 normal = cubeDirection(face,
-                    2.0f * (column + 0.5f) / size - 1.0f, 2.0f * (row + 0.5f) / size - 1.0f);
-                std::array<float, 3> color = {};
-                if (mipIndex == 0)
-                {
-                    color = sampleCloudPlane(sky, linearPixels, average, normal);
-                }
-                else
-                {
-                    const bx::Vec3 up = std::abs(normal.z) < 0.999f ? bx::Vec3{0, 0, 1} : bx::Vec3{1, 0, 0};
-                    const bx::Vec3 tangent = bx::normalize(bx::cross(up, normal));
-                    const bx::Vec3 bitangent = bx::cross(normal, tangent);
-                    float weight = 0;
-                    for (const bx::Vec3 &sample : halfDirections)
-                    {
-                        const bx::Vec3 half = bx::add(bx::add(bx::mul(tangent, sample.x),
-                            bx::mul(bitangent, sample.y)), bx::mul(normal, sample.z));
-                        const bx::Vec3 light = bx::sub(bx::mul(half, 2.0f * bx::dot(normal, half)), normal);
-                        const float cosine = std::max(bx::dot(normal, light), 0.0f);
-                        if (cosine > 0)
-                        {
-                            const std::array<float, 3> radiance = sampleCloudPlane(sky, linearPixels, average, light);
-                            for (size_t channel = 0; channel < 3; ++channel)
-                            {
-                                color[channel] += radiance[channel] * cosine;
-                            }
-                            weight += cosine;
-                        }
-                    }
-                    for (float &channel : color)
-                    {
-                        channel /= std::max(weight, 0.0001f);
-                    }
-                }
-                const size_t offset = (size_t(row) * size + column) * 4;
-                for (size_t channel = 0; channel < 3; ++channel)
-                {
-                    pixels[offset + channel] = bx::halfFromFloat(color[channel] / luminance);
-                }
-                pixels[offset + 3] = bx::halfFromFloat(1.0f);
+                total += radiance(cubeDirection(face, (column + 0.5f) / 8.0f - 1.0f, (row + 0.5f) / 8.0f - 1.0f))[0];
+                ++samples;
             }
         }
-    });
-    return mips;
+    }
+    return filterRadiance(RoomEnvironmentSize, total / samples, radiance);
 }
 
 std::vector<uint8_t> prepareModelEnvironmentBrdf()

@@ -3652,6 +3652,7 @@ void EventRuntime::addVariableValue(
 
         if (value > 0)
         {
+            runtimeState.statusMessages.push_back("You find " + std::to_string(value) + " food");
             queuePortraitFxRequest(runtimeState, PortraitFxEventKind::QuestComplete, pParty, targetMemberIndices);
         }
 

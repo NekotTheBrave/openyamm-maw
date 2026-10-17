@@ -87,6 +87,16 @@ per creature, which is what instancing (section 4) batches.
   saves on the first actor update after loading. Once the body is gone, hover outlines and picking go through the
   satchel; a sunk empty corpse reports empty bounds and is not picked. Corpses seen already at rest (a loaded map)
   show their satchels at once. `corpses=keep` leaves the bodies as before.
+- **Projectile models (2026-10-16).** `engine/models/projectiles.yml` binds a model to a projectile object id
+  (`object_list.txt` ObjectId) with its length in world units and an optional spin about the model's forward, up or
+  side axis; the model points along glTF +Z with its origin at the projectile's centre.
+  `WorldFxSystem::syncProjectileModels` keeps one static stand-in instance per flying projectile (so flipbook and
+  additive materials work), turned by yaw then pitch along its velocity and then by its spin, at the effect anchor
+  (`projectileRecipeAnchorOffset`) so it lines up with the enhanced trail; a settled projectile lies level and still.
+  Bound projectiles draw no native sprite in either projectile style, and the map loader no longer preloads the
+  sprites of unpickable bound objects; indoors the models follow the portal-revealed sectors. Every solid projectile
+  is bound (arrows, cannonball, rocks, ice shards, blades, shrapnel, Fire Spike, Flying Fist, Starburst, meteors,
+  thrown items); their flight sprites are archived (`level_generation/props/projectiles_claude/README.md`).
 - **Inspect portrait.** The actor inspect popup shows a modelled actor's model instead of its sprite
   (`game/render/ActorModelPreview`). `WorldFxSystem::syncInspectPortrait` keeps a hidden copy of the actor's model
   (same skin and attachments) at the origin, which no world, shadow or reflection pass draws. On the popup's clock it
@@ -179,6 +189,22 @@ skirts seen from below). About 8 s per creature in the first (Blender) version o
 Until the switch to cooked models, `tools/install_model.py` applies the same pass to the uncooked runtime copy in
 `assets_dev` (`tools/model_backface_split.py`, marked `asset.extras.openyamm_backface_split`; 0.25 s per creature);
 the sources in `assets_source` stay unprocessed, and the cook applies the pass itself (ASSET_COOKING_PLAN.md §12).
+
+**Foliage depth order** (`ModelRenderer::submitStatic`). Static batches are drawn nearest first (by their nearest
+placement), not only the placements inside each batch, so one species' crowns reject the leaves of the species behind
+them. The opaque, non-billboard primitives of every batch that has alpha-tested leaves (inner crown shells, trunks)
+are drawn into the depth prepass before the leaves, so the cards they hide fail the depth test before their alpha
+test runs; their shaded pass then draws at the same depth with the same program. Blended primitives are shaded back
+to front (2026-10-16, the MM8 foliage overdraw pass). Alpha-tested leaves are shaded by `fs_model_prepassed` after
+their prepass, and that variant skips the normal map and the sky reflection: on leaf cards neither shows, and leaves
+fill much of a forest view. Measured in the dense out07 view (frozen, desktop), the frame went 0.83 -> 0.80 ms; there
+the leaves cost about 0.34 ms (depth prepass about 0.12, shading about 0.22), and dropping the prepass would add about
+0.25 ms.
+
+**Static blended order** (`ModelRenderer::renderStatic`). Blended primitives (flames, glows) write no depth, so they
+are shaded in a second pass after every opaque and alpha-tested primitive of the static decorations. Before that,
+alpha-tested foliage shaded later (equal depth after its prepass) painted over a flame in front of it whenever the
+blended draws shared the world view, which they do without ambient occlusion (2026-10-16, the MM8 beacons among palms).
 
 **Vertex cache order** (`GltfModelLoader`). Every loaded triangle primitive except blended materials is reordered
 for the GPU's post-transform vertex cache (`meshopt_optimizeVertexCacheFifo`, meshoptimizer from bgfx's `3rdparty`).
@@ -277,8 +303,52 @@ alpha-tested foliage gets a depth prepass, followed by a discard-free shading pa
 
 **Lighting model.** `ModelRenderLighting` holds the shared terms (sun direction and colour, fog, indoor key light,
 `environmentScale`: sky reflection as a multiple of the ambient light) and the per-model terms (`ambientColor`
-× `ambient`, `direct` = sun visibility, up to 12 directional point lights). Instanced paths keep the shared terms
+× `ambient`, `direct` = sun visibility, up to 12 uniform point lights). Instanced paths keep the shared terms
 in uniforms and move the per-model terms into instance data (`v_color0`), so a batch needs only one uniform set.
+
+**Light grid** (`pLightGrid`, phases 3 and 4 of
+[the lighting and materials plan](../../docs/LIGHTING_AND_MATERIALS_ARCHITECTURE.md), 2026-10-16). In the main view
+a model's point lights come from a clustered grid instead of the uniform list (`engine/render/LightGrid.h`,
+`game/shaders/light_grid.sh`). Each frame the CPU bins the frame's lights into view tiles × logarithmic depth slices
+(`video.light_grid`: high 16×9×24 cells, 32 lights per cell; low, the Android default, 8×5×16 and 16), out to 4,096
+units indoors and 8,192 outdoors, with lights fading over the last 15 %. Dynamic lights (torch, spells, effects) are
+binned ahead of static ones, so a full cell drops static lights first. The result is one point-sampled RGBA32F texture,
+64 texels wide (light data at 3 texels per light, then the cells, then the index list), read with `texelFetch` at
+stage 11, plus `u_lightGrid`; `LightGridBinding` binds both for a draw (`ModelRenderer::bindLightGrid` for models). A
+fragment loops over only its own cell's lights. Indoors the grid holds the lighting frame's lights, outdoors the
+object runtime lights (authored and dynamic) × `OutdoorFxLightingScale`. A grid without lights is not uploaded or
+bound, so lightless outdoor scenes run the old path. Creatures read full lighting from it; instanced batches compare
+the grid pointer, so point-lit creatures indoors now instance like outdoor ones. Reflection passes, the editor and
+terrain bushes keep the uniform list (`creatureModelLighting(..., selectPointLights)` selects it for the water
+reflection). World geometry reads the same grid (BLV faces, terrain, buildings; see the plan's section 12). Console
+`render light_grid off` empties it for A/B profiling.
+
+**Room of a model** (`ModelRenderLighting::sector`, `ModelStaticPlacement::sector`, phase 5). Indoors a grid light
+lights a model only when its reach (the rooms it lights through portals) holds the model's sector, so light no longer
+passes through walls. The sector reaches the fragment shader as `v_sector`: skinned instances in `i_data1.x`, static
+placements packed with the LOD crossfade as `i_data4.w = crossfade + 4 × (sector + 1)` (decoded in
+`vs_model_instanced`), single draws in `u_modelSector`; -1 (outdoors) takes every light. The indoor renderer gives a
+creature its sector (cached per instance, resampled after it moves 16 units) and that room's ambient through the
+per-model lighting callback; both are instance data, so creatures still draw instanced. Decorations take their
+billboard's sector, and carried items their carrier's.
+
+**Bloom glow** (`setGlowView`, `u_modelGlow`, phase 7 of the lighting plan). When the grading pass runs bloom,
+`renderStatic` submits each emitting primitive a second time into the glow view, with the same bindings
+(`BGFX_DISCARD_NONE`), the alpha-tested program and an additive state over the world depth: blended flame and glow
+cards (additive, unlit or flipbook materials) with their display colour times a weight (0.45 for additive cards,
+whose flipbooks already include a halo; 0.8 for blended flames), other emissive materials with their emission and
+pulse. `fs_model` returns the glow right after the fog, so cards still fade in fog and so does their bloom. Creatures
+do not glow yet (their instanced paths would need the same second submission).
+
+**Highlights on static models** (`pointSpecularOnly`, 2026-10-16). Indoors, a decoration placement's light is the
+light its sprite would receive, which already includes the nearby torches' diffuse share, and the sky reflection is
+the wrong environment there. With `pointSpecularOnly` the point lights add only their GGX specular lobe
+(`modelSpecular` in `fs_model.sc`: grid mode 2, or a negative uniform point count without a grid). It is added after
+the display-space scaling by the light level, since a highlight reflects the light itself. Metal props catch the
+torches' coloured highlights; matte and rough surfaces barely change, and materials without specular skip the grid
+loop. Both indoor and outdoor decorations take their highlights from the grid in the main view, so braziers and
+lanterns light nearby metal at night. Without a grid the indoor renderer still passes one set per `renderStatic`
+call: up to 12 lights within `IndoorDecorationHighlightReach` of the camera (`selectDrawLightSetForBounds`).
 
 **Per-draw overhead** is the main cost on the CPU-bound reference pose. bgfx keeps uniform values between draws.
 Shadow matrices and samplers are bound per draw only when shadow maps exist; otherwise the zero enable flag is set
@@ -302,7 +372,8 @@ A variant needs no new mesh: give it a tier ramp, a scale and attachments, plus 
 
 Console `render <switch> on|off|toggle`. Layers: `terrain`, `bmodels`, `sky`, `water`, `grass`, `deco_models`,
 `deco_sprites`, `actors`, `creature_models`, `effects`. Settings: `foliage`, `instancing`, `shadows`, `ao`,
-`grading`, `model_lods`, `lightmaps`, `freeze`. `render lod <-1..3>` forces a LOD. Every change logs
+`grading`, `model_lods`, `lightmaps`, `creature_outlines`, `light_grid` (off: no point lights from the grid), `freeze`,
+`hud` (off: gameplay draws only the world, for clean captures). `render lod <-1..3>` forces a LOD. Every change logs
 `[RenderLayers]`. Scripts and results:
 [decoration and reference-pose profiling](../../output/performance/decorations_20261008/README.md).
 

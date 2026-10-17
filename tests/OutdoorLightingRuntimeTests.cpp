@@ -113,7 +113,8 @@ TEST_CASE("outdoor lighting runtime clusters dense sectorless projectile lights"
 {
     std::vector<WorldFxLightEmitter> lights;
 
-    for (uint32_t index = 0; index < 20; ++index)
+    // More than the high threshold (24): below it every light stays its own.
+    for (uint32_t index = 0; index < 30; ++index)
     {
         lights.push_back(makeLight(static_cast<float>(index * 10), 32.0f, 64.0f, 128.0f, makeAbgr(255, 64, 32)));
     }
@@ -128,7 +129,7 @@ TEST_CASE("outdoor lighting runtime clusters dense sectorless projectile lights"
 
     const OutdoorSelectedFxLights selected = runtime.selectForBounds({0.0f, 0.0f, 0.0f}, bounds);
 
-    CHECK_EQ(runtime.sourceLightCount(), 20u);
+    CHECK_EQ(runtime.sourceLightCount(), 30u);
     CHECK_EQ(runtime.outputClusterLightCount(), 1u);
     CHECK_EQ(selected.lightCount, 1u);
 }
@@ -148,7 +149,7 @@ TEST_CASE("outdoor lighting runtime keeps spread sectorless projectile clusters 
     runtime.build(lights);
 
     CHECK_EQ(runtime.sourceLightCount(), 80u);
-    CHECK(runtime.outputClusterLightCount() <= OutdoorSelectedFxLights::MaxLights);
+    CHECK(runtime.outputClusterLightCount() <= OpenYAMM::Game::FxLightClusterThresholdHigh);
 
     const std::array<float, 3> leftSample = runtime.sampleLightingRgb({0.0f, 0.0f, 128.0f});
     const std::array<float, 3> rightSample = runtime.sampleLightingRgb({4800.0f, 1280.0f, 128.0f});

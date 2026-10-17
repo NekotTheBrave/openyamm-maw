@@ -1,19 +1,27 @@
 // Static model placements (decorations): instance data holds the affine matrix rows (i_data0..2), the placement
-// light (i_data3) and the point light plus LOD crossfade (i_data4).
-// [0] time seconds, wind amplitude (model units), model height (model units), billboard flag
+// light (i_data3) and the point light plus LOD crossfade (i_data4; w = crossfade + 4 x (indoor sector + 1)).
+// [0] time seconds, wind amplitude (model units), model height (model units), billboard (1 impostor about the model
+// origin, 2 card about its primitive's centre)
 // [1] texture scroll u, v per second, flipbook columns, rows; [2] flipbook frames per second, flutter amplitude,
-// emission pulse amplitude and period (seconds)
-uniform vec4 u_modelStatic[3];
+// emission pulse amplitude and period (seconds; negative: flicker, seconds per random change)
+// [3] card centre in mesh space (xyz)
+uniform vec4 u_modelStatic[4];
 
 mat4 modelStaticMatrix()
 {
     return mtxFromRows(i_data0, i_data1, i_data2, vec4(0.0, 0.0, 0.0, 1.0));
 }
 
-// Per-placement phase from its position, so neighbouring decorations do not animate in step.
+// Per-placement phase from its position, so neighbouring decorations do not animate in step; a card billboard adds
+// its own centre, so the candles of one chandelier flicker and play their flames apart.
 float modelStaticPhase()
 {
-    return fract(sin(dot(vec2(i_data0.w, i_data1.w), vec2(0.0129898, 0.078233))) * 43758.5453);
+    vec2 seed = vec2(i_data0.w, i_data1.w);
+    if (u_modelStatic[0].w > 1.5)
+    {
+        seed += u_modelStatic[3].xy * 173.0 + u_modelStatic[3].zz * 61.0;
+    }
+    return fract(sin(dot(seed, vec2(0.0129898, 0.078233))) * 43758.5453);
 }
 
 // Animated texture coordinates: scrolling, or the current flipbook frame.
@@ -37,6 +45,22 @@ float modelStaticPulse()
     {
         return 1.0;
     }
+    if (u_modelStatic[2].w < 0.0)
+    {
+        // Flicker: smoothed value noise at the given rate plus a faster, weaker octave, out of step per placement.
+        float t = u_modelStatic[0].x / -u_modelStatic[2].w + modelStaticPhase() * 97.0;
+        float i = floor(t);
+        float f = t - i;
+        float a = fract(sin(i * 12.9898) * 43758.5453);
+        float b = fract(sin((i + 1.0) * 12.9898) * 43758.5453);
+        float slow = mix(a, b, f * f * (3.0 - 2.0 * f));
+        float t2 = t * 2.7 + 13.0;
+        float i2 = floor(t2);
+        float f2 = t2 - i2;
+        float fast = mix(fract(sin(i2 * 78.233) * 43758.5453), fract(sin((i2 + 1.0) * 78.233) * 43758.5453),
+            f2 * f2 * (3.0 - 2.0 * f2));
+        return 1.0 + u_modelStatic[2].z * ((slow * 0.7 + fast * 0.3) * 2.0 - 1.0);
+    }
     return 1.0 + u_modelStatic[2].z * sin(6.2831853 * (u_modelStatic[0].x / u_modelStatic[2].w + modelStaticPhase()));
 }
 
@@ -56,12 +80,14 @@ vec3 modelStaticPosition(vec3 position, vec3 cameraPosition)
     float scale = length(mul(model, vec4(1.0, 0.0, 0.0, 0.0)).xyz);
     if (u_modelStatic[0].w > 0.5)
     {
-        // Impostor quad in the model's across/up plane: turn it about the vertical axis toward the camera.
+        // Impostor quad in the model's across/up plane: turn it about the vertical axis toward the camera, through
+        // the model origin, or through the card's own centre for a card billboard.
+        vec3 pivot = u_modelStatic[0].w > 1.5 ? mul(model, vec4(u_modelStatic[3].xyz, 1.0)).xyz : origin;
         vec3 across = mul(model, vec4(1.0, 0.0, 0.0, 0.0)).xyz / max(scale, 0.0001);
-        vec3 offset = world - origin;
-        vec2 toCamera = cameraPosition.xy - origin.xy;
+        vec3 offset = world - pivot;
+        vec2 toCamera = cameraPosition.xy - pivot.xy;
         toCamera *= inversesqrt(max(dot(toCamera, toCamera), 0.0001));
-        world = origin + vec3(-toCamera.y, toCamera.x, 0.0) * dot(offset, across) + vec3(0.0, 0.0, offset.z);
+        world = pivot + vec3(-toCamera.y, toCamera.x, 0.0) * dot(offset, across) + vec3(0.0, 0.0, offset.z);
     }
     if (u_modelStatic[0].y > 0.0)
     {
@@ -81,7 +107,9 @@ vec3 modelStaticNormal(vec3 normal, vec3 cameraPosition)
 {
     if (u_modelStatic[0].w > 0.5)
     {
-        vec2 toCamera = cameraPosition.xy - vec2(i_data0.w, i_data1.w);
+        vec2 pivot = u_modelStatic[0].w > 1.5 ? mul(modelStaticMatrix(), vec4(u_modelStatic[3].xyz, 1.0)).xy
+            : vec2(i_data0.w, i_data1.w);
+        vec2 toCamera = cameraPosition.xy - pivot;
         toCamera *= inversesqrt(max(dot(toCamera, toCamera), 0.0001));
         return vec3(toCamera, 0.0);
     }

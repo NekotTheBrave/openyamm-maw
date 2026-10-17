@@ -2639,7 +2639,8 @@ effects:
     - {time: 0, rgb: [35, 15, 50], transparency: 110}
     - {time: 1, rgb: [20, 15, 25], transparency: 255}
     motion_keys: []
-# Toxic Cloud: the native cloud stays visible, rolling out heavy green-black poison smoke.
+# Toxic Cloud: a cloud of green poison breathing round the ghostly skull (its model), rolling out heavy green-black
+#   smoke.
 - id: openyamm:fx/projectile/toxic_cloud
   display_name: Toxic cloud (projectile)
   duration_seconds: 30
@@ -2654,9 +2655,37 @@ effects:
     scale_keys:
     - {time: 0, value: 0.9}
     color_keys:
-    - {time: 0, rgb: [90, 160, 40], transparency: 200}
+    - {time: 0, rgb: [90, 160, 40], transparency: 180}
     motion_keys: []
   - id: 2
+    type: sprite
+    start_seconds: 0
+    end_seconds: 30
+    sprite_resource: openyamm:effect-sprite/smoke_puff
+    blend: alpha
+    repeat_count: 23
+    scale_keys:
+    - {time: 0, value: 0.6375}
+    - {time: 0.5, value: 0.8250000000000001}
+    - {time: 1, value: 0.6375}
+    color_keys:
+    - {time: 0, rgb: [90, 150, 55], transparency: 110}
+    motion_keys: []
+  - id: 3
+    type: sprite
+    start_seconds: 0
+    end_seconds: 30
+    sprite_resource: openyamm:effect-sprite/smoke_puff
+    blend: alpha
+    repeat_count: 33
+    scale_keys:
+    - {time: 0, value: 0.66}
+    - {time: 0.5, value: 0.54}
+    - {time: 1, value: 0.66}
+    color_keys:
+    - {time: 0, rgb: [120, 190, 70], transparency: 140}
+    motion_keys: []
+  - id: 4
     type: sprite_system
     start_seconds: 0
     end_seconds: 30
@@ -2666,7 +2695,7 @@ effects:
     random_roll: true
     spin_speed: 0.8
     sprites_per_emission: 1
-    emission_distance: 14
+    emission_distance: 12
     particle_lifetime_seconds: 0.7
     emission_shape: sphere
     radius: 12
@@ -2675,11 +2704,11 @@ effects:
     - {time: 0.0, value: 0.3}
     - {time: 1.0, value: 0.6}
     color_keys:
-    - {time: 0, rgb: [60, 100, 30], transparency: 140}
-    - {time: 0.5, rgb: [40, 60, 25], transparency: 185}
+    - {time: 0, rgb: [70, 120, 35], transparency: 90}
+    - {time: 0.5, rgb: [45, 70, 28], transparency: 150}
     - {time: 1, rgb: [25, 30, 20], transparency: 255}
     motion_keys: []
-  - id: 3
+  - id: 5
     type: sprite_system
     start_seconds: 0
     end_seconds: 30
@@ -2689,7 +2718,7 @@ effects:
     random_roll: true
     spin_speed: 0.8
     sprites_per_emission: 1
-    emission_distance: 20
+    emission_distance: 16
     particle_lifetime_seconds: 0.5
     emission_shape: sphere
     radius: 6
@@ -2698,7 +2727,7 @@ effects:
     - {time: 0.0, value: 0.2}
     - {time: 1.0, value: 0.4}
     color_keys:
-    - {time: 0, rgb: [130, 200, 70], transparency: 170}
+    - {time: 0, rgb: [130, 200, 70], transparency: 120}
     - {time: 1, rgb: [60, 100, 30], transparency: 255}
     motion_keys: []
 # Sharpmetal: the native shards stay visible, with metallic glints and thin dark streaks.
@@ -3641,7 +3670,8 @@ effects:
     - {time: 0, rgb: [255, 210, 130], transparency: 0}
     - {time: 1, rgb: [255, 80, 20], transparency: 255}
     motion_keys: []
-# Sparks: each bouncing spark keeps its native sprite, with a white-blue electric glow and a short crackling arc.
+# Sparks: each bouncing spark is a crackling ball of white-blue electricity (two electric cores breathing out of
+#   step and a cross flare, as the native sprite drew it), with a glow and a short crackling arc.
 - id: openyamm:fx/projectile/sparks
   display_name: Sparks (projectile)
   duration_seconds: 30
@@ -3654,9 +3684,9 @@ effects:
     sprite_resource: openyamm:effect-sprite/glow
     blend: additive
     scale_keys:
-    - {time: 0, value: 0.4}
+    - {time: 0, value: 0.55}
     color_keys:
-    - {time: 0, rgb: [130, 180, 255], transparency: 170}
+    - {time: 0, rgb: [130, 180, 255], transparency: 150}
     motion_keys: []
   - id: 2
     type: sprite
@@ -3664,15 +3694,43 @@ effects:
     end_seconds: 30
     sprite_resource: openyamm:effect-sprite/electric
     blend: additive
-    repeat_count: 300
+    repeat_count: 333
+    scale_keys:
+    - {time: 0, value: 0.21}
+    - {time: 0.5, value: 0.375}
+    - {time: 1, value: 0.21}
+    color_keys:
+    - {time: 0, rgb: [235, 242, 255], transparency: 0}
+    motion_keys: []
+  - id: 3
+    type: sprite
+    start_seconds: 0
+    end_seconds: 30
+    sprite_resource: openyamm:effect-sprite/electric
+    blend: additive
+    repeat_count: 230
+    scale_keys:
+    - {time: 0, value: 0.24}
+    - {time: 0.5, value: 0.15000000000000002}
+    - {time: 1, value: 0.24}
+    color_keys:
+    - {time: 0, rgb: [200, 220, 255], transparency: 30}
+    motion_keys: []
+  - id: 4
+    type: sprite
+    start_seconds: 0
+    end_seconds: 30
+    sprite_resource: openyamm:effect-sprite/flare_cross
+    blend: additive
+    repeat_count: 428
     scale_keys:
     - {time: 0, value: 0.128}
     - {time: 0.5, value: 0.192}
     - {time: 1, value: 0.128}
     color_keys:
-    - {time: 0, rgb: [230, 240, 255], transparency: 20}
+    - {time: 0, rgb: [255, 255, 255], transparency: 20}
     motion_keys: []
-  - id: 3
+  - id: 5
     type: ribbon
     start_seconds: 0
     end_seconds: 30

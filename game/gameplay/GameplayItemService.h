@@ -47,6 +47,7 @@ public:
         float gameMinutes);
 
     void updateReadableScrollOverlayForHeldItem(
+        GameplayScreenRuntime &runtime,
         size_t memberIndex,
         const GameplayCharacterPointerTarget &pointerTarget,
         bool isLeftMousePressed);
@@ -72,6 +73,9 @@ private:
         size_t memberIndex,
         const InventoryItemMixResult &mixResult,
         bool keepInventoryOpen);
+    void unlockAutonote(GameplayScreenRuntime &runtime, Party &party, size_t memberIndex, uint32_t autonoteId);
+    // Reading a potion recipe teaches every mix that brews the potion, in the journal and at the alchemy bench.
+    void learnRecipeScroll(GameplayScreenRuntime &runtime, Party &party, size_t memberIndex, uint32_t scrollItemId);
 
     GameSession &m_session;
 };

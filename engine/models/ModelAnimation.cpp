@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 namespace OpenYAMM::Engine
 {
@@ -406,9 +407,13 @@ std::array<float, 3> skinnedModelVertex(const ModelAsset &asset, const ModelPose
     return result;
 }
 
-ModelBounds modelExactPoseBounds(const ModelAsset &asset, const ModelPose &pose, bool coarsestLod)
+namespace
 {
-    ModelBounds result;
+// Visits each visible mesh primitive of the pose (beginPrimitive) and then each of its posed vertices (visitVertex).
+template <typename BeginPrimitive, typename VisitVertex>
+void visitPosedVertices(const ModelAsset &asset, const ModelPose &pose, bool coarsestLod,
+    BeginPrimitive beginPrimitive, VisitVertex visitVertex)
+{
     for (size_t nodeIndex = 0; nodeIndex < asset.nodes.size(); ++nodeIndex)
     {
         const ModelNode &node = asset.nodes[nodeIndex];
@@ -432,17 +437,18 @@ ModelBounds modelExactPoseBounds(const ModelAsset &asset, const ModelPose &pose,
         const ModelMesh &mesh = coarsestLod && !base.lodMeshes.empty() ? asset.meshes[base.lodMeshes.back()] : base;
         for (const ModelPrimitive &primitive : mesh.primitives)
         {
+            beginPrimitive(primitive);
             for (size_t vertexIndex = 0; vertexIndex < primitive.vertices.size(); ++vertexIndex)
             {
                 const std::array<float, 3> position =
                     morphPosition(primitive, pose.morphWeights[nodeIndex], vertexIndex);
                 if (node.skinIndex >= 0)
                 {
-                    includePoint(result, skinPosition(position, primitive.influences[vertexIndex], joints));
+                    visitVertex(skinPosition(position, primitive.influences[vertexIndex], joints));
                 }
                 else
                 {
-                    includePoint(result, {
+                    visitVertex(std::array<float, 3>{
                         matrix[0] * position[0] + matrix[4] * position[1] + matrix[8] * position[2] + matrix[12],
                         matrix[1] * position[0] + matrix[5] * position[1] + matrix[9] * position[2] + matrix[13],
                         matrix[2] * position[0] + matrix[6] * position[1] + matrix[10] * position[2] + matrix[14]});
@@ -450,7 +456,99 @@ ModelBounds modelExactPoseBounds(const ModelAsset &asset, const ModelPose &pose,
             }
         }
     }
+}
+}
+
+ModelBounds modelExactPoseBounds(const ModelAsset &asset, const ModelPose &pose, bool coarsestLod)
+{
+    ModelBounds result;
+    visitPosedVertices(asset, pose, coarsestLod,
+        [](const ModelPrimitive &)
+        {
+        },
+        [&result](const std::array<float, 3> &point)
+        {
+            includePoint(result, point);
+        });
     return result;
+}
+
+void modelExactPoseGeometry(const ModelAsset &asset, const ModelPose &pose, bool coarsestLod,
+    ModelPoseGeometry &geometry)
+{
+    geometry.positions.clear();
+    geometry.indices.clear();
+    geometry.bounds = {};
+    visitPosedVertices(asset, pose, coarsestLod,
+        [&geometry](const ModelPrimitive &primitive)
+        {
+            const uint32_t base = static_cast<uint32_t>(geometry.positions.size());
+            if (primitive.indices.empty())
+            {
+                for (uint32_t index = 0; index + 2 < primitive.vertices.size(); index += 3)
+                {
+                    geometry.indices.insert(geometry.indices.end(), {base + index, base + index + 1, base + index + 2});
+                }
+                return;
+            }
+            const size_t indexCount = primitive.indices.size() / 3 * 3;
+            for (size_t index = 0; index < indexCount; ++index)
+            {
+                geometry.indices.push_back(base + primitive.indices[index]);
+            }
+        },
+        [&geometry](const std::array<float, 3> &point)
+        {
+            geometry.positions.push_back(point);
+            includePoint(geometry.bounds, point);
+        });
+}
+
+std::optional<float> intersectModelPoseGeometry(const ModelPoseGeometry &geometry,
+    const std::array<float, 3> &origin, const std::array<float, 3> &direction)
+{
+    // Moller-Trumbore against both faces: a picking ray may meet a thin wing or cloth from either side.
+    constexpr float ParallelEpsilon = 1e-9f;
+    std::optional<float> nearest;
+    for (size_t index = 0; index + 2 < geometry.indices.size(); index += 3)
+    {
+        const std::array<float, 3> &a = geometry.positions[geometry.indices[index]];
+        const std::array<float, 3> &b = geometry.positions[geometry.indices[index + 1]];
+        const std::array<float, 3> &c = geometry.positions[geometry.indices[index + 2]];
+        const std::array<float, 3> edge1 = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+        const std::array<float, 3> edge2 = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+        const std::array<float, 3> p = {
+            direction[1] * edge2[2] - direction[2] * edge2[1],
+            direction[2] * edge2[0] - direction[0] * edge2[2],
+            direction[0] * edge2[1] - direction[1] * edge2[0]};
+        const float determinant = edge1[0] * p[0] + edge1[1] * p[1] + edge1[2] * p[2];
+        if (std::fabs(determinant) < ParallelEpsilon)
+        {
+            continue;
+        }
+        const float inverse = 1.0f / determinant;
+        const std::array<float, 3> s = {origin[0] - a[0], origin[1] - a[1], origin[2] - a[2]};
+        const float u = (s[0] * p[0] + s[1] * p[1] + s[2] * p[2]) * inverse;
+        if (u < 0.0f || u > 1.0f)
+        {
+            continue;
+        }
+        const std::array<float, 3> q = {
+            s[1] * edge1[2] - s[2] * edge1[1],
+            s[2] * edge1[0] - s[0] * edge1[2],
+            s[0] * edge1[1] - s[1] * edge1[0]};
+        const float v = (direction[0] * q[0] + direction[1] * q[1] + direction[2] * q[2]) * inverse;
+        if (v < 0.0f || u + v > 1.0f)
+        {
+            continue;
+        }
+        const float distance = (edge2[0] * q[0] + edge2[1] * q[1] + edge2[2] * q[2]) * inverse;
+        if (distance > 0.0f && (!nearest || distance < *nearest))
+        {
+            nearest = distance;
+        }
+    }
+    return nearest;
 }
 
 void resetModelPose(const ModelAsset &asset, ModelPose &pose)

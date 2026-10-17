@@ -149,6 +149,9 @@ public:
     {
         return m_smoothing;
     }
+    // The drawn terrain's height at a world position (the smoothed surface with its beach and seabed), interpolated
+    // between mesh vertices; for things resting on the visible ground.
+    float renderedHeight(float x, float y) const;
     bool seabed() const
     {
         return bgfx::isValid(m_seabedHeights);
@@ -180,10 +183,11 @@ public:
         return sunShadows ? m_shadowProgram : m_program;
     }
     // Binds stages 8-15 and the material uniforms, and with a seabed the caustics at stage 0. directSun: the bake's
-    // direct-only sun page is bound at stage 5. foliage (stage 1): the grass decorations' far colour with its
+    // direct-only sun page is bound at stage 5. foliage (stage 1): the grass decorations' colour with its
     // u_terrainFoliage values (TerrainDecorationRenderer::foliageMap/foliageParams); invalid when no grass is drawn.
+    // specularStrength: the restrained sun and point-light highlight on smooth and wet ground (0: none).
     void bind(const OutdoorLightingData *pBakedLighting, bool directSun, bool antiTiling,
-        bgfx::TextureHandle foliage, const std::array<float, 4> &foliageParams) const;
+        bgfx::TextureHandle foliage, const std::array<float, 8> &foliageParams, float specularStrength) const;
 
 private:
     // The material layers and images, read and decoded on the load workers before any GPU resource is created.
@@ -204,9 +208,14 @@ private:
     std::vector<Chunk> m_chunks;
     Stats m_stats;
     float m_smoothing = 0.0f;
+    // The mesh vertices' heights, side x side rows from the map's north-west corner, spacing apart.
+    std::vector<float> m_renderedHeights;
+    int m_renderedSide = 0;
+    float m_renderedSpacing = 0.0f;
     bgfx::TextureHandle m_albedoHeight = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle m_normalAoRough = BGFX_INVALID_HANDLE;
-    std::array<bgfx::TextureHandle, 2> m_weights = {{BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE}};
+    // Ground layer weights: array layer 0 holds layers 0-3, array layer 1 layers 4-7.
+    bgfx::TextureHandle m_weights = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle m_cells = BGFX_INVALID_HANDLE;
     // Native triangle normals at the terrain lightmap texels (1x1 up without a bake).
     bgfx::TextureHandle m_bakedNormals = BGFX_INVALID_HANDLE;
@@ -226,8 +235,8 @@ private:
     std::vector<uint8_t> m_weightLayers;
     int m_weightSize = 0;
     int m_shoreSize = 0;
-    std::array<bgfx::UniformHandle, 8> m_samplers = {{BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE,
-        BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE}};
+    std::array<bgfx::UniformHandle, 7> m_samplers = {{BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE,
+        BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE}};
     bgfx::UniformHandle m_layerParams = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_layerTints = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_layerCliffTints = BGFX_INVALID_HANDLE;

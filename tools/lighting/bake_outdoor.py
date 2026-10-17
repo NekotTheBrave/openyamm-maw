@@ -88,7 +88,11 @@ def decoration_model_casters(game_binary, profile, out, dependency):
     subprocess.check_call([str(game_binary), '--world', profile['world'], '--headless-export-decoration-models',
                            profile['map'], str(export)], cwd=ROOT, stdout=subprocess.DEVNULL)
     placements = json.loads(export.read_text())
-    dependency(ROOT / 'assets_dev/worlds' / profile['world'] / 'models/decorations.yml')
+    # The engine manifest binds every world's decorations; a world may extend it with its own.
+    dependency(ROOT / 'assets_dev/engine/models/decorations.yml')
+    world_manifest = ROOT / 'assets_dev/worlds' / profile['world'] / 'models/decorations.yml'
+    if world_manifest.exists():
+        dependency(world_manifest)
     to_bake = Matrix.Scale(1 / 128, 4)
     casters, modelled = [], set()
     for model in placements['models']:
@@ -130,7 +134,7 @@ def main():
     parser.add_argument('--samples', type=int)
     parser.add_argument('--decoration-shadows', action=argparse.BooleanOptionalAction, default=None,
                         help='Bake static decoration shadows into the sun terms only: 3D decoration models '
-                             '(worlds/<world>/models/decorations.yml) as meshes, other decorations as sprite cards')
+                             '(engine/models/decorations.yml) as meshes, other decorations as sprite cards')
     parser.add_argument('--game-binary', type=Path,
                         default=ROOT / ('build/game/openyamm.exe' if os.name == 'nt' else 'build/game/openyamm'),
                         help='OpenYAMM build that exports the 3D decoration placements')

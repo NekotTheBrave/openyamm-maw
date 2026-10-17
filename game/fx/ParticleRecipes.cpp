@@ -54,7 +54,7 @@ constexpr uint32_t ProjectileFxBloodRed = 0xff0000f0u;
 constexpr uint32_t ProjectileFxRed = 0xff0000ffu;
 constexpr uint32_t ProjectileFxWhite = 0xffffffffu;
 
-constexpr std::array<std::string_view, 54> ProjectileRecipeNames = {
+constexpr std::array<std::string_view, 60> ProjectileRecipeNames = {
     "none",
     "fire_bolt",
     "fireball",
@@ -105,6 +105,12 @@ constexpr std::array<std::string_view, 54> ProjectileRecipeNames = {
     "souldrinker",
     "lifedrain",
     "shrinking_ray",
+    "charm",
+    "blind",
+    "telepathy",
+    "berserk",
+    "enslave",
+    "control_undead",
     "armageddon",
     "generic_particle_trail",
     "generic_fire_trail",
@@ -889,7 +895,7 @@ ProjectileRecipe classifyProjectileRecipe(
     }
 
     if (spellId == 70
-        || containsToken(objectName, "harm")
+        || equalsToken(objectName, "harm")
         || spriteNameIs(spriteName, "spell70"))
     {
         return ProjectileRecipe::Harm;
@@ -991,6 +997,36 @@ ProjectileRecipe classifyProjectileRecipe(
     if (spellId == 98 || containsToken(objectName, "armageddon"))
     {
         return ProjectileRecipe::Armageddon;
+    }
+
+    if (spellId == 60 || spellId == 113 || containsToken(objectName, "charm"))
+    {
+        return ProjectileRecipe::Charm;
+    }
+
+    if (spellId == 102 || equalsToken(objectName, "blind"))
+    {
+        return ProjectileRecipe::Blind;
+    }
+
+    if (spellId == 56 || containsToken(objectName, "telepathy"))
+    {
+        return ProjectileRecipe::Telepathy;
+    }
+
+    if (spellId == 62 || containsToken(objectName, "berzerk") || containsToken(objectName, "berserk"))
+    {
+        return ProjectileRecipe::Berserk;
+    }
+
+    if (spellId == 66 || containsToken(objectName, "enslave"))
+    {
+        return ProjectileRecipe::Enslave;
+    }
+
+    if (spellId == 94 || containsToken(objectName, "control undead"))
+    {
+        return ProjectileRecipe::ControlUndead;
     }
 
     if ((objectFlags & ObjectDescTrailFire) != 0)

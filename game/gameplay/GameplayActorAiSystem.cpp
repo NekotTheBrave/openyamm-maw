@@ -31,6 +31,8 @@ constexpr float IdleStandSeconds = 1.5f;
 constexpr float IdleBoredSeconds = 2.0f;
 constexpr float PursueMoveSpeedMultiplier = 1.5f;
 constexpr float FleeMoveSpeedMultiplier = 1.0f;
+// 16 of the original 2048 angle units.
+constexpr float RangedOrbitStepRadians = Pi / 64.0f;
 constexpr float MaxActorMoveSpeed = 1000.0f;
 constexpr uint32_t IdleStandChancePercent = 25u;
 
@@ -2374,12 +2376,13 @@ PursueActionResult resolvePursueAction(const PursueActionInput &input)
 
     if (input.mode == PursueActionMode::RangedOrbit)
     {
-        const float sideSign = (decisionSeed & 1u) == 0u ? 1.0f : -1.0f;
-        const float targetYaw = std::atan2(input.deltaTargetY, input.deltaTargetX);
-        const float inwardWeight = 0.16f;
-        const float sideYaw = targetYaw + sideSign * (Pi * 0.5f);
-        const float moveX = std::cos(sideYaw) + std::cos(targetYaw) * inwardWeight;
-        const float moveY = std::sin(sideYaw) + std::sin(targetYaw) * inwardWeight;
+        // MM8's Pursue1: head for the point a small step further round the target's circle at the current
+        // distance. Each actor keeps one side, so ranged monsters circle the party instead of closing in.
+        const float sideSign = (input.actorId & 1u) == 0u ? 1.0f : -1.0f;
+        const float orbitYaw =
+            std::atan2(-input.deltaTargetY, -input.deltaTargetX) + sideSign * RangedOrbitStepRadians;
+        const float moveX = input.deltaTargetX + std::cos(orbitYaw) * input.distanceToTarget;
+        const float moveY = input.deltaTargetY + std::sin(orbitYaw) * input.distanceToTarget;
         result.yawRadians = std::atan2(moveY, moveX);
         result.actionSeconds = 0.5f;
     }

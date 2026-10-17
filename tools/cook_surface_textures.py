@@ -30,7 +30,8 @@ liquid's colour, so the runtime never loads their art.
 A world whose source folder is missing (sources not pulled) is skipped: its cooked files are neither re-cooked nor
 removed. Receipts: assets_source/.cook-cache/surface_textures/<output root path>.json. A texture re-cooks when its
 source or the cook settings change, or COOK_REVISION is bumped; unchanged files are recognised by size and
-modification time, so the incremental cook the build runs (target openyamm_cook_surface_textures) costs about a second.
+modification time, so the incremental desktop cook the build runs (target openyamm_cook_surface_textures) costs about
+a second. Android cooks on demand (tools/cook_android.sh).
 """
 import argparse
 try:

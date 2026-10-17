@@ -1,0 +1,1562 @@
+# Outdoor map decorations drawn as static 3D models instead of their sprites, for every world (engine content, like
+# the models in engine/models/). Matched by decoration name (the merged engine decoration table); the decoration keeps
+# its native collision, events and picking. The sprite a decoration currently shows picks the model, so an event
+# SetSprite to another bound decoration switches models (a picked food tree), and one to an unbound sprite draws it.
+# A map loads the models of the decorations it places, their lit/unlit counterparts and its events' SetSprite targets.
+# A world extends this file with worlds/<world>/models/decorations.yml: its entry for a name replaces every entry of
+# that name here, and an entry with model: null keeps the decoration a sprite in that world. Outdoor bakes made with
+# decoration shadows depend on this file (tools/lighting/stale_bakes.py).
+#   height: world height of the model (the native sprite's world height); height_jitter: +- fraction per placement
+#   yaw: random (seeded by map position) or facing (the map's facing angle) plus yaw_offset radians
+#   lod_pixels: projected sizes below which LOD 1..3 take over (default 500, 200, 80)
+#   z_offset: world units added to the placement height; still: see indoor_decorations.yml
+#   maps: optional list limiting the binding to those maps
+# Projects: level_generation/decorations/ (mm6_new_sorpigal_3d, mm7_3d, mm8_3d).
+decorations:
+  # --- MM6 decorations ---
+  - name: 6tree01
+    model: engine/models/mm6_deco_tree01.glb
+    height: 531
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree02
+    model: engine/models/mm6_deco_tree02.glb
+    height: 662
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree19
+    model: engine/models/mm6_deco_tree19.glb
+    height: 312
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree05
+    model: engine/models/mm6_deco_tree05.glb
+    height: 604
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree03
+    model: engine/models/mm6_deco_tree03.glb
+    height: 363
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree04
+    model: engine/models/mm6_deco_tree04.glb
+    height: 493
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree06
+    model: engine/models/mm6_deco_tree06.glb
+    # The food tree pair is one tree: keep height/jitter equal so picking the fruit (SetSprite tree06a -> 6tree06)
+    # only removes the fruit.
+    height: 576
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree06a
+    model: engine/models/mm6_deco_tree06a.glb
+    height: 576
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6flower02
+    model: engine/models/mm6_deco_flower02.glb
+    height: 67
+    height_jitter: 0.15
+  - name: 6flower07
+    model: engine/models/mm6_deco_flower07.glb
+    height: 76
+    height_jitter: 0.15
+  - name: 6rock01
+    model: engine/models/mm6_deco_rock01.glb
+    height: 99
+    height_jitter: 0.15
+    z_offset: -4
+  - name: bigbarel
+    model: engine/models/mm6_deco_barrel.glb
+    height: 117
+  - name: ckfyr00
+    model: engine/models/mm6_deco_cauldron.glb
+    height: 222
+  - name: sta1a
+    model: engine/models/mm6_deco_fountain.glb
+    height: 266
+  - name: swrdstn
+    model: engine/models/mm6_deco_swordstone.glb
+    # Pulling the sword (SetSprite swrdstn -> swrdstx) keeps the same boulder: both models share it and the
+    # sword stone's height is exactly 174/83 of the boulder's.
+    height: 174
+  - name: swrdstx
+    model: engine/models/mm6_deco_swordstone_empty.glb
+    height: 83
+  - name: bouy0
+    model: engine/models/mm6_deco_buoy.glb
+    height: 172
+  - name: searka01
+    model: engine/models/mm6_deco_surfrock_a.glb
+    height: 67
+  - name: searkb01
+    model: engine/models/mm6_deco_surfrock_b.glb
+    height: 89
+  - name: fla3__01
+    model: engine/models/mm6_deco_flag.glb
+    height: 256
+  # Added 2026-10-09 for Misty Islands, Silver Cove, Castle Ironfist and Eel Infested Waters.
+  - name: 6tree10
+    model: engine/models/mm6_deco_tree10.glb
+    height: 595
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree15
+    model: engine/models/mm6_deco_tree15.glb
+    height: 633
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree25
+    model: engine/models/mm6_deco_tree25.glb
+    height: 287
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: swptree1
+    model: engine/models/mm6_deco_swptree1.glb
+    height: 380
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: swptree3
+    model: engine/models/mm6_deco_swptree3.glb
+    height: 309
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6flower06
+    model: engine/models/mm6_deco_flower06.glb
+    height: 131
+    height_jitter: 0.15
+  - name: 6flower08
+    model: engine/models/mm6_deco_flower08.glb
+    height: 88
+    height_jitter: 0.15
+  - name: 6rock07
+    model: engine/models/mm6_deco_rock07.glb
+    height: 113
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 6rock14
+    model: engine/models/mm6_deco_rock14.glb
+    height: 107
+    height_jitter: 0.15
+    z_offset: -4
+  - name: cmpfyr00
+    model: engine/models/mm6_deco_campfire.glb
+    height: 121
+  - name: brnrock0
+    model: engine/models/mm6_deco_burningrock.glb
+    height: 169
+    height_jitter: 0.1
+    z_offset: -4
+  - name: fla1__01
+    model: engine/models/mm6_deco_flag1.glb
+    height: 256
+  - name: sklplrev
+    model: engine/models/mm6_deco_skullpile_meshy.glb
+    height: 153
+    height_jitter: 0.05
+  # Added 2026-10-09: every remaining MM6 outdoor decoration.
+  - name: 6tree17
+    model: engine/models/mm6_deco_tree17.glb
+    height: 440
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree18
+    model: engine/models/mm6_deco_tree18.glb
+    height: 251
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree13
+    model: engine/models/mm6_deco_tree13.glb
+    height: 636
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree14
+    model: engine/models/mm6_deco_tree14.glb
+    height: 558
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree07
+    model: engine/models/mm6_deco_tree07.glb
+    height: 347
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: cac25
+    model: engine/models/mm6_deco_cac25.glb
+    height: 256
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: swptree2
+    model: engine/models/mm6_deco_swptree2.glb
+    height: 592
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: snotre01
+    model: engine/models/mm6_deco_snotre01.glb
+    height: 262
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: snotre03
+    model: engine/models/mm6_deco_snotre03.glb
+    height: 256
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: snotre05
+    model: engine/models/mm6_deco_snotre05.glb
+    height: 271
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree28
+    model: engine/models/mm6_deco_tree28.glb
+    height: 287
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree27
+    model: engine/models/mm6_deco_tree27.glb
+    height: 292
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree29
+    model: engine/models/mm6_deco_tree29.glb
+    height: 117
+    height_jitter: 0.15
+    lod_pixels: [360, 180, 90]
+  - name: swptree4
+    model: engine/models/mm6_deco_swptree4.glb
+    height: 589
+    height_jitter: 0.1
+    lod_pixels: [650, 320, 180]
+  - name: stump5a
+    model: engine/models/mm6_deco_stump5a.glb
+    height: 72
+    height_jitter: 0.15
+    z_offset: -2
+  - name: cac8
+    model: engine/models/mm6_deco_cac8.glb
+    height: 185
+    height_jitter: 0.15
+    z_offset: -3
+  - name: cac5
+    model: engine/models/mm6_deco_cac5.glb
+    height: 248
+    height_jitter: 0.12
+  - name: cac16
+    model: engine/models/mm6_deco_cac16.glb
+    height: 253
+    height_jitter: 0.1
+  - name: cac7
+    model: engine/models/mm6_deco_cac7.glb
+    height: 137
+    height_jitter: 0.15
+  - name: cac10
+    model: engine/models/mm6_deco_cac10.glb
+    height: 167
+    height_jitter: 0.15
+  - name: cac15
+    model: engine/models/mm6_deco_cac15.glb
+    height: 139
+    height_jitter: 0.15
+  - name: cac27
+    model: engine/models/mm6_deco_cac27.glb
+    height: 139
+    height_jitter: 0.12
+    z_offset: -4
+  - name: snoweed1
+    model: engine/models/mm6_deco_snoweed1.glb
+    height: 127
+    height_jitter: 0.15
+  - name: 6rock05
+    model: engine/models/mm6_deco_rock05.glb
+    height: 107
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 6rock13
+    model: engine/models/mm6_deco_rock13.glb
+    height: 52
+    height_jitter: 0.15
+    z_offset: -3
+  - name: 6rock06
+    model: engine/models/mm6_deco_rock06.glb
+    height: 92
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 6rock04
+    model: engine/models/mm6_deco_rock04.glb
+    height: 111
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 6rock03
+    model: engine/models/mm6_deco_rock03.glb
+    height: 53
+    height_jitter: 0.15
+    z_offset: -3
+  - name: 6rock12
+    model: engine/models/mm6_deco_rock12.glb
+    height: 87
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 6rock08
+    model: engine/models/mm6_deco_rock08.glb
+    height: 85
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 6rock09
+    model: engine/models/mm6_deco_rock09.glb
+    height: 63
+    height_jitter: 0.15
+    z_offset: -4
+  - name: ped06
+    model: engine/models/mm6_deco_pedestal.glb
+    height: 150
+  # The five filled statuette pedestals (shrine events SetSprite ped06 -> ped0N): the unchanged ped06 pedestal plus a
+  # gold figure (mm6_new_sorpigal_3d/statuettes/), enlarged past the sprite to fill the slab. Heights are the model
+  # bounds, so the pedestal stays 150 units.
+  - name: ped01
+    model: engine/models/mm6_deco_pedestal_bear.glb
+    height: 177
+  - name: ped02
+    model: engine/models/mm6_deco_pedestal_tiger.glb
+    height: 179
+  - name: ped03
+    model: engine/models/mm6_deco_pedestal_eagle.glb
+    height: 210
+  - name: ped04
+    model: engine/models/mm6_deco_pedestal_wolf.glb
+    height: 185
+  - name: ped05
+    model: engine/models/mm6_deco_pedestal_dragon.glb
+    height: 210
+  - name: foodbowl
+    model: engine/models/mm6_deco_foodbowl.glb
+    height: 20
+  - name: smlbarel
+    model: engine/models/mm6_deco_keg.glb
+    height: 89
+    height_jitter: 0.05
+  - name: dec25
+    model: engine/models/mm6_deco_campfire.glb
+    # The art fills 108 of the 128-unit frame (the cmpfyr00 fire drawn smaller, with margins).
+    height: 108
+  - name: corpse04
+    model: engine/models/mm6_deco_corpse04.glb
+    height: 177
+  - name: corpse05
+    model: engine/models/mm6_deco_corpse05.glb
+    height: 139
+  - name: corpse06
+    model: engine/models/mm6_deco_corpse06.glb
+    height: 128
+  - name: corpse16
+    model: engine/models/mm6_deco_corpse16.glb
+    height: 139
+  - name: 6tree21
+    model: engine/models/mm6_deco_tree21.glb
+    height: 360
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: cac19
+    model: engine/models/mm6_deco_cac19.glb
+    height: 168
+    height_jitter: 0.12
+    lod_pixels: [500, 250, 140]
+  - name: cac18
+    model: engine/models/mm6_deco_cac18.glb
+    height: 255
+    height_jitter: 0.12
+    lod_pixels: [600, 300, 160]
+  - name: cac24
+    model: engine/models/mm6_deco_cac24.glb
+    height: 196
+    height_jitter: 0.12
+    lod_pixels: [500, 250, 140]
+  - name: cac17
+    model: engine/models/mm6_deco_cac17.glb
+    height: 218
+    height_jitter: 0.12
+    lod_pixels: [600, 300, 160]
+  - name: cac23
+    model: engine/models/mm6_deco_cac23.glb
+    height: 282
+    height_jitter: 0.12
+    lod_pixels: [600, 300, 160]
+  - name: cac3
+    model: engine/models/mm6_deco_cac3.glb
+    height: 154
+    height_jitter: 0.15
+    lod_pixels: [500, 250, 140]
+  # --- MM7 decorations ---
+  # The same art as MM6 (level_generation/decorations/mm7_3d/README.md "Reused models"); heights are the art's world
+  # height, which differs from MM6's where MM7 draws the sprite at another DSFT scale.
+  - name: 7dec02
+    model: engine/models/mm6_deco_campfire.glb
+    height: 108
+  - name: bush14
+    model: engine/models/mm6_deco_cac24.glb
+    height: 255
+    height_jitter: 0.12
+    lod_pixels: [500, 250, 140]
+  - name: bush15
+    model: engine/models/mm6_deco_cac7.glb
+    height: 164
+    height_jitter: 0.15
+  # One-off props (mm7_3d/dressing/REPORT_heaps_small_props.md).
+  - name: dec96
+    model: engine/models/mm7_deco_dec96.glb
+    height: 52
+  - name: 7dec16
+    model: engine/models/mm7_deco_7dec16.glb
+    height: 127
+  # Fern, cacti and potted plants (mm7_3d/plants/).
+  - name: bush03
+    model: engine/models/mm7_deco_bush03.glb
+    height: 122
+    height_jitter: 0.15
+  - name: bush10
+    model: engine/models/mm7_deco_bush10.glb
+    height: 163
+    height_jitter: 0.12
+  - name: bush11
+    model: engine/models/mm7_deco_bush11.glb
+    height: 154
+    height_jitter: 0.12
+  - name: bush13
+    model: engine/models/mm7_deco_bush13.glb
+    height: 273
+    height_jitter: 0.1
+  - name: bush12
+    model: engine/models/mm7_deco_bush12.glb
+    height: 256
+    height_jitter: 0.12
+  - name: bush16
+    model: engine/models/mm7_deco_bush16.glb
+    height: 129
+    height_jitter: 0.15
+  - name: bush02
+    model: engine/models/mm7_deco_bush02.glb
+    height: 190
+    height_jitter: 0.12
+  - name: plant01a
+    model: engine/models/mm7_deco_plant01a.glb
+    height: 252
+    height_jitter: 0.05
+  - name: plant11a
+    model: engine/models/mm7_deco_plant11a.glb
+    height: 256
+    height_jitter: 0.05
+  - name: plant02a
+    model: engine/models/mm7_deco_plant02a.glb
+    height: 246
+    height_jitter: 0.05
+  - name: plant01b
+    model: engine/models/mm7_deco_plant01b.glb
+    height: 141
+    height_jitter: 0.05
+  - name: plant07b
+    model: engine/models/mm7_deco_plant07b.glb
+    height: 170
+    height_jitter: 0.05
+  - name: plant03b
+    model: engine/models/mm7_deco_plant03b.glb
+    height: 142
+    height_jitter: 0.05
+  - name: plant04b
+    model: engine/models/mm7_deco_plant04b.glb
+    height: 158
+    height_jitter: 0.05
+  # Beacon fires, magic pedestals, bell buoy and burned-out fire (mm7_3d/fire/; MM8 binds the beacons and
+  # pedestals too). Heights are the models' own heights.
+  - name: dec60
+    model: engine/models/mm7_deco_dec60.glb
+    height: 190
+  - name: dec62
+    model: engine/models/mm7_deco_dec62.glb
+    height: 190
+  - name: dec63
+    model: engine/models/mm7_deco_dec63.glb
+    height: 190
+  - name: dec61
+    model: engine/models/mm7_deco_dec61.glb
+    height: 198
+  - name: dec64
+    model: engine/models/mm7_deco_dec64.glb
+    height: 201
+  - name: dec65
+    model: engine/models/mm7_deco_dec65.glb
+    height: 201
+  - name: dec66
+    model: engine/models/mm7_deco_dec66.glb
+    height: 201
+  - name: dec67
+    model: engine/models/mm7_deco_dec67.glb
+    height: 201
+  - name: dec68
+    model: engine/models/mm7_deco_dec68.glb
+    height: 201
+  - name: dec69
+    model: engine/models/mm7_deco_dec69.glb
+    height: 201
+  - name: dec70
+    model: engine/models/mm7_deco_dec70.glb
+    height: 201
+  - name: dec71
+    model: engine/models/mm7_deco_dec71.glb
+    height: 201
+  - name: dec72
+    model: engine/models/mm7_deco_dec72.glb
+    height: 201
+  - name: dec73
+    model: engine/models/mm7_deco_dec73.glb
+    height: 201
+  - name: dec74
+    model: engine/models/mm7_deco_dec74.glb
+    height: 201
+  - name: dec75
+    model: engine/models/mm7_deco_dec75.glb
+    height: 201
+  - name: 7dec33
+    model: engine/models/mm7_deco_7dec33.glb
+    height: 235
+  - name: dec24x
+    model: engine/models/mm7_deco_dec24x.glb
+    height: 25
+    still: true
+  # The lit signal fire (events 237-239 of 7out02 switch dec24x to it): dec24x's logs with a flame, bound so the logs
+  # keep their size (25 x model height ratio).
+  - name: v77dec24
+    model: engine/models/mm7_deco_v77dec24.glb
+    height: 51.6
+  # Snowy conifers (mm7_3d/trees_a/).
+  - name: tree36
+    model: engine/models/mm7_deco_tree36.glb
+    height: 1252
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree33
+    model: engine/models/mm7_deco_tree33.glb
+    height: 1260
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  # Lying skeleton (mm7_3d/dressing/; its height keeps the sprite's length).
+  - name: dec19
+    model: engine/models/mm7_deco_dec19.glb
+    height: 31
+    height_jitter: 0.05
+  # Bare and leafy trees (mm7_3d/trees_b/; bare trees traced from their sprites' branches).
+  - name: tree41
+    model: engine/models/mm7_deco_tree41.glb
+    height: 1150
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree42
+    model: engine/models/mm7_deco_tree42.glb
+    height: 1288
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree06
+    model: engine/models/mm7_deco_7tree06.glb
+    height: 1198
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree66
+    model: engine/models/mm7_deco_tree66.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree05
+    model: engine/models/mm7_deco_7tree05.glb
+    height: 1255
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree29
+    model: engine/models/mm7_deco_7tree29.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree23
+    model: engine/models/mm7_deco_tree23.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree69
+    model: engine/models/mm7_deco_tree69.glb
+    height: 2055
+    height_jitter: 0.08
+    lod_pixels: [650, 320, 180]
+  # Flowers (mm7_3d/flowers/).
+  - name: flower01
+    model: engine/models/mm7_deco_flower01.glb
+    height: 91
+    height_jitter: 0.15
+    lod_pixels: [500, 220, 100]
+  - name: flower02
+    model: engine/models/mm7_deco_flower02.glb
+    height: 98
+    height_jitter: 0.15
+    lod_pixels: [500, 220, 100]
+  - name: flower03
+    model: engine/models/mm7_deco_flower03.glb
+    height: 107
+    height_jitter: 0.15
+    lod_pixels: [500, 220, 100]
+  - name: flower04
+    model: engine/models/mm7_deco_flower04.glb
+    height: 133
+    height_jitter: 0.15
+    lod_pixels: [500, 220, 100]
+  - name: flower05
+    model: engine/models/mm7_deco_flower05.glb
+    height: 110
+    height_jitter: 0.15
+    lod_pixels: [500, 220, 100]
+  - name: flower06
+    model: engine/models/mm7_deco_flower06.glb
+    height: 102
+    height_jitter: 0.15
+    lod_pixels: [500, 220, 100]
+  - name: flower07
+    model: engine/models/mm7_deco_flower07.glb
+    height: 94
+    height_jitter: 0.15
+    lod_pixels: [500, 220, 100]
+  - name: flower08
+    model: engine/models/mm7_deco_flower08.glb
+    height: 118
+    height_jitter: 0.15
+    lod_pixels: [500, 220, 100]
+  - name: flower09
+    model: engine/models/mm7_deco_flower09.glb
+    height: 104
+    height_jitter: 0.15
+    lod_pixels: [500, 220, 100]
+  - name: flower10
+    model: engine/models/mm7_deco_flower10.glb
+    height: 88
+    height_jitter: 0.15
+    lod_pixels: [500, 220, 100]
+  - name: flower11
+    model: engine/models/mm7_deco_flower11.glb
+    height: 76
+    height_jitter: 0.15
+    lod_pixels: [500, 220, 100]
+  - name: flower12
+    model: engine/models/mm7_deco_flower12.glb
+    height: 72
+    height_jitter: 0.15
+    lod_pixels: [500, 220, 100]
+  - name: flower13
+    model: engine/models/mm7_deco_flower13.glb
+    height: 76
+    height_jitter: 0.15
+    lod_pixels: [500, 220, 100]
+  - name: flower16
+    model: engine/models/mm7_deco_flower16.glb
+    height: 54
+    height_jitter: 0.15
+    lod_pixels: [500, 220, 100]
+  # Rocks (mm7_3d/rocks/; Poly Haven scans graded to the sprites' lit faces).
+  - name: 7rock09
+    model: engine/models/mm7_deco_7rock09.glb
+    height: 66
+    height_jitter: 0.15
+    z_offset: -3
+  - name: 7rock08
+    model: engine/models/mm7_deco_7rock08.glb
+    height: 93
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 7rock01
+    model: engine/models/mm7_deco_7rock01.glb
+    height: 100
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 7rock02
+    model: engine/models/mm7_deco_7rock02.glb
+    height: 128
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 7rock03
+    model: engine/models/mm7_deco_7rock03.glb
+    height: 88
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 7rock05
+    model: engine/models/mm7_deco_7rock05.glb
+    height: 120
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 7rock04
+    model: engine/models/mm7_deco_7rock04.glb
+    height: 116
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 7rock07
+    model: engine/models/mm7_deco_7rock07.glb
+    height: 177
+    height_jitter: 0.15
+    z_offset: -14
+  # Seasonal trees (mm7_3d/trees_seasonal/): events switch summer, autumn and winter sprites, so every family
+  # keeps one model height and the same height and jitter. tree38 (apples) becomes tree37 when picked.
+  - name: 7tree13
+    model: engine/models/mm7_deco_7tree13.glb
+    height: 1238
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree14
+    model: engine/models/mm7_deco_7tree14.glb
+    height: 1238
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree15
+    model: engine/models/mm7_deco_7tree15.glb
+    height: 1238
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree16
+    model: engine/models/mm7_deco_7tree16.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree17
+    model: engine/models/mm7_deco_7tree17.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree18
+    model: engine/models/mm7_deco_7tree18.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree19
+    model: engine/models/mm7_deco_7tree19.glb
+    height: 1272
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree20
+    model: engine/models/mm7_deco_7tree20.glb
+    height: 1272
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree21
+    model: engine/models/mm7_deco_7tree21.glb
+    height: 1272
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree07
+    model: engine/models/mm7_deco_7tree07.glb
+    height: 1407
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree08
+    model: engine/models/mm7_deco_7tree08.glb
+    height: 1407
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree09
+    model: engine/models/mm7_deco_7tree09.glb
+    height: 1407
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree25
+    model: engine/models/mm7_deco_7tree25.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree26
+    model: engine/models/mm7_deco_tree26.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree27
+    model: engine/models/mm7_deco_tree27.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree22
+    model: engine/models/mm7_deco_7tree22.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree24
+    model: engine/models/mm7_deco_7tree24.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree28
+    model: engine/models/mm7_deco_7tree28.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree30
+    model: engine/models/mm7_deco_7tree30.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree38
+    model: engine/models/mm7_deco_tree38.glb
+    height: 990
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree37
+    model: engine/models/mm7_deco_tree37.glb
+    height: 990
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  # Statues on plinths (mm7_3d/dressing/REPORT_statues.md), turned to the map facing as the sprites' view.
+  - name: dec94
+    model: engine/models/mm7_deco_dec94.glb
+    height: 125
+    yaw: facing
+    yaw_offset: -1.5708
+  - name: dec95
+    model: engine/models/mm7_deco_dec95.glb
+    height: 60
+    yaw: facing
+    yaw_offset: -1.5708
+  # Conifer and broadleaf trees (mm7_3d/trees_a/).
+  - name: tree60
+    model: engine/models/mm7_deco_tree60.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree04
+    model: engine/models/mm7_deco_7tree04.glb
+    height: 1255
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree65
+    model: engine/models/mm7_deco_tree65.glb
+    height: 1278
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree63
+    model: engine/models/mm7_deco_7tree63.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree01
+    model: engine/models/mm7_deco_7tree01.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree10
+    model: engine/models/mm7_deco_7tree10.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  # Art shared with MM8, built by the MM8 decorations session (level_generation/decorations/mm8_3d/props/); the trash
+  # heap is sized by the sprite's width.
+  - name: 7dec03
+    model: engine/models/mm7_deco_cauldron.glb
+    height: 128
+  - name: 7dec01
+    model: engine/models/mm7_deco_trash_heap.glb
+    height: 92
+    height_jitter: 0.05
+  # --- MM8 decorations ---
+  # Shared with MM6: the same native images, so the MM6 models and their binding fields.
+  - name: rock01
+    model: engine/models/mm6_deco_boulder01.glb
+    height: 71
+    height_jitter: 0.1
+    z_offset: -3
+  - name: rock02
+    model: engine/models/mm6_deco_boulder02.glb
+    height: 39
+    height_jitter: 0.1
+    z_offset: -2
+  - name: rock03
+    model: engine/models/mm6_deco_boulder03.glb
+    height: 104
+    height_jitter: 0.1
+    z_offset: -4
+  - name: rock04
+    model: engine/models/mm6_deco_boulder01.glb
+    height: 69
+    height_jitter: 0.1
+    z_offset: -3
+  - name: rock06
+    model: engine/models/mm6_deco_boulder06.glb
+    height: 16
+    height_jitter: 0.1
+    z_offset: -1
+  - name: rock10
+    model: engine/models/mm6_deco_boulder10.glb
+    height: 102
+    height_jitter: 0.1
+    z_offset: -4
+  - name: dec04
+    model: engine/models/mm6_deco_logfire.glb
+    height: 116
+  # MM8 models (level_generation/decorations/mm8_3d/).
+  - name: dec03
+    model: engine/models/mm8_deco_barrel.glb
+    # 124 minus the rim ellipse seen from above.
+    height: 117
+    height_jitter: 0.05
+  - name: tree01
+    model: engine/models/mm8_deco_tree01.glb
+    height: 980
+    height_jitter: 0.1
+    lod_pixels: [650, 320, 180]
+  - name: tree04
+    model: engine/models/mm8_deco_tree04.glb
+    height: 972
+    height_jitter: 0.1
+    lod_pixels: [650, 320, 180]
+  - name: tree08
+    model: engine/models/mm8_deco_tree08.glb
+    height: 972
+    height_jitter: 0.1
+    lod_pixels: [650, 320, 180]
+  - name: dec30
+    model: engine/models/mm8_deco_bell_buoy.glb
+    height: 234
+  - name: dec57
+    model: engine/models/mm8_deco_air_orb.glb
+    # The camera-facing halo card makes the model 79 tall; the sphere keeps the native 61.
+    height: 79
+    z_offset: -9
+  - name: dec58
+    model: engine/models/mm8_deco_seaweed.glb
+    height: 251
+  - name: dec59
+    model: engine/models/mm8_deco_coral.glb
+    height: 243
+  - name: dec06
+    model: engine/models/mm8_deco_standing_torch.glb
+    height: 119
+  - name: dec24
+    model: engine/models/mm8_deco_campfire.glb
+    height: 51
+  # MM7 beacon fires and magic pedestals: the same images, MM7 number = MM8 number + 20 (mm7_3d/fire/).
+  - name: dec40
+    model: engine/models/mm7_deco_dec60.glb
+    height: 190
+  - name: dec41
+    model: engine/models/mm7_deco_dec61.glb
+    height: 198
+  - name: dec42
+    model: engine/models/mm7_deco_dec62.glb
+    height: 190
+  - name: dec43
+    model: engine/models/mm7_deco_dec63.glb
+    height: 190
+  - name: dec44
+    model: engine/models/mm7_deco_dec64.glb
+    height: 201
+  - name: dec45
+    model: engine/models/mm7_deco_dec65.glb
+    height: 201
+  - name: dec46
+    model: engine/models/mm7_deco_dec66.glb
+    height: 201
+  - name: dec47
+    model: engine/models/mm7_deco_dec67.glb
+    height: 201
+  - name: dec48
+    model: engine/models/mm7_deco_dec68.glb
+    height: 201
+  - name: dec49
+    model: engine/models/mm7_deco_dec69.glb
+    height: 201
+  - name: dec50
+    model: engine/models/mm7_deco_dec70.glb
+    height: 201
+  - name: dec51
+    model: engine/models/mm7_deco_dec71.glb
+    height: 201
+  - name: dec52
+    model: engine/models/mm7_deco_dec72.glb
+    height: 201
+  - name: dec53
+    model: engine/models/mm7_deco_dec73.glb
+    height: 201
+  - name: dec54
+    model: engine/models/mm7_deco_dec74.glb
+    height: 201
+  - name: dec55
+    model: engine/models/mm7_deco_dec75.glb
+    height: 201
+  # MM8 rocks (mm8_3d/rocks/).
+  - name: rock05
+    model: engine/models/mm8_deco_rock05.glb
+    height: 69
+    height_jitter: 0.15
+    z_offset: -3
+  - name: rock07
+    model: engine/models/mm8_deco_rock07.glb
+    height: 33
+    height_jitter: 0.15
+    z_offset: -1
+  - name: rock08
+    model: engine/models/mm8_deco_rock08.glb
+    height: 36
+    height_jitter: 0.15
+    z_offset: -1
+  - name: rock09
+    model: engine/models/mm8_deco_rock09.glb
+    height: 15
+    height_jitter: 0.15
+    z_offset: -1
+  - name: rock14
+    model: engine/models/mm8_deco_rock14.glb
+    height: 56
+    height_jitter: 0.15
+    z_offset: -2
+  - name: rock16
+    model: engine/models/mm8_deco_rock16.glb
+    height: 26
+    height_jitter: 0.15
+    z_offset: -1
+  - name: rock17
+    model: engine/models/mm8_deco_rock17.glb
+    height: 14
+    height_jitter: 0.15
+    z_offset: -1
+  - name: rock18
+    model: engine/models/mm8_deco_rock18.glb
+    height: 33
+    height_jitter: 0.15
+    z_offset: -1
+  - name: rock19
+    model: engine/models/mm8_deco_rock19.glb
+    height: 30
+    height_jitter: 0.15
+    z_offset: -1
+  - name: rock20
+    model: engine/models/mm8_deco_rock20.glb
+    height: 15
+    height_jitter: 0.15
+    z_offset: -1
+  - name: rock22
+    model: engine/models/mm8_deco_rock22.glb
+    height: 29
+    height_jitter: 0.15
+    z_offset: -1
+  - name: rock24
+    model: engine/models/mm8_deco_rock24.glb
+    height: 36
+    height_jitter: 0.15
+    z_offset: -1
+  - name: rock25
+    model: engine/models/mm8_deco_rock25.glb
+    height: 17
+    height_jitter: 0.15
+    z_offset: -1
+  - name: rock27
+    model: engine/models/mm8_deco_rock27.glb
+    height: 56
+    height_jitter: 0.15
+    z_offset: -2
+  - name: rock28
+    model: engine/models/mm8_deco_rock28.glb
+    height: 29
+    height_jitter: 0.15
+    z_offset: -1
+  - name: rock30
+    model: engine/models/mm8_deco_rock30.glb
+    height: 39
+    height_jitter: 0.15
+    z_offset: -2
+  - name: rock33
+    model: engine/models/mm8_deco_rock33.glb
+    height: 54
+    height_jitter: 0.15
+    z_offset: -2
+  - name: rock34
+    model: engine/models/mm8_deco_rock34.glb
+    height: 39
+    height_jitter: 0.15
+    z_offset: -2
+  - name: rock35
+    model: engine/models/mm8_deco_rock35.glb
+    height: 58
+    height_jitter: 0.15
+    z_offset: -2
+  - name: rock44
+    model: engine/models/mm8_deco_rock44.glb
+    height: 22
+    height_jitter: 0.15
+    z_offset: -1
+  - name: rock51
+    model: engine/models/mm8_deco_rock51.glb
+    height: 27
+    height_jitter: 0.15
+    z_offset: -1
+  - name: rock52
+    model: engine/models/mm8_deco_rock52.glb
+    height: 50
+    height_jitter: 0.15
+    z_offset: -2
+  - name: rock54
+    model: engine/models/mm8_deco_rock54.glb
+    height: 63
+    height_jitter: 0.15
+    z_offset: -3
+  - name: rock56
+    model: engine/models/mm8_deco_rock56.glb
+    height: 54
+    height_jitter: 0.15
+    z_offset: -2
+  - name: rock12
+    model: engine/models/mm8_deco_rock12.glb
+    height: 105
+    height_jitter: 0.15
+    z_offset: -4
+  - name: rock26
+    model: engine/models/mm8_deco_rock26.glb
+    height: 106
+    height_jitter: 0.15
+    z_offset: -4
+  - name: rock47
+    model: engine/models/mm8_deco_rock47.glb
+    height: 89
+    height_jitter: 0.15
+    z_offset: -4
+  - name: rock53
+    model: engine/models/mm8_deco_rock53.glb
+    height: 68
+    height_jitter: 0.15
+    z_offset: -3
+  # Rune stones: one placement each, plants grow from the base, so no jitter and a small sink.
+  - name: rock65
+    model: engine/models/mm8_deco_rock65.glb
+    height: 319
+    z_offset: -5
+  - name: rock68
+    model: engine/models/mm8_deco_rock68.glb
+    height: 91
+    z_offset: -1
+  - name: rock69
+    model: engine/models/mm8_deco_rock69.glb
+    height: 128
+    z_offset: -2
+  # MM8 plants (mm8_3d/plants/); plant08 reuses the plant02 model.
+  - name: plant01
+    model: engine/models/mm8_deco_plant01.glb
+    height: 70
+    height_jitter: 0.15
+    lod_pixels: [300, 120, 60]
+  - name: plant02
+    model: engine/models/mm8_deco_plant02.glb
+    height: 130
+    height_jitter: 0.15
+    lod_pixels: [400, 170, 70]
+  - name: plant03
+    model: engine/models/mm8_deco_plant03.glb
+    height: 44
+    height_jitter: 0.15
+    lod_pixels: [300, 120, 60]
+  - name: plant04
+    model: engine/models/mm8_deco_plant04.glb
+    height: 40
+    height_jitter: 0.15
+    lod_pixels: [300, 120, 60]
+  - name: plant05
+    model: engine/models/mm8_deco_plant05.glb
+    height: 143
+    height_jitter: 0.15
+    lod_pixels: [400, 170, 70]
+  - name: plant08
+    model: engine/models/mm8_deco_plant02.glb
+    height: 130
+    height_jitter: 0.15
+    lod_pixels: [400, 170, 70]
+  - name: plant09
+    model: engine/models/mm8_deco_plant09.glb
+    height: 61
+    height_jitter: 0.15
+    lod_pixels: [300, 120, 60]
+  - name: plant10
+    model: engine/models/mm8_deco_plant10.glb
+    height: 126
+    height_jitter: 0.15
+    lod_pixels: [400, 170, 70]
+  - name: plant11
+    model: engine/models/mm8_deco_plant11.glb
+    height: 66
+    height_jitter: 0.15
+    lod_pixels: [300, 120, 60]
+  - name: plant13
+    model: engine/models/mm8_deco_plant13.glb
+    height: 41
+    height_jitter: 0.15
+    lod_pixels: [300, 120, 60]
+  - name: plant15
+    model: engine/models/mm8_deco_plant15.glb
+    height: 55
+    height_jitter: 0.15
+    lod_pixels: [300, 120, 60]
+  - name: plant16
+    model: engine/models/mm8_deco_plant16.glb
+    height: 72
+    height_jitter: 0.15
+    lod_pixels: [300, 120, 60]
+  - name: plant17
+    model: engine/models/mm8_deco_plant17.glb
+    height: 73
+    height_jitter: 0.15
+    lod_pixels: [300, 120, 60]
+  - name: plant19
+    model: engine/models/mm8_deco_plant19.glb
+    height: 67
+    height_jitter: 0.15
+    lod_pixels: [300, 120, 60]
+  - name: plant20
+    model: engine/models/mm8_deco_plant20.glb
+    height: 67
+    height_jitter: 0.15
+    lod_pixels: [300, 120, 60]
+  - name: plant21
+    model: engine/models/mm8_deco_plant21.glb
+    height: 73
+    height_jitter: 0.15
+    lod_pixels: [300, 120, 60]
+  - name: plant22
+    model: engine/models/mm8_deco_plant22.glb
+    height: 61
+    height_jitter: 0.15
+    lod_pixels: [300, 120, 60]
+  - name: plant23
+    model: engine/models/mm8_deco_plant23.glb
+    height: 71
+    height_jitter: 0.15
+    lod_pixels: [300, 120, 60]
+  - name: plant24
+    model: engine/models/mm8_deco_plant24.glb
+    height: 40
+    height_jitter: 0.15
+    lod_pixels: [300, 120, 60]
+  - name: plant25
+    model: engine/models/mm8_deco_plant25.glb
+    height: 81
+    height_jitter: 0.15
+    lod_pixels: [300, 120, 60]
+  - name: plant26
+    model: engine/models/mm8_deco_plant26.glb
+    height: 106
+    height_jitter: 0.15
+    lod_pixels: [400, 170, 70]
+  - name: plant27
+    model: engine/models/mm8_deco_plant27.glb
+    height: 51
+    height_jitter: 0.15
+    lod_pixels: [300, 120, 60]
+  - name: plant28
+    model: engine/models/mm8_deco_plant28.glb
+    height: 112
+    height_jitter: 0.15
+    lod_pixels: [400, 170, 70]
+  - name: plant29
+    model: engine/models/mm8_deco_plant29.glb
+    height: 112
+    height_jitter: 0.15
+    lod_pixels: [400, 170, 70]
+  - name: plant30
+    model: engine/models/mm8_deco_plant30.glb
+    height: 127
+    height_jitter: 0.15
+    lod_pixels: [400, 170, 70]
+  - name: plant31
+    model: engine/models/mm8_deco_plant31.glb
+    height: 100
+    height_jitter: 0.15
+    lod_pixels: [400, 170, 70]
+  - name: plant32
+    model: engine/models/mm8_deco_plant32.glb
+    height: 165
+    height_jitter: 0.15
+    lod_pixels: [400, 170, 70]
+  - name: plant33
+    model: engine/models/mm8_deco_plant33.glb
+    height: 127
+    height_jitter: 0.15
+    lod_pixels: [400, 170, 70]
+  - name: plant34
+    model: engine/models/mm8_deco_plant34.glb
+    height: 236
+    height_jitter: 0.15
+    lod_pixels: [500, 200, 80]
+  - name: plant37
+    model: engine/models/mm8_deco_plant37.glb
+    height: 2
+    height_jitter: 0.1
+    lod_pixels: [300, 120, 60]
+  - name: plant38
+    model: engine/models/mm8_deco_plant38.glb
+    height: 24
+    height_jitter: 0.1
+    lod_pixels: [300, 120, 60]
+  - name: plant42
+    model: engine/models/mm8_deco_plant42.glb
+    height: 109
+    height_jitter: 0.15
+    lod_pixels: [400, 170, 70]
+  - name: plant43
+    model: engine/models/mm8_deco_plant43.glb
+    height: 93
+    height_jitter: 0.15
+    z_offset: -2
+    lod_pixels: [400, 170, 70]
+  - name: plant44
+    model: engine/models/mm8_deco_plant44.glb
+    height: 101
+    height_jitter: 0.15
+    z_offset: -2
+    lod_pixels: [400, 170, 70]
+  - name: plant46
+    model: engine/models/mm8_deco_plant46.glb
+    height: 109
+    height_jitter: 0.15
+    z_offset: -2
+    lod_pixels: [400, 170, 70]
+  - name: plant47
+    model: engine/models/mm8_deco_plant47.glb
+    height: 93
+    height_jitter: 0.15
+    z_offset: -2
+    lod_pixels: [400, 170, 70]
+  - name: plant48
+    model: engine/models/mm8_deco_plant48.glb
+    height: 116
+    height_jitter: 0.15
+    lod_pixels: [400, 170, 70]
+  - name: plant49
+    model: engine/models/mm8_deco_plant49.glb
+    height: 120
+    height_jitter: 0.15
+    lod_pixels: [400, 170, 70]
+  - name: plant50
+    model: engine/models/mm8_deco_plant50.glb
+    height: 120
+    height_jitter: 0.15
+    z_offset: -2
+    lod_pixels: [400, 170, 70]
+  - name: plant51
+    model: engine/models/mm8_deco_plant51.glb
+    height: 124
+    height_jitter: 0.15
+    z_offset: -2
+    lod_pixels: [400, 170, 70]
+  - name: plant52
+    model: engine/models/mm8_deco_plant52.glb
+    height: 246
+    height_jitter: 0.1
+    z_offset: -2
+    lod_pixels: [500, 200, 80]
+  - name: plant53
+    model: engine/models/mm8_deco_plant53.glb
+    height: 246
+    height_jitter: 0.1
+    z_offset: -2
+    lod_pixels: [500, 200, 80]
+  - name: plant54
+    model: engine/models/mm8_deco_plant54.glb
+    height: 250
+    height_jitter: 0.1
+    z_offset: -2
+    lod_pixels: [500, 200, 80]
+  - name: plant56
+    model: engine/models/mm8_deco_plant56.glb
+    height: 128
+    height_jitter: 0.15
+    lod_pixels: [400, 170, 70]
+  # MM8 broadleaf trees (mm8_3d/trees_broadleaf/).
+  - name: tree12
+    model: engine/models/mm8_deco_tree12.glb
+    height: 944
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree10
+    model: engine/models/mm8_deco_tree10.glb
+    height: 992
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree62a
+    model: engine/models/mm8_deco_tree62a.glb
+    height: 1000
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree11
+    model: engine/models/mm8_deco_tree11.glb
+    height: 988
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree18
+    model: engine/models/mm8_deco_tree18.glb
+    height: 1000
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree25
+    model: engine/models/mm8_deco_tree25.glb
+    height: 500
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree31
+    model: engine/models/mm8_deco_tree31.glb
+    height: 952
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree60a
+    model: engine/models/mm8_deco_tree60a.glb
+    height: 1004
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree13
+    model: engine/models/mm8_deco_tree13.glb
+    height: 492
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree59
+    model: engine/models/mm8_deco_tree59.glb
+    height: 960
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree61a
+    model: engine/models/mm8_deco_tree61a.glb
+    height: 920
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree02
+    model: engine/models/mm8_deco_tree02.glb
+    height: 944
+    height_jitter: 0.1
+    lod_pixels: [650, 320, 180]
+  - name: tree07
+    model: engine/models/mm8_deco_tree07.glb
+    height: 936
+    height_jitter: 0.1
+    lod_pixels: [650, 320, 180]
+  - name: rock61
+    model: engine/models/mm8_deco_rock61.glb
+    height: 69
+    height_jitter: 0.15
+    z_offset: -3
+  - name: rock62
+    model: engine/models/mm8_deco_rock62.glb
+    height: 100
+    height_jitter: 0.15
+    z_offset: -4
+  - name: tree03
+    model: engine/models/mm8_deco_tree03.glb
+    height: 924
+    height_jitter: 0.1
+    lod_pixels: [650, 320, 180]
+  - name: tree06
+    model: engine/models/mm8_deco_tree06.glb
+    height: 920
+    height_jitter: 0.1
+    lod_pixels: [650, 320, 180]
+  # MM8 props (mm8_3d/props/); dec26 and dec23 are MM7 art (mm7_deco_*).
+  - name: dec05
+    model: engine/models/mm8_deco_skeleton.glb
+    height: 83
+    height_jitter: 0.05
+  - name: dec29
+    model: engine/models/mm8_deco_bonepile.glb
+    height: 39
+    height_jitter: 0.05
+  - name: dec21
+    model: engine/models/mm8_deco_carcass.glb
+    height: 78
+  - name: dec22
+    model: engine/models/mm8_deco_carrion.glb
+    height: 77
+  - name: dec13
+    model: engine/models/mm8_deco_runepost13.glb
+    height: 255
+  - name: dec14
+    model: engine/models/mm8_deco_runepost14.glb
+    height: 255
+  - name: dec15
+    model: engine/models/mm8_deco_runepost15.glb
+    height: 124
+  - name: dec16
+    model: engine/models/mm8_deco_runepost16.glb
+    height: 124
+  - name: dec17
+    model: engine/models/mm8_deco_runepost17.glb
+    height: 61
+  - name: dec01
+    model: engine/models/mm8_deco_elfstatue.glb
+    height: 217
+  - name: dec26
+    model: engine/models/mm7_deco_cauldron.glb
+    height: 128
+  - name: dec23
+    model: engine/models/mm7_deco_trash_heap.glb
+    height: 92
+    height_jitter: 0.05
+  - name: tree05
+    model: engine/models/mm8_deco_tree05.glb
+    height: 972
+    height_jitter: 0.1
+    lod_pixels: [650, 320, 180]
+  - name: tree09
+    model: engine/models/mm8_deco_tree09.glb
+    height: 984
+    height_jitter: 0.1
+    lod_pixels: [650, 320, 180]
+  # MM8 other trees (mm8_3d/trees_other/): pines, dead tree, maples, desert and gorge trees.
+  - name: tree29
+    model: engine/models/mm8_deco_tree29.glb
+    height: 976
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree30
+    model: engine/models/mm8_deco_tree30.glb
+    height: 1000
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree28
+    model: engine/models/mm8_deco_tree28.glb
+    height: 1008
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree62c
+    model: engine/models/mm8_deco_tree62c.glb
+    height: 1000
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree63b
+    model: engine/models/mm8_deco_tree63b.glb
+    height: 956
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree17
+    model: engine/models/mm8_deco_tree17.glb
+    height: 1016
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree21
+    model: engine/models/mm8_deco_tree21.glb
+    height: 488
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree19
+    model: engine/models/mm8_deco_tree19.glb
+    height: 420
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree20
+    model: engine/models/mm8_deco_tree20.glb
+    height: 500
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree14
+    model: engine/models/mm8_deco_tree14.glb
+    height: 416
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree15
+    model: engine/models/mm8_deco_tree15.glb
+    height: 820
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree16
+    model: engine/models/mm8_deco_tree16.glb
+    height: 908
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]

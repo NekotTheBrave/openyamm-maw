@@ -1,6 +1,9 @@
 #pragma once
 
+#include "engine/render/LightGrid.h"
+#include "game/indoor/IndoorLightReach.h"
 #include "game/indoor/IndoorPortalVisibility.h"
+#include "game/render/lighting/FxLightClustering.h"
 #include "game/render/lighting/LightingStats.h"
 
 #include <bx/math.h>
@@ -20,6 +23,19 @@ struct IndoorMapData;
 
 static constexpr size_t MaxIndoorDrawLights = 12;
 
+// The sectors a light reaches (IndoorLightReach), as the light grid carries them; count 0: everywhere (no sector, or
+// more sectors than fit).
+struct IndoorLightReachList
+{
+    std::array<int16_t, Engine::LightGridMaxReach> sectors = {};
+    uint8_t count = 0;
+
+    void assign(const std::vector<int16_t> &reached);
+    bool reaches(int16_t sector) const;
+    // A face or batch with front and back sectors (-1: none); one without either takes every light.
+    bool reachesReceiver(int16_t sector, int16_t backSector) const;
+};
+
 enum class IndoorRenderLightKind : uint8_t
 {
     Static,
@@ -37,6 +53,7 @@ struct IndoorRenderLight
     int16_t sectorId = -1;
     IndoorRenderLightKind kind = IndoorRenderLightKind::Static;
     uint32_t stableId = 0;
+    IndoorLightReachList reach;
 };
 
 enum class IndoorLightingSampleFilter : uint8_t
@@ -48,7 +65,9 @@ enum class IndoorLightingSampleFilter : uint8_t
 
 struct IndoorLightingFrame
 {
+    // The darkest visible sector's ambient (lights without a sector, the frame default) and every sector's own.
     float ambient = 1.0f;
+    std::vector<float> sectorAmbient;
     uint64_t indoorLightRevision = 0;
     bool coloredLights = true;
     std::vector<IndoorRenderLight> lights;
@@ -66,12 +85,6 @@ struct IndoorDrawLightSet
     std::array<float, MaxIndoorDrawLights * 4> colors = {};
     std::array<float, 4> params = {};
     std::array<uint32_t, MaxIndoorDrawLights> stableIds = {};
-    size_t lightCount = 0;
-};
-
-struct IndoorLightSelectionHistory
-{
-    std::array<uint32_t, MaxIndoorDrawLights> lightStableIds = {};
     size_t lightCount = 0;
 };
 
@@ -93,6 +106,8 @@ struct IndoorLightingFrameInput
     const std::vector<std::vector<IndoorVisibilityFrustum>> *pVisibleSectorFrustums = nullptr;
     bx::Vec3 cameraPosition = {0.0f, 0.0f, 0.0f};
     bool coloredLights = true;
+    // FX lights per sector before nearby ones merge (FxLightClusterThresholdHigh/Low, by the light grid's quality).
+    uint32_t fxClusterThreshold = FxLightClusterThresholdHigh;
 };
 
 class IndoorLightingRuntime
@@ -107,6 +122,17 @@ public:
 
     static bool isBlvLightEnabledByState(uint32_t attributes, const EventRuntimeState *pState, size_t lightId);
     static float ambientFromMinAmbientLightLevel(int minAmbientLightLevel);
+    // The sector's own ambient; the frame's for no sector.
+    static float sectorAmbient(const IndoorLightingFrame &frame, int16_t sectorId);
+    const IndoorLightReach &lightReach() const
+    {
+        return m_lightReach;
+    }
+    // A map light's own sector (where it stands, else the first sector listing it); -1 when unknown.
+    int16_t mapLightSector(size_t lightId) const
+    {
+        return lightId < m_mapLightSectors.size() ? m_mapLightSectors[lightId] : int16_t(-1);
+    }
     static std::array<float, 3> sampleLightingRgb(
         const IndoorLightingFrame &frame,
         const bx::Vec3 &position,
@@ -132,8 +158,10 @@ public:
         int16_t sectorId,
         int16_t backSectorId,
         LightingStats *pStats = nullptr,
-        const IndoorLightSelectionHistory *pPreviousSelection = nullptr,
         bool includeStaticLights = true);
+    // Every light of the frame (static, decoration, torch, FX) for the clustered light grid, coloured and scaled as
+    // the per-draw light sets pack them; torch and FX lights are its dynamic ones, with their sectors.
+    static std::vector<Engine::LightGridLight> gridLights(const IndoorLightingFrame &frame);
     static IndoorDrawLightSet selectDrawLightSetForBounds(
         const IndoorLightingFrame &frame,
         const bx::Vec3 &referencePosition,
@@ -142,7 +170,6 @@ public:
         int16_t backSectorId,
         const IndoorLightSelectionBounds &bounds,
         LightingStats *pStats = nullptr,
-        const IndoorLightSelectionHistory *pPreviousSelection = nullptr,
         bool includeStaticLights = true);
 
 private:
@@ -163,6 +190,7 @@ private:
         size_t decorationDecorVarIndex = static_cast<size_t>(-1);
         uint8_t decorationClearedState = 0;
         bool hideDecorationWhenCleared = false;
+        IndoorLightReachList reach;
     };
 
     struct StaticLightCache
@@ -176,9 +204,15 @@ private:
     static StaticLightCache buildStaticCache(
         const IndoorMapData &mapData,
         const DecorationBillboardSet *pDecorationBillboardSet,
-        const EventRuntimeState *pState);
+        const EventRuntimeState *pState,
+        const std::vector<int16_t> &mapLightSectors);
     static uint32_t lightColorAbgr(uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha, bool coloredLights);
 
+    // Gives every cached source its reach.
+    void assignReach(StaticLightCache &cache) const;
+
     mutable StaticLightCache m_staticLightCache;
+    IndoorLightReach m_lightReach;
+    std::vector<int16_t> m_mapLightSectors;
 };
 }

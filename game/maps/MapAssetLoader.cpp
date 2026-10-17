@@ -2476,6 +2476,7 @@ std::optional<DecorationBillboardSet> buildIndoorDecorationBillboardSet(
         }
     }
 
+    resolveDuplicateTorchLights(indoorMapData, *billboardSet);
     return billboardSet;
 }
 
@@ -2510,13 +2511,17 @@ std::optional<SpriteObjectBillboardSet> buildSpriteObjectBillboardSet(
     std::vector<BitmapTextureRequest> textureRequests;
 
     // OE initializes every object descriptor once at startup, not only objects already placed in the current map.
-    // Do the equivalent before gameplay so newly spawned spell missiles, impacts, and dropped objects cannot trigger
-    // bitmap decoding and GPU upload on their first rendered frame.
+    // Do the equivalent for items before gameplay, so a dropped item cannot trigger bitmap decoding and GPU upload on
+    // its first rendered frame. Unpickable objects (spell missiles, impacts) never draw their sprite: models and
+    // effects present them.
     if (preloadAllObjectSprites)
     {
         for (const ObjectEntry &objectEntry : objectTable.entries())
         {
-            appendSpriteFrameTextures(textureRequests, billboardSet.spriteFrameTable, objectEntry.spriteId);
+            if ((objectEntry.flags & ObjectDescUnpickable) == 0)
+            {
+                appendSpriteFrameTextures(textureRequests, billboardSet.spriteFrameTable, objectEntry.spriteId);
+            }
         }
     }
 
@@ -3950,6 +3955,67 @@ size_t mapRenderSourcePixelBytes(const MapAssetInfo &mapAssetInfo)
     }
 
     return byteCount;
+}
+
+void resolveDuplicateTorchLights(const IndoorMapData &indoorMapData, DecorationBillboardSet &billboardSet)
+{
+    constexpr float ClaimDistance = 128.0f;
+    billboardSet.mapLightsReplacedByDecorations.assign(indoorMapData.lights.size(), false);
+    // Light-emitting decorations and their reach (the larger of the light and the sprite glow, as the lighting uses).
+    std::vector<std::pair<size_t, float>> emitters;
+    for (size_t index = 0; index < billboardSet.billboards.size(); ++index)
+    {
+        const DecorationBillboard &billboard = billboardSet.billboards[index];
+        const DecorationEntry *pDecoration = billboardSet.decorationTable.get(billboard.decorationId);
+        if (pDecoration == nullptr)
+        {
+            continue;
+        }
+        const SpriteFrameEntry *pFrame = billboardSet.spriteFrameTable.getFrame(pDecoration->spriteId, 0);
+        const float glowRadius = pFrame != nullptr ? float(pFrame->glowRadius) : 0.0f;
+        const float radius = std::max(float(pDecoration->lightRadius), glowRadius);
+        if (radius > 0.0f)
+        {
+            emitters.emplace_back(index, radius);
+        }
+    }
+    std::vector<bool> claimed(emitters.size(), false);
+    for (size_t lightId = 0; lightId < indoorMapData.lights.size(); ++lightId)
+    {
+        const IndoorLight &light = indoorMapData.lights[lightId];
+        if (light.radius <= 0)
+        {
+            continue;
+        }
+        size_t nearest = emitters.size();
+        float nearestSquared = ClaimDistance * ClaimDistance;
+        for (size_t emitter = 0; emitter < emitters.size(); ++emitter)
+        {
+            const DecorationBillboard &billboard = billboardSet.billboards[emitters[emitter].first];
+            const float dx = float(billboard.x - light.x);
+            const float dy = float(billboard.y - light.y);
+            const float dz = float(billboard.z - light.z);
+            const float distanceSquared = dx * dx + dy * dy + dz * dz;
+            if (!claimed[emitter] && distanceSquared <= nearestSquared)
+            {
+                nearest = emitter;
+                nearestSquared = distanceSquared;
+            }
+        }
+        if (nearest == emitters.size())
+        {
+            continue;
+        }
+        claimed[nearest] = true;
+        if (float(light.radius) > emitters[nearest].second)
+        {
+            billboardSet.billboards[emitters[nearest].first].litByMapLight = true;
+        }
+        else
+        {
+            billboardSet.mapLightsReplacedByDecorations[lightId] = true;
+        }
+    }
 }
 
 void clearMapRenderSourcePixels(MapAssetInfo &mapAssetInfo)

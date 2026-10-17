@@ -1,0 +1,3 @@
+interface:
+  display_name: "Creature Restore"
+  short_description: "Restore packed animations with outlines and fine detail"

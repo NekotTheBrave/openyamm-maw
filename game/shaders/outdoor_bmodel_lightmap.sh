@@ -24,6 +24,7 @@ uniform vec4 u_fxLightParams;
 uniform vec4 u_secretPulseParams;
 
 #include "weather_wetness.sh"
+#include "light_grid.sh"
 
 float safeSmoothstep(float edge0, float edge1, float value)
 {
@@ -67,10 +68,15 @@ vec3 getFxLighting(vec3 worldPosition)
     vec3 lighting = vec3(u_fxLightParams.y, u_fxLightParams.y, u_fxLightParams.y);
 #endif
 
-    // The active lights come first: stop at the count.
+    // Dynamic lights from the view's light grid (scaled like the list below), else the draw's own list (water
+    // reflections); the active lights come first: stop at the count.
+    if (lightGridMode() > 0.5)
+    {
+        lighting += lightGridDynamicLighting(worldPosition);
+    }
     for (int i = 0; i < 8; ++i)
     {
-        if (float(i) >= u_fxLightParams.x)
+        if (float(i) >= u_fxLightParams.x || lightGridMode() > 0.5)
         {
             break;
         }

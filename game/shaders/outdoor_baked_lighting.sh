@@ -25,7 +25,7 @@ vec3 bakedShadowedSourceLighting(vec4 sun, vec4 sky, vec2 uv, vec3 position)
     {
         normal = -normal;
     }
-    float visibility = sunShadowVisibility(position, normal);
+    float visibility = sunShadowVisibility(position, normal, 1.0);
     vec3 totalSun = sun.rgb * (sun.a * 4.0);
     vec4 directSample = texture2D(s_texBakedSunDirect, uv);
     // Both pages already contain static occlusion. Remove only moving-actor occlusion of direct sunlight.

@@ -46,7 +46,8 @@ std::array<float, 9> backgroundTriangle(bool behindScene)
 
 uint64_t backgroundState(bool behindScene)
 {
-    return BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | (behindScene ? BGFX_STATE_DEPTH_TEST_LEQUAL : 0);
+    return BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_MSAA
+        | (behindScene ? BGFX_STATE_DEPTH_TEST_LEQUAL : 0);
 }
 
 std::array<float, 4> vec4(const SkyColor &color, float w)

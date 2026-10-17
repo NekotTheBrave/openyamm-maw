@@ -163,6 +163,8 @@ class PartySpellSystem
 {
 public:
     static std::optional<PartySpellDescriptor> describeSpell(uint32_t spellId);
+    // Mana an ordinary cast would spend, or nullopt when the caster lacks the skill for the spell.
+    static std::optional<uint32_t> manaCost(const Character &caster, const SpellTable &spellTable, uint32_t spellId);
 
     // What casting the spell would cost the party member in spell points, as castSpell works it out; nothing when the
     // member cannot cast it at all.

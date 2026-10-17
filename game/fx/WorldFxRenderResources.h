@@ -62,7 +62,30 @@ public:
     const WorldFxParticleTexture *findParticleTexture(const std::string &textureName) const;
     void addParticleTexture(WorldFxParticleTexture texture);
 
+    // Bloom (CinematicGrading::glowView): additive particles and effects draw again into this view, or UINT16_MAX.
+    uint16_t glowView() const
+    {
+        return m_glowView;
+    }
+    // Also forgets whether anything glowed: set once per frame before the effects draw.
+    void setGlowView(uint16_t view)
+    {
+        m_glowView = view;
+        m_glowDrawn = false;
+    }
+    // Whether an effect drew into the glow view since setGlowView (the bloom chain is skipped otherwise).
+    bool glowDrawn() const
+    {
+        return m_glowDrawn;
+    }
+    void markGlowDrawn()
+    {
+        m_glowDrawn = true;
+    }
+
 private:
+    uint16_t m_glowView = UINT16_MAX;
+    bool m_glowDrawn = false;
     bgfx::ProgramHandle m_particleProgramHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_particleParamsUniformHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_textureSamplerHandle = BGFX_INVALID_HANDLE;

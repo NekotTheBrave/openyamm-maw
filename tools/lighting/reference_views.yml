@@ -1,0 +1,103 @@
+# Reference views of the lighting and materials plan (docs/LIGHTING_AND_MATERIALS_ARCHITECTURE.md, phase 0): fixed
+# camera poses, indoor and outdoor, with optional console commands run at gameplay start (friendly pilot creatures,
+# time of day, a frozen world so captures repeat). tools/lighting/reference_views.py captures each one and measures its
+# GPU and CPU frame time.
+#   position: party position [x, y, z]; yaw: radians; pitch: degrees
+#   console: debug console lines, in order
+views:
+  # Indoor (BLV)
+  - name: mm7_t02_goblets
+    world: mm7
+    map: t02.blv
+    position: [-2016, 5202, -256]
+    yaw: 1.5708
+    pitch: -20
+  - name: mm7_d03_lantern
+    world: mm7
+    map: d03.blv
+    position: [-9706, 2472, -1848]
+    yaw: 0
+    pitch: 3
+  - name: mm7_7d34_red_torch
+    world: mm7
+    map: 7d34.blv
+    position: [-28, 624, 50]
+    yaw: 3.1416
+    pitch: 7
+  - name: mm7_7d17_barrels
+    # Tidewater Caverns: on the deck by a net barrel (at 992 the party stood above the void and fell); the world is
+    # frozen so the skeletons in the hold stay put.
+    world: mm7
+    map: 7d17.blv
+    position: [-262, 7984, 640]
+    yaw: 0
+    pitch: -4
+    console:
+      - render freeze on
+  - name: mm7_7d29_creatures
+    # The pilot creatures (Death Knight 565, Goblin 550, Barbarian 478) in a torch-lit dungeon room.
+    world: mm7
+    map: 7d29.blv
+    position: [-4064, 994, 0]
+    yaw: 1.5708
+    pitch: 2
+    console:
+      - actor spawn 565 1 -4234 1424 0 friendly
+      - actor spawn 550 1 -4064 1454 0 friendly
+      - actor spawn 478 1 -3894 1424 0 friendly
+      - render freeze on
+  # Outdoor (ODM)
+  - name: mm6_oute3_creatures_day
+    world: mm6
+    map: oute3.odm
+    position: [-9728, -11319, 161]
+    yaw: 4.758
+    pitch: -6.274
+    console:
+      - time set 12:00
+      - actor spawn 565 1 -10048 -11919 161 friendly
+      - actor spawn 550 1 -9728 -11919 161 friendly
+      - actor spawn 478 1 -9408 -11919 161 friendly
+      - render freeze on
+  - name: mm6_oute3_night
+    world: mm6
+    map: oute3.odm
+    position: [-9728, -11319, 161]
+    yaw: 4.758
+    pitch: -6.274
+    console:
+      - time set 22:30
+      - render freeze on
+  - name: mm7_7out02_trees
+    world: mm7
+    map: 7out02.odm
+    position: [-24905, 21164, 3051]
+    yaw: 0.6
+    pitch: -2
+    console:
+      - time set 12:00
+      - render freeze on
+  - name: mm7_out11_bare_forest
+    world: mm7
+    map: out11.odm
+    position: [-23343, 9612, 494]
+    yaw: 0.6
+    pitch: -2
+    console:
+      - time set 12:00
+      - render freeze on
+  - name: mm7_7out13_snow
+    world: mm7
+    map: 7out13.odm
+    position: [-2173, 17742, 3126]
+    yaw: 0.6
+    pitch: -2
+    console:
+      - time set 12:00
+      - render freeze on
+  - name: mm8_out02_ravenshore
+    world: mm8
+    map: out02.odm
+    console:
+      - time set 12:00
+      - render freeze on

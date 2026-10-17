@@ -768,6 +768,29 @@ std::mt19937 buildPartyAttackRng(
         ^ static_cast<uint32_t>(actingMemberIndex * 40503u);
     return std::mt19937(seed);
 }
+
+// An attacker without the mana for their attack spell swings or shoots their weapon instead.
+bool lacksManaForAttackSpell(
+    const GameplayActionController::PartyAttackConfig &config,
+    size_t attackerMemberIndex,
+    const Character &attacker)
+{
+    if (config.pParty == nullptr || config.pSpellTable == nullptr)
+    {
+        return false;
+    }
+
+    const SpellEntry *pSpellEntry = config.pSpellTable->findByName(attacker.attackSpellName);
+
+    if (pSpellEntry == nullptr)
+    {
+        return false;
+    }
+
+    const std::optional<uint32_t> manaCost =
+        PartySpellSystem::manaCost(attacker, *config.pSpellTable, uint32_t(pSpellEntry->id));
+    return manaCost && !config.pParty->canSpendSpellPoints(attackerMemberIndex, int(*manaCost));
+}
 } // namespace
 
 void GameplayActionController::updateCooldowns(GameplayScreenState &screenState, float deltaSeconds)
@@ -925,10 +948,8 @@ GameplayActionController::PartyAttackExecutionResult GameplayActionController::e
         party.clearPartyBuff(PartyBuffId::Invisibility);
     }
 
-    // A character with an attack spell casts it instead of attacking. In the original one who cannot pay for it
-    // attacks with the weapon instead, which keeps the attack key going round the party when the casters run dry.
-    // Held to whenever a mod runtime is present; with mods off the engine is as upstream, where the cast fails
-    // and the turn stays with the caster.
+    // A character with an attack spell casts it instead of attacking; one who cannot pay for it attacks with the
+    // weapon instead (lacksManaForAttackSpell, below).
     bool attackSpellAffordable = true;
 
     // The mod's Action event for the attack spell comes first, as in the original (action 25, param 1): a handler may
@@ -952,19 +973,10 @@ GameplayActionController::PartyAttackExecutionResult GameplayActionController::e
         }
     }
 
-    if (!pAttacker->attackSpellName.empty() && attackSpellAffordable && activeModHooks() != nullptr
-        && config.pSpellTable != nullptr)
+    if (!pAttacker->attackSpellName.empty() && attackSpellAffordable
+        && lacksManaForAttackSpell(config, actingMemberIndex, *pAttacker))
     {
-        const SpellEntry *pAttackSpellEntry = config.pSpellTable->findByName(pAttacker->attackSpellName);
-        const std::optional<uint32_t> manaCost = pAttackSpellEntry != nullptr
-            ? PartySpellSystem::spellManaCost(
-                party,
-                *config.pSpellTable,
-                actingMemberIndex,
-                static_cast<uint32_t>(pAttackSpellEntry->id))
-            : std::nullopt;
-        attackSpellAffordable =
-            !manaCost || party.canSpendSpellPoints(actingMemberIndex, static_cast<int>(*manaCost));
+        attackSpellAffordable = false;
     }
 
     if (!pAttacker->attackSpellName.empty() && attackSpellAffordable)

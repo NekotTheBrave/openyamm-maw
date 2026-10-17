@@ -306,8 +306,9 @@ private:
     Engine::AssetFileSystem *m_pAssetFileSystem;
     bool m_quickSaveLatch = false;
     // Console `render` profiling switches: decoration-model foliage, and a frozen world (no actor/time updates) so a
-    // view stays identical while layers are measured.
+    // view stays identical while layers are measured. Without the HUD, gameplay draws only the world (clean captures).
     bool m_renderFoliage = true;
+    bool m_renderHud = true;
     bool m_renderInstancing = true;
     bool m_renderFreezeWorld = false;
     bool m_quickLoadLatch = false;

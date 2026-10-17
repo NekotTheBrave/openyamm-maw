@@ -1,5 +1,6 @@
 #include "game/fx/ParticleRenderer.h"
 
+#include "game/fx/EffectViewFade.h"
 #include "game/fx/FxSharedTypes.h"
 #include "game/fx/ParticleSystem.h"
 #include "game/fx/WorldFxRenderResources.h"
@@ -30,13 +31,13 @@ constexpr uint64_t ParticleAlphaRenderState =
     BGFX_STATE_WRITE_RGB
     | BGFX_STATE_WRITE_A
     | BGFX_STATE_DEPTH_TEST_LEQUAL
-    | BGFX_STATE_BLEND_ALPHA;
+    | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_MSAA;
 
 constexpr uint64_t ParticleAdditiveRenderState =
     BGFX_STATE_WRITE_RGB
     | BGFX_STATE_WRITE_A
     | BGFX_STATE_DEPTH_TEST_LEQUAL
-    | BGFX_STATE_BLEND_ADD;
+    | BGFX_STATE_BLEND_ADD | BGFX_STATE_MSAA;
 
 constexpr size_t ParticleMaterialCount = 6;
 constexpr size_t ParticleBlendModeCount = 2;
@@ -520,9 +521,6 @@ void ParticleRenderer::renderParticles(
         const uint32_t colorAbgr = lerpColorAbgr(particle.startColorAbgr, particle.endColorAbgr, normalizedAge);
         const uint8_t fadedAlpha = static_cast<uint8_t>(
             std::lround(static_cast<float>(channelAt(colorAbgr, 24)) * std::clamp(fadeAlpha, 0.0f, 1.0f)));
-        const uint32_t finalColorAbgr =
-            (colorAbgr & 0x00ffffffu) | (static_cast<uint32_t>(fadedAlpha) << 24);
-
         if (fadedAlpha == 0)
         {
             continue;
@@ -542,6 +540,14 @@ void ParticleRenderer::renderParticles(
 
         const float halfWidth = currentSize * 0.5f;
         const bx::Vec3 center = {particle.x, particle.y, particle.z};
+        const float viewFade = effectViewFade(
+            bx::dot(bx::sub(center, cameraPosition), cameraForward), halfWidth * std::max(1.0f, particle.stretch));
+        const uint8_t viewFadedAlpha = static_cast<uint8_t>(std::lround(float(fadedAlpha) * viewFade));
+        if (viewFadedAlpha == 0)
+        {
+            continue;
+        }
+        const uint32_t finalColorAbgr = (colorAbgr & 0x00ffffffu) | (static_cast<uint32_t>(viewFadedAlpha) << 24);
 
         bx::Vec3 right = {0.0f, 0.0f, 0.0f};
         bx::Vec3 up = {0.0f, 0.0f, 0.0f};
@@ -594,6 +600,11 @@ void ParticleRenderer::renderParticles(
         writeParticleQuad(pWrite, center, right, up, finalColorAbgr);
         batchWriteOffsets[particleBatchIndex] += 6;
     }
+    // Faded-out particles were counted but not written.
+    for (size_t batchIndexValue = 0; batchIndexValue < batches.size(); ++batchIndexValue)
+    {
+        batches[batchIndexValue].resize(batchWriteOffsets[batchIndexValue]);
+    }
 
     auto submitParticleBatch =
         [&](const std::vector<WorldFxParticleVertex> &vertices,
@@ -638,7 +649,15 @@ void ParticleRenderer::renderParticles(
                 BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
             bgfx::setUniform(resources.particleParamsUniformHandle(), particleParams);
             bgfx::setState(renderState);
-            bgfx::submit(viewId, resources.particleProgramHandle());
+            // Additive particles are light: they also draw into the bloom glow, with the same bindings.
+            const bool glow = additiveBlend && resources.glowView() != UINT16_MAX;
+            bgfx::submit(viewId, resources.particleProgramHandle(), 0, glow ? BGFX_DISCARD_NONE : BGFX_DISCARD_ALL);
+            if (glow)
+            {
+                bgfx::setState(renderState);
+                bgfx::submit(resources.glowView(), resources.particleProgramHandle());
+                resources.markGlowDrawn();
+            }
         };
 
     for (size_t material = 0; material < ParticleMaterialCount; ++material)

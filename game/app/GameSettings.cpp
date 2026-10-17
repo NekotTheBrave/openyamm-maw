@@ -87,38 +87,6 @@ bool parseBlasterSkillScalingValue(const std::string &value, BlasterSkillScaling
     return false;
 }
 
-bool parseMonsterProjectileVisualsValue(const std::string &value, MonsterProjectileVisuals &result)
-{
-    const std::string normalized = toLowerCopy(trimCopy(value));
-
-    if (normalized == "fx_recipes" || normalized == "fx" || normalized == "recipes" || normalized == "particles")
-    {
-        result = MonsterProjectileVisuals::FxRecipes;
-        return true;
-    }
-
-    if (normalized == "sprites" || normalized == "sprite" || normalized == "billboard" || normalized == "legacy")
-    {
-        result = MonsterProjectileVisuals::Sprites;
-        return true;
-    }
-
-    return false;
-}
-
-std::string monsterProjectileVisualsValue(MonsterProjectileVisuals visuals)
-{
-    switch (visuals)
-    {
-        case MonsterProjectileVisuals::Sprites:
-            return "sprites";
-
-        case MonsterProjectileVisuals::FxRecipes:
-        default:
-            return "fx_recipes";
-    }
-}
-
 std::string blasterSkillScalingValue(BlasterSkillScalingMode mode)
 {
     switch (mode)
@@ -436,6 +404,9 @@ GameSettings GameSettings::createDefault()
     // (tools/cook_surface_textures.py), x4 on desktop and x2 on Android.
 #if defined(__ANDROID__)
     settings.assetScaleProfile.textures = Engine::AssetScaleTier::X2;
+    settings.lightGrid = LightGridQuality::Low;
+    settings.terrainSpecular = false;
+    settings.bloom = false;
 #else
     settings.assetScaleProfile.textures = Engine::AssetScaleTier::X4;
 #endif
@@ -612,30 +583,6 @@ bool setBakedLightingSetting(
     return false;
 }
 
-bool parseProjectileStyleValue(const std::string &value, ProjectileStyle &result)
-{
-    const std::string normalized = toLowerCopy(trimCopy(value));
-
-    if (normalized == "enhanced")
-    {
-        result = ProjectileStyle::Enhanced;
-        return true;
-    }
-
-    if (normalized == "classic")
-    {
-        result = ProjectileStyle::Classic;
-        return true;
-    }
-
-    return false;
-}
-
-std::string projectileStyleValue(ProjectileStyle style)
-{
-    return style == ProjectileStyle::Classic ? "classic" : "enhanced";
-}
-
 bool parseCorpseStyleValue(const std::string &value, CorpseStyle &result)
 {
     const std::string normalized = toLowerCopy(trimCopy(value));
@@ -693,6 +640,38 @@ std::string weatherQualityValue(WeatherQuality quality)
         default:
             return "high";
     }
+}
+
+bool parseLightGridQualityValue(const std::string &value, LightGridQuality &result)
+{
+    const std::string lowered = toLowerCopy(trimCopy(value));
+    if (lowered == "low" || lowered == "high")
+    {
+        result = lowered == "low" ? LightGridQuality::Low : LightGridQuality::High;
+        return true;
+    }
+    return false;
+}
+
+std::string lightGridQualityValue(LightGridQuality quality)
+{
+    return quality == LightGridQuality::Low ? "low" : "high";
+}
+
+bool parseAntialiasingValue(const std::string &value, int &samples)
+{
+    const std::string lowered = toLowerCopy(trimCopy(value));
+    if (lowered == "off" || lowered == "2x" || lowered == "4x")
+    {
+        samples = lowered == "off" ? 0 : lowered[0] - '0';
+        return true;
+    }
+    return false;
+}
+
+std::string antialiasingValue(int samples)
+{
+    return samples >= 4 ? "4x" : samples >= 2 ? "2x" : "off";
 }
 
 std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, std::string &error)
@@ -1117,6 +1096,18 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
             settings.ambientOcclusionStrength = std::clamp(parsed, 0, 100);
         }
     }
+    if (const std::optional<std::string> value = getIniValue(document, "video", "bloom"))
+    {
+        parseBoolValue(*value, settings.bloom);
+    }
+    if (const std::optional<std::string> value = getIniValue(document, "video", "bloom_strength"))
+    {
+        int parsed = settings.bloomStrength;
+        if (parseIntValue(*value, parsed))
+        {
+            settings.bloomStrength = std::clamp(parsed, 0, 100);
+        }
+    }
     if (const std::optional<std::string> value = getIniValue(document, "video", "cinematic_grading"))
     {
         parseBoolValue(*value, settings.cinematicGrading);
@@ -1153,9 +1144,9 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
     {
         parseBoolValue(*value, settings.terrainAntiTiling);
     }
-    if (const std::optional<std::string> value = getIniValue(document, "video", "projectile_style"))
+    if (const std::optional<std::string> value = getIniValue(document, "video", "light_grid"))
     {
-        parseProjectileStyleValue(*value, settings.projectileStyle);
+        parseLightGridQualityValue(*value, settings.lightGrid);
     }
     if (const std::optional<std::string> value = getIniValue(document, "video", "weather_quality"))
     {
@@ -1164,6 +1155,10 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
     if (const std::optional<std::string> value = getIniValue(document, "video", "rain_ripples"))
     {
         parseBoolValue(*value, settings.rainRipples);
+    }
+    if (const std::optional<std::string> value = getIniValue(document, "video", "terrain_specular"))
+    {
+        parseBoolValue(*value, settings.terrainSpecular);
     }
     if (const std::optional<std::string> value = getIniValue(document, "video", "wet_surfaces"))
     {
@@ -1192,6 +1187,10 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         {
             settings.sharpening = std::clamp(parsed, 0, 100);
         }
+    }
+    if (const std::optional<std::string> value = getIniValue(document, "video", "antialiasing"))
+    {
+        parseAntialiasingValue(*value, settings.antialiasing);
     }
 
     if (const std::optional<std::string> value = getIniValue(document, "video", "lightmaps"))
@@ -1391,16 +1390,6 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         if (parseBoolValue(*value, parsed))
         {
             settings.outdoorPathfinding = parsed;
-        }
-    }
-
-    if (const std::optional<std::string> value = getIniValue(document, "features", "monster_projectile_visuals"))
-    {
-        MonsterProjectileVisuals parsed = settings.monsterProjectileVisuals;
-
-        if (parseMonsterProjectileVisualsValue(*value, parsed))
-        {
-            settings.monsterProjectileVisuals = parsed;
         }
     }
 
@@ -2002,7 +1991,6 @@ bool saveGameSettings(const std::filesystem::path &path, const GameSettings &set
         << "difficulty=" << settings.difficulty << '\n'
         << "indoor_pathfinding=" << (settings.indoorPathfinding ? "true" : "false") << '\n'
         << "outdoor_pathfinding=" << (settings.outdoorPathfinding ? "true" : "false") << '\n'
-        << "monster_projectile_visuals=" << monsterProjectileVisualsValue(settings.monsterProjectileVisuals) << '\n'
         << "blaster_skill_scaling=" << blasterSkillScalingValue(settings.blasterSkillScaling) << '\n'
         << "blaster_min_recovery=" << blasterMinimumRecoveryTicksValue(settings.blasterMinimumRecoveryTicks) << "\n\n"
         << "[logging]\n"
@@ -2041,9 +2029,12 @@ bool saveGameSettings(const std::filesystem::path &path, const GameSettings &set
         << "texture_filtering=" << (settings.textureFiltering ? "true" : "false") << '\n'
         << "ambient_occlusion=" << (settings.ambientOcclusion ? "true" : "false") << '\n'
         << "ambient_occlusion_strength=" << settings.ambientOcclusionStrength << '\n'
+        << "bloom=" << (settings.bloom ? "true" : "false") << '\n'
+        << "bloom_strength=" << settings.bloomStrength << '\n'
         << "cinematic_grading=" << (settings.cinematicGrading ? "true" : "false") << '\n'
         << "cinematic_strength=" << settings.cinematicStrength << '\n'
         << "sharpening=" << settings.sharpening << '\n'
+        << "antialiasing=" << antialiasingValue(settings.antialiasing) << '\n'
         << "lightmaps=" << (settings.lightmaps ? "true" : "false") << '\n'
         << "baked_sun_strength=" << *getBakedLightingSetting(settings, "baked_sun_strength") << '\n'
         << "baked_sky_strength=" << *getBakedLightingSetting(settings, "baked_sky_strength") << '\n'
@@ -2056,11 +2047,12 @@ bool saveGameSettings(const std::filesystem::path &path, const GameSettings &set
         << "water_reflection_size=" << std::clamp(settings.waterReflectionSize, 128, 2048) << '\n'
         << "terrain_subdivision=" << settings.terrainSubdivision << '\n'
         << "terrain_antitiling=" << (settings.terrainAntiTiling ? "true" : "false") << '\n'
-        << "projectile_style=" << projectileStyleValue(settings.projectileStyle) << '\n'
         << "sky_resolution_scale=" << std::clamp(settings.skyResolutionScale, 0.25f, 1.0f) << '\n'
         << "weather_quality=" << weatherQualityValue(settings.weatherQuality) << '\n'
+        << "light_grid=" << lightGridQualityValue(settings.lightGrid) << '\n'
         << "rain_ripples=" << (settings.rainRipples ? "true" : "false") << '\n'
         << "wet_surfaces=" << (settings.wetSurfaces ? "true" : "false") << '\n'
+        << "terrain_specular=" << (settings.terrainSpecular ? "true" : "false") << '\n'
         << "terrain_filtering=" << settings.terrainFiltering << '\n'
         << "terrain_anisotropy=" << settings.terrainAnisotropy << '\n'
         << "bmodel_filtering=" << settings.bmodelFiltering << '\n'

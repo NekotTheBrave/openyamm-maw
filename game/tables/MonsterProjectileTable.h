@@ -20,6 +20,10 @@ class MonsterProjectileTable
 public:
     bool loadFromRows(const std::vector<std::vector<std::string>> &rows);
     const MonsterProjectileEntry *findByToken(const std::string &token) const;
+    const std::vector<MonsterProjectileEntry> &entries() const
+    {
+        return m_entries;
+    }
 
 private:
     std::vector<MonsterProjectileEntry> m_entries;

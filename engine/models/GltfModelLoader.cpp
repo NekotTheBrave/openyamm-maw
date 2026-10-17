@@ -519,7 +519,20 @@ bool loadMaterials(const cgltf_data &data, ModelAsset &asset, std::vector<bool> 
                 }
                 if (extras["openyamm_billboard"])
                 {
-                    material.billboard = extras["openyamm_billboard"].as<bool>();
+                    const std::string mode = extras["openyamm_billboard"].as<std::string>();
+                    if (mode == "card")
+                    {
+                        material.billboard = true;
+                        material.billboardCard = true;
+                    }
+                    else
+                    {
+                        material.billboard = extras["openyamm_billboard"].as<bool>();
+                    }
+                }
+                if (extras["openyamm_additive"])
+                {
+                    material.additive = extras["openyamm_additive"].as<bool>();
                 }
                 if (extras["openyamm_uv_scroll"])
                 {
@@ -565,6 +578,18 @@ bool loadMaterials(const cgltf_data &data, ModelAsset &asset, std::vector<bool> 
                     }
                     std::copy_n(pulse.begin(), 2, material.pulse.begin());
                 }
+                if (extras["openyamm_flicker"])
+                {
+                    const std::vector<float> flicker = extras["openyamm_flicker"].as<std::vector<float>>();
+                    if (extras["openyamm_pulse"] || flicker.size() != 2 || !(flicker[0] > 0.0f && flicker[0] <= 1.0f)
+                        || !(flicker[1] >= 0.5f && flicker[1] <= 30.0f))
+                    {
+                        error = "material " + std::to_string(materialIndex)
+                            + " flicker needs an amplitude (0..1] and 0.5..30 changes per second, and no pulse";
+                        return false;
+                    }
+                    material.pulse = {flicker[0], -1.0f / flicker[1]};
+                }
                 if (extras["openyamm_specular"])
                 {
                     material.specular = extras["openyamm_specular"].as<float>();
@@ -593,6 +618,35 @@ bool loadMaterials(const cgltf_data &data, ModelAsset &asset, std::vector<bool> 
                     {
                         error = "material " + std::to_string(materialIndex)
                             + " specular mask needs a metallic-roughness texture";
+                        return false;
+                    }
+                }
+                if (extras["openyamm_specular_occlusion"])
+                {
+                    const std::string occlusion = extras["openyamm_specular_occlusion"].as<std::string>();
+                    if (occlusion == "orm" && !material.specularMask
+                        && source.pbr_metallic_roughness.metallic_roughness_texture.texture != nullptr)
+                    {
+                        material.specularOcclusion = ModelMaterial::SpecularOcclusion::Orm;
+                    }
+                    else if (occlusion == "color0")
+                    {
+                        material.specularOcclusion = ModelMaterial::SpecularOcclusion::Color0;
+                    }
+                    else
+                    {
+                        error = "material " + std::to_string(materialIndex)
+                            + " specular occlusion must be orm (with a metallic-roughness texture and no specular"
+                              " mask) or color0";
+                        return false;
+                    }
+                    material.specularOcclusionReference =
+                        extras["openyamm_specular_occlusion_reference"].as<float>(1.0f);
+                    if (!std::isfinite(material.specularOcclusionReference)
+                        || material.specularOcclusionReference <= 0.0f)
+                    {
+                        error = "material " + std::to_string(materialIndex)
+                            + " specular occlusion reference must be positive";
                         return false;
                     }
                 }

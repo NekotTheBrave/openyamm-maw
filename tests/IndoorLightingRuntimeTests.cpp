@@ -23,7 +23,6 @@ using OpenYAMM::Game::IndoorLightingFrame;
 using OpenYAMM::Game::IndoorLightingFrameInput;
 using OpenYAMM::Game::IndoorLightingRuntime;
 using OpenYAMM::Game::IndoorLightingSampleFilter;
-using OpenYAMM::Game::IndoorLightSelectionHistory;
 using OpenYAMM::Game::IndoorLightSelectionBounds;
 using OpenYAMM::Game::IndoorMapData;
 using OpenYAMM::Game::IndoorRenderLight;
@@ -352,6 +351,38 @@ TEST_CASE("FX light clustering collapses dense indoor spark lights before draw s
     CHECK(result.lights.front().stableId != 0u);
 }
 
+TEST_CASE("FX light clustering keeps a few casts of sparks as separate lights")
+{
+    // The light grid lights each spark; only more than the threshold in one sector merge.
+    std::vector<RenderLight> sourceLights;
+    for (uint32_t index = 0; index < 20; ++index)
+    {
+        RenderLight light = {};
+        light.position = {static_cast<float>(index * 40), 0.0f, 64.0f};
+        light.radius = 112.0f;
+        light.colorAbgr = 0xff6040ffu;
+        light.intensity = 1.0f;
+        light.sectorId = 3;
+        light.kind = RenderLightKind::Projectile;
+        light.dynamic = true;
+        sourceLights.push_back(light);
+    }
+    FxLightClusterConfig config = {};
+    config.cellSize = 256.0f;
+    config.thresholdPerSector = OpenYAMM::Game::FxLightClusterThresholdHigh;
+    config.maxClustersPerSector = OpenYAMM::Game::FxLightClusterThresholdHigh;
+    const FxLightClusterResult kept = OpenYAMM::Game::FxLightClustering::clusterSectorFxLights(sourceLights, config);
+    CHECK_EQ(kept.lights.size(), 20u);
+    CHECK_EQ(kept.outputClusterLights, 0u);
+
+    config.thresholdPerSector = OpenYAMM::Game::FxLightClusterThresholdLow;
+    config.maxClustersPerSector = OpenYAMM::Game::FxLightClusterThresholdLow;
+    const FxLightClusterResult merged =
+        OpenYAMM::Game::FxLightClustering::clusterSectorFxLights(sourceLights, config);
+    CHECK(merged.lights.size() <= OpenYAMM::Game::FxLightClusterThresholdLow);
+    CHECK(merged.outputClusterLights > 1u);
+}
+
 TEST_CASE("indoor lighting resolves BLV light enabled state from attributes and runtime overrides")
 {
     CHECK(IndoorLightingRuntime::isBlvLightEnabledByState(0, nullptr, 3));
@@ -442,6 +473,65 @@ TEST_CASE("indoor decoration light is hidden when consumable decoration is clear
     state.decorVars[0] = 2;
     frame = runtime.buildFrame(input);
     CHECK(frame.lights.empty());
+}
+
+TEST_CASE("indoor torch beside its own map light is lit once")
+{
+    // MM6 maps place a map light 64 units above each torch: only the one of the pair that reaches further lights.
+    IndoorMapData map = {};
+    IndoorSector sector = {};
+    sector.lightIds = {0, 1};
+    map.sectors.push_back(sector);
+    for (const auto &[x, radius] : {std::pair<int16_t, int16_t>{100, 512}, std::pair<int16_t, int16_t>{500, 64}})
+    {
+        IndoorLight light = {};
+        light.x = x;
+        light.y = 200;
+        light.z = 364;
+        light.radius = radius;
+        light.red = light.green = light.blue = 255;
+        map.lights.push_back(light);
+    }
+
+    DecorationBillboardSet billboardSet = {};
+    REQUIRE(billboardSet.decorationTable.loadRows({
+        {"1", "dec03", "torch", "0", "20", "60", "256", "0", "0", "0", "0", "0", "216"}
+    }));
+    for (int x : {100, 500, 900})
+    {
+        DecorationBillboard torch = {};
+        torch.entityIndex = billboardSet.billboards.size();
+        torch.decorationId = 0;
+        torch.spriteId = 216;
+        torch.height = 60;
+        torch.x = x;
+        torch.y = 200;
+        torch.z = 300;
+        torch.sectorId = 0;
+        torch.name = "dec03";
+        billboardSet.billboards.push_back(torch);
+    }
+
+    OpenYAMM::Game::resolveDuplicateTorchLights(map, billboardSet);
+    // The 512 map light outreaches its torch; the 64 one does not; the distant torch has no map light.
+    CHECK(billboardSet.billboards[0].litByMapLight);
+    CHECK_FALSE(billboardSet.mapLightReplaced(0));
+    CHECK_FALSE(billboardSet.billboards[1].litByMapLight);
+    CHECK(billboardSet.mapLightReplaced(1));
+    CHECK_FALSE(billboardSet.billboards[2].litByMapLight);
+
+    IndoorLightingRuntime runtime;
+    runtime.rebuildStaticCache(map, &billboardSet);
+    EventRuntimeState state = {};
+    IndoorLightingFrameInput input = {};
+    input.pMapData = &map;
+    input.pDecorationBillboardSet = &billboardSet;
+    input.pEventRuntimeState = &state;
+    const IndoorLightingFrame frame = runtime.buildFrame(input);
+    const size_t decorationLights = size_t(std::count_if(frame.lights.begin(), frame.lights.end(),
+        [](const IndoorRenderLight &light) { return light.kind == IndoorRenderLightKind::Decoration; }));
+    CHECK_EQ(frame.lights.size(), 3u);
+    CHECK_EQ(decorationLights, 2u);
 }
 
 TEST_CASE("indoor decoration light toggles update cached light and preserve authored interactions")
@@ -975,7 +1065,6 @@ TEST_CASE("indoor lighting can omit baked static lights from live draw selection
             -1,
             bounds,
             nullptr,
-            nullptr,
             false);
 
     bool selectedTorch = false;
@@ -1006,82 +1095,6 @@ TEST_CASE("indoor lighting can omit baked static lights from live draw selection
     CHECK_EQ(selectedStaticCount, 0u);
     CHECK_EQ(selectedDecorationCount, 0u);
     CHECK_EQ(selectedFxCount, 7u);
-}
-
-TEST_CASE("indoor lighting keeps previous stable light selection when scores are close")
-{
-    IndoorLightingFrame frame = {};
-    frame.ambient = 0.25f;
-    frame.dynamicLightIndicesBySector.resize(1);
-
-    for (size_t index = 0; index < MaxIndoorDrawLights; ++index)
-    {
-        IndoorRenderLight light = {};
-        light.position = {128.0f, 0.0f, 0.0f};
-        light.radius = 256.0f;
-        light.colorAbgr = 0xffffffffu;
-        light.intensity = 1.0f;
-        light.sectorId = 0;
-        light.kind = IndoorRenderLightKind::Fx;
-        light.stableId = static_cast<uint32_t>(index + 1);
-        frame.dynamicLightIndicesBySector[0].push_back(static_cast<uint32_t>(frame.lights.size()));
-        frame.fxLightIndices.push_back(static_cast<uint32_t>(frame.lights.size()));
-        frame.lights.push_back(light);
-    }
-
-    IndoorRenderLight previousLight = {};
-    previousLight.position = {128.0f, 0.0f, 0.0f};
-    previousLight.radius = 256.0f;
-    previousLight.colorAbgr = 0xffffffffu;
-    previousLight.intensity = 0.9f;
-    previousLight.sectorId = 0;
-    previousLight.kind = IndoorRenderLightKind::Fx;
-    previousLight.stableId = 999;
-    frame.dynamicLightIndicesBySector[0].push_back(static_cast<uint32_t>(frame.lights.size()));
-    frame.fxLightIndices.push_back(static_cast<uint32_t>(frame.lights.size()));
-    frame.lights.push_back(previousLight);
-
-    IndoorLightSelectionBounds bounds = {};
-    bounds.min = {-32.0f, -32.0f, -32.0f};
-    bounds.max = {160.0f, 32.0f, 32.0f};
-    bounds.valid = true;
-
-    const OpenYAMM::Game::IndoorDrawLightSet withoutHistory =
-        IndoorLightingRuntime::selectDrawLightSetForBounds(
-            frame,
-            {0.0f, 0.0f, 0.0f},
-            {1.0f, 0.0f, 0.0f},
-            0,
-            -1,
-            bounds);
-
-    bool selectedPreviousWithoutHistory = false;
-    for (size_t index = 0; index < withoutHistory.lightCount; ++index)
-    {
-        selectedPreviousWithoutHistory = selectedPreviousWithoutHistory || withoutHistory.stableIds[index] == 999;
-    }
-    CHECK_FALSE(selectedPreviousWithoutHistory);
-
-    IndoorLightSelectionHistory history = {};
-    history.lightStableIds[0] = 999;
-    history.lightCount = 1;
-    const OpenYAMM::Game::IndoorDrawLightSet withHistory =
-        IndoorLightingRuntime::selectDrawLightSetForBounds(
-            frame,
-            {0.0f, 0.0f, 0.0f},
-            {1.0f, 0.0f, 0.0f},
-            0,
-            -1,
-            bounds,
-            nullptr,
-            &history);
-
-    bool selectedPreviousWithHistory = false;
-    for (size_t index = 0; index < withHistory.lightCount; ++index)
-    {
-        selectedPreviousWithHistory = selectedPreviousWithHistory || withHistory.stableIds[index] == 999;
-    }
-    CHECK(selectedPreviousWithHistory);
 }
 
 TEST_CASE("indoor lighting samples ambient plus nearby point lights")

@@ -51,6 +51,8 @@ add_library(openyamm_game STATIC
     tables/FaceAnimationTable.cpp
     fx/ParticleRecipes.cpp
     fx/ProjectileEffectBindings.cpp
+    fx/ProjectileModelBindings.cpp
+    fx/ItemModelBindings.cpp
     fx/SpellAuraEffectBindings.cpp
     fx/EffectSystem.cpp
     fx/EffectRenderer.cpp
@@ -155,6 +157,7 @@ add_library(openyamm_game STATIC
     indoor/IndoorMovementController.cpp
     indoor/IndoorPathfindingBuilder.cpp
     indoor/IndoorPartyRuntime.cpp
+    indoor/IndoorLightReach.cpp
     indoor/IndoorPortalGraph.cpp
     indoor/IndoorPortalVisibility.cpp
     indoor/IndoorWorldRuntime.cpp
@@ -189,6 +192,7 @@ add_library(openyamm_game STATIC
     outdoor/OutdoorRenderData.cpp
     outdoor/OutdoorMechanismRuntime.cpp
     outdoor/OutdoorPresentationController.cpp
+    outdoor/TerrainBushSet.cpp
     outdoor/TerrainDecorationData.cpp
     outdoor/TerrainDecorationRenderer.cpp
     outdoor/OutdoorTerrainMaterials.cpp
@@ -452,11 +456,15 @@ if (NOT CMAKE_CROSSCOMPILING)
             COMMENT "Preparing changed sprite atlas runtime pages"
             VERBATIM)
     endif()
-    # (MAW port: these cooks run when assets_source holds the sources, a submodule checkout or the extracted archive
-    # of github.com/pjasicek/openyamm-source-assets; without them, an empty folder, the committed cooked files are used.)
-    # World surface textures: the x4 sources in assets_source cook into assets_dev; the build keeps them current
-    # (incremental, about a second when nothing changed). See tools/cook_surface_textures.py. Like the other build-time
-    # cooks it needs the assets_source checkout; release checkouts package the committed cooked files.
+    # Desktop asset cooks into assets_dev (openyamm_cook_assets): incremental, they redo only what changed (receipts
+    # record each cook's COOK_REVISION/COOKER_REVISION, not the cooker binary) and run with every openyamm build unless
+    # OPENYAMM_COOK_ON_BUILD is off. Android cooks only on demand: tools/cook_android.sh. The cooks need the
+    # assets_source checkout; release checkouts package the committed cooked files. (MAW port: they run when
+    # assets_source holds the sources, a submodule checkout or the extracted archive of
+    # github.com/pjasicek/openyamm-source-assets; without them the committed cooked files are used.)
+    option(OPENYAMM_COOK_ON_BUILD "Run the desktop asset cooks (openyamm_cook_assets) with every openyamm build" ON)
+    add_custom_target(openyamm_cook_assets COMMENT "Desktop asset cooks done")
+    # World surface textures: the x4 sources in assets_source (tools/cook_surface_textures.py).
     if (IS_DIRECTORY "${CMAKE_SOURCE_DIR}/assets_source/worlds" AND IS_DIRECTORY "${OPENYAMM_DEV_ASSETS_DIR}/worlds")
         add_custom_target(openyamm_cook_surface_textures
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/cook_surface_textures.py" --profile desktop
@@ -465,15 +473,11 @@ if (NOT CMAKE_CROSSCOMPILING)
             DEPENDS openyamm_model_texture_cook
             COMMENT "Cooking changed world surface textures"
             VERBATIM)
-        if (TARGET openyamm)
-            add_dependencies(openyamm openyamm_cook_surface_textures)
-        endif()
+        add_dependencies(openyamm_cook_assets openyamm_cook_surface_textures)
     endif()
     # 3D models (tools/cook_models.py): source GLBs in assets_source cook into assets_dev (geometry passes, compressed
-    # textures). Incremental. Off until the switch to cooked models (ASSET_COOKING_PLAN.md section 12): until then
-    # assets_dev holds uncooked copies of the sources.
-    option(OPENYAMM_COOK_MODELS "Cook assets_source models into assets_dev with every build" OFF)
-    if (OPENYAMM_COOK_MODELS)
+    # textures). (MAW port: when the sources are there, not for the submodule's empty folder.)
+    if (IS_DIRECTORY "${CMAKE_SOURCE_DIR}/assets_source/worlds")
         add_custom_target(openyamm_cook_models
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/cook_models.py" --profile desktop
                 --source "${CMAKE_SOURCE_DIR}/assets_source" --output "${OPENYAMM_DEV_ASSETS_DIR}"
@@ -481,9 +485,7 @@ if (NOT CMAKE_CROSSCOMPILING)
             DEPENDS openyamm_model_texture_cook
             COMMENT "Cooking changed 3D models"
             VERBATIM)
-        if (TARGET openyamm)
-            add_dependencies(openyamm openyamm_cook_models)
-        endif()
+        add_dependencies(openyamm_cook_assets openyamm_cook_models)
     endif()
     # Obsidian HUD art (sources in assets_source) and portrait face set atlases (tools/cook_ui_textures.py), cooked
     # into assets_dev for desktop.
@@ -494,9 +496,7 @@ if (NOT CMAKE_CROSSCOMPILING)
             DEPENDS openyamm_model_texture_cook
             COMMENT "Cooking changed HUD art"
             VERBATIM)
-        if (TARGET openyamm)
-            add_dependencies(openyamm openyamm_cook_ui_textures)
-        endif()
+        add_dependencies(openyamm_cook_assets openyamm_cook_ui_textures)
     endif()
     # Enhanced sky textures (sources in assets_source, tools/cook_sky_textures.py), cooked into assets_dev for desktop.
     if (IS_DIRECTORY "${CMAKE_SOURCE_DIR}/assets_source/engine/rendering/sky")
@@ -506,9 +506,10 @@ if (NOT CMAKE_CROSSCOMPILING)
             DEPENDS openyamm_model_texture_cook
             COMMENT "Cooking changed sky textures"
             VERBATIM)
-        if (TARGET openyamm)
-            add_dependencies(openyamm openyamm_cook_sky_textures)
-        endif()
+        add_dependencies(openyamm_cook_assets openyamm_cook_sky_textures)
+    endif()
+    if (OPENYAMM_COOK_ON_BUILD AND TARGET openyamm)
+        add_dependencies(openyamm openyamm_cook_assets)
     endif()
     if (IS_DIRECTORY "${OPENYAMM_DEV_ASSETS_DIR}/engine/sprites_new")
         add_custom_target(openyamm_verify_sprite_atlases

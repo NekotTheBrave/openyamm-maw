@@ -6,7 +6,7 @@
 # buildings, decorations and grass edges. undergrowth: ferns and tall grass around tree decorations.
 # tall_variants: the uncut grass of tall patches and verges.
 version: 2
-tuft_texture: plants_v3.png
+tuft_texture: plants_v4.png
 tuft_atlas_grid:
 - 4
 - 4
@@ -21,6 +21,51 @@ meadow:
   - 0.86
   density: 0.35
   height: 0.3
+# The short grass (cells 0-1) fades out between these heights of the camera above the ground under it (flying only),
+# saving its cost; the ground under it has its colour. Over the same heights the ground takes the plants' colour
+# (foliage map) with strength ground, so uncut patches and flower clusters read as areas from high above.
+overhead_fade:
+  layers: [0, 1]
+  start: 600
+  end: 1400
+  ground: 0.8
+# How much darker the ground is under dense grass near the camera (the tufts' shade between them).
+ground_shade: 0.2
+# The short grass (cells 0-1) is drawn as clumps: cards in a star about the tuft, each leaning outward by lean
+# degrees, at card_scale of the tuft's size. They read as tufts from the side, a raised angle and above. Past
+# distance only the first card remains (the others thin out over the last quarter).
+clump:
+  layers: [0, 1]
+  cards: 5
+  lean: 25
+  card_scale: 0.75
+  distance: 1500
+# Low 3D bushes (level_generation/decorations/meadow_bushes): groups at tree lines (around the undergrowth
+# decorations, edge_chance per tree), along buildings and walls (verge_chance), in lush hollows (lush_chance below
+# lush_below) and rarely on open grass (meadow_chance), on a jittered grid of spacing. Grass grows all around each
+# bush; no collision. They dissolve out over fade_distance.
+bushes:
+  models:
+  - {model: engine/models/meadow_bush01.glb, height: 125, weight: 3}
+  - {model: engine/models/meadow_bush02.glb, height: 105, weight: 3}
+  - {model: engine/models/meadow_bush03.glb, height: 180, weight: 1.5}
+  - {model: engine/models/meadow_bush04.glb, height: 78, weight: 3}
+  height_jitter: 0.2
+  spacing: 640
+  meadow_chance: 0.02
+  lush_chance: 0.3
+  lush_below: -0.3
+  verge_chance: 0.3
+  verge_distance: 260
+  edge_chance: 0.45
+  edge_radius: [300, 650]
+  group_max: 3
+  group_spread: 150
+  radius: 90
+  clearance: 60
+  minimum_normal_z: 0.8
+  max_count: 600
+  fade_distance: [5000, 6500]
 flowers:
   coverage: 0.3
   cluster_size: 1050
@@ -73,13 +118,13 @@ undergrowth:
 families:
   meadow:
     kind: grass
-    candidates: 72
+    candidates: 60
     width: 120
     height: 90
     tint:
-    - 0.72
-    - 0.86
-    - 0.62
+    - 0.93
+    - 0.89
+    - 0.69
     variants:
     - layer: 0
       weight: 45

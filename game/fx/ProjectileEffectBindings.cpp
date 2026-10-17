@@ -171,6 +171,10 @@ std::vector<std::string> ProjectileEffectBindings::effectIds() const
             add(binding);
         }
     }
+    if (!m_waterSplash.empty())
+    {
+        ids.push_back(m_waterSplash);
+    }
     std::sort(ids.begin(), ids.end());
     ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
     return ids;
@@ -239,6 +243,15 @@ bool parseProjectileEffectBindings(
             error = path + ": expected schema openyamm.projectileEffects.v1 with a projectiles map";
             return false;
         }
+        if (root["water_splash"])
+        {
+            std::string effectId;
+            if (!readEffectId(root, "water_splash", library, path, effectId, error))
+            {
+                return false;
+            }
+            bindings.setWaterSplash(std::move(effectId));
+        }
         for (const auto &entry : root["projectiles"])
         {
             const std::string recipeName = entry.first.as<std::string>();
@@ -254,9 +267,9 @@ bool parseProjectileEffectBindings(
             {
                 return false;
             }
-            if (binding.flight.empty() && binding.settled.empty() && binding.impact.empty())
+            if (binding.flight.empty() && binding.settled.empty() && binding.impact.empty() && !binding.nativeSprite)
             {
-                error = context + ": names no flight, settled or impact effect";
+                error = context + ": names no flight, settled or impact effect and no sprite";
                 return false;
             }
             if (const YAML::Node variants = entry.second["variants"])

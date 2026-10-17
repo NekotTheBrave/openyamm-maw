@@ -674,6 +674,7 @@ const ModelBounds *ModelInstanceSystem::pickingBounds(ModelInstanceHandle handle
     {
         if (pSlot->burn && modelBurnConsumed(*pSlot->burn))
         {
+            pSlot->pickingGeometry = {};
             pSlot->pickingBounds = {};
             for (const ModelAttachment &attachment : pSlot->attachments)
             {
@@ -694,11 +695,54 @@ const ModelBounds *ModelInstanceSystem::pickingBounds(ModelInstanceHandle handle
         }
         else
         {
-            pSlot->pickingBounds = modelExactPoseBounds(*pSlot->asset, pSlot->pose, true);
+            modelExactPoseGeometry(*pSlot->asset, pSlot->pose, true, pSlot->pickingGeometry);
+            pSlot->pickingBounds = pSlot->pickingGeometry.bounds;
         }
         pSlot->pickingBoundsRevision = pSlot->pose.matrixRevision;
     }
     return &pSlot->pickingBounds;
+}
+
+std::optional<float> ModelInstanceSystem::pickRay(ModelInstanceHandle handle, const std::array<float, 3> &origin,
+    const std::array<float, 3> &direction) const
+{
+    const ModelBounds *pBounds = pickingBounds(handle);
+    if (pBounds == nullptr || !pBounds->valid)
+    {
+        return std::nullopt;
+    }
+    const Slot &slot = *find(handle);
+    if (!slot.pickingGeometry.indices.empty())
+    {
+        return intersectModelPoseGeometry(slot.pickingGeometry, origin, direction);
+    }
+    // Burnt out: the remaining attachments are picked by their box (slab test).
+    float entry = 0.0f;
+    float exit = std::numeric_limits<float>::max();
+    for (size_t axis = 0; axis < 3; ++axis)
+    {
+        if (std::fabs(direction[axis]) < 1e-9f)
+        {
+            if (origin[axis] < pBounds->min[axis] || origin[axis] > pBounds->max[axis])
+            {
+                return std::nullopt;
+            }
+            continue;
+        }
+        float nearDistance = (pBounds->min[axis] - origin[axis]) / direction[axis];
+        float farDistance = (pBounds->max[axis] - origin[axis]) / direction[axis];
+        if (nearDistance > farDistance)
+        {
+            std::swap(nearDistance, farDistance);
+        }
+        entry = std::max(entry, nearDistance);
+        exit = std::min(exit, farDistance);
+        if (entry > exit)
+        {
+            return std::nullopt;
+        }
+    }
+    return entry;
 }
 
 const ModelBounds *ModelInstanceSystem::cullingBounds(ModelInstanceHandle handle) const

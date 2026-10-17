@@ -68,3 +68,14 @@ first. Do not manually edit generated dependency sources as the permanent fix.
 Validation uses `GlUniformCacheTests.cpp` for value/lifetime/array behavior and real-GPU New Sorpigal captures for
 integration. See `docs/PERF_NEW_SORPIGAL_SUBMISSIONS.md` for measurements and limitations. GL upload counts alone do
 not establish a frame-rate improvement.
+
+## OpenGL multisampled depth resolve
+
+`bgfx-gl-msaa-depth-resolve.patch` lets a frame buffer use a multisampled depth attachment that is later sampled
+(neither `BGFX_TEXTURE_RT_WRITE_ONLY` nor `BGFX_TEXTURE_MSAA_SAMPLE`) on the OpenGL and OpenGL ES renderers. Their
+backend already resolves such an attachment with a depth blit when the view leaves the frame buffer
+(`FrameBufferGL::resolve`); upstream only rejected it in `isFrameBufferValid`. Other backends keep the check: Vulkan
+resolves colour only.
+
+`CinematicGrading` uses it to keep ambient occlusion with `video.antialiasing`: the AO passes read the resolved
+D32F depth of the multisampled world target. On other renderers AO is switched off while anti-aliasing is on.

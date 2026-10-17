@@ -22,20 +22,21 @@ namespace OpenYAMM::Game
 struct DecorationBillboard;
 struct DecorationBillboardSet;
 
-// Map decorations drawn as static 3D models, bound by decoration name in worlds/<world>/models/decorations.yml
-// (outdoor maps) or indoor_decorations.yml (BLV maps; apart because decorations.yml is an outdoor bake dependency).
+// Map decorations drawn as static 3D models, bound by decoration name in engine/models/decorations.yml (outdoor maps)
+// or indoor_decorations.yml (BLV maps; apart because decorations.yml is an outdoor bake dependency), which a world
+// extends with its own worlds/<world>/models/ manifests (DecorationModelManifest). A map loads the models of the
+// decorations it places, their lit/unlit counterparts and its events' SetSprite targets.
 // A decoration keeps its native data (collision, events, picking); the sprite it currently shows selects the model, so
 // an event SetSprite to another bound decoration (a picked food tree) switches models, and a switch to an unbound
-// sprite draws that sprite instead. worlds/<world>/models/decoration_overlays.yml adds state overlays: one more model
-// drawn with a bound decoration's placement, chosen by its interactive state (the liquid of a stat barrel, gone once
-// it is drunk).
+// sprite draws that sprite instead. decoration_overlays.yml adds state overlays: one more model drawn with a bound
+// decoration's placement, chosen by its interactive state (the liquid of a stat barrel, gone once it is drunk).
 class DecorationModelSet
 {
 public:
     // The wall a decoration (of the given world height) hangs on, if any; indoor maps supply it for mount: wall.
     using WallFinder = std::function<std::optional<DecorationWallContact>(const DecorationBillboard &, float height)>;
 
-    // A world without a manifest loads empty. False with an error for an invalid manifest or model.
+    // A map without bound decorations loads empty. False with an error for an invalid manifest or model.
     bool load(const Engine::AssetFileSystem &assets, const std::string &worldId, const std::string &mapFile,
         const DecorationBillboardSet &decorations, std::string &error, WallFinder wallFinder = {});
     void clear();

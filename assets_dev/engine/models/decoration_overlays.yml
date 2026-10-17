@@ -1,0 +1,47 @@
+# State overlays of decoration models (outdoor and indoor maps, every world): one more model drawn with a bound
+# decoration's own placement matrix (authored in that decoration model's asset space), chosen by the decoration's
+# interactive state. Kept apart from decorations.yml, a dependency of baked outdoor maps: overlays cast no baked
+# shadow. A world extends it with worlds/<world>/models/decoration_overlays.yml (states: null removes an overlay).
+#   states: one model per state, null for none. A decoration without a model binding on the map is skipped.
+overlays:
+  # --- MM6 decorations ---
+  # Stat barrel liquid by barrel state (Global.lua events 268-275): empty, then red Might, yellow Accuracy, blue
+  # Personality, orange Intellect, green Endurance, purple Speed and white Luck. Drinking empties the barrel.
+  # Built by level_generation/decorations/mm6_new_sorpigal_3d/barrel/scripts/build_liquids.py.
+  - name: bigbarel
+    states:
+      - null
+      - engine/models/mm6_deco_barrel_liquid_red.glb
+      - engine/models/mm6_deco_barrel_liquid_yellow.glb
+      - engine/models/mm6_deco_barrel_liquid_blue.glb
+      - engine/models/mm6_deco_barrel_liquid_orange.glb
+      - engine/models/mm6_deco_barrel_liquid_green.glb
+      - engine/models/mm6_deco_barrel_liquid_purple.glb
+      - engine/models/mm6_deco_barrel_liquid_white.glb
+  # --- MM8 decorations ---
+  # Stat barrel liquid by barrel state (Global.lua events 268-275): empty, then red Might, yellow Accuracy, blue
+  # Personality, orange Intellect, green Endurance, purple Speed and white Luck. Drinking empties the barrel.
+  # Built by level_generation/decorations/mm8_3d/props/scripts/build_liquids.py in mm8_deco_barrel's space.
+  - name: dec03
+    states:
+      - null
+      - engine/models/mm8_deco_barrel_liquid_red.glb
+      - engine/models/mm8_deco_barrel_liquid_yellow.glb
+      - engine/models/mm8_deco_barrel_liquid_blue.glb
+      - engine/models/mm8_deco_barrel_liquid_orange.glb
+      - engine/models/mm8_deco_barrel_liquid_green.glb
+      - engine/models/mm8_deco_barrel_liquid_purple.glb
+      - engine/models/mm8_deco_barrel_liquid_white.glb
+  # --- MM7 decorations ---
+  # MM7 stat barrel liquids (7dec32, the net-draped barrel; the same states as bigbarel), in its open top
+  # (level_generation/decorations/mm7_3d/dressing/scripts/barrel_liquids.py).
+  - name: 7dec32
+    states:
+      - null
+      - engine/models/mm7_deco_7dec32_liquid_red.glb
+      - engine/models/mm7_deco_7dec32_liquid_yellow.glb
+      - engine/models/mm7_deco_7dec32_liquid_blue.glb
+      - engine/models/mm7_deco_7dec32_liquid_orange.glb
+      - engine/models/mm7_deco_7dec32_liquid_green.glb
+      - engine/models/mm7_deco_7dec32_liquid_purple.glb
+      - engine/models/mm7_deco_7dec32_liquid_white.glb

@@ -89,6 +89,18 @@ function(openyamm_configure_ffmpeg)
         if (NOT CMAKE_SYSROOT STREQUAL "")
             list(APPEND openyammFfmpegConfigureArgs --sysroot=${CMAKE_SYSROOT})
         endif()
+    elseif (WIN32 AND CMAKE_CROSSCOMPILING)
+        # MinGW-w64 cross build from Linux (cmake/toolchains/mingw-w64-x86_64.cmake).
+        list(APPEND openyammFfmpegConfigureArgs
+            --enable-cross-compile
+            --target-os=mingw32
+            --arch=${CMAKE_SYSTEM_PROCESSOR}
+            --cc=${CMAKE_C_COMPILER}
+            --ar=${CMAKE_AR}
+            --ranlib=${CMAKE_RANLIB}
+            --strip=${CMAKE_STRIP}
+            --nm=${CMAKE_NM}
+        )
     endif()
 
     file(MAKE_DIRECTORY "${OPENYAMM_FFMPEG_BUILD_DIR}")

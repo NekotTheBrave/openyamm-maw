@@ -2,6 +2,7 @@
 
 #include "game/audio/GameAudioSystem.h"
 #include "game/audio/SoundIds.h"
+#include "game/render/WaterMath.h"
 
 #include <algorithm>
 #include <cmath>
@@ -34,7 +35,7 @@ MenuDesignScreen::MenuDesignScreen(const Engine::AssetFileSystem &assetFileSyste
                                    GameAudioSystem *pAudio)
     : MenuScreenBase(assetFileSystem), m_overGameplay(overGameplay), m_pAudio(pAudio)
 {
-    setRenderViewId(240);
+    setRenderViewId(MenuDesignView);
     setClearBackground(!overGameplay);
 }
 

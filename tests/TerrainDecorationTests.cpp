@@ -807,7 +807,7 @@ TEST_CASE("Terrain decoration draws thin with distance and grow only logarithmic
     CHECK(high < far);
 }
 
-TEST_CASE("Terrain decoration foliage map holds the tufts' colour and edge-on depth")
+TEST_CASE("Terrain decoration foliage map holds the tufts' colour and depth")
 {
     const OutdoorMapData map = grassField(40, 80);
     TerrainDecorationConfig settings = config();
@@ -819,15 +819,14 @@ TEST_CASE("Terrain decoration foliage map holds the tufts' colour and edge-on de
     const std::vector<TerrainFoliageLayer> layers = {{{0.4f, 0.6f, 0.8f}, 0.5f}};
     const std::vector<float> foliage = buildTerrainFoliageMap(placement, layers);
     REQUIRE(foliage.size() == size_t(TerrainFoliageMapSize) * TerrainFoliageMapSize * 4);
-    // Expected depth inside the field: grass instances' card area seen edge on per ground area.
+    // Expected depth inside the field: grass instances' card area per ground area.
     double area = 0.0;
     size_t grass = 0;
     for (const TerrainDecorationNode &node : placement.nodes)
     {
         for (uint32_t i = node.range.first; !node.range.stone && i < node.range.first + node.range.count; ++i)
         {
-            area += 2.0 * placement.instances[i].sizeWindRank[0] * placement.instances[i].sizeWindRank[1] * 0.5
-                * 0.63662;
+            area += placement.instances[i].sizeWindRank[0] * placement.instances[i].sizeWindRank[1] * 0.5;
             ++grass;
         }
     }
@@ -835,8 +834,8 @@ TEST_CASE("Terrain decoration foliage map holds the tufts' colour and edge-on de
     const double fieldArea = 41.0 * 41.0 * 512.0 * 512.0;
     const auto texel = [&](float x, float y)
     {
-        const int u = int((x + 32768.0f) / 256.0f);
-        const int v = int((32768.0f - y) / 256.0f);
+        const int u = int((x + 32768.0f) / (65536.0f / float(TerrainFoliageMapSize)));
+        const int v = int((32768.0f - y) / (65536.0f / float(TerrainFoliageMapSize)));
         return &foliage[(size_t(v) * TerrainFoliageMapSize + u) * 4];
     };
     // The field spans cells 40..80: world x -12288..8704, y 12288..-8704.
@@ -848,6 +847,22 @@ TEST_CASE("Terrain decoration foliage map holds the tufts' colour and edge-on de
     CHECK(pInside[0] / pInside[3] == doctest::Approx(0.4f * 0.5f * 0.975f).epsilon(0.08));
     CHECK(pInside[1] / pInside[3] == doctest::Approx(0.6f * 1.0f * 0.975f).epsilon(0.08));
     CHECK(pInside[2] / pInside[3] == doctest::Approx(0.8f * 0.25f * 0.975f).epsilon(0.08));
+
+    // Encoded: straight colour and depth / range at the top level, then every mip level down to 1 x 1.
+    const std::vector<uint8_t> encoded = encodeTerrainFoliageMap(foliage);
+    size_t expected = 0;
+    for (int size = TerrainFoliageMapSize; size >= 1; size /= 2)
+    {
+        expected += size_t(size) * size * 4;
+    }
+    REQUIRE(encoded.size() == expected);
+    const size_t inside = size_t(pInside - foliage.data());
+    CHECK(encoded[inside] == std::lround(pInside[0] / pInside[3] * 255.0f));
+    CHECK(encoded[inside + 3] == std::lround(pInside[3] / TerrainFoliageDepthRange * 255.0f));
+    // The last level is the whole map's average: some grass, the colour of the tufts.
+    const uint8_t *pLast = &encoded[encoded.size() - 4];
+    CHECK(pLast[3] > 0);
+    CHECK(pLast[1] == doctest::Approx(0.6f * 0.975f * 255.0f).epsilon(0.1));
 }
 
 TEST_CASE("Terrain decoration view cache invalidates on motion projection and shutdown")

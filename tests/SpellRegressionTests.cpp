@@ -172,6 +172,44 @@ TEST_CASE("party spell backend rejects cast without spell points")
     CHECK(worldRuntime.projectileRequests().empty());
 }
 
+TEST_CASE("party spell mana cost query matches the cost a cast spends")
+{
+    const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
+    OpenYAMM::Game::Party party = OpenYAMM::Tests::makeSpellRegressionParty(gameData);
+    OpenYAMM::Tests::PartySpellTestWorldRuntime worldRuntime = {};
+    worldRuntime.bindParty(&party);
+    const size_t targetActorIndex = seedDefaultSpellTarget(worldRuntime);
+
+    OpenYAMM::Game::Character *pCaster = party.member(0);
+    REQUIRE(pCaster != nullptr);
+
+    const uint32_t fireBoltId = OpenYAMM::Game::spellIdValue(OpenYAMM::Game::SpellId::FireBolt);
+    pCaster->skills.erase("FireMagic");
+    CHECK_FALSE(OpenYAMM::Game::PartySpellSystem::manaCost(*pCaster, gameData.spellTable, fireBoltId).has_value());
+
+    pCaster->skills["FireMagic"] = {"FireMagic", 5, OpenYAMM::Game::SkillMastery::Normal};
+    pCaster->spellPoints = 100;
+    const std::optional<uint32_t> manaCost =
+        OpenYAMM::Game::PartySpellSystem::manaCost(*pCaster, gameData.spellTable, fireBoltId);
+    REQUIRE(manaCost.has_value());
+    CHECK(*manaCost > 0);
+
+    OpenYAMM::Game::PartySpellCastRequest request = {};
+    request.casterMemberIndex = 0;
+    request.spellId = fireBoltId;
+    request.targetActorIndex = targetActorIndex;
+
+    const OpenYAMM::Game::PartySpellCastResult result = OpenYAMM::Game::PartySpellSystem::castSpell(
+        party,
+        worldRuntime,
+        gameData.spellTable,
+        request);
+
+    REQUIRE(result.succeeded());
+    CHECK(result.manaCost == *manaCost);
+    CHECK(pCaster->spellPoints == 100 - int(*manaCost));
+}
+
 TEST_CASE("dark magic dragon breath spell uses fire damage so monster fire immunity can resist it")
 {
     const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();

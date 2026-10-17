@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/models/ModelInstance.h"
+#include "engine/render/LightGrid.h"
 #include "engine/render/ModelEnvironment.h"
 #include "engine/render/ModelLod.h"
 #include "engine/render/ModelSunShadows.h"
@@ -37,6 +38,14 @@ struct ModelRenderLighting
     std::array<float, 48> pointPositions = {};
     std::array<float, 48> pointColors = {};
     uint32_t pointCount = 0;
+    // The point lights add only their specular highlight: the placement's own light (ModelStaticPlacement::light)
+    // already holds their diffuse share, as on the sprites indoor decorations replace.
+    bool pointSpecularOnly = false;
+    // The view's clustered light grid: when set (and outside reflection passes), point lights come from it and the
+    // pointPositions/pointColors list is not used.
+    const LightGridTextures *pLightGrid = nullptr;
+    // Per model: its indoor sector, so it takes only the grid lights that reach its room (-1: any light).
+    int16_t sector = -1;
     std::array<float, 4> fogColor = {};
     std::array<float, 4> fogDensities = {};
     std::array<float, 4> fogDistances = {1.0e9f, 1.0e9f, 1.0e9f, 0};
@@ -61,6 +70,8 @@ struct ModelStaticPlacement
     // Fraction of pixels drawn (screen-door dissolve of a sinking corpse or an appearing prop); below 1 it replaces the
     // LOD crossfade of this placement.
     float coverage = 1.0f;
+    // Its indoor sector, so it takes only the grid lights that reach its room (-1: any light).
+    int16_t sector = -1;
 };
 
 // Colour LOD crossfade of one placement: both levels draw with complementary dither for ModelStaticFadeSeconds.
@@ -83,8 +94,8 @@ struct ModelStaticGroup
     std::vector<ModelStaticPlacement> placements;
     // World bounds per placement (placementBounds), including the wind sway; kept aligned with placements.
     std::vector<ModelBounds> bounds;
-    // Renderer-owned LOD hysteresis per placement (colour, near and far shadow cascades) and colour crossfades.
-    mutable std::vector<std::array<uint8_t, 3>> lodLevels;
+    // Renderer-owned LOD hysteresis per placement (colour, then each shadow cascade) and colour crossfades.
+    mutable std::vector<std::array<uint8_t, 1 + ModelSunShadowCascades>> lodLevels;
     mutable std::vector<ModelStaticFade> fades;
 
     // World bounds of one placement of this group's model, including its wind sway.
@@ -103,10 +114,35 @@ public:
     bool initializeStatic(bgfx::ProgramHandle programHandle, bgfx::ProgramHandle shadowProgramHandle,
         bgfx::ProgramHandle prepassedProgramHandle);
     void preloadStatic(const std::vector<ModelStaticGroup> &groups);
+    // The ALPHA_TO_COVERAGE program of the static foliage depth prepass (vs_model_instanced, fs_model_coverage),
+    // loaded the first time anti-aliasing is on; takes ownership, also of an invalid handle (no further attempt).
+    void setStaticCoverageProgram(bgfx::ProgramHandle programHandle);
+    bool staticCoverageProgramAttempted() const
+    {
+        return m_staticCoverageProgramAttempted;
+    }
+    // Per frame, before the world's renderStatic: its views draw into a multisampled target with alpha to coverage,
+    // so the foliage depth prepass writes coverage instead of discarding.
+    void setAlphaToCoverage(bool enabled)
+    {
+        m_alphaToCoverage = enabled;
+    }
     // Profiling switch: draw static groups without their alpha-tested (foliage) materials.
     void setStaticFoliageVisible(bool visible)
     {
         m_staticFoliageVisible = visible;
+    }
+    // Bloom (CinematicGrading::glowView): static emitters (glow and flame cards, emissive surfaces) draw again into
+    // this view, writing only their glow; UINT16_MAX for none.
+    void setGlowView(uint16_t view)
+    {
+        m_glowView = view;
+        m_glowDrawn = false;
+    }
+    // Whether a static emitter drew into the glow view since setGlowView (the bloom chain is skipped otherwise).
+    bool glowDrawn() const
+    {
+        return m_glowDrawn;
     }
     // Profiling switch: draw every skinned creature with its own draws instead of instanced.
     void setSkinnedInstancing(bool enabled)
@@ -121,14 +157,20 @@ public:
     void shutdown(bool destroyGpu);
     void preload(const ModelInstanceSystem &instances);
     void beginFrame();
+    // Draws each cascade into its tile of the shadow atlas (views firstViewId onwards). worldCasters submits world
+    // geometry (the terrain) into a cascade's view, for the bounds its predicate accepts; such casters mark
+    // themselves as terrain by a zero alpha.
     void renderSunShadows(const ModelInstanceSystem &instances, uint16_t firstViewId,
-        const std::array<float, 3> &cameraPosition, const std::array<float, 3> &lightDirection, bool enabled,
+        const ModelSunShadowCamera &camera, const std::array<float, 3> &lightDirection, bool enabled,
         int quality = 2, bool lods = true, const std::vector<ModelStaticGroup> *pStaticGroups = nullptr,
-        float timeSeconds = 0.0f);
+        float timeSeconds = 0.0f,
+        const std::function<void(uint16_t, const std::function<bool(const ModelBounds &)> &)> &worldCasters = {});
     bool hasSunShadowResources() const
     {
-        return bgfx::isValid(m_shadowFramebuffers[0]);
+        return bgfx::isValid(m_shadowFramebuffer);
     }
+    // The draw's light grid uniform and textures (mode 0 without one).
+    void bindLightGrid(const ModelRenderLighting &lighting) const;
     void bindSunShadows() const;
     bool hasSunShadows() const
     {
@@ -300,8 +342,9 @@ private:
     // Placement instance data for one LOD mesh of a static group; false when the frame's instance memory is used up.
     bool allocateStaticInstances(const StaticBatch &batch, const ModelMatrix &nodeMatrix,
         bgfx::InstanceDataBuffer &buffer) const;
+    // pCardPivot: the primitive's centre (mesh space) for a card billboard ("openyamm_billboard": "card").
     void bindStaticMaterial(const AssetResources &resources, const ModelMaterial &material, int materialIndex,
-        float timeSeconds, bool shadow);
+        float timeSeconds, bool shadow, const std::array<float, 3> *pCardPivot = nullptr);
     void bindColorRegions(const ModelMaterial &material, const AssetResources::MaterialTextures &textures) const;
     // u_modelBurn and the burn map for every fs_model/fs_model_shadow draw: off without a burn (uniforms persist
     // between draws). fire: the additive pass over the burnt surface instead of the burning surface itself.
@@ -317,6 +360,9 @@ private:
     bgfx::ProgramHandle m_staticProgramHandle = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_staticShadowProgramHandle = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_staticPrepassedProgramHandle = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle m_staticCoverageProgramHandle = BGFX_INVALID_HANDLE;
+    bool m_staticCoverageProgramAttempted = false;
+    bool m_alphaToCoverage = false;
     bgfx::UniformHandle m_staticUniformHandle = BGFX_INVALID_HANDLE;
     // The environment cube stays alive while static groups draw this frame, even without creature models.
     bool m_staticDrawn = false;
@@ -327,12 +373,10 @@ private:
     bool m_reflectionPass = false;
     // Clock of scrolling creature textures, from the latest render(); portraits keep the world's.
     float m_creatureTimeSeconds = 0.0f;
-    std::array<bgfx::TextureHandle, ModelSunShadowCascades> m_shadowTextures =
-        {{BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE}};
-    std::array<bgfx::FrameBufferHandle, ModelSunShadowCascades> m_shadowFramebuffers =
-        {{BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE}};
-    std::array<bgfx::UniformHandle, ModelSunShadowCascades> m_shadowSamplers =
-        {{BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE}};
+    // All cascades side by side in one atlas, so receivers need one sampler.
+    bgfx::TextureHandle m_shadowTexture = BGFX_INVALID_HANDLE;
+    bgfx::FrameBufferHandle m_shadowFramebuffer = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_shadowSampler = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_shadowMatricesUniformHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_shadowParamsUniformHandle = BGFX_INVALID_HANDLE;
     std::array<ModelMatrix, ModelSunShadowCascades> m_shadowMatrices = {};
@@ -342,7 +386,7 @@ private:
     {
         ModelInstanceHandle owner;
         uint32_t color = 0;
-        std::array<uint32_t, 2> shadow = {};
+        std::array<uint32_t, ModelSunShadowCascades> shadow = {};
     };
     std::unordered_map<const ModelMatrix *, LodState> m_lodStates;
     struct DeformedBuffer
@@ -414,6 +458,11 @@ private:
     float m_environmentMaxLod = 0;
     bgfx::UniformHandle m_pointPositionsUniformHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_pointColorsUniformHandle = BGFX_INVALID_HANDLE;
+    LightGridBinding m_lightGridBinding;
+    bgfx::UniformHandle m_sectorUniformHandle = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_glowUniformHandle = BGFX_INVALID_HANDLE;
+    uint16_t m_glowView = UINT16_MAX;
+    bool m_glowDrawn = false;
     bgfx::UniformHandle m_surfaceUniformHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_fogUniformHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_skyFogUniformHandle = BGFX_INVALID_HANDLE;

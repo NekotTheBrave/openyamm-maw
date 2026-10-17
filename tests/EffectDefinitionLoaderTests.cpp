@@ -6,6 +6,8 @@
 #include "game/fx/EffectSystem.h"
 #include "game/fx/ParticleRecipes.h"
 #include "game/fx/ProjectileEffectBindings.h"
+#include "game/fx/ItemModelBindings.h"
+#include "game/fx/ProjectileModelBindings.h"
 #include "game/fx/SpellAuraEffectBindings.h"
 #include "game/fx/import/EffectDefinitionLoader.h"
 #include "game/fx/import/EffectResourceLibrary.h"
@@ -614,7 +616,7 @@ TEST_CASE("Projectile effect bindings name existing effects and resolve monster 
     CHECK(none.empty());
     Game::EffectLibrary empty;
     CHECK_FALSE(Game::loadProjectileEffectBindings(assets, "engine/effects/projectiles.yml", empty, none, error));
-    CHECK(error.find("unknown flight effect") != std::string::npos);
+    CHECK(error.find("unknown water_splash effect") != std::string::npos);
     const auto parse = [&](const std::string &projectiles)
     {
         Game::ProjectileEffectBindings parsed;
@@ -625,7 +627,8 @@ TEST_CASE("Projectile effect bindings name existing effects and resolve monster 
     CHECK_FALSE(parse("  fire_bolt: {flihgt: openyamm:fx/projectile/fire_bolt}\n"));
     CHECK(error.find("unknown key flihgt") != std::string::npos);
     CHECK_FALSE(parse("  fire_bolt: {flight: openyamm:fx/projectile/fire_bolt, sprite: shown}\n"));
-    CHECK_FALSE(parse("  fire_bolt: {sprite: hidden}\n"));
+    CHECK(parse("  fire_bolt: {sprite: hidden}\n"));
+    CHECK_FALSE(parse("  fire_bolt: {impact_follows_target: true}\n"));
     CHECK_FALSE(parse("  fire_bolt: {flight: openyamm:fx/projectile/fire_bolt, light: {rgb: [1, 2], radius: 5}}\n"));
     CHECK_FALSE(parse("  fire_bolt: {flight: openyamm:fx/projectile/fire_bolt, variants: [{flight: x}]}\n"));
 
@@ -686,5 +689,81 @@ TEST_CASE("Projectile effect bindings name existing effects and resolve monster 
         CHECK_FALSE(effects.contains(handle));
         CHECK(effects.ribbons().empty());
         CHECK(effects.particles().empty());
+    }
+}
+
+TEST_CASE("Projectile model bindings parse object ids, models and lengths")
+{
+    using namespace OpenYAMM;
+    std::string error;
+    Game::ProjectileModelBindings bindings;
+    const auto parse = [&](const std::string &projectiles)
+    {
+        bindings.clear();
+        return Game::parseProjectileModelBindings(
+            "schema: openyamm.projectileModels.v1\nprojectiles:\n" + projectiles, "test", bindings, error);
+    };
+    REQUIRE(parse("  - {object: 545, model: engine/models/projectile_arrow.glb, length: 130}\n"));
+    REQUIRE(bindings.contains(545));
+    CHECK_EQ(bindings.at(545).model, "engine/models/projectile_arrow.glb");
+    CHECK_EQ(bindings.at(545).length, doctest::Approx(130.0f));
+    REQUIRE(parse("  - {object: 4070, model: a.glb, length: 85, spin: {axis: side, degrees_per_second: -540}}\n"));
+    CHECK(bindings.at(4070).spinAxis == Game::ProjectileModelSpinAxis::Side);
+    CHECK_EQ(bindings.at(4070).spinDegreesPerSecond, doctest::Approx(-540.0f));
+    CHECK_FALSE(parse("  - {object: 545, model: a.glb, length: 130, spin: 3}\n"));
+    CHECK_FALSE(parse("  - {object: 545, model: a.glb, length: 130, spin: {axis: roll, degrees_per_second: 3}}\n"));
+    CHECK_FALSE(parse("  - {object: 545, model: a.glb, length: 130, tint: 3}\n"));
+    CHECK(error.find("unknown key tint") != std::string::npos);
+    CHECK_FALSE(parse("  - {object: 545, model: a.glb}\n"));
+    CHECK_FALSE(parse("  - {object: 545, model: a.glb, length: 0}\n"));
+    CHECK_FALSE(parse("  - {object: 0, model: a.glb, length: 10}\n"));
+    CHECK_FALSE(parse("  - {object: 545, model: a.glb, length: 10}\n  - {object: 545, model: b.glb, length: 10}\n"));
+    CHECK(error.find("bound twice") != std::string::npos);
+}
+
+TEST_CASE("Projectile model bindings name installed models")
+{
+    using namespace OpenYAMM;
+    const std::filesystem::path sourceRoot = OPENYAMM_SOURCE_DIR;
+    Engine::AssetFileSystem assetFileSystem;
+    REQUIRE(assetFileSystem.initialize(sourceRoot, sourceRoot / "assets_dev", Engine::AssetScaleTier::X1, "mm6"));
+    Game::ProjectileModelBindings bindings;
+    std::string error;
+    REQUIRE_MESSAGE(Game::loadProjectileModelBindings(
+        assetFileSystem, "engine/models/projectiles.yml", bindings, error), error);
+    CHECK(bindings.contains(545));
+    for (const auto &[objectId, binding] : bindings)
+    {
+        INFO("object " << objectId << ": " << binding.model);
+        CHECK(assetFileSystem.exists(binding.model));
+    }
+}
+
+TEST_CASE("Item model bindings parse icons and name installed models")
+{
+    using namespace OpenYAMM;
+    std::string error;
+    Game::ItemModelBindings bindings;
+    REQUIRE(Game::parseItemModelBindings("schema: openyamm.itemModels.v1\nitems:\n"
+        "  - {icon: LSword1, model: engine/models/item_lsword1.glb, length: 129}\n", "test", bindings, error));
+    REQUIRE(bindings.contains("lsword1"));
+    CHECK_EQ(bindings.at("lsword1").length, doctest::Approx(129.0f));
+    bindings.clear();
+    CHECK_FALSE(Game::parseItemModelBindings("schema: openyamm.itemModels.v1\nitems:\n"
+        "  - {icon: a, model: a.glb, length: 1, tint: 2}\n", "test", bindings, error));
+    bindings.clear();
+    CHECK_FALSE(Game::parseItemModelBindings("schema: openyamm.itemModels.v1\nitems:\n"
+        "  - {icon: a, model: a.glb, length: 1}\n  - {icon: A, model: b.glb, length: 1}\n", "test", bindings, error));
+    CHECK(error.find("bound twice") != std::string::npos);
+
+    const std::filesystem::path sourceRoot = OPENYAMM_SOURCE_DIR;
+    Engine::AssetFileSystem assetFileSystem;
+    REQUIRE(assetFileSystem.initialize(sourceRoot, sourceRoot / "assets_dev", Engine::AssetScaleTier::X1, "mm6"));
+    Game::ItemModelBindings installed;
+    REQUIRE_MESSAGE(Game::loadItemModelBindings(assetFileSystem, "engine/models/items.yml", installed, error), error);
+    for (const auto &[icon, binding] : installed)
+    {
+        INFO(icon << ": " << binding.model);
+        CHECK(assetFileSystem.exists(binding.model));
     }
 }

@@ -221,7 +221,7 @@ std::optional<GameplayWorldPoint> findOutdoorPartyPositionWithAttackLos(
 
 bool isKnownHeadlessRegressionSuite(const std::string &suiteName)
 {
-    static constexpr std::array<const char *, 19> KnownSuites = {{
+    static constexpr std::array<const char *, 20> KnownSuites = {{
         "dialogue",
         "chest",
         "arcomage",
@@ -241,6 +241,7 @@ bool isKnownHeadlessRegressionSuite(const std::string &suiteName)
         "houses",
         "transitions",
         "save",
+        "decorations",
     }};
 
     return std::find(KnownSuites.begin(), KnownSuites.end(), suiteName) != KnownSuites.end();
@@ -367,6 +368,11 @@ bool headlessRegressionCaseMatchesSuite(const std::string &suiteName, const std:
             || textContains(caseName, "treasure")
             || textContains(caseName, "inventory")
             || textContains(caseName, "granted_item");
+    }
+
+    if (suiteName == "decorations")
+    {
+        return textContains(caseName, "decoration");
     }
 
     if (suiteName == "houses")
@@ -7615,812 +7621,6 @@ int HeadlessGameplayDiagnostics::runRegressionSuite(
         return true;
     };
 
-    runCase("mm8_ratman_actor_models_keep_native_roles", [&](std::string &failure)
-    {
-        RegressionScenario scenario;
-        if (!initializeRegressionScenario(gameDataLoader, *gameDataLoader.getSelectedMap(), scenario))
-        {
-            failure = "could not initialize Ratman scenario";
-            return false;
-        }
-        const size_t first = scenario.world.mapActorCount();
-        for (int16_t monsterId : {37, 38, 39})
-        {
-            if (!scenario.world.summonHostileMonsterById(monsterId, 1, 0, 0, 0, 0))
-            {
-                failure = "could not spawn Ratman tier";
-                return false;
-            }
-        }
-        SpriteFrameTable frames;
-        WorldFxSystem fx;
-        if (!loadModelSpriteFrames(frames, failure)
-            || !fx.configureActorModels(assetFileSystem, "worlds/mm8/models/actors.yml",
-                gameDataLoader.getMonsterTable(), &frames, failure))
-        {
-            return false;
-        }
-        const OutdoorWorldRuntime::Snapshot initial = scenario.world.snapshot();
-        fx.syncActorModels(scenario.world);
-        for (size_t tier = 0; tier < 3; ++tier)
-        {
-            const Engine::ModelBounds *pBounds = fx.actorModelBounds(first + tier);
-            if (pBounds == nullptr || !pBounds->valid
-                || std::abs(pBounds->max[2] - pBounds->min[2] - 158.0f) > 4.0f)
-            {
-                failure = "Ratman tier does not match its native 158-unit standing height";
-                return false;
-            }
-        }
-        const Engine::ModelAsset *pAsset = fx.models().asset(fx.models().handles().back());
-        if (!pAsset->findNode("Ratman") || !pAsset->findNode("Sword"))
-        {
-            failure = "Ratman body or sword attachment bone is missing";
-            return false;
-        }
-        for (const char *name : {"Standing", "Walking", "Running", "Attack", "Hit", "Fidget", "Death", "Dead"})
-        {
-            if (!pAsset->findClip(name))
-            {
-                failure = std::string("missing Ratman clip: ") + name;
-                return false;
-            }
-        }
-        for (int animation = 0; animation < 8; ++animation)
-        {
-            OutdoorWorldRuntime::Snapshot pose = initial;
-            pose.mapActors[first].animation = OutdoorWorldRuntime::ActorAnimation(animation);
-            pose.mapActors[first].animationTimeTicks = 16;
-            scenario.world.restoreSnapshot(pose);
-            fx.syncActorModels(scenario.world, 0.125f);
-            const OutdoorWorldRuntime::MapActorState *pActor = scenario.world.mapActorState(first);
-            if (!fx.hasActorModel(first) || !fx.actorModelBounds(first)->valid
-                || pActor->animationTimeTicks != 16 || pActor->currentHp != pose.mapActors[first].currentHp
-                || pActor->preciseX != pose.mapActors[first].preciseX)
-            {
-                failure = "Ratman presentation changed simulation state or lost a native role";
-                return false;
-            }
-        }
-        return true;
-    });
-
-    runCase("mm8_dark_elf_peasant_actor_models_keep_native_roles", [&](std::string &failure)
-    {
-        if (!gameDataLoader.loadMapByFileNameForHeadlessGameplay(assetFileSystem, "out01.odm"))
-        {
-            failure = "could not load Dagger Wound Islands";
-            return false;
-        }
-        RegressionScenario scenario;
-        if (!initializeRegressionScenario(gameDataLoader, *gameDataLoader.getSelectedMap(), scenario))
-        {
-            failure = "could not initialize Dark Elf scenario";
-            return false;
-        }
-        const size_t first = scenario.world.mapActorCount();
-        for (int16_t monsterId : {19, 20, 21})
-        {
-            if (!scenario.world.summonHostileMonsterById(monsterId, 1, 0, 0, 0, 0))
-            {
-                failure = "could not spawn Dark Elf tier";
-                return false;
-            }
-        }
-        SpriteFrameTable frames;
-        WorldFxSystem fx;
-        if (!loadModelSpriteFrames(frames, failure))
-        {
-            return false;
-        }
-        if (!fx.configureActorModels(assetFileSystem, "worlds/mm8/models/actors.yml",
-                gameDataLoader.getMonsterTable(), &frames, failure))
-        {
-            return false;
-        }
-        const OutdoorWorldRuntime::Snapshot initial = scenario.world.snapshot();
-        fx.syncActorModels(scenario.world);
-        for (size_t tier = 0; tier < 3; ++tier)
-        {
-            const Engine::ModelBounds *pBounds = fx.actorModelBounds(first + tier);
-            if (pBounds == nullptr || !pBounds->valid
-                || std::abs(pBounds->max[2] - pBounds->min[2] - 196.0f) > 4.0f)
-            {
-                failure = "Dark Elf tier does not match the native 196-unit standing height";
-                return false;
-            }
-        }
-        const Engine::ModelAsset *pAsset = fx.models().asset(fx.models().handles().back());
-        const std::array<std::pair<const char *, float>, 7> clips = {{{"Standing", 2.0f},
-            {"Walking", 0.8f}, {"Running", 44.0f / 60.0f}, {"Hit", 0.5f},
-            {"Fidget", 2.2f}, {"Death", 1.3f}, {"Dead", 1.0f}}};
-        for (const auto &[name, duration] : clips)
-        {
-            const std::optional<uint32_t> clip = pAsset->findClip(name);
-            if (!clip || std::abs(pAsset->clips[*clip].durationSeconds - duration) > 0.01f)
-            {
-                failure = std::string("missing or retimed Dark Elf clip: ") + name;
-                return false;
-            }
-        }
-        const std::optional<uint32_t> body = pAsset->findNode("M424");
-        if (!body || !pAsset->findNode("Dagger")
-            || pAsset->meshes[pAsset->nodes[*body].meshIndex].lodMeshes.size() != 3)
-        {
-            failure = "Dark Elf lacks its dagger bone or three reduced colour LODs";
-            return false;
-        }
-        for (int animation = 0; animation < 8; ++animation)
-        {
-            OutdoorWorldRuntime::Snapshot pose = initial;
-            pose.mapActors[first].animation = OutdoorWorldRuntime::ActorAnimation(animation);
-            pose.mapActors[first].animationTimeTicks = 16;
-            scenario.world.restoreSnapshot(pose);
-            fx.syncActorModels(scenario.world, 0.125f);
-            const OutdoorWorldRuntime::MapActorState *pActor = scenario.world.mapActorState(first);
-            if (!fx.hasActorModel(first) || !fx.actorModelBounds(first)->valid
-                || pActor->animationTimeTicks != 16 || pActor->currentHp != pose.mapActors[first].currentHp
-                || pActor->preciseX != pose.mapActors[first].preciseX)
-            {
-                failure = "Dark Elf presentation changed simulation state or lost a native role";
-                return false;
-            }
-        }
-        return true;
-    });
-
-    runCase("mm8_pirate_actor_models_keep_native_roles", [&](std::string &failure)
-    {
-        if (!gameDataLoader.loadMapByFileNameForHeadlessGameplay(assetFileSystem, "out01.odm"))
-        {
-            failure = "could not load the Pirate test map";
-            return false;
-        }
-        RegressionScenario scenario;
-        if (!initializeRegressionScenario(gameDataLoader, *gameDataLoader.getSelectedMap(), scenario))
-        {
-            failure = "could not initialize Pirate scenario";
-            return false;
-        }
-        const size_t first = scenario.world.mapActorCount();
-        for (int16_t monsterId : {10, 11, 12, 181, 182, 183})
-        {
-            if (!scenario.world.summonHostileMonsterById(monsterId, 1, 0, 0, 0, 0))
-            {
-                failure = "could not spawn Pirate variant";
-                return false;
-            }
-        }
-        SpriteFrameTable frames;
-        WorldFxSystem fx;
-        if (!loadModelSpriteFrames(frames, failure))
-        {
-            return false;
-        }
-        if (!fx.configureActorModels(assetFileSystem, "worlds/mm8/models/actors.yml",
-                gameDataLoader.getMonsterTable(), &frames, failure))
-        {
-            return false;
-        }
-        const OutdoorWorldRuntime::Snapshot initial = scenario.world.snapshot();
-        fx.syncActorModels(scenario.world);
-        for (size_t variant = 0; variant < 6; ++variant)
-        {
-            const Engine::ModelBounds *pBounds = fx.actorModelBounds(first + variant);
-            if (pBounds == nullptr || !pBounds->valid
-                || std::abs(pBounds->max[2] - pBounds->min[2] - 236.4f) > 4.0f)
-            {
-                failure = "Pirate variant does not match its native standing height";
-                return false;
-            }
-        }
-        const Engine::ModelAsset *pAsset = nullptr;
-        for (const Engine::ModelInstanceHandle handle : fx.models().handles())
-        {
-            const Engine::ModelAsset *pCandidate = fx.models().asset(handle);
-            if (pCandidate->sourcePath.find("mm8_m412.glb") != std::string::npos)
-            {
-                pAsset = pCandidate;
-                break;
-            }
-        }
-        if (pAsset == nullptr)
-        {
-            failure = "Pirate body was not loaded";
-            return false;
-        }
-        const std::array<std::pair<const char *, float>, 8> clips = {{{"Standing", 3.0f},
-            {"Walking", 1.0f}, {"Running", 22.0f / 30.0f}, {"Attack", 53.0f / 30.0f},
-            {"Hit", 0.5f}, {"Death", 109.0f / 30.0f}, {"Dead", 1.0f}, {"Fidget", 85.0f / 30.0f}}};
-        for (const auto &[name, duration] : clips)
-        {
-            const std::optional<uint32_t> clip = pAsset->findClip(name);
-            if (!clip || std::abs(pAsset->clips[*clip].durationSeconds - duration) > 0.01f)
-            {
-                failure = std::string("missing or retimed Pirate clip: ") + name;
-                return false;
-            }
-        }
-        const std::optional<uint32_t> body = pAsset->findNode("Pirate");
-        if (!body || !pAsset->findNode("Sword")
-            || pAsset->meshes[pAsset->nodes[*body].meshIndex].lodMeshes.size() != 3)
-        {
-            failure = "Pirate lacks its cutlass attachment or three reduced LODs";
-            return false;
-        }
-        for (int animation = 0; animation < 8; ++animation)
-        {
-            OutdoorWorldRuntime::Snapshot pose = initial;
-            pose.mapActors[first].animation = OutdoorWorldRuntime::ActorAnimation(animation);
-            pose.mapActors[first].animationTimeTicks = 16;
-            scenario.world.restoreSnapshot(pose);
-            fx.syncActorModels(scenario.world, 0.125f);
-            const OutdoorWorldRuntime::MapActorState *pActor = scenario.world.mapActorState(first);
-            if (!fx.hasActorModel(first) || !fx.actorModelBounds(first)->valid
-                || pActor->animationTimeTicks != 16 || pActor->currentHp != pose.mapActors[first].currentHp
-                || pActor->preciseX != pose.mapActors[first].preciseX)
-            {
-                failure = "Pirate presentation changed simulation state or lost a native role";
-                return false;
-            }
-        }
-        return true;
-    });
-
-    runCase("mm8_dark_elf_warrior_actor_models_keep_native_roles", [&](std::string &failure)
-    {
-        if (!gameDataLoader.loadMapByFileNameForHeadlessGameplay(assetFileSystem, "out01.odm"))
-        {
-            failure = "could not load the Dark Elf test map";
-            return false;
-        }
-        RegressionScenario scenario;
-        if (!initializeRegressionScenario(gameDataLoader, *gameDataLoader.getSelectedMap(), scenario))
-        {
-            failure = "could not initialize the Dark Elf scenario";
-            return false;
-        }
-        const size_t first = scenario.world.mapActorCount();
-        for (int tier = 0; tier < 3; ++tier)
-        {
-            if (!scenario.world.summonHostileMonsterById(25 + tier, 1, tier * 400, 0, 0, 0))
-            {
-                failure = "could not spawn a Dark Elf tier";
-                return false;
-            }
-        }
-        SpriteFrameTable frames;
-        WorldFxSystem fx;
-        if (!loadModelSpriteFrames(frames, failure)
-            || !fx.configureActorModels(assetFileSystem, "worlds/mm8/models/actors.yml",
-                gameDataLoader.getMonsterTable(), &frames, failure))
-        {
-            return false;
-        }
-        const OutdoorWorldRuntime::Snapshot initial = scenario.world.snapshot();
-        fx.syncActorModels(scenario.world);
-        const Engine::ModelAsset *pAsset = nullptr;
-        std::array<size_t, 3> variants = {};
-        size_t swords = 0;
-        for (const Engine::ModelInstanceHandle handle : fx.models().handles())
-        {
-            const Engine::ModelAsset *pCandidate = fx.models().asset(handle);
-            if (pCandidate->sourcePath.find("mm8_m432.glb") == std::string::npos)
-            {
-                continue;
-            }
-            const uint32_t variant = fx.models().materialVariant(handle);
-            if ((pAsset && pAsset != pCandidate) || variant < 1 || variant > 3)
-            {
-                failure = "Dark Elf tiers do not share one asset with valid variants";
-                return false;
-            }
-            pAsset = pCandidate;
-            ++variants[variant - 1];
-            const std::vector<Engine::ModelAttachment> &carried = fx.models().attachments(handle);
-            const std::optional<uint32_t> socket = pCandidate->findNode("Socket_Sword");
-            if (carried.size() != 1 || !socket || carried[0].nodeIndex != *socket
-                || carried[0].asset->sourcePath.find("mm8_m432_sword.glb") == std::string::npos)
-            {
-                failure = "Dark Elf sword is missing or attached to the wrong node";
-                return false;
-            }
-            ++swords;
-        }
-        if (!pAsset || variants != std::array<size_t, 3>{1, 1, 1} || swords != 3)
-        {
-            failure = "missing Dark Elf body tier or sword attachment";
-            return false;
-        }
-        const std::optional<uint32_t> body = pAsset->findNode("M432");
-        if (!body || pAsset->meshes[pAsset->nodes[*body].meshIndex].lodMeshes.size() != 3
-            || !pAsset->findNode("Socket_Sword") || !pAsset->findNode("Socket_Spell"))
-        {
-            failure = "Dark Elf lacks reduced LODs, sword or casting socket";
-            return false;
-        }
-        const std::array<std::pair<const char *, float>, 9> clips = {{{"Standing", 2.0f},
-            {"Walking", 41.0f / 30.0f}, {"Running", 0.6f}, {"Attack", 55.0f / 30.0f},
-            {"Cast", 50.0f / 30.0f}, {"Hit", 0.6f}, {"Death", 2.4f}, {"Dead", 1.0f}, {"Fidget", 2.0f}}};
-        for (const auto &[name, seconds] : clips)
-        {
-            const std::optional<uint32_t> clip = pAsset->findClip(name);
-            if (!clip || std::abs(pAsset->clips[*clip].durationSeconds - seconds) > 0.01f)
-            {
-                failure = std::string("missing or retimed Dark Elf clip: ") + name;
-                return false;
-            }
-        }
-        for (int animation = 0; animation < 8; ++animation)
-        {
-            OutdoorWorldRuntime::Snapshot pose = initial;
-            for (size_t index = first; index < first + 3; ++index)
-            {
-                pose.mapActors[index].animation = OutdoorWorldRuntime::ActorAnimation(animation);
-                pose.mapActors[index].animationTimeTicks = 16;
-            }
-            scenario.world.restoreSnapshot(pose);
-            fx.syncActorModels(scenario.world, 0.125f);
-            for (size_t index = first; index < first + 3; ++index)
-            {
-                const OutdoorWorldRuntime::MapActorState *pActor = scenario.world.mapActorState(index);
-                const Engine::ModelBounds *pBounds = fx.actorModelBounds(index);
-                if (!pActor || !pBounds || !pBounds->valid || pActor->animationTimeTicks != 16
-                    || pActor->monsterId != initial.mapActors[index].monsterId
-                    || pActor->currentHp != initial.mapActors[index].currentHp
-                    || pActor->preciseX != initial.mapActors[index].preciseX)
-                {
-                    failure = "Dark Elf presentation changed simulation state or lost a native role";
-                    return false;
-                }
-            }
-        }
-        return true;
-    });
-
-    runCase("mm8_lizardman_peasant_actor_model_keeps_native_roles", [&](std::string &failure)
-    {
-        if (!gameDataLoader.loadMapByFileNameForHeadlessGameplay(assetFileSystem, "out01.odm"))
-        {
-            failure = "could not load Dagger Wound Islands";
-            return false;
-        }
-        RegressionScenario scenario;
-        if (!initializeRegressionScenario(gameDataLoader, *gameDataLoader.getSelectedMap(), scenario))
-        {
-            failure = "could not initialize lizardman scenario";
-            return false;
-        }
-        const size_t actorIndex = scenario.world.mapActorCount();
-        if (!scenario.world.summonHostileMonsterById(1, 1, 0, 0, 0, 0))
-        {
-            failure = "could not spawn the native lizardman peasant";
-            return false;
-        }
-        SpriteFrameTable frames;
-        WorldFxSystem fx;
-        if (!loadModelSpriteFrames(frames, failure)
-            || !fx.configureActorModels(assetFileSystem, "worlds/mm8/models/actors.yml",
-                gameDataLoader.getMonsterTable(), &frames, failure))
-        {
-            return false;
-        }
-        const OutdoorWorldRuntime::Snapshot initial = scenario.world.snapshot();
-        fx.syncActorModels(scenario.world);
-        if (!fx.hasActorModel(actorIndex) || !fx.actorModelBounds(actorIndex)->valid)
-        {
-            failure = "lizardman did not acquire a model with valid bounds";
-            return false;
-        }
-        const Engine::ModelAsset *pAsset = fx.models().asset(fx.models().handles().front());
-        const std::array<std::pair<const char *, float>, 6> clips = {{{"Standing", 0.125f},
-            {"Walk", 31.0f / 30.0f}, {"Hit", 0.5f}, {"Fidget", 0.5f}, {"Death", 0.75f}, {"Corpse", 0.125f}}};
-        for (const auto &[name, duration] : clips)
-        {
-            const std::optional<uint32_t> clip = pAsset->findClip(name);
-            if (!clip || std::abs(pAsset->clips[*clip].durationSeconds - duration) > 0.01f)
-            {
-                failure = std::string("missing or retimed lizardman clip: ") + name;
-                return false;
-            }
-        }
-        const std::optional<uint32_t> body = pAsset->findNode("Lizardman_Body");
-        if (!body || pAsset->meshes[pAsset->nodes[*body].meshIndex].lodMeshes.size() != 3)
-        {
-            failure = "lizardman lacks its three colour LODs";
-            return false;
-        }
-        for (int animation = 0; animation < 8; ++animation)
-        {
-            OutdoorWorldRuntime::Snapshot pose = initial;
-            pose.mapActors[actorIndex].animation = OutdoorWorldRuntime::ActorAnimation(animation);
-            pose.mapActors[actorIndex].animationTimeTicks = 16;
-            scenario.world.restoreSnapshot(pose);
-            fx.syncActorModels(scenario.world, 0.125f);
-            const OutdoorWorldRuntime::MapActorState *pActor = scenario.world.mapActorState(actorIndex);
-            if (!fx.hasActorModel(actorIndex) || !fx.actorModelBounds(actorIndex)->valid
-                || pActor->animationTimeTicks != 16 || pActor->currentHp != pose.mapActors[actorIndex].currentHp
-                || pActor->preciseX != pose.mapActors[actorIndex].preciseX)
-            {
-                failure = "lizardman presentation changed simulation state or lost a native animation role";
-                return false;
-            }
-        }
-        return true;
-    });
-
-    runCase("mm8_wolf_actor_models_keep_native_sizes_and_roles", [&](std::string &failure)
-    {
-        if (!gameDataLoader.loadMapByFileNameForHeadlessGameplay(assetFileSystem, "out01.odm"))
-        {
-            failure = "could not load the wolf test map";
-            return false;
-        }
-        RegressionScenario scenario;
-        if (!initializeRegressionScenario(gameDataLoader, *gameDataLoader.getSelectedMap(), scenario))
-        {
-            failure = "could not initialize the wolf scenario";
-            return false;
-        }
-        const size_t first = scenario.world.mapActorCount();
-        for (int tier = 0; tier < 3; ++tier)
-        {
-            if (!scenario.world.summonHostileMonsterById(85 + tier, 1, tier * 400, 0, 0, 0))
-            {
-                failure = "could not spawn a wolf tier";
-                return false;
-            }
-        }
-        SpriteFrameTable frames;
-        WorldFxSystem fx;
-        if (!loadModelSpriteFrames(frames, failure)
-            || !fx.configureActorModels(assetFileSystem, "worlds/mm8/models/actors.yml",
-                gameDataLoader.getMonsterTable(), &frames, failure))
-        {
-            return false;
-        }
-        const OutdoorWorldRuntime::Snapshot initial = scenario.world.snapshot();
-        fx.syncActorModels(scenario.world);
-        const Engine::ModelAsset *pAsset = nullptr;
-        std::array<size_t, 3> variants = {};
-        for (const Engine::ModelInstanceHandle handle : fx.models().handles())
-        {
-            const Engine::ModelAsset *pCandidate = fx.models().asset(handle);
-            if (pCandidate->sourcePath.find("mm8_wolf.glb") == std::string::npos)
-            {
-                continue;
-            }
-            const uint32_t variant = fx.models().materialVariant(handle);
-            if ((pAsset && pAsset != pCandidate) || variant < 1 || variant > 3)
-            {
-                failure = "wolf tiers do not share one asset with valid variants";
-                return false;
-            }
-            pAsset = pCandidate;
-            ++variants[variant - 1];
-        }
-        if (!pAsset || variants != std::array<size_t, 3>{1, 1, 1})
-        {
-            failure = "missing wolf model tier";
-            return false;
-        }
-        const std::optional<uint32_t> body = pAsset->findNode("Wolf");
-        if (!body || pAsset->meshes[pAsset->nodes[*body].meshIndex].lodMeshes.size() != 3)
-        {
-            failure = "wolf lacks its three colour LODs";
-            return false;
-        }
-        const std::array<std::pair<const char *, float>, 8> clips = {{{"Standing", 2.0f}, {"Walking", 1.0f},
-            {"Running", 0.625f}, {"Attack", 1.125f}, {"Hit", 0.625f}, {"Death", 0.625f},
-            {"Dead", 1.0f}, {"Fidget", 0.625f}}};
-        for (const auto &[name, seconds] : clips)
-        {
-            const std::optional<uint32_t> clip = pAsset->findClip(name);
-            if (!clip || std::abs(pAsset->clips[*clip].durationSeconds - seconds) > 0.01f)
-            {
-                failure = std::string("wolf clip missing or retimed: ") + name;
-                return false;
-            }
-        }
-        for (int animation = 0; animation < 8; ++animation)
-        {
-            OutdoorWorldRuntime::Snapshot pose = initial;
-            for (size_t index = first; index < first + 3; ++index)
-            {
-                pose.mapActors[index].animation = OutdoorWorldRuntime::ActorAnimation(animation);
-                pose.mapActors[index].animationTimeTicks = 16;
-            }
-            scenario.world.restoreSnapshot(pose);
-            fx.syncActorModels(scenario.world);
-            float baseHeight = 0.0f;
-            for (size_t index = first; index < first + 3; ++index)
-            {
-                const OutdoorWorldRuntime::MapActorState *pActor = scenario.world.mapActorState(index);
-                const Engine::ModelBounds *pBounds = fx.actorModelBounds(index);
-                if (!pActor || !pBounds || !pBounds->valid
-                    || pActor->monsterId != initial.mapActors[index].monsterId
-                    || pActor->currentHp != initial.mapActors[index].currentHp
-                    || pActor->preciseX != initial.mapActors[index].preciseX || pActor->animationTimeTicks != 16)
-                {
-                    failure = "wolf presentation changed simulation state or lost an animation role";
-                    return false;
-                }
-                const float height = pBounds->max[2] - pBounds->min[2];
-                if (index == first)
-                {
-                    baseHeight = height;
-                }
-                const std::array<float, 3> nativeRatios = {1.0f, 1.15f, 1.35f};
-                if (baseHeight <= 0.0f || std::abs(height / baseHeight - nativeRatios[index - first]) > 0.02f)
-                {
-                    failure = "wolf model sizes diverge from the native tier ratios";
-                    return false;
-                }
-            }
-        }
-        return true;
-    });
-
-    runCase("mm8_centaur_actor_models_keep_native_roles", [&](std::string &failure)
-    {
-        if (!gameDataLoader.loadMapByFileNameForHeadlessGameplay(assetFileSystem, "out01.odm"))
-        {
-            failure = "could not load the centaur test map";
-            return false;
-        }
-        RegressionScenario scenario;
-        if (!initializeRegressionScenario(gameDataLoader, *gameDataLoader.getSelectedMap(), scenario))
-        {
-            failure = "could not initialize the centaur scenario";
-            return false;
-        }
-        const size_t first = scenario.world.mapActorCount();
-        for (int tier = 0; tier < 3; ++tier)
-        {
-            if (!scenario.world.summonHostileMonsterById(100 + tier, 1, tier * 400, 0, 0, 0))
-            {
-                failure = "could not spawn a centaur tier";
-                return false;
-            }
-        }
-        SpriteFrameTable frames;
-        WorldFxSystem fx;
-        if (!loadModelSpriteFrames(frames, failure)
-            || !fx.configureActorModels(assetFileSystem, "worlds/mm8/models/actors.yml",
-                gameDataLoader.getMonsterTable(), &frames, failure))
-        {
-            return false;
-        }
-        const OutdoorWorldRuntime::Snapshot initial = scenario.world.snapshot();
-        fx.syncActorModels(scenario.world);
-        const Engine::ModelAsset *pAsset = nullptr;
-        std::array<size_t, 3> tiers = {};
-        for (const Engine::ModelInstanceHandle handle : fx.models().handles())
-        {
-            const Engine::ModelAsset *pCandidate = fx.models().asset(handle);
-            if (!pCandidate->findNode("StringNock"))
-            {
-                continue;
-            }
-            const uint32_t variant = fx.models().materialVariant(handle);
-            const std::vector<Engine::ModelAttachment> &carried = fx.models().attachments(handle);
-            const std::optional<uint32_t> bow = pCandidate->findNode("Bow");
-            const std::optional<uint32_t> quiver = pCandidate->findNode("Quiver");
-            if ((pAsset && pAsset != pCandidate) || variant < 1 || variant > 3 || !bow || !quiver
-                || carried.size() != 2 || carried[0].nodeIndex != *bow || carried[1].nodeIndex != *quiver
-                || carried[0].asset->sourcePath.find("mm8_centaur_bow") == std::string::npos
-                || carried[1].asset->sourcePath.find("mm8_centaur_quiver") == std::string::npos
-                || carried[0].materialVariant != variant || carried[1].materialVariant != variant)
-            {
-                failure = "centaur tiers do not share their model and correctly attached equipment";
-                return false;
-            }
-            pAsset = pCandidate;
-            ++tiers[variant - 1];
-        }
-        if (!pAsset || tiers != std::array<size_t, 3>{1, 1, 1}
-            || !pAsset->findNode("Socket_BowRelease") || !pAsset->findNode("Socket_CastPalm"))
-        {
-            failure = "centaur tier or action socket is missing";
-            return false;
-        }
-        const std::array<std::pair<const char *, float>, 9> clips = {{{"Standing", 2.0f}, {"Walking", 0.75f},
-            {"Running", 2.0f / 3.0f}, {"Attack", 1.5f}, {"Cast", 1.5f}, {"Hit", 0.875f},
-            {"Death", 1.75f}, {"Dead", 1.0f}, {"Fidget", 1.25f}}};
-        for (const auto &[name, seconds] : clips)
-        {
-            const std::optional<uint32_t> clip = pAsset->findClip(name);
-            if (!clip || std::abs(pAsset->clips[*clip].durationSeconds - seconds) > 0.01f)
-            {
-                failure = std::string("centaur clip missing or retimed: ") + name;
-                return false;
-            }
-        }
-        const std::optional<uint32_t> body = pAsset->findNode("Body");
-        if (!body || pAsset->meshes[pAsset->nodes[*body].meshIndex].lodMeshes.size() != 3)
-        {
-            failure = "centaur model lacks its three colour LODs";
-            return false;
-        }
-        for (int animation = 0; animation < 8; ++animation)
-        {
-            OutdoorWorldRuntime::Snapshot pose = initial;
-            for (size_t index = first; index < first + 3; ++index)
-            {
-                pose.mapActors[index].animation = OutdoorWorldRuntime::ActorAnimation(animation);
-                pose.mapActors[index].animationTimeTicks = 16;
-            }
-            scenario.world.restoreSnapshot(pose);
-            fx.syncActorModels(scenario.world);
-            for (size_t index = first; index < first + 3; ++index)
-            {
-                const OutdoorWorldRuntime::MapActorState *pActor = scenario.world.mapActorState(index);
-                if (!pActor || !fx.hasActorModel(index) || !fx.actorModelBounds(index)->valid
-                    || pActor->monsterId != initial.mapActors[index].monsterId
-                    || pActor->currentHp != initial.mapActors[index].currentHp
-                    || pActor->preciseX != initial.mapActors[index].preciseX || pActor->animationTimeTicks != 16)
-                {
-                    failure = "centaur presentation changed native simulation state or lost an animation role";
-                    return false;
-                }
-            }
-        }
-        return true;
-    });
-
-    runCase("mm8_smuggler_human_actor_models_keep_tiers_roles_and_palm_cast", [&](std::string &failure)
-    {
-        if (!gameDataLoader.loadMapByFileNameForHeadlessGameplay(assetFileSystem, "out01.odm"))
-        {
-            failure = "could not load Dagger Wound Islands";
-            return false;
-        }
-        RegressionScenario scenario;
-        if (!initializeRegressionScenario(gameDataLoader, *gameDataLoader.getSelectedMap(), scenario))
-        {
-            failure = "could not initialize the human smuggler scenario";
-            return false;
-        }
-        const size_t first = scenario.world.mapActorCount();
-        for (int16_t id : {34, 35, 36})
-        {
-            if (!scenario.world.summonHostileMonsterById(id, 1, 0, 0, 0, 0))
-            {
-                failure = "could not summon human smuggler " + std::to_string(id);
-                return false;
-            }
-        }
-        SpriteFrameTable frames;
-        WorldFxSystem fx;
-        if (!loadModelSpriteFrames(frames, failure)
-            || !fx.loadNamedEffectLibrary(assetFileSystem, "engine/effects/library.yml",
-                "engine/effects/resource_bindings.yml", failure)
-            || !fx.configureActorModels(assetFileSystem, "worlds/mm8/models/actors.yml",
-                gameDataLoader.getMonsterTable(), &frames, failure))
-        {
-            return false;
-        }
-        const OutdoorWorldRuntime::Snapshot initial = scenario.world.snapshot();
-        fx.syncActorModels(scenario.world);
-        for (size_t tier = 0; tier < 3; ++tier)
-        {
-            const Engine::ModelBounds *pBounds = fx.actorModelBounds(first + tier);
-            if (pBounds == nullptr || !pBounds->valid || std::abs(pBounds->max[2] - pBounds->min[2] - 179.0f) > 3.0f)
-            {
-                failure = "human smuggler tier does not match the native standing height";
-                return false;
-            }
-        }
-        const Engine::ModelAsset *pBody = nullptr;
-        std::array<size_t, 3> variants = {};
-        for (const Engine::ModelInstanceHandle handle : fx.models().handles())
-        {
-            const Engine::ModelAsset *pAsset = fx.models().asset(handle);
-            if (pAsset->sourcePath.find("mm8_m444.glb") == std::string::npos)
-            {
-                continue;
-            }
-            if (pBody != nullptr && pBody != pAsset)
-            {
-                failure = "human smuggler tiers do not share one asset";
-                return false;
-            }
-            const std::vector<Engine::ModelAttachment> &carried = fx.models().attachments(handle);
-            if (carried.size() != 1 || !pAsset->findNode("Sword")
-                || carried[0].nodeIndex != *pAsset->findNode("Sword")
-                || carried[0].asset->sourcePath.find("mm8_m444_sword.glb") == std::string::npos)
-            {
-                failure = "human smuggler has no sword on the Sword node";
-                return false;
-            }
-            pBody = pAsset;
-            const uint32_t variant = fx.models().materialVariant(handle);
-            if (variant < 1 || variant > 3)
-            {
-                failure = "human smuggler has no native palette variant";
-                return false;
-            }
-            ++variants[variant - 1];
-        }
-        if (pBody == nullptr || variants != std::array<size_t, 3>{1, 1, 1})
-        {
-            failure = "human smuggler variants or sword attachments are incomplete";
-            return false;
-        }
-        const std::optional<uint32_t> body = pBody->findNode("Smuggler");
-        if (!body || pBody->meshes[pBody->nodes[*body].meshIndex].lodMeshes.size() != 3
-            || !pBody->findNode("Socket_Palm_Left") || !pBody->findNode("Socket_Palm_Right"))
-        {
-            failure = "human smuggler LOD chain or hand sockets are missing";
-            return false;
-        }
-        const std::array<std::pair<const char *, float>, 9> clips = {{{"Standing", 3.0f}, {"Walking", 1.0f},
-            {"Running", 22.0f / 30.0f}, {"Attack", 61.0f / 30.0f}, {"Cast", 2.0f}, {"Hit", 0.5f},
-            {"Death", 109.0f / 30.0f}, {"Dead", 1.0f}, {"Fidget", 26.0f / 30.0f}}};
-        for (const auto &[name, duration] : clips)
-        {
-            const std::optional<uint32_t> clip = pBody->findClip(name);
-            if (!clip || std::abs(pBody->clips[*clip].durationSeconds - duration) > 0.01f)
-            {
-                failure = std::string("human smuggler clip missing or retimed: ") + name;
-                return false;
-            }
-        }
-        for (int animation = 0; animation < 8; ++animation)
-        {
-            OutdoorWorldRuntime::Snapshot pose = initial;
-            for (size_t tier = 0; tier < 3; ++tier)
-            {
-                pose.mapActors[first + tier].animation = OutdoorWorldRuntime::ActorAnimation(animation);
-                pose.mapActors[first + tier].animationTimeTicks = 16;
-            }
-            scenario.world.restoreSnapshot(pose);
-            fx.syncActorModels(scenario.world, 0.125f);
-            for (size_t tier = 0; tier < 3; ++tier)
-            {
-                const OutdoorWorldRuntime::MapActorState *pActor = scenario.world.mapActorState(first + tier);
-                if (!fx.hasActorModel(first + tier) || !fx.actorModelBounds(first + tier)->valid
-                    || pActor->currentHp != initial.mapActors[first + tier].currentHp
-                    || pActor->preciseX != initial.mapActors[first + tier].preciseX || pActor->animationTimeTicks != 16)
-                {
-                    failure = "human smuggler presentation changed simulation or lost an animation role";
-                    return false;
-                }
-            }
-        }
-        OutdoorWorldRuntime::Snapshot cast = initial;
-        cast.mapActors[first].animation = OutdoorWorldRuntime::ActorAnimation::AttackRanged;
-        cast.mapActors[first].queuedAttackAbility = OutdoorWorldRuntime::MonsterAttackAbility::Spell1;
-        cast.mapActors[first].animationTimeTicks = 160;
-        cast.mapActors[first].actionSeconds = 0.0f;
-        cast.mapActors[first].attackImpactTriggered = true;
-        scenario.world.restoreSnapshot(cast);
-        fx.syncActorModels(scenario.world, 0.02f);
-        std::optional<std::array<float, 3>> socket;
-        for (const Engine::ModelInstanceHandle handle : fx.models().handles())
-        {
-            if (fx.models().asset(handle) == pBody && fx.models().materialVariant(handle) == 1)
-            {
-                const Engine::ModelMatrix *pPalm = fx.models().nodeMatrix(handle, "Socket_Palm_Left");
-                socket = std::array<float, 3>{(*pPalm)[12], (*pPalm)[13], (*pPalm)[14]};
-            }
-        }
-        scenario.world.setWorldFxSystem(&fx);
-        const size_t before = scenario.world.projectileCount();
-        const bool spawned = scenario.world.debugSpawnMapActorProjectile(first,
-            OutdoorWorldRuntime::MonsterAttackAbility::Spell1, -2000.0f, 0.0f, 100.0f);
-        scenario.world.setWorldFxSystem(nullptr);
-        const GameplayProjectileService::ProjectileState *pSpray = spawned && scenario.world.projectileCount() > before
-            ? scenario.world.projectileState(scenario.world.projectileCount() - 1) : nullptr;
-        if (!socket || pSpray == nullptr || std::hypot(pSpray->sourceX - (*socket)[0], pSpray->sourceY - (*socket)[1],
-                pSpray->sourceZ - (*socket)[2]) > 0.5f)
-        {
-            failure = "human smuggler Poison Spray did not launch from the left palm";
-            return false;
-        }
-        return true;
-    });
-
     runCase("mm6_demon_actor_models_keep_simulation_and_death_rules", [&](std::string &failure)
     {
         if (!gameDataLoader.loadMapByFileNameForHeadlessGameplay(assetFileSystem, "oute3.odm"))
@@ -9120,12 +8320,13 @@ int HeadlessGameplayDiagnostics::runRegressionSuite(
             size_t triangles;
             size_t placements;
         };
+        // Triangle budgets of LOD0. The barrel has 1760 since its open top (inner wall and floor, 2026-10-14).
         const std::unordered_map<std::string, Expected> expected = {
             {"6tree01", {531.0f, 0.12f, 8000, 213}}, {"6tree02", {662.0f, 0.12f, 8000, 103}},
             {"6tree19", {312.0f, 0.12f, 8000, 18}}, {"6tree05", {604.0f, 0.12f, 8000, 16}},
             {"6tree03", {363.0f, 0.12f, 8000, 13}}, {"6tree04", {493.0f, 0.12f, 8000, 8}},
             {"6tree06", {576.0f, 0.12f, 8000, 6}}, {"tree06a", {576.0f, 0.12f, 8000, 9}},
-            {"6rock01", {99.0f, 0.15f, 2500, 41}}, {"bigbarel", {117.0f, 0.0f, 1500, 4}},
+            {"6rock01", {99.0f, 0.15f, 2500, 41}}, {"bigbarel", {117.0f, 0.0f, 1800, 4}},
             {"6flower02", {67.0f, 0.15f, 1500, 16}}, {"6flower07", {76.0f, 0.15f, 1500, 16}},
             {"ckfyr00", {222.0f, 0.0f, 3000, 5}}, {"sta1a", {266.0f, 0.0f, 8000, 3}},
             {"swrdstn", {174.0f, 0.0f, 4800, 1}},
@@ -9400,29 +8601,185 @@ int HeadlessGameplayDiagnostics::runRegressionSuite(
         return true;
     });
 
-    runCase("mm6_decoration_models_keep_native_animation", [&](std::string &failure)
+    runCase("mm7_decoration_models_outdoor_maps", [&](std::string &failure)
+    {
+        // Every visible decoration of the MM7 outdoor maps is a model with LODs within the tree budget, standing on its
+        // ground point (rocks sink up to 14 units, tree roots up to 2 % of the tree's height). A seasonal, picked-fruit
+        // or lit signal fire sprite switch keeps the placement.
+        const std::array<const char *, 13> maps = {{"7out01.odm", "7out02.odm", "7out03.odm", "7out04.odm",
+            "7out05.odm", "7out06.odm", "7out13.odm", "7out15.odm", "out09.odm", "out10.odm", "out11.odm",
+            "out12.odm", "out14.odm"}};
+        const std::array<std::pair<const char *, const char *>, 6> switches = {{{"7tree13", "7tree14"},
+            {"7tree13", "7tree15"}, {"7tree25", "tree27"}, {"7tree28", "7tree30"}, {"tree38", "tree37"},
+            {"dec24x", "v77dec24"}}};
+        size_t switchesChecked = 0;
+        for (const char *pMap : maps)
+        {
+            if (!gameDataLoader.loadMapByFileName(assetFileSystem, pMap)
+                || !gameDataLoader.getSelectedMap()->outdoorDecorationBillboardSet)
+            {
+                failure = std::string("could not load the decorations of ") + pMap;
+                return false;
+            }
+            const DecorationBillboardSet &decorations =
+                *gameDataLoader.getSelectedMap()->outdoorDecorationBillboardSet;
+            DecorationModelSet models;
+            if (!models.load(assetFileSystem, "mm7", pMap, decorations, failure))
+            {
+                return false;
+            }
+            const auto nameOf = [&](const DecorationBillboard &billboard)
+            {
+                return decorations.decorationTable.get(billboard.decorationId)->internalName;
+            };
+            for (const DecorationBillboard &billboard : decorations.billboards)
+            {
+                const DecorationEntry *pEntry = decorations.decorationTable.get(billboard.decorationId);
+                const bool drawn = (pEntry->flags & uint16_t(DecorationDescFlag::DontDraw)) == 0
+                    && decorations.spriteFrameTable.getFrame(billboard.spriteId, 0) != nullptr;
+                if (drawn && !models.modelsSprite(billboard.spriteId))
+                {
+                    failure = std::string(pMap) + " decoration " + pEntry->internalName + " has no model";
+                    return false;
+                }
+            }
+            const auto findPlacement = [&](size_t billboard) -> const Engine::ModelStaticPlacement *
+            {
+                for (size_t group = 0; group < models.groups().size(); ++group)
+                {
+                    const std::vector<size_t> &indices = models.billboardIndices(group);
+                    const auto found = std::find(indices.begin(), indices.end(), billboard);
+                    if (found != indices.end())
+                    {
+                        return &models.groups()[group].placements[size_t(found - indices.begin())];
+                    }
+                }
+                return nullptr;
+            };
+            for (size_t group = 0; group < models.groups().size(); ++group)
+            {
+                const Engine::ModelStaticGroup &placements = models.groups()[group];
+                if (placements.placements.empty() || models.overlayGroup(group))
+                {
+                    continue;
+                }
+                const std::string name = nameOf(decorations.billboards[models.billboardIndices(group).front()]);
+                for (const Engine::ModelNode &node : placements.asset->nodes)
+                {
+                    if (node.meshIndex < 0)
+                    {
+                        continue;
+                    }
+                    const Engine::ModelMesh &mesh = placements.asset->meshes[node.meshIndex];
+                    size_t triangles = 0;
+                    for (const Engine::ModelPrimitive &primitive : mesh.primitives)
+                    {
+                        triangles += primitive.indices.size() / 3;
+                    }
+                    if (mesh.lodMeshes.empty() || triangles > 7000)
+                    {
+                        failure = std::string(pMap) + " decoration model " + name + " lacks LODs or exceeds 7000";
+                        return false;
+                    }
+                }
+                for (size_t index = 0; index < placements.placements.size(); ++index)
+                {
+                    const DecorationBillboard &billboard =
+                        decorations.billboards[models.billboardIndices(group)[index]];
+                    const Engine::ModelBounds &bounds = placements.bounds[index];
+                    const float height = bounds.max[2] - bounds.min[2];
+                    const float ground = bounds.min[2] - float(billboard.z);
+                    if (ground < -std::max(16.0f, height * 0.02f) || ground > 12.0f
+                        || std::abs((bounds.min[0] + bounds.max[0]) * 0.5f - float(billboard.x)) > height
+                        || std::abs((bounds.min[1] + bounds.max[1]) * 0.5f - float(billboard.y)) > height)
+                    {
+                        failure = std::string(pMap) + " decoration model " + name + " is misplaced (base "
+                            + std::to_string(ground) + " from its ground point)";
+                        return false;
+                    }
+                }
+            }
+            for (const auto &[pFrom, pTo] : switches)
+            {
+                const DecorationEntry *pTarget = decorations.decorationTable.findByInternalName(pTo);
+                size_t switched = SIZE_MAX;
+                for (size_t index = 0; index < decorations.billboards.size() && switched == SIZE_MAX; ++index)
+                {
+                    if (nameOf(decorations.billboards[index]) == pFrom)
+                    {
+                        switched = index;
+                    }
+                }
+                if (pTarget == nullptr || switched == SIZE_MAX || findPlacement(switched) == nullptr)
+                {
+                    continue;
+                }
+                const Engine::ModelMatrix before = findPlacement(switched)->matrix;
+                const auto shown = [&](uint16_t switchedSprite)
+                {
+                    return [&, switchedSprite](size_t index, bool &hidden, int &)
+                    {
+                        hidden = false;
+                        return index == switched ? switchedSprite : decorations.billboards[index].spriteId;
+                    };
+                };
+                models.update(decorations.billboards, shown(pTarget->spriteId));
+                // Same position, yaw and scale (within float rounding: the lit fire's binding height is rounded).
+                const Engine::ModelStaticPlacement *pAfter = findPlacement(switched);
+                bool same = pAfter != nullptr;
+                for (size_t element = 0; same && element < before.size(); ++element)
+                {
+                    same = std::abs(pAfter->matrix[element] - before[element])
+                        <= 0.002f * std::max(1.0f, std::abs(before[element]));
+                }
+                if (!same)
+                {
+                    failure = std::string(pMap) + " switching " + pFrom + " to " + pTo + " moves or resizes it";
+                    return false;
+                }
+                models.update(decorations.billboards, shown(decorations.billboards[switched].spriteId));
+                ++switchesChecked;
+            }
+        }
+        if (switchesChecked < switches.size())
+        {
+            failure = "the MM7 tree and signal fire switches were not all found";
+            return false;
+        }
+        return true;
+    });
+
+    runCase("decoration_models_keep_native_animation", [&](std::string &failure)
     {
         // A decoration whose native sprite animates (flames, water, flags) needs an animated model, or the binding
-        // records the choice with still: true; outdoor and indoor bindings alike.
-        const std::optional<std::string> outdoorManifest =
-            assetFileSystem.readTextFile("worlds/mm6/models/decorations.yml");
-        const std::optional<std::string> indoorManifest =
-            assetFileSystem.readTextFile("worlds/mm6/models/indoor_decorations.yml");
-        if (!outdoorManifest || !indoorManifest || !gameDataLoader.loadMapByFileName(assetFileSystem, "oute3.odm")
+        // records the choice with still: true; outdoor and indoor bindings of every world alike.
+        if (!gameDataLoader.loadMapByFileName(assetFileSystem, "oute3.odm")
             || !gameDataLoader.getSelectedMap()->outdoorDecorationBillboardSet)
         {
-            failure = "could not load the MM6 decoration bindings and tables";
+            failure = "could not load the decoration tables";
             return false;
         }
         const DecorationBillboardSet &tables = *gameDataLoader.getSelectedMap()->outdoorDecorationBillboardSet;
         Engine::ModelAssetCache assets;
         size_t animated = 0;
         std::vector<YAML::Node> entries;
-        for (const std::string *pManifest : {&*outdoorManifest, &*indoorManifest})
+        for (const char *pWorld : {"engine", "worlds/mm6", "worlds/mm7", "worlds/mm8"})
         {
-            for (const YAML::Node &entry : YAML::Load(*pManifest)["decorations"])
+            for (const char *pManifest : {"decorations.yml", "indoor_decorations.yml"})
             {
-                entries.push_back(entry);
+                const std::optional<std::string> manifest = assetFileSystem.readTextFile(
+                    std::string(pWorld) + "/models/" + pManifest);
+                if (!manifest)
+                {
+                    continue;
+                }
+                for (const YAML::Node &entry : YAML::Load(*manifest)["decorations"])
+                {
+                    if (!entry["model"].IsNull())
+                    {
+                        entries.push_back(entry);
+                    }
+                }
             }
         }
         for (const YAML::Node &entry : entries)
@@ -19163,6 +18520,15 @@ int HeadlessGameplayDiagnostics::runRegressionSuite(
                 return false;
             }
 
+            const std::string expectedStatus = "You find " + std::to_string(gainedFood) + " food";
+            const std::vector<std::string> &statusMessages = scenario.pEventRuntimeState->statusMessages;
+
+            if (std::find(statusMessages.begin(), statusMessages.end(), expectedStatus) == statusMessages.end())
+            {
+                failure = "campfire event did not report \"" + expectedStatus + "\"";
+                return false;
+            }
+
             if (scenario.pEventRuntimeState->decorVars[0] != 2)
             {
                 failure = "campfire clear state was " + std::to_string(scenario.pEventRuntimeState->decorVars[0]);
@@ -24811,6 +24177,170 @@ int HeadlessGameplayDiagnostics::runRegressionSuite(
                 ? "party lightning projectile never spawned its FX impact"
                 : "party lightning projectile never appeared";
             return false;
+        }
+    );
+
+    runCase(
+        "projectile_visuals_draw_no_native_sprites",
+        [&](std::string &failure)
+        {
+            // Every projectile a spell, a monster missile or the party throws, and every impact it leaves, is drawn by
+            // a model, a named effect or its recipe: none falls back to its native sprite.
+            WorldFxSystem fx;
+            if (!fx.loadNamedEffectLibrary(assetFileSystem, "engine/effects/library.yml",
+                    "engine/effects/resource_bindings.yml", failure)
+                || !fx.loadProjectileModels(assetFileSystem, failure))
+            {
+                return false;
+            }
+            const ObjectTable &objects = gameDataLoader.getObjectTable();
+            fx.setProjectileObjectTable(&objects);
+            std::vector<std::string> offenders;
+            const auto check = [&](const std::string &source, int objectId, int impactObjectId, int spellId,
+                std::optional<GameplayProjectileVisualMode> monsterMode, bool flies)
+            {
+                const ObjectEntry *pObject = objectId > 0 ? objects.findByObjectId(int16_t(objectId)) : nullptr;
+                if (pObject == nullptr)
+                {
+                    return;
+                }
+                const FxRecipes::ProjectileRecipe recipe = FxRecipes::classifyProjectileRecipe(
+                    spellId, pObject->internalName, pObject->spriteName, pObject->flags);
+                if (flies && pObject->spriteId != 0 && !fx.hasProjectileModel(pObject->objectId))
+                {
+                    GameplayProjectilePresentationState state;
+                    state.objectDescriptionId = *objects.findDescriptionIdByObjectId(pObject->objectId);
+                    state.objectSpriteId = pObject->spriteId;
+                    state.objectFlags = pObject->flags;
+                    state.spellId = spellId;
+                    state.objectName = pObject->internalName;
+                    state.objectSpriteName = pObject->spriteName;
+                    state.visualMode = monsterMode ? *monsterMode
+                        : FxRecipes::projectileFxRecipe(recipe).renderProjectileBillboard
+                            ? GameplayProjectileVisualMode::SpriteBillboard : GameplayProjectileVisualMode::FxOnly;
+                    if (fx.projectileShowsNativeSprite(state))
+                    {
+                        offenders.push_back(source + ": flight " + std::to_string(objectId) + " "
+                            + pObject->internalName + " (" + pObject->spriteName + ", recipe "
+                            + std::string(FxRecipes::projectileRecipeName(recipe)) + ")");
+                    }
+                }
+                const ObjectEntry *pImpact =
+                    impactObjectId > 0 ? objects.findByObjectId(int16_t(impactObjectId)) : nullptr;
+                if (pImpact != nullptr && pImpact->spriteId != 0)
+                {
+                    GameplayProjectileImpactPresentationState impact;
+                    impact.objectDescriptionId = *objects.findDescriptionIdByObjectId(pImpact->objectId);
+                    impact.objectSpriteId = pImpact->spriteId;
+                    impact.objectName = pImpact->internalName;
+                    impact.objectSpriteName = pImpact->spriteName;
+                    impact.sourceSpellId = spellId;
+                    impact.sourceObjectName = pObject->internalName;
+                    impact.sourceObjectSpriteName = pObject->spriteName;
+                    impact.sourceObjectFlags = pObject->flags;
+                    if (fx.projectileImpactShowsNativeSprite(impact))
+                    {
+                        offenders.push_back(source + ": impact " + std::to_string(impactObjectId) + " "
+                            + pImpact->internalName + " (" + pImpact->spriteName + ", recipe "
+                            + std::string(FxRecipes::projectileRecipeName(recipe)) + ")");
+                    }
+                }
+            };
+            for (const SpellEntry &spell : gameDataLoader.getSpellTable().entries())
+            {
+                if (spell.displayObjectId <= 0)
+                {
+                    continue;
+                }
+                // Every spell with a display object can fly: map events cast any spell as a projectile. Its impact
+                // object also marks direct hits on actors.
+                check("spell " + std::to_string(spell.id) + " " + spell.name, spell.displayObjectId,
+                    spell.impactDisplayObjectId, spell.id, std::nullopt, true);
+            }
+            for (const MonsterProjectileEntry &missile : gameDataLoader.getMonsterProjectileTable().entries())
+            {
+                check("missile " + missile.token, missile.objectId, missile.impactObjectId, 0,
+                    GameplayProjectileService::monsterProjectileVisualModeForObjectId(missile.objectId), true);
+            }
+            for (const int objectId : {545, 555, 307, 309})
+            {
+                check("party", objectId, 0, 0, GameplayProjectileVisualMode::SpriteBillboard, true);
+            }
+            const ObjectEntry *pSplash = objects.findByObjectId(GameplayProjectileService::waterSplashObjectId());
+            if (pSplash != nullptr && pSplash->spriteId != 0)
+            {
+                GameplayProjectileImpactPresentationState splash;
+                splash.objectDescriptionId = *objects.findDescriptionIdByObjectId(pSplash->objectId);
+                splash.objectSpriteId = pSplash->spriteId;
+                splash.objectName = pSplash->internalName;
+                splash.objectSpriteName = pSplash->spriteName;
+                if (fx.projectileImpactShowsNativeSprite(splash))
+                {
+                    offenders.push_back("water splash: impact " + pSplash->internalName + " (" + pSplash->spriteName
+                        + ")");
+                }
+            }
+            std::sort(offenders.begin(), offenders.end());
+            offenders.erase(std::unique(offenders.begin(), offenders.end()), offenders.end());
+            for (const std::string &offender : offenders)
+            {
+                std::cout << "  native sprite: " << offender << '\n';
+            }
+            if (!offenders.empty())
+            {
+                failure = std::to_string(offenders.size()) + " projectile visuals still draw native sprites";
+                return false;
+            }
+            return true;
+        }
+    );
+
+    runCase(
+        "projectile_models_present_armed_fire_spike_traps",
+        [&](std::string &failure)
+        {
+            // A party Fire Spike lying armed on the ground is a world trap, not a flying projectile: its model comes
+            // from the world's trap presentation and stays level.
+            RegressionScenario scenario = {};
+            if (!initializeRegressionScenario(gameDataLoader, *selectedMap, scenario))
+            {
+                failure = "scenario init failed";
+                return false;
+            }
+            WorldFxSystem fx;
+            if (!fx.loadNamedEffectLibrary(assetFileSystem, "engine/effects/library.yml",
+                    "engine/effects/resource_bindings.yml", failure)
+                || !fx.loadProjectileModels(assetFileSystem, failure))
+            {
+                return false;
+            }
+            if (!scenario.world.spawnPartyFireSpikeTrap(0, spellIdValue(SpellId::FireSpike), 10, 4, 0.0f, 0.0f, 0.0f))
+            {
+                failure = "party fire spike trap spawn failed";
+                return false;
+            }
+            GameDataRepository fxData;
+            fxData.bind(gameDataLoader);
+            GameSession fxSession;
+            fxSession.bindDataRepository(&fxData);
+            fxSession.bindActiveWorldRuntime(&scenario.world);
+            fx.syncProjectileFx(fxSession, 0.1f, true);
+            const std::vector<Engine::ModelInstanceHandle> handles = fx.models().handles();
+            if (handles.size() != 1
+                || fx.models().asset(handles.front())->sourcePath.find("projectile_fire_spike") == std::string::npos)
+            {
+                failure = "the armed fire spike has no fire spike model (" + std::to_string(handles.size())
+                    + " model instances)";
+                return false;
+            }
+            std::vector<GameplayProjectilePresentationState> traps;
+            scenario.world.collectFireSpikeTrapPresentationStates(traps);
+            if (traps.size() != 1 || !traps.front().isSettled || fx.projectileShowsNativeSprite(traps.front()))
+            {
+                failure = "the armed fire spike is not presented as a settled model";
+                return false;
+            }
+            return true;
         }
     );
 

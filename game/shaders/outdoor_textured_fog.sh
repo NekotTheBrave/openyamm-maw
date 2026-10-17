@@ -2,6 +2,13 @@
 #include "common.sh"
 #include "world_clip.sh"
 
+// ALPHA_TO_COVERAGE (terrain decorations in a multisampled world target): a grass blade's alpha test becomes
+// coverage for alpha to coverage, sharpened to about a pixel around its cutoff, so blade edges cover part of each
+// pixel's samples instead of stair-stepping and shimmering as the camera moves. Stones keep their dissolve.
+#ifndef ALPHA_TO_COVERAGE
+#define ALPHA_TO_COVERAGE 0
+#endif
+
 #if TERRAIN_DECORATION
 SAMPLER2DARRAY(s_texColor, 0);
 #elif BMODEL_TEXTURE_ARRAY
@@ -27,6 +34,10 @@ uniform vec4 u_cameraPosition;
 uniform vec4 u_secretPulseParams;
 uniform vec4 u_waterSurfaceControl;
 
+// Buildings take their dynamic lights from the light grid; grass keeps the shared list of its vertex lighting.
+#if !TERRAIN_DECORATION
+#define OUTDOOR_LIGHT_GRID 1
+#endif
 #include "outdoor_lighting.sh"
 #include "sky_common.sh"
 #include "weather_wetness.sh"
@@ -63,6 +74,11 @@ void main()
         textureColor = vec4(1.0, 1.0, 1.0, 1.0);
     }
     textureColor *= v_color0;
+#if ALPHA_TO_COVERAGE
+    // Outside the branches below: derivatives need every pixel of the quad.
+    float alphaWidth = max(fwidth(textureColor.a), 0.0001);
+    float coverage = 1.0;
+#endif
     if (v_texcoord1.y > 0.5)
     {
         // Stones: fixed object-space noise, independent of frame/time and screen position. Coverage fades
@@ -75,11 +91,22 @@ void main()
             discard;
         }
     }
+#if ALPHA_TO_COVERAGE
+    else if (v_texcoord1.z <= 0.0)
+    {
+        discard;
+    }
+    else
+    {
+        coverage = clamp((textureColor.a - mix(1.0, 0.4, v_texcoord1.z)) / alphaWidth + 0.5, 0.0, 1.0);
+    }
+#else
     else if (v_texcoord1.z <= 0.0 || textureColor.a < mix(1.0, 0.4, v_texcoord1.z))
     {
         // Grass: a fading tuft's blades thin from their soft edges inward (vs_terrain_decoration).
         discard;
     }
+#endif
 #if !SUN_SHADOWS
     // Lit per vertex (vs_terrain_decoration); decorations are never secret faces.
     textureColor.rgb = mix(textureColor.rgb, u_fogColor.rgb, u_fogDensities.z) * v_flowInfo.yzw;
@@ -90,13 +117,18 @@ void main()
         vec4(skyFogDisplayColor(decorationFogRatio, u_fogColor.rgb, v_worldPosition),
             getFogAlpha(decorationFogDistance)),
         decorationFogRatio);
+#if ALPHA_TO_COVERAGE
+    gl_FragColor.a = coverage;
+#endif
     return;
 #endif
 #endif
+#if !(TERRAIN_DECORATION && ALPHA_TO_COVERAGE)
     if (textureColor.a <= 0.1)
     {
         discard;
     }
+#endif
 
     textureColor.rgb = mix(textureColor.rgb, u_fogColor.rgb, u_fogDensities.z);
 #if BAKED_SOURCES
@@ -138,4 +170,7 @@ void main()
     float fogAlpha = getFogAlpha(fogDistance);
     vec4 fogColor = vec4(skyFogDisplayColor(fogRatio, u_fogColor.rgb, v_worldPosition), fogAlpha);
     gl_FragColor = mix(litTextureColor, fogColor, fogRatio);
+#if TERRAIN_DECORATION && ALPHA_TO_COVERAGE
+    gl_FragColor.a = coverage;
+#endif
 }

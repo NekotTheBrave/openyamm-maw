@@ -19,6 +19,7 @@
 #include "game/party/SpellSchool.h"
 #include "game/render/SkyClock.h"
 #include "game/render/TextureFiltering.h"
+#include "game/render/WaterMath.h"
 #include "game/events/EventDialogContent.h"
 #include "game/events/EventRuntime.h"
 #include "game/events/EvtEnums.h"
@@ -4544,8 +4545,8 @@ void GameApplication::registerDebugConsoleCommands()
                 {"foliage", &m_renderFoliage}, {"instancing", &m_renderInstancing}, {"shadows", &m_settings.shadows},
                 {"ao", &m_settings.ambientOcclusion}, {"grading", &m_settings.cinematicGrading},
                 {"model_lods", &m_settings.modelLods}, {"lightmaps", &m_settings.lightmaps},
-                {"creature_outlines", &m_settings.creatureOutlines},
-                {"freeze", &m_renderFreezeWorld}};
+                {"creature_outlines", &m_settings.creatureOutlines}, {"light_grid", &m_settings.lightGridEnabled},
+                {"freeze", &m_renderFreezeWorld}, {"hud", &m_renderHud}};
             const auto describe = [&]()
             {
                 std::ostringstream out;
@@ -5855,9 +5856,9 @@ void GameApplication::registerDebugConsoleCommands()
 
     m_debugConsole.registerCommand({
         .name = "item",
-        .description = "Search for or grant an item to the party.",
-        .usage = "item search <text> | item give <id|text> [qty] | item add <id> [qty]",
-        .callback = [this, activeParty, commandResult](const DebugConsole::CommandContext &context)
+        .description = "Search for or grant an item to the party, or drop one on the ground (reviewing item models).",
+        .usage = "item search <text> | item give <id|text> [qty] | item add <id> [qty] | item drop <id> [x y z]",
+        .callback = [this, activeParty, activeGameplayWorld, commandResult](const DebugConsole::CommandContext &context)
         {
             if (context.args.size() < 2)
             {
@@ -5866,6 +5867,39 @@ void GameApplication::registerDebugConsoleCommands()
 
             const std::string action = toLowerCopy(context.args[0]);
             const ItemTable &itemTable = m_gameDataLoader.getItemTable();
+
+            if (action == "drop")
+            {
+                // Dropped as the party drops a held item: from a point (default: in front of the party), falling to
+                // the ground there.
+                IGameplayWorldRuntime *pWorld = activeGameplayWorld();
+                const std::optional<int32_t> itemId = parseInt32Argument(context.args[1]);
+                if (pWorld == nullptr || !itemId || *itemId <= 0 || itemTable.get(uint32_t(*itemId)) == nullptr)
+                {
+                    return commandResult(false, "Usage: item drop <id> [x y z] (no active map or unknown item)");
+                }
+                GameplayHeldItemDropRequest request = {};
+                request.item =
+                    ItemGenerator::makeInventoryItem(uint32_t(*itemId), itemTable, ItemGenerationMode::Generic);
+                request.yawRadians = pWorld->gameplayCameraYawRadians();
+                request.sourceX = pWorld->partyX() + std::cos(request.yawRadians) * 160.0f;
+                request.sourceY = pWorld->partyY() + std::sin(request.yawRadians) * 160.0f;
+                request.sourceZ = pWorld->partyFootZ() + 40.0f;
+                if (context.args.size() == 5)
+                {
+                    const std::optional<float> x = parseFloatArgument(context.args[2]);
+                    const std::optional<float> y = parseFloatArgument(context.args[3]);
+                    const std::optional<float> z = parseFloatArgument(context.args[4]);
+                    if (!x || !y || !z)
+                    {
+                        return commandResult(false, "Usage: item drop <id> [x y z]");
+                    }
+                    request.sourceX = *x;
+                    request.sourceY = *y;
+                    request.sourceZ = *z;
+                }
+                return commandResult(pWorld->dropHeldItemToWorld(request), "Dropped item " + std::to_string(*itemId));
+            }
 
             if (action == "search")
             {
@@ -6196,6 +6230,20 @@ void GameApplication::registerDebugConsoleCommands()
             }
 
             return commandResult(true, "Reloaded " + m_gameSession.currentMapFileName());
+        }});
+
+    m_debugConsole.registerCommand({
+        .name = "exec",
+        .description = "Run a file of console commands at once (one per line, '#' comments).",
+        .usage = "exec <path>",
+        .callback = [this](const DebugConsole::CommandContext &context)
+        {
+            if (context.args.size() != 1)
+            {
+                return DebugConsole::CommandResult{false, "Usage: exec <path>"};
+            }
+
+            return m_debugConsole.executeFile(context.args[0]);
         }});
 
     m_debugConsole.registerCommand({
@@ -9041,7 +9089,8 @@ void GameApplication::prepareGameplayRendering()
         m_cinematicGrading.resetViews();
         const bool grading = m_cinematicGrading.begin(
             width, height, m_settings.cinematicGrading, m_settings.cinematicStrength,
-            m_settings.ambientOcclusion, m_settings.ambientOcclusionStrength, m_settings.sharpening);
+            m_settings.ambientOcclusion, m_settings.ambientOcclusionStrength, m_settings.sharpening,
+            m_settings.antialiasing, m_settings.bloom, m_settings.bloomStrength);
         if (m_pMapSceneRuntime->kind() == SceneKind::Outdoor)
         {
             m_outdoorGameView.render(width, height, idleInput, 0.0f, true);
@@ -9071,7 +9120,7 @@ void GameApplication::prepareGameplayRendering()
             throw std::runtime_error("Unable to allocate loading completion readback");
         }
         std::array<uint8_t, 4> pixel = {};
-        bgfx::blit(253, readback, 0, 0, bgfx::getTexture(target), 0, 0, 1, 1);
+        bgfx::blit(LoadingReadbackView, readback, 0, 0, bgfx::getTexture(target), 0, 0, 1, 1);
         const uint32_t readyFrame = bgfx::readTexture(readback, pixel.data());
         while (int32_t(renderLoadingOverlayProgress(100) - readyFrame) < 0)
         {
@@ -9829,6 +9878,11 @@ bool GameApplication::applyMenuSettings(const GameSettings &settings, bool persi
     }
 
     applyCurrentSettingsToActiveRuntime();
+    if (previous.terrainSubdivision != settings.terrainSubdivision)
+    {
+        // A graphics quality preset changed the ground mesh; rebuild it (and its plants) on the next frame.
+        m_outdoorGameView.reloadTerrainMaterials();
+    }
     return true;
 }
 
@@ -10599,7 +10653,8 @@ void GameApplication::renderFrame(int width, int height, float mouseWheelDelta, 
                     return;
                 }
                 m_cinematicGrading.begin(width, height, m_settings.cinematicGrading, m_settings.cinematicStrength,
-                    m_settings.ambientOcclusion, m_settings.ambientOcclusionStrength, m_settings.sharpening);
+                    m_settings.ambientOcclusion, m_settings.ambientOcclusionStrength, m_settings.sharpening,
+                    m_settings.antialiasing, m_settings.bloom, m_settings.bloomStrength);
                 pWorldRuntime->renderWorld(width, height, backgroundInput, 0.0f);
                 m_cinematicGrading.submit();
                 m_gameSession.renderGameplayUi(width, height);
@@ -10824,7 +10879,6 @@ void GameApplication::renderFrame(int width, int height, float mouseWheelDelta, 
             }
         }
         worldFx.setCorpseSatchels(m_settings.corpseStyle == CorpseStyle::Satchel);
-        worldFx.setProjectileFlightEffects(m_settings.projectileStyle == ProjectileStyle::Enhanced);
         // Before the models: a corpse whose body is gone has no actor model to update.
         worldFx.syncCorpseSatchels(*pWorldRuntime, gameplayWorldPaused ? 0.0f : scaledGameplayDeltaSeconds);
         worldFx.syncShieldDomes(*pWorldRuntime, gameplayWorldPaused ? 0.0f : scaledGameplayDeltaSeconds);
@@ -10842,12 +10896,16 @@ void GameApplication::renderFrame(int width, int height, float mouseWheelDelta, 
         const uint64_t renderWorldBeginTickCount = collectFrameDiagnostics ? SDL_GetTicksNS() : 0;
         const float worldRenderDeltaSeconds = gameplayWorldPaused ? deltaSeconds : scaledGameplayDeltaSeconds;
         m_cinematicGrading.begin(width, height, m_settings.cinematicGrading, m_settings.cinematicStrength,
-            m_settings.ambientOcclusion, m_settings.ambientOcclusionStrength, m_settings.sharpening);
+            m_settings.ambientOcclusion, m_settings.ambientOcclusionStrength, m_settings.sharpening,
+            m_settings.antialiasing, m_settings.bloom, m_settings.bloomStrength);
         pWorldRuntime->renderWorld(width, height, m_gameInputSystem.frame(), worldRenderDeltaSeconds);
         m_cinematicGrading.submit();
         recordFrameDiagnostics(m_framePerformanceDiagnostics.renderWorldNanoseconds, renderWorldBeginTickCount);
         const uint64_t renderGameplayUiBeginTickCount = collectFrameDiagnostics ? SDL_GetTicksNS() : 0;
-        m_gameSession.renderGameplayUi(width, height);
+        if (m_renderHud)
+        {
+            m_gameSession.renderGameplayUi(width, height);
+        }
         recordFrameDiagnostics(
             m_framePerformanceDiagnostics.renderGameplayUiNanoseconds,
             renderGameplayUiBeginTickCount);

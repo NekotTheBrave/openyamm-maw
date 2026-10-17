@@ -58,7 +58,17 @@ public:
     // Every effect id any binding or variant names, once each.
     std::vector<std::string> effectIds() const;
 
+    // The impact effect of a projectile falling into water (the splash object), empty when none is bound.
+    const std::string &waterSplash() const
+    {
+        return m_waterSplash;
+    }
+
     void setRecipe(FxRecipes::ProjectileRecipe recipe, ProjectileEffectBinding binding);
+    void setWaterSplash(std::string effectId)
+    {
+        m_waterSplash = std::move(effectId);
+    }
     void setVariant(FxRecipes::ProjectileRecipe recipe, const std::string &monsterPicture,
         ProjectileEffectBinding binding);
 
@@ -68,12 +78,13 @@ private:
     std::unordered_map<FxRecipes::ProjectileRecipe, ProjectileEffectBinding> m_recipes;
     std::unordered_map<FxRecipes::ProjectileRecipe, std::unordered_map<std::string, ProjectileEffectBinding>>
         m_variants;
+    std::string m_waterSplash;
 };
 
 // Reads engine/effects/projectiles.yml (schema openyamm.projectileEffects.v1). Each recipe entry may name flight,
 // settled, impact and return_flight effects, impact_follows_target, sprite (native|hidden), light {rgb, radius}, and
 // variants: a list of {monsters: [picture names], ...} whose fields override the recipe's for projectiles those
-// monsters throw.
+// monsters throw. A top-level water_splash names the impact effect of a projectile falling into water.
 // A missing file binds nothing; an unknown recipe, key or effect id fails the load.
 bool loadProjectileEffectBindings(
     const Engine::AssetFileSystem &assetFileSystem,

@@ -18,6 +18,7 @@ add_library(openyamm_engine
     render/ModelRenderer.cpp
     render/TextureBlockCodec.cpp
     render/ModelEnvironment.cpp
+    render/LightGrid.cpp
     SpriteAtlas.cpp
     EngineApplication.cpp
     scripting/LuaStateOwner.cpp

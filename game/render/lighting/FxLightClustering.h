@@ -10,6 +10,12 @@
 
 namespace OpenYAMM::Game
 {
+// FX lights in one sector (indoors) or in the outdoor view up to which each keeps its own light; above it nearby ones
+// merge into clusters, at most this many. The light grid gives every light its own entry up to its cell cap
+// (LightGridConfig: 32 high, 16 low), so only spell spam merges.
+constexpr uint32_t FxLightClusterThresholdHigh = 24;
+constexpr uint32_t FxLightClusterThresholdLow = 12;
+
 struct FxLightClusterConfig
 {
     float cellSize = 256.0f;

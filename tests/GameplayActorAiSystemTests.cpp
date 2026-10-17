@@ -1586,10 +1586,10 @@ TEST_CASE("shared actor AI orbits during ranged recovery instead of closing to m
     CHECK(update.movementIntent.targetHasAttackLineOfSight);
     CHECK(std::abs(update.movementIntent.desiredMoveY) > 0.9f);
     CHECK(update.movementIntent.desiredMoveX < 0.0f);
-    CHECK(std::abs(update.movementIntent.desiredMoveX) < 0.25f);
+    CHECK(std::abs(update.movementIntent.desiredMoveX) < 0.05f);
 }
 
-TEST_CASE("shared actor AI may change ranged orbit side on a fresh pursuit decision")
+TEST_CASE("shared actor AI keeps its ranged orbit side on a fresh pursuit decision")
 {
     GameplayActorAiSystem system;
     ActorAiFrameFacts frame = makeFrame();
@@ -1636,8 +1636,8 @@ TEST_CASE("shared actor AI may change ranged orbit side on a fresh pursuit decis
     REQUIRE_EQ(secondResult.actorUpdates.size(), 1u);
     const OpenYAMM::Game::ActorAiUpdate &secondUpdate = secondResult.actorUpdates.front();
     CHECK(secondUpdate.movementIntent.action == ActorAiMovementAction::Pursue);
-    CHECK(secondUpdate.movementIntent.desiredMoveY * firstUpdate.movementIntent.desiredMoveY < 0.0f);
-    CHECK(secondUpdate.movementIntent.moveDirectionY * firstUpdate.movementIntent.moveDirectionY < 0.0f);
+    CHECK(secondUpdate.movementIntent.desiredMoveY * firstUpdate.movementIntent.desiredMoveY > 0.0f);
+    CHECK(secondUpdate.movementIntent.moveDirectionY * firstUpdate.movementIntent.moveDirectionY > 0.0f);
 }
 
 TEST_CASE("shared actor AI preserves move direction while continuing pursuit")

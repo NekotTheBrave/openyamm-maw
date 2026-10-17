@@ -135,6 +135,43 @@ bool isPotionRecipeKnown(
         && isNoteUnlocked(heldItemId, targetItemId, tables, isAutonoteUnlocked);
 }
 
+struct NotedRecipe
+{
+    AlchemyRecipe recipe;
+    uint32_t resultItemId = 0;
+};
+
+// The mix a potion note records, in the order that brews it.
+std::optional<NotedRecipe> notedRecipe(const PotionNoteTable::Entry &note, const AlchemyBenchTables &tables)
+{
+    AlchemyRecipe recipe = {note.targetItemId, note.heldItemId};
+    std::optional<uint32_t> resultItemId = potionRecipeResult(recipe.targetItemId, recipe.heldItemId, tables);
+
+    if (!resultItemId.has_value())
+    {
+        // Some potions only react when the other one is poured in, such as Recharge Item.
+        recipe = {note.heldItemId, note.targetItemId};
+        resultItemId = potionRecipeResult(recipe.targetItemId, recipe.heldItemId, tables);
+    }
+
+    if (!resultItemId.has_value())
+    {
+        return std::nullopt;
+    }
+
+    return NotedRecipe{recipe, *resultItemId};
+}
+
+bool equalsIgnoringCase(const std::string &left, const std::string &right)
+{
+    return left.size() == right.size()
+        && std::equal(left.begin(), left.end(), right.begin(),
+            [](unsigned char leftCharacter, unsigned char rightCharacter)
+            {
+                return std::tolower(leftCharacter) == std::tolower(rightCharacter);
+            });
+}
+
 uint16_t ingredientPower(const InventoryItem &item, AlchemyIngredientKind kind, const AlchemyBenchTables &tables)
 {
     if (kind != AlchemyIngredientKind::Reagent)
@@ -277,6 +314,55 @@ bool AlchemyBenchRuntime::matchesSearch(const std::string &name, const std::stri
     return search.empty() || lower(name).find(lower(search)) != std::string::npos;
 }
 
+std::optional<uint32_t> AlchemyBenchRuntime::recipeScrollPotionItemId(
+    uint32_t scrollItemId,
+    const AlchemyBenchTables &tables)
+{
+    static const std::string RecipeSuffix = " Recipe";
+    const ItemDefinition *pScroll = tables.itemTable.get(scrollItemId);
+
+    if (pScroll == nullptr
+        || pScroll->equipStat != "Mscroll"
+        || pScroll->name.size() <= RecipeSuffix.size()
+        || !pScroll->name.ends_with(RecipeSuffix))
+    {
+        return std::nullopt;
+    }
+
+    const std::string potionName = pScroll->name.substr(0, pScroll->name.size() - RecipeSuffix.size());
+
+    for (const MergedPotionSettingEntry &setting : tables.potionSettingTable.entries())
+    {
+        const ItemDefinition *pPotion = tables.itemTable.get(setting.itemId);
+
+        if (pPotion != nullptr && equalsIgnoringCase(pPotion->name, potionName))
+        {
+            return setting.itemId;
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::vector<uint32_t> AlchemyBenchRuntime::potionNoteIds(uint32_t potionItemId, const AlchemyBenchTables &tables)
+{
+    std::vector<uint32_t> autonoteIds;
+
+    for (const PotionNoteTable::Entry &note : tables.potionNoteTable.entries())
+    {
+        const std::optional<NotedRecipe> noted = notedRecipe(note, tables);
+
+        if (noted.has_value()
+            && noted->resultItemId == potionItemId
+            && std::find(autonoteIds.begin(), autonoteIds.end(), note.autonoteId) == autonoteIds.end())
+        {
+            autonoteIds.push_back(note.autonoteId);
+        }
+    }
+
+    return autonoteIds;
+}
+
 AlchemyBook AlchemyBenchRuntime::buildBook(
     const AlchemyBenchTables &tables,
     const std::vector<AlchemyIngredient> &ingredients,
@@ -314,29 +400,22 @@ AlchemyBook AlchemyBenchRuntime::buildBook(
 
     for (const PotionNoteTable::Entry &note : tables.potionNoteTable.entries())
     {
-        AlchemyRecipe recipe = {note.targetItemId, note.heldItemId};
-        std::optional<uint32_t> resultItemId = potionRecipeResult(recipe.targetItemId, recipe.heldItemId, tables);
+        const std::optional<NotedRecipe> noted = notedRecipe(note, tables);
 
-        if (!resultItemId.has_value())
-        {
-            // Some potions only react when the other one is poured in, such as Recharge Item.
-            recipe = {note.heldItemId, note.targetItemId};
-            resultItemId = potionRecipeResult(recipe.targetItemId, recipe.heldItemId, tables);
-        }
-
-        if (!resultItemId.has_value())
+        if (!noted.has_value())
         {
             continue;
         }
 
-        resultItemIds.insert(*resultItemId);
+        resultItemIds.insert(noted->resultItemId);
 
         if (!isAutonoteUnlocked(note.autonoteId))
         {
             continue;
         }
 
-        AlchemyBookEntry &entry = entryFor(*resultItemId, false);
+        const AlchemyRecipe &recipe = noted->recipe;
+        AlchemyBookEntry &entry = entryFor(noted->resultItemId, false);
         const bool duplicate = std::any_of(entry.recipes.begin(), entry.recipes.end(),
             [&recipe](const AlchemyRecipe &known)
             {

@@ -584,6 +584,7 @@ bool GameplayItemService::tryUseHeldItemOnPartyMember(
         overlay.active = true;
         overlay.title = useResult.readableTitle;
         overlay.body = useResult.readableBody;
+        learnRecipeScroll(runtime, *pParty, memberIndex, heldItem.item.objectDescriptionId);
     }
     else
     {
@@ -852,6 +853,67 @@ bool GameplayItemService::tryUseHeldItemOnInventoryItem(
     return true;
 }
 
+void GameplayItemService::unlockAutonote(
+    GameplayScreenRuntime &runtime,
+    Party &party,
+    size_t memberIndex,
+    uint32_t autonoteId)
+{
+    IGameplayWorldRuntime *pWorldRuntime = runtime.worldRuntime();
+    EventRuntimeState *pEventRuntimeState = pWorldRuntime != nullptr ? pWorldRuntime->eventRuntimeState() : nullptr;
+
+    if (pEventRuntimeState != nullptr)
+    {
+        const uint32_t rawId = (autonoteId << 16) | AutoNoteVariableTag;
+        const EventRuntime::VariableRef variable = EventRuntime::decodeVariable(rawId);
+        const std::vector<size_t> targetMemberIndices = {memberIndex};
+        EventRuntime::setVariableValue(*pEventRuntimeState, variable, 1, &party, targetMemberIndices);
+    }
+}
+
+void GameplayItemService::learnRecipeScroll(
+    GameplayScreenRuntime &runtime,
+    Party &party,
+    size_t memberIndex,
+    uint32_t scrollItemId)
+{
+    if (!m_session.hasDataRepository())
+    {
+        return;
+    }
+
+    const GameDataRepository &data = m_session.data();
+    const AlchemyBenchTables tables = {
+        data.itemTable(),
+        data.potionMixingTable(),
+        data.potionNoteTable(),
+        data.mergedPotionSettingTable(),
+        data.mergedReagentSettingTable()};
+    const std::optional<uint32_t> potionItemId = AlchemyBenchRuntime::recipeScrollPotionItemId(scrollItemId, tables);
+
+    if (!potionItemId.has_value())
+    {
+        return;
+    }
+
+    bool learned = false;
+
+    for (const uint32_t autonoteId : AlchemyBenchRuntime::potionNoteIds(*potionItemId, tables))
+    {
+        if (!runtime.isAutonoteUnlocked(autonoteId))
+        {
+            unlockAutonote(runtime, party, memberIndex, autonoteId);
+            learned = true;
+        }
+    }
+
+    if (learned)
+    {
+        const ItemDefinition *pPotion = tables.itemTable.get(*potionItemId);
+        runtime.setStatusBarEvent("Learned recipe: " + (pPotion != nullptr ? pPotion->name : std::string("potion")));
+    }
+}
+
 void GameplayItemService::applyMixResultEffects(
     GameplayScreenRuntime &runtime,
     Party &party,
@@ -861,17 +923,7 @@ void GameplayItemService::applyMixResultEffects(
 {
     if (mixResult.unlockedAutonoteId != 0)
     {
-        IGameplayWorldRuntime *pWorldRuntime = runtime.worldRuntime();
-        EventRuntimeState *pEventRuntimeState =
-            pWorldRuntime != nullptr ? pWorldRuntime->eventRuntimeState() : nullptr;
-
-        if (pEventRuntimeState != nullptr)
-        {
-            const uint32_t rawId = (mixResult.unlockedAutonoteId << 16) | AutoNoteVariableTag;
-            const EventRuntime::VariableRef variable = EventRuntime::decodeVariable(rawId);
-            const std::vector<size_t> targetMemberIndices = {memberIndex};
-            EventRuntime::setVariableValue(*pEventRuntimeState, variable, 1, &party, targetMemberIndices);
-        }
+        unlockAutonote(runtime, party, memberIndex, mixResult.unlockedAutonoteId);
     }
 
     const bool potionExplosion =
@@ -1190,6 +1242,7 @@ bool GameplayItemService::brewAlchemyChain(GameplayScreenRuntime &runtime, bool 
 }
 
 void GameplayItemService::updateReadableScrollOverlayForHeldItem(
+    GameplayScreenRuntime &runtime,
     size_t memberIndex,
     const GameplayCharacterPointerTarget &pointerTarget,
     bool isLeftMousePressed)
@@ -1244,6 +1297,7 @@ void GameplayItemService::updateReadableScrollOverlayForHeldItem(
     overlay.active = true;
     overlay.title = useResult.readableTitle;
     overlay.body = useResult.readableBody;
+    learnRecipeScroll(runtime, *pParty, memberIndex, heldItem.item.objectDescriptionId);
 }
 
 bool GameplayItemService::identifyInspectedItem(
