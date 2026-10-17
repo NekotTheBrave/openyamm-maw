@@ -55,6 +55,15 @@ jobs:
       flatpak_branch: ${{ steps.resolve.outputs.flatpak_branch }}
 
     steps:
+      - name: Check out the version helper
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /packaging/android_version_code.sh
+
       - name: Validate release tag and resolve names
         id: resolve
         shell: bash
@@ -62,15 +71,9 @@ jobs:
           is_tag=false
           version=nightly
           android_version_name="nightly-$GITHUB_RUN_NUMBER.$GITHUB_RUN_ATTEMPT"
-          # One sequence for commits, nightlies and tags; published 1.0 used code 10000.
-          android_version_code=$((10000 + GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))
+          # One sequence for commits, nightlies, tags and local builds, ordered by commit time.
+          android_version_code="$(packaging/android_version_code.sh)"
           flatpak_branch=nightly
-
-          if (( GITHUB_RUN_NUMBER <= 0 || GITHUB_RUN_ATTEMPT <= 0 || GITHUB_RUN_ATTEMPT >= 100
-                || android_version_code <= 10000 || android_version_code > 2100000000 )); then
-            echo "::error::Invalid Android build sequence: $GITHUB_RUN_NUMBER.$GITHUB_RUN_ATTEMPT"
-            exit 1
-          fi
 
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             version="$GITHUB_REF_NAME"
@@ -148,6 +151,18 @@ jobs:
       OPENYAMM_ANDROID_VERSION_CODE: ${{ needs.package_metadata.outputs.android_version_code }}
 
     steps:
+      # The asset checkout, its packages and the build fill most of the runner's disk; Gradle's own NDK download
+      # then ends truncated ("Archive is not a ZIP archive"). Free unused toolchains and install the NDK first.
+      - name: Free disk space and install the Android NDK
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/.ghcup /opt/ghc /usr/local/share/boost \
+            /opt/hostedtoolcache/CodeQL
+          ndk_version=28.2.13676358 # Must match ndkVersion in android/app/build.gradle.
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ndk_version" > /dev/null
+          test -x "$ANDROID_HOME/ndk/$ndk_version/ndk-build"
+          df -h /
+
       - name: Check out release sources
         uses: actions/checkout@v7
         with:

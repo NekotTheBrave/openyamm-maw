@@ -27,11 +27,12 @@ namespace OpenYAMM::Game
 namespace
 {
 constexpr uint64_t AlphaRenderState =
-    BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_ALPHA;
+    BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_MSAA;
 constexpr uint64_t AdditiveRenderState =
-    BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_ADD;
+    BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_ADD | BGFX_STATE_MSAA;
 constexpr uint64_t MultiplyRenderState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A |
-    BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_DST_COLOR, BGFX_STATE_BLEND_ZERO);
+    BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_DST_COLOR, BGFX_STATE_BLEND_ZERO)
+    | BGFX_STATE_MSAA;
 constexpr float CullDistance = 12000.0f;
 // Consecutive ribbon samples closer than this are merged (the live head right after a sample is left behind).
 constexpr float RibbonMinimumSegment = 0.5f;
@@ -210,7 +211,15 @@ void submitBatch(
         BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
     bgfx::setUniform(resources.particleParamsUniformHandle(), particleParams);
     bgfx::setState(renderState(blendMode));
-    bgfx::submit(viewId, resources.particleProgramHandle());
+    // Additive sprites are light: they also draw into the bloom glow, with the same bindings.
+    const bool glow = blendMode == EffectBlendMode::Additive && resources.glowView() != UINT16_MAX;
+    bgfx::submit(viewId, resources.particleProgramHandle(), 0, glow ? BGFX_DISCARD_NONE : BGFX_DISCARD_ALL);
+    if (glow)
+    {
+        bgfx::setState(renderState(blendMode));
+        bgfx::submit(resources.glowView(), resources.particleProgramHandle());
+        resources.markGlowDrawn();
+    }
 }
 }
 
@@ -563,7 +572,14 @@ void EffectRenderer::renderRibbons(
         bgfx::setUniform(m_ribbonParamsUniform, params);
         bgfx::setUniform(m_ribbonScrollUniform, scrollOffsets);
         bgfx::setState(renderState(settings.blendMode));
-        bgfx::submit(viewId, m_ribbonProgram);
+        const bool glow = additive && resources.glowView() != UINT16_MAX;
+        bgfx::submit(viewId, m_ribbonProgram, 0, glow ? BGFX_DISCARD_NONE : BGFX_DISCARD_ALL);
+        if (glow)
+        {
+            bgfx::setState(renderState(settings.blendMode));
+            bgfx::submit(resources.glowView(), m_ribbonProgram);
+            resources.markGlowDrawn();
+        }
         ++m_diagnostics.visibleRibbons;
         ++m_diagnostics.drawCalls;
     }

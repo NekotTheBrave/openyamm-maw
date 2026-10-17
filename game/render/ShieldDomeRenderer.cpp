@@ -60,7 +60,7 @@ void ShieldDomeRenderer::render(
         bgfx::setVertexBuffer(0, m_vertices);
         bgfx::setIndexBuffer(m_indices);
         // No culling: the far wall shows through the near one (the shader dims back faces).
-        bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_ADD);
+        bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_ADD | BGFX_STATE_MSAA);
         bgfx::submit(viewId, m_program);
     }
 }

@@ -7,6 +7,11 @@ uniform vec4 u_fogDistances;
 uniform vec4 u_fxLightPositions[8];
 uniform vec4 u_fxLightColors[8];
 uniform vec4 u_fxLightParams;
+// OUTDOOR_LIGHT_GRID: the surface takes its dynamic lights from the view's light grid (light_grid.sh) when one is
+// bound (u_lightGrid mode > 0); fragment shaders only.
+#if OUTDOOR_LIGHT_GRID
+#include "light_grid.sh"
+#endif
 
 float safeSmoothstep(float edge0, float edge1, float value)
 {
@@ -58,17 +63,28 @@ vec3 getFxLighting(vec3 worldPosition, float sunlight)
         {
             normal = -normal;
         }
-        sunlight -= direct * (1.0 - sunShadowVisibility(worldPosition, normal));
+        sunlight -= direct * (1.0 - sunShadowVisibility(worldPosition, normal, 0.0));
     }
 #endif
     float base = u_fxLightParams.y * sunlight;
 #endif
     vec3 lighting = vec3(base, base, base);
 
+#if OUTDOOR_LIGHT_GRID
+    // Dynamic lights from the view's light grid (scaled like the list below); without it (water reflections) the
+    // draw's own list.
+    if (lightGridMode() > 0.5)
+    {
+        lighting += lightGridDynamicLighting(worldPosition);
+    }
+    bool listLights = lightGridMode() < 0.5;
+#else
+    bool listLights = true;
+#endif
     // The active lights come first; stopping at the count (not skipping the rest) saves the materials terrain ~20 us.
     for (int i = 0; i < 8; ++i)
     {
-        if (float(i) >= u_fxLightParams.x)
+        if (float(i) >= u_fxLightParams.x || !listLights)
         {
             break;
         }

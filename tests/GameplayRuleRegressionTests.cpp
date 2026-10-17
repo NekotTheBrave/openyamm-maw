@@ -6396,11 +6396,28 @@ TEST_CASE("interactive decoration rules cover MM6 and MM7 indoor loot decoration
     CHECK_EQ(mm6BarrelSpec->eventCount, 8u);
 
     const std::optional<OpenYAMM::Game::InteractiveDecorationBindingSpec> mm7BarrelSpec =
-        OpenYAMM::Game::resolveInteractiveDecorationBindingSpec(makeDecoration("dec32", "barrel"), "dec32");
+        OpenYAMM::Game::resolveInteractiveDecorationBindingSpec(makeDecoration("7dec32", "barrel"), "7dec32");
     REQUIRE(mm7BarrelSpec.has_value());
     CHECK_EQ(mm7BarrelSpec->family, OpenYAMM::Game::InteractiveDecorationFamily::Barrel);
     CHECK_EQ(mm7BarrelSpec->baseEventId, 268u);
     CHECK_EQ(mm7BarrelSpec->eventCount, 8u);
+
+    // The bare decNN names of the merged table are MM8 decorations: its metal bowls, elf statue and bones are not
+    // barrels, trash heaps or casks (MM7's are 7dec32, 7dec01 and 7dec21, matched by their hints).
+    CHECK_FALSE(OpenYAMM::Game::resolveInteractiveDecorationBindingSpec(makeDecoration("dec32", "metal bowls"), "dec32")
+        .has_value());
+    CHECK_FALSE(OpenYAMM::Game::resolveInteractiveDecorationBindingSpec(makeDecoration("dec01", "Elf Statue"), "dec01")
+        .has_value());
+    CHECK_FALSE(OpenYAMM::Game::resolveInteractiveDecorationBindingSpec(makeDecoration("dec21", "bones"), "dec21")
+        .has_value());
+    const std::optional<OpenYAMM::Game::InteractiveDecorationBindingSpec> mm7TrashSpec =
+        OpenYAMM::Game::resolveInteractiveDecorationBindingSpec(makeDecoration("7dec01", "trash heap"), "7dec01");
+    REQUIRE(mm7TrashSpec.has_value());
+    CHECK_EQ(mm7TrashSpec->family, OpenYAMM::Game::InteractiveDecorationFamily::TrashHeap);
+    const std::optional<OpenYAMM::Game::InteractiveDecorationBindingSpec> mm7CaskSpec =
+        OpenYAMM::Game::resolveInteractiveDecorationBindingSpec(makeDecoration("7dec21", "cask"), "7dec21");
+    REQUIRE(mm7CaskSpec.has_value());
+    CHECK_EQ(mm7CaskSpec->family, OpenYAMM::Game::InteractiveDecorationFamily::Cask);
 
     const std::optional<OpenYAMM::Game::InteractiveDecorationBindingSpec> mm7PedestalSpec =
         OpenYAMM::Game::resolveInteractiveDecorationBindingSpec(makeDecoration("dec75", "pedestal"), "dec75");

@@ -304,6 +304,9 @@ struct OutdoorTerrainMaterials::SourceImages
     // The two caustic webs' mip chains, layer-major.
     std::vector<std::vector<uint8_t>> causticsLevels;
     int causticsSide = 0;
+    // Per configured material: the library's ground highlight strength (0: none) and rain-wet sheen share (1: full).
+    std::vector<float> layerSpecular;
+    std::vector<float> layerWetSheen;
     // The first failure in task order; empty when everything loaded.
     std::string error;
 };
@@ -323,6 +326,20 @@ OutdoorTerrainMaterials::SourceImages OutdoorTerrainMaterials::loadSourceImages(
     try
     {
         const YAML::Node library = YAML::Load(*libraryText)["materials"];
+        images.layerSpecular.assign(config.layers.size(), 0.0f);
+        images.layerWetSheen.assign(config.layers.size(), 1.0f);
+        for (size_t layer = 0; layer < config.layers.size(); ++layer)
+        {
+            const YAML::Node entry = library[config.layers[layer].library];
+            if (entry.IsMap() && entry["specular"])
+            {
+                images.layerSpecular[layer] = std::clamp(entry["specular"].as<float>(), 0.0f, 1.0f);
+            }
+            if (entry.IsMap() && entry["wet_sheen"])
+            {
+                images.layerWetSheen[layer] = std::clamp(entry["wet_sheen"].as<float>(), 0.0f, 1.0f);
+            }
+        }
         const std::array<const char *, 2> kinds = {"albedo_height", "normal_ao_rough"};
         for (size_t kind = 0; kind < kinds.size(); ++kind)
         {
@@ -524,8 +541,8 @@ bool OutdoorTerrainMaterials::initialize(const Engine::AssetFileSystem &assets, 
         shutdown();
         return false;
     }
-    const char *samplerNames[] = {"s_terrainAlbedoHeight", "s_terrainNormalAoRough", "s_terrainWeights0",
-        "s_terrainWeights1", "s_terrainCells", "s_terrainBakedNormals", "s_terrainMacro", "s_terrainShore"};
+    const char *samplerNames[] = {"s_terrainAlbedoHeight", "s_terrainNormalAoRough", "s_terrainWeights",
+        "s_terrainCells", "s_terrainBakedNormals", "s_terrainMacro", "s_terrainShore"};
     for (size_t index = 0; index < m_samplers.size(); ++index)
     {
         m_samplers[index] = bgfx::createUniform(samplerNames[index], bgfx::UniformType::Sampler);
@@ -546,7 +563,7 @@ bool OutdoorTerrainMaterials::initialize(const Engine::AssetFileSystem &assets, 
     m_meadow = bgfx::createUniform("u_terrainMeadow", bgfx::UniformType::Vec4, 2);
     m_shoreUniform = bgfx::createUniform("u_terrainShore", bgfx::UniformType::Vec4);
     m_foliageSampler = bgfx::createUniform("s_terrainFoliage", bgfx::UniformType::Sampler);
-    m_foliageUniform = bgfx::createUniform("u_terrainFoliage", bgfx::UniformType::Vec4);
+    m_foliageUniform = bgfx::createUniform("u_terrainFoliage", bgfx::UniformType::Vec4, 2);
     const std::array<uint16_t, 4> noFoliage = {};
     m_noFoliage = bgfx::createTexture2D(1, 1, false, 1, bgfx::TextureFormat::RGBA16F,
         BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP, bgfx::copy(noFoliage.data(), sizeof(noFoliage)));
@@ -555,7 +572,11 @@ bool OutdoorTerrainMaterials::initialize(const Engine::AssetFileSystem &assets, 
         const OutdoorTerrainMaterialLayer &layer = config.layers[index];
         m_layerParamValues[index] = {1.0f / layer.repeat, layer.heightContrast, layer.normalStrength, layer.cavity};
         m_layerTintValues[index] = {layer.tint[0], layer.tint[1], layer.tint[2], layer.meadow};
-        m_layerCliffValues[index] = {layer.cliffTint[0], layer.cliffTint[1], layer.cliffTint[2], 1.0f};
+        // w packs the wet sheen in quarters (integer part, 0..4) with the highlight strength (fraction).
+        const float specular = index < images.layerSpecular.size() ? images.layerSpecular[index] : 0.0f;
+        const float wetSheen = index < images.layerWetSheen.size() ? images.layerWetSheen[index] : 1.0f;
+        m_layerCliffValues[index] = {layer.cliffTint[0], layer.cliffTint[1], layer.cliffTint[2],
+            std::round(wetSheen * 4.0f) + std::min(specular, 0.999f)};
         m_layerMacroValues[index] = {layer.macroTint[0], layer.macroTint[1], layer.macroTint[2], layer.macroBrightness};
         m_layerVariantValues[index] = {float(layer.variant < 0 ? int(index) : layer.variant), layer.variantAmount,
             layer.fringe, layer.pools ? 1.0f : 0.0f};
@@ -595,10 +616,7 @@ void OutdoorTerrainMaterials::shutdown(bool destroyResources)
     m_chunks.clear();
     release(m_albedoHeight);
     release(m_normalAoRough);
-    for (bgfx::TextureHandle &handle : m_weights)
-    {
-        release(handle);
-    }
+    release(m_weights);
     release(m_cells);
     release(m_bakedNormals);
     release(m_macro);
@@ -636,21 +654,44 @@ void OutdoorTerrainMaterials::shutdown(bool destroyResources)
     release(m_singleShadowProgram);
     m_stats = {};
     m_smoothing = 0.0f;
+    m_renderedHeights.clear();
+    m_renderedHeights.shrink_to_fit();
+    m_renderedSide = 0;
+    m_renderedSpacing = 0.0f;
+}
+
+float OutdoorTerrainMaterials::renderedHeight(float x, float y) const
+{
+    if (m_renderedSide < 2)
+    {
+        return 0.0f;
+    }
+    const float last = float(m_renderedSide - 1);
+    const float u = std::clamp((x + 32768.0f) / m_renderedSpacing, 0.0f, last);
+    const float v = std::clamp((32768.0f - y) / m_renderedSpacing, 0.0f, last);
+    const int u0 = std::min(int(u), m_renderedSide - 2);
+    const int v0 = std::min(int(v), m_renderedSide - 2);
+    const auto at = [&](int column, int row)
+    {
+        return m_renderedHeights[size_t(row) * size_t(m_renderedSide) + size_t(column)];
+    };
+    return std::lerp(std::lerp(at(u0, v0), at(u0 + 1, v0), u - float(u0)),
+        std::lerp(at(u0, v0 + 1), at(u0 + 1, v0 + 1), u - float(u0)), v - float(v0));
 }
 
 void OutdoorTerrainMaterials::bind(const OutdoorLightingData *pBakedLighting, bool directSun, bool antiTiling,
-    bgfx::TextureHandle foliage, const std::array<float, 4> &foliageParams) const
+    bgfx::TextureHandle foliage, const std::array<float, 8> &foliageParams, float specularStrength) const
 {
     const uint32_t clamp = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
     const uint32_t point = clamp | BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT | BGFX_SAMPLER_MIP_POINT;
     bindTexture(FirstStage, m_samplers[0], m_albedoHeight, TextureFilterProfile::Terrain);
     bindTexture(FirstStage + 1, m_samplers[1], m_normalAoRough, TextureFilterProfile::Terrain);
-    bgfx::setTexture(FirstStage + 2, m_samplers[2], m_weights[0], clamp);
-    bgfx::setTexture(FirstStage + 3, m_samplers[3], m_weights[1], clamp);
-    bgfx::setTexture(FirstStage + 4, m_samplers[4], m_cells, point);
-    bgfx::setTexture(FirstStage + 5, m_samplers[5], m_bakedNormals, clamp);
-    bindTexture(FirstStage + 6, m_samplers[6], m_macro, TextureFilterProfile::Terrain);
-    bgfx::setTexture(FirstStage + 7, m_samplers[7], m_shore, clamp);
+    bgfx::setTexture(FirstStage + 2, m_samplers[2], m_weights, clamp);
+    // Stage FirstStage + 3 holds the light grid (light_grid.sh).
+    bgfx::setTexture(FirstStage + 4, m_samplers[3], m_cells, point);
+    bgfx::setTexture(FirstStage + 5, m_samplers[4], m_bakedNormals, clamp);
+    bindTexture(FirstStage + 6, m_samplers[5], m_macro, TextureFilterProfile::Terrain);
+    bgfx::setTexture(FirstStage + 7, m_samplers[6], m_shore, clamp);
     if (bgfx::isValid(m_caustics))
     {
         bindTexture(CausticsStage, m_causticsSampler, m_caustics, TextureFilterProfile::Terrain);
@@ -658,8 +699,8 @@ void OutdoorTerrainMaterials::bind(const OutdoorLightingData *pBakedLighting, bo
     bgfx::setUniform(m_shoreUniform, m_shoreValues.data());
     const bool grass = bgfx::isValid(foliage);
     bgfx::setTexture(FoliageStage, m_foliageSampler, grass ? foliage : m_noFoliage, clamp);
-    const std::array<float, 4> noFoliageParams = {0.0f, 1.0f, 1.0f, 1.0f};
-    bgfx::setUniform(m_foliageUniform, grass ? foliageParams.data() : noFoliageParams.data());
+    const std::array<float, 8> noFoliageParams = {0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    bgfx::setUniform(m_foliageUniform, grass ? foliageParams.data() : noFoliageParams.data(), 2);
     bgfx::setUniform(m_layerParams, m_layerParamValues.data(), uint16_t(m_layerParamValues.size()));
     bgfx::setUniform(m_layerTints, m_layerTintValues.data(), uint16_t(m_layerTintValues.size()));
     bgfx::setUniform(m_layerCliffTints, m_layerCliffValues.data(), uint16_t(m_layerCliffValues.size()));
@@ -674,7 +715,7 @@ void OutdoorTerrainMaterials::bind(const OutdoorLightingData *pBakedLighting, bo
         light[2] = pBakedLighting->sunDirection[2];
     }
     bgfx::setUniform(m_light, light.data());
-    const std::array<float, 4> misc = {m_miscValues[0], m_miscValues[1], antiTiling ? 1.0f : 0.0f, m_miscValues[3]};
+    const std::array<float, 4> misc = {m_miscValues[0], m_miscValues[1], antiTiling ? 1.0f : 0.0f, specularStrength};
     bgfx::setUniform(m_misc, misc.data());
     bgfx::setUniform(m_meadow, m_meadowValues.data(), uint16_t(m_meadowValues.size()));
 }
@@ -1092,6 +1133,9 @@ bool OutdoorTerrainMaterials::createMesh(const OutdoorMapData &map,
         }
     }
     m_stats.subdivision = uint32_t(steps);
+    m_renderedHeights = heights;
+    m_renderedSide = side;
+    m_renderedSpacing = spacing;
     m_stats.meanLandDeviation = deviationCount > 0 ? float(deviationSum / double(deviationCount)) : 0.0f;
     if (shore && !m_chunks.empty())
     {
@@ -1324,13 +1368,11 @@ bool OutdoorTerrainMaterials::createWeights(const SourceImages &images, const Ou
     const int size = MapCells * config.texelsPerCell;
     m_weightSize = size;
     m_weightLayers.assign(size_t(size) * size, 0);
-    for (size_t index = 0; index < m_weights.size(); ++index)
+    // Both weight images in one two-layer array (one sampler stage); a map with four ground layers or fewer leaves the
+    // second layer empty.
+    std::array<const std::vector<std::vector<uint8_t>> *, 2> layerLevels = {};
+    for (size_t index = 0; index < layerLevels.size() && index < config.weightFiles.size(); ++index)
     {
-        if (index >= config.weightFiles.size())
-        {
-            m_weights[index] = createRgbaTexture(1, 1, {std::vector<uint8_t>(4, 0)});
-            continue;
-        }
         const std::vector<std::vector<uint8_t>> &levels = images.weightLevels[index];
         const std::vector<uint8_t> &rgba = levels.front();
         for (int channel = 0; channel < 4; ++channel)
@@ -1344,16 +1386,54 @@ bool OutdoorTerrainMaterials::createWeights(const SourceImages &images, const Ou
                 }
             }
         }
-        m_weights[index] = createRgbaTexture(size, size, levels);
-        for (const std::vector<uint8_t> &level : levels)
+        layerLevels[index] = &levels;
+    }
+    std::vector<std::vector<uint8_t>> noWeights = {std::vector<uint8_t>(4, 0)};
+    const int textureSize = layerLevels[0] != nullptr ? size : 1;
+    if (layerLevels[0] != nullptr)
+    {
+        noWeights.clear();
+        for (const std::vector<uint8_t> &level : *layerLevels[0])
         {
-            m_stats.gpuBytes += level.size();
+            noWeights.emplace_back(level.size(), 0);
         }
-        if (!bgfx::isValid(m_weights[index]))
+    }
+    size_t bytes = 0;
+    for (const std::vector<std::vector<uint8_t>> *&pLevels : layerLevels)
+    {
+        if (pLevels == nullptr)
         {
-            error = "cannot allocate terrain material weights";
-            return false;
+            pLevels = &noWeights;
         }
+        for (const std::vector<uint8_t> &level : *pLevels)
+        {
+            bytes += level.size();
+        }
+    }
+    if (layerLevels[1]->size() != layerLevels[0]->size()
+        || layerLevels[1]->front().size() != layerLevels[0]->front().size())
+    {
+        error = "the terrain weight images differ in size";
+        return false;
+    }
+    // Layer-major: every mip level of layer 0, then those of layer 1.
+    const bgfx::Memory *pMemory = bgfx::alloc(uint32_t(bytes));
+    size_t offset = 0;
+    for (const std::vector<std::vector<uint8_t>> *pLevels : layerLevels)
+    {
+        for (const std::vector<uint8_t> &level : *pLevels)
+        {
+            std::copy(level.begin(), level.end(), pMemory->data + offset);
+            offset += level.size();
+        }
+    }
+    m_weights = bgfx::createTexture2D(uint16_t(textureSize), uint16_t(textureSize), noWeights.size() > 1, 2,
+        bgfx::TextureFormat::RGBA8, BGFX_TEXTURE_NONE, pMemory);
+    m_stats.gpuBytes += bytes;
+    if (!bgfx::isValid(m_weights))
+    {
+        error = "cannot allocate terrain material weights";
+        return false;
     }
     m_macro = createRgbaTexture(images.macroSize, images.macroSize, images.macroLevels);
     for (const std::vector<uint8_t> &level : images.macroLevels)

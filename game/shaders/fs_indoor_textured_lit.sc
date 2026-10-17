@@ -2,34 +2,83 @@ $input v_texcoord0, v_worldPosition, v_texcoord1, v_screenspace, v_flowInfo, v_c
 
 #include "common.sh"
 #include "world_clip.sh"
+#include "light_grid.sh"
 
 SAMPLER2D(s_texColor, 0);
 
 uniform vec4 u_indoorLightPositions[12];
 uniform vec4 u_indoorLightColors[12];
 uniform vec4 u_indoorLightParams;
+// x = 1 when the face takes its dynamic lights from the light grid, y/z = its sector and back sector (-1: none).
+uniform vec4 u_indoorFaceGrid;
 uniform vec4 u_secretPulseParams;
 uniform vec4 u_indoorSkyParams;
 uniform vec4 u_indoorSkyProjectionParams;
 
+// The dynamic lights' response to the face's angle. Faces turned toward the light keep their old (angle-free) light;
+// grazing faces lose only a little (a torch-lit frame is at most about 5 % darker than without N.L), and the
+// response fades out just before the face turns away, so the far side of a wall takes none. Static lights are in the
+// vertex bake.
+float indoorFaceFacing(vec3 normal, vec3 toLight)
+{
+    float facing = clamp(dot(normal, toLight) * inversesqrt(max(dot(toLight, toLight), 0.0001)), 0.0, 1.0);
+    return smoothstep(0.0, 0.08, facing) * (0.86 + 0.14 * sqrt(facing));
+}
+
 vec3 getIndoorLighting(vec3 worldPosition, vec3 vertexLighting)
 {
     vec3 lighting = u_indoorLightParams.yzw + vertexLighting * 2.0;
-
-    for (int i = 0; i < 12; ++i)
+    // BLV faces are flat: the normal from the position derivatives, turned toward the camera.
+    vec3 normal = cross(dFdx(worldPosition), dFdy(worldPosition));
+    normal *= inversesqrt(max(dot(normal, normal), 0.000001));
+    if (dot(normal, mul(u_invView, vec4(0.0, 0.0, 0.0, 1.0)).xyz - worldPosition) < 0.0)
     {
-        if (float(i) >= u_indoorLightParams.x)
-        {
-            break;
-        }
+        normal = -normal;
+    }
 
-        vec3 toLight = u_indoorLightPositions[i].xyz - worldPosition;
-        float radius = max(u_indoorLightPositions[i].w, 1.0);
-        float distanceSquared = dot(toLight, toLight);
-        float inverseRadiusSquared = 1.0 / (radius * radius);
-        float attenuation = 1.0 - clamp(distanceSquared * inverseRadiusSquared, 0.0, 1.0);
-        attenuation *= attenuation;
-        lighting += u_indoorLightColors[i].rgb * (u_indoorLightColors[i].w * attenuation);
+    if (u_indoorFaceGrid.x > 0.5)
+    {
+        // The view's light grid: the dynamic lights that reach the face's sectors through portals.
+        vec2 range = lightGridCellRange(worldPosition);
+        int first = int(range.x + 0.5);
+        int count = int(range.y + 0.5);
+        for (int i = 0; i < LIGHT_GRID_MAX_CELL_LIGHTS; ++i)
+        {
+            if (i >= count)
+            {
+                break;
+            }
+            int index = lightGridLightIndex(first + i);
+            vec3 source = lightGridLightSource(index);
+            // Dynamic lights are binned first, so the first static one ends them.
+            if (source.y < 0.5)
+            {
+                break;
+            }
+            if (!lightGridReaches(index, source, u_indoorFaceGrid.yz))
+            {
+                continue;
+            }
+            vec4 positionRadius;
+            vec4 colorIntensity;
+            lightGridLight(index, positionRadius, colorIntensity);
+            lighting += colorIntensity.rgb * (colorIntensity.a * lightGridAttenuation(positionRadius, worldPosition)
+                * indoorFaceFacing(normal, positionRadius.xyz - worldPosition));
+        }
+    }
+    else
+    {
+        // The draw's own list (water reflections, blood splats).
+        for (int i = 0; i < 12; ++i)
+        {
+            if (float(i) >= u_indoorLightParams.x)
+            {
+                break;
+            }
+            lighting += u_indoorLightColors[i].rgb * (u_indoorLightColors[i].w
+                * lightGridAttenuation(u_indoorLightPositions[i], worldPosition)
+                * indoorFaceFacing(normal, u_indoorLightPositions[i].xyz - worldPosition));
+        }
     }
 
     return clamp(lighting, vec3(0.0, 0.0, 0.0), vec3(2.0, 2.0, 2.0));

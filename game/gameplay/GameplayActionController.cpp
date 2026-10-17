@@ -734,6 +734,29 @@ std::mt19937 buildPartyAttackRng(
         ^ static_cast<uint32_t>(actingMemberIndex * 40503u);
     return std::mt19937(seed);
 }
+
+// An attacker without the mana for their attack spell swings or shoots their weapon instead.
+bool lacksManaForAttackSpell(
+    const GameplayActionController::PartyAttackConfig &config,
+    size_t attackerMemberIndex,
+    const Character &attacker)
+{
+    if (config.pParty == nullptr || config.pSpellTable == nullptr)
+    {
+        return false;
+    }
+
+    const SpellEntry *pSpellEntry = config.pSpellTable->findByName(attacker.attackSpellName);
+
+    if (pSpellEntry == nullptr)
+    {
+        return false;
+    }
+
+    const std::optional<uint32_t> manaCost =
+        PartySpellSystem::manaCost(attacker, *config.pSpellTable, uint32_t(pSpellEntry->id));
+    return manaCost && !config.pParty->canSpendSpellPoints(attackerMemberIndex, int(*manaCost));
+}
 } // namespace
 
 void GameplayActionController::updateCooldowns(GameplayScreenState &screenState, float deltaSeconds)
@@ -891,7 +914,7 @@ GameplayActionController::PartyAttackExecutionResult GameplayActionController::e
         party.clearPartyBuff(PartyBuffId::Invisibility);
     }
 
-    if (!pAttacker->attackSpellName.empty())
+    if (!pAttacker->attackSpellName.empty() && !lacksManaForAttackSpell(config, actingMemberIndex, *pAttacker))
     {
         AttackCastResult attackCastResult = {};
 

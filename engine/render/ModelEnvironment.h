@@ -26,6 +26,9 @@ struct ModelEnvironmentMip
 
 // Linear GGX-filtered radiance. The sky source is the game's repeating cloud plane, not a panorama.
 std::vector<ModelEnvironmentMip> prepareModelSkyEnvironment(const ModelSkyEnvironment &sky);
+// A neutral room (dark floor, lit walls, dim ceiling) for enclosed maps, tinted per frame like the sky; small and
+// cheap to filter.
+std::vector<ModelEnvironmentMip> prepareModelRoomEnvironment();
 // RG = the two Fresnel terms of the integrated GGX/Smith specular response; linear RGBA8.
 std::vector<uint8_t> prepareModelEnvironmentBrdf();
 constexpr uint16_t ModelEnvironmentBrdfSize = 64;

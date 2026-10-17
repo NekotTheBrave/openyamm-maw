@@ -1,5 +1,6 @@
 #include "game/ui/screens/LoadingOverlayScreen.h"
 #include "engine/BgfxContext.h"
+#include "game/render/WaterMath.h"
 #include "game/ui/RestHourglassAnimation.h"
 
 #include <SDL3/SDL.h>
@@ -22,7 +23,6 @@ constexpr float ProgressBarHeight = 14.0f;
 constexpr int ProgressStepPercent = 5;
 constexpr int ProgressStepCount = 20;
 constexpr float LoadingHourglassSpeed = 4.0f;
-constexpr uint16_t LoadingViewId = 254;
 }
 
 LoadingOverlayScreen::LoadingOverlayScreen(const Engine::AssetFileSystem &assetFileSystem)
@@ -30,7 +30,7 @@ LoadingOverlayScreen::LoadingOverlayScreen(const Engine::AssetFileSystem &assetF
 {
     // Loading can start after world, HUD or menu draws have already been submitted.
     // Cover them with the retained screen or loading artwork on every loading frame.
-    setRenderViewId(LoadingViewId);
+    setRenderViewId(LoadingOverlayView);
     setClearBackground(true);
 }
 
@@ -153,7 +153,7 @@ void LoadingOverlayScreen::drawTransition()
 void LoadingOverlayScreen::drawScreen(float deltaSeconds)
 {
     static_cast<void>(deltaSeconds);
-    bgfx::setViewFrameBuffer(LoadingViewId, BGFX_INVALID_HANDLE);
+    bgfx::setViewFrameBuffer(LoadingOverlayView, BGFX_INVALID_HANDLE);
 
     const float baseScale = std::min(
         std::min(

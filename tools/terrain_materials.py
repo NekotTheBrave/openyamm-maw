@@ -33,6 +33,7 @@ import argparse
 import csv
 import fnmatch
 import hashlib
+import json
 import subprocess
 import sys
 import tempfile
@@ -151,6 +152,10 @@ def prepare(ids):
             "license": entry["license"],
             "origin": entry["origin"],
             **({"pools": True} if "pools" in entry else {}),
+            # How strongly the ground highlight (sun and point lights) shows on it: rock, gravel, flagstones.
+            **({"specular": entry["specular"]} if "specular" in entry else {}),
+            # How much of the rain-wet sheen it takes (1 when absent): grass blades scatter instead of forming a film.
+            **({"wet_sheen": entry["wet_sheen"]} if "wet_sheen" in entry else {}),
         }
         print(f"prepared {material_id}: mean colour {library['materials'][material_id]['mean_color']}")
     library["materials"] = dict(sorted(library["materials"].items()))
@@ -159,24 +164,46 @@ def prepare(ids):
                "# world tints are measured against.\n")
 
 
-def cook(profile, ids):
+# Bump when the cooker writes different terrain material output for the same inputs.
+COOK_REVISION = 1
+
+
+def cook(profile, ids, force=False):
+    """Cook the layer textures whose source or settings changed since their receipt (assets_source/.cook-cache)."""
     library = load_yaml(LIBRARY)["materials"]
     cooker = (ROOT / "build/game/openyamm_model_texture_cook").resolve(strict=True)
-    jobs = []
+    receipts_path = ROOT / "assets_source/.cook-cache/terrain_materials" / f"{profile}.json"
+    receipts = json.loads(receipts_path.read_text()) if receipts_path.exists() and not force else {}
+    jobs, pending = [], {}
+    total = 0
     for material_id in ids or library:
         for name, semantic, linear in (("albedo_height", "srgb", 0), ("normal_ao_rough", "linear", 1)):
+            total += 1
             source = SOURCE_ROOT / material_id / f"{name}.png"
             target = OUTPUT[profile] / "engine/terrain_materials" / material_id / f"{name}.oytex"
-            target.parent.mkdir(parents=True, exist_ok=True)
             digest = hashlib.sha256(source.read_bytes()).hexdigest()[:16]
+            inputs = {"source": digest, "codec": CODEC[profile], "max_size": MAX_SIZE[profile],
+                      "revision": COOK_REVISION}
+            key = target.relative_to(OUTPUT[profile]).as_posix()
+            receipt = receipts.get(key)
+            if receipt and receipt["inputs"] == inputs and target.exists() \
+                    and hashlib.sha256(target.read_bytes()).hexdigest() == receipt["output"]:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
             # terrain_material: the cooker sharpens the tiling mips, so detail holds up at grazing distances.
             jobs.append("\t".join(map(str, (source, target, CODEC[profile], semantic, 0, 1, MAX_SIZE[profile],
                                             linear, digest, "terrain_material"))))
-    with tempfile.NamedTemporaryFile("w", suffix=".tsv", delete=False) as handle:
-        handle.write("\n".join(jobs) + "\n")
-    subprocess.run([str(cooker), handle.name], check=True)
-    Path(handle.name).unlink()
-    print(f"cooked {len(jobs)} {profile} textures")
+            pending[key] = (target, inputs)
+    if jobs:
+        with tempfile.NamedTemporaryFile("w", suffix=".tsv", delete=False) as handle:
+            handle.write("\n".join(jobs) + "\n")
+        subprocess.run([str(cooker), handle.name], check=True)
+        Path(handle.name).unlink()
+        for key, (target, inputs) in pending.items():
+            receipts[key] = {"inputs": inputs, "output": hashlib.sha256(target.read_bytes()).hexdigest()}
+        receipts_path.parent.mkdir(parents=True, exist_ok=True)
+        receipts_path.write_text(json.dumps(receipts, indent=1, sort_keys=True) + "\n")
+    print(f"cooked {len(jobs)} {profile} terrain material textures, {total - len(jobs)} unchanged")
 
 
 MACRO_SIZE = 1024
@@ -682,6 +709,7 @@ def main():
     cook_parser = commands.add_parser("cook")
     cook_parser.add_argument("--profile", choices=sorted(OUTPUT), required=True)
     cook_parser.add_argument("ids", nargs="*")
+    cook_parser.add_argument("--force", action="store_true", help="ignore the receipts and cook every texture")
     commands.add_parser("macro")
     commands.add_parser("caustics")
     weights_parser = commands.add_parser("weights")
@@ -695,7 +723,7 @@ def main():
     if args.command == "prepare":
         prepare(args.ids)
     elif args.command == "cook":
-        cook(args.profile, args.ids)
+        cook(args.profile, args.ids, args.force)
     elif args.command == "macro":
         macro()
     elif args.command == "caustics":

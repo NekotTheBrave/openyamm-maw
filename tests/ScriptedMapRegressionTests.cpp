@@ -2,6 +2,7 @@
 
 #include "engine/SpriteAtlas.h"
 
+#include "game/SpriteObjectDefs.h"
 #include "game/events/EventRuntime.h"
 #include "game/events/EventDialogContent.h"
 #include "game/events/ISceneEventContext.h"
@@ -8528,8 +8529,16 @@ TEST_CASE("mm7 dragon lair loads indoor billboards and lights")
     REQUIRE(pLoadedMap->indoorMapData.has_value());
     CHECK_FALSE(pLoadedMap->indoorMapData->lights.empty());
     REQUIRE(pLoadedMap->indoorDecorationBillboardSet.has_value());
-    CHECK_FALSE(pLoadedMap->indoorDecorationBillboardSet->billboards.empty());
-    CHECK_FALSE(pLoadedMap->indoorDecorationBillboardSet->textures.empty());
+    const OpenYAMM::Game::DecorationBillboardSet &decorations = *pLoadedMap->indoorDecorationBillboardSet;
+    CHECK_FALSE(decorations.billboards.empty());
+    // Every MM7 decoration is a 3D model since 2026-10-16 (engine/models/indoor_decorations.yml): each billboard is
+    // drawn by a model, so no sprite texture loads unless one shows a sprite.
+    CHECK(std::all_of(decorations.billboards.begin(), decorations.billboards.end(),
+        [&](const OpenYAMM::Game::DecorationBillboard &billboard)
+        {
+            return billboard.spriteId == 0 || decorations.modelSpriteIds.contains(billboard.spriteId)
+                || !decorations.textures.empty();
+        }));
     CHECK(std::any_of(
         pLoadedMap->indoorDecorationBillboardSet->billboards.begin(),
         pLoadedMap->indoorDecorationBillboardSet->billboards.end(),
@@ -8545,7 +8554,7 @@ TEST_CASE("mm7 dragon lair loads indoor billboards and lights")
         pLoadedMap->indoorActorPreviewBillboardSet->billboards.size());
 }
 
-TEST_CASE("mm7 red dwarf mine statues preload their nonzero-palette textures")
+TEST_CASE("mm7 red dwarf mine statues are models and skip their nonzero-palette sprite textures")
 {
     const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
     const OpenYAMM::Game::MapAssetInfo *pLoadedMap = loadCachedIndoorMapWithCompanionOptions(
@@ -8593,11 +8602,14 @@ TEST_CASE("mm7 red dwarf mine statues preload their nonzero-palette textures")
         REQUIRE(pFrame != nullptr);
         CHECK_EQ(pFrame->paletteId, 3);
 
+        // The dwarf statues (7dec54, 7dec55) are 3D models since 2026-10-16: their palette-3 sprite views do not
+        // load.
+        CHECK(billboardSet.modelSpriteIds.contains(billboardIterator->spriteId));
         for (int octant = 0; octant < 8; ++octant)
         {
             const OpenYAMM::Game::ResolvedSpriteTexture resolvedTexture =
                 OpenYAMM::Game::SpriteFrameTable::resolveTexture(*pFrame, octant);
-            CHECK(textureLoaded(resolvedTexture.textureName, pFrame->paletteId));
+            CHECK_FALSE(textureLoaded(resolvedTexture.textureName, pFrame->paletteId));
         }
     }
 }
@@ -8807,8 +8819,10 @@ TEST_CASE("mm6 darkmoor actor previews build encounter tiers as models and load 
     }
 }
 
-TEST_CASE("full gameplay map load preloads object sprites that are not placed in the map")
+TEST_CASE("full gameplay map load preloads unplaced item sprites but no missile sprites")
 {
+    // A dropped item must not decode its sprite on its first frame; spell missiles and impacts never draw their sprite
+    // (models and effects present them), so none is preloaded.
     const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
     const OpenYAMM::Game::MapAssetInfo *pLoadedMap = loadCachedIndoorMapWithCompanionOptions(
         mapLoader.assetFileSystem,
@@ -8824,63 +8838,54 @@ TEST_CASE("full gameplay map load preloads object sprites that are not placed in
     REQUIRE(pLoadedMap->indoorSpriteObjectBillboardSet.has_value());
 
     const OpenYAMM::Game::ObjectTable &objectTable = mapLoader.gameDataLoader.getObjectTable();
-    const std::optional<uint16_t> objectDescriptionId = objectTable.findDescriptionIdByObjectId(10030);
-    REQUIRE(objectDescriptionId.has_value());
-    const OpenYAMM::Game::ObjectEntry *pObjectEntry = objectTable.get(*objectDescriptionId);
-    REQUIRE(pObjectEntry != nullptr);
-    REQUIRE_EQ(pObjectEntry->spriteId, 844);
-
-    const bool objectAlreadyPlaced = std::any_of(
-        pLoadedMap->indoorMapDeltaData->spriteObjects.begin(),
-        pLoadedMap->indoorMapDeltaData->spriteObjects.end(),
-        [objectDescriptionId](const OpenYAMM::Game::MapDeltaSpriteObject &object)
-        {
-            return object.objectDescriptionId == *objectDescriptionId;
-        });
-    REQUIRE_FALSE(objectAlreadyPlaced);
-
-    const OpenYAMM::Game::SpriteObjectBillboardSet &billboardSet =
-        *pLoadedMap->indoorSpriteObjectBillboardSet;
-    bool foundAnimationEnd = false;
-    bool checkedTexture = false;
-
-    for (size_t frameOffset = 0; frameOffset < 64; ++frameOffset)
+    const OpenYAMM::Game::SpriteObjectBillboardSet &billboardSet = *pLoadedMap->indoorSpriteObjectBillboardSet;
+    const auto unplacedObject = [&](int16_t objectId) -> const OpenYAMM::Game::ObjectEntry *
     {
-        const uint16_t frameIndex = static_cast<uint16_t>(pObjectEntry->spriteId + frameOffset);
-        const OpenYAMM::Game::SpriteFrameEntry *pFrame = billboardSet.spriteFrameTable.getFrame(frameIndex, 0);
+        const std::optional<uint16_t> objectDescriptionId = objectTable.findDescriptionIdByObjectId(objectId);
+        REQUIRE(objectDescriptionId.has_value());
+        const bool placed = std::any_of(
+            pLoadedMap->indoorMapDeltaData->spriteObjects.begin(),
+            pLoadedMap->indoorMapDeltaData->spriteObjects.end(),
+            [objectDescriptionId](const OpenYAMM::Game::MapDeltaSpriteObject &object)
+            {
+                return object.objectDescriptionId == *objectDescriptionId;
+            });
+        REQUIRE_FALSE(placed);
+        return objectTable.get(*objectDescriptionId);
+    };
+    const auto preloaded = [&](const OpenYAMM::Game::ObjectEntry &object)
+    {
+        const OpenYAMM::Game::SpriteFrameEntry *pFrame = billboardSet.spriteFrameTable.getFrame(object.spriteId, 0);
         REQUIRE(pFrame != nullptr);
+        const OpenYAMM::Game::ResolvedSpriteTexture resolvedTexture =
+            OpenYAMM::Game::SpriteFrameTable::resolveTexture(*pFrame, 0);
+        return std::any_of(
+            billboardSet.textures.begin(),
+            billboardSet.textures.end(),
+            [&resolvedTexture, pFrame](const OpenYAMM::Game::OutdoorBitmapTexture &texture)
+            {
+                return texture.textureName == resolvedTexture.textureName && texture.paletteId == pFrame->paletteId;
+            });
+    };
 
-        for (int octant = 0; octant < 8; ++octant)
-        {
-            const OpenYAMM::Game::ResolvedSpriteTexture resolvedTexture =
-                OpenYAMM::Game::SpriteFrameTable::resolveTexture(*pFrame, octant);
-            // Restored x2 sprites replace the retired native bitmaps and are loaded by the billboard renderer
-            // (loadRestoredDecorationTexture), so they count as available without a native preload.
-            const bool textureLoaded = std::any_of(
-                billboardSet.textures.begin(),
-                billboardSet.textures.end(),
-                [&resolvedTexture, pFrame](const OpenYAMM::Game::OutdoorBitmapTexture &texture)
-                {
-                    return texture.textureName == resolvedTexture.textureName
-                        && texture.paletteId == pFrame->paletteId;
-                })
-                || mapLoader.assetFileSystem.exists("engine/decorations_x2/" + resolvedTexture.textureName + "_p"
-                    + std::to_string(pFrame->paletteId) + ".png");
-            CHECK_MESSAGE(textureLoaded, resolvedTexture.textureName << " palette " << pFrame->paletteId);
-            checkedTexture = true;
-        }
+    // Object 307: a dagger, an item (and a thrown dagger's object). Restored x2 sprites are loaded by the billboard
+    // renderer (loadRestoredDecorationTexture), so they count as available without a native preload.
+    const OpenYAMM::Game::ObjectEntry *pDagger = unplacedObject(307);
+    REQUIRE(pDagger != nullptr);
+    REQUIRE((pDagger->flags & OpenYAMM::Game::ObjectDescUnpickable) == 0);
+    const OpenYAMM::Game::SpriteFrameEntry *pDaggerFrame = billboardSet.spriteFrameTable.getFrame(pDagger->spriteId, 0);
+    REQUIRE(pDaggerFrame != nullptr);
+    const std::string daggerTexture =
+        OpenYAMM::Game::SpriteFrameTable::resolveTexture(*pDaggerFrame, 0).textureName;
+    CHECK((preloaded(*pDagger)
+        || mapLoader.assetFileSystem.exists("engine/decorations_x2/" + daggerTexture + "_p"
+            + std::to_string(pDaggerFrame->paletteId) + ".png")));
 
-        if (!OpenYAMM::Game::SpriteFrameTable::hasFlag(
-                pFrame->flags,
-                OpenYAMM::Game::SpriteFrameFlag::HasMore))
-        {
-            foundAnimationEnd = true;
-            break;
-        }
-    }
-
-    CHECK(checkedTexture);
-    CHECK(foundAnimationEnd);
+    // Object 10030: the DarkFire Bolt missile.
+    const OpenYAMM::Game::ObjectEntry *pMissile = unplacedObject(10030);
+    REQUIRE(pMissile != nullptr);
+    REQUIRE((pMissile->flags & OpenYAMM::Game::ObjectDescUnpickable) != 0);
+    CHECK_FALSE(preloaded(*pMissile));
 }
 
 TEST_CASE("MM9 quest and miscellaneous items resolve dedicated WorldItem sprites")
@@ -8999,7 +9004,7 @@ TEST_CASE("full gameplay New Sorpigal load keeps actor textures lazy and loads n
                 });
         };
 
-    // Models draw every New Sorpigal decoration (worlds/mm6/models/decorations.yml), so none of their sprites loads,
+    // Models draw every New Sorpigal decoration (engine/models/decorations.yml), so none of their sprites loads,
     // including a state an event switches to (the drawn sword) or a frame of an animation (flags, sea arches).
     for (const char *pDecorationName : {"swrdstn", "swrdstx", "fla3__01", "bigbarel", "searka01", "searkb01"})
     {

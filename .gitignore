@@ -2,6 +2,9 @@
 /build-vulkan/
 /build-gprof/
 /build-prof/
+/build-windows-cross/
+/build-flatpak-release/
+/build_release/
 /out/
 /.idea/
 /.vscode/

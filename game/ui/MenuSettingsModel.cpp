@@ -1,12 +1,53 @@
 #include "game/ui/MenuSettingsModel.h"
 #include "game/render/CombatActorHealthBarPolicy.h"
+#include <algorithm>
+#include <array>
 #include <charconv>
 #include <stdexcept>
 
 namespace OpenYAMM::Game
 {
+namespace
+{
+// Low is the Android profile, Medium the desktop release profile and High the best quality. Presets own these menu
+// options and three INI-only terrain and sky fields; display, taste and gameplay-feel options stay the player's.
+constexpr std::array<std::string_view, 3> GraphicsQualityPresets = {"low", "medium", "high"};
+
+struct GraphicsQualityOption
+{
+    std::string_view id;
+    std::array<std::string_view, 3> values;
+};
+
+constexpr GraphicsQualityOption GraphicsQualityOptions[] = {
+    {"antialiasing", {"off", "off", "4x"}},
+    {"ambient_occlusion", {"false", "false", "false"}},
+    {"bloom", {"false", "true", "true"}},
+    {"model_shadow_quality", {"0", "0", "2"}},
+    {"terrain_decorations", {"false", "true", "true"}},
+    {"terrain_anisotropy", {"2x", "4x", "8x"}},
+    {"terrain_specular", {"false", "true", "true"}},
+    {"wet_surfaces", {"true", "true", "true"}},
+    {"weather_quality", {"medium", "high", "high"}},
+    {"light_grid", {"low", "high", "high"}},
+    {"water_reflections", {"true", "true", "true"}},
+    {"water_reflection_size", {"256", "512", "512"}},
+    {"water_sprite_reflections", {"false", "false", "true"}},
+    {"water_movement_ripples", {"true", "true", "true"}},
+    {"rain_ripples", {"true", "true", "true"}},
+    {"view_distance", {"default", "default", "default"}},
+};
+constexpr std::array<int, 3> GraphicsQualityTerrainSubdivisions = {2, 4, 4};
+constexpr std::array<bool, 3> GraphicsQualityTerrainAntiTiling = {false, true, true};
+constexpr std::array<float, 3> GraphicsQualitySkyResolutionScales = {0.5f, 1.0f, 1.0f};
+}
+
 std::string menuSettingValue(const GameSettings &settings, std::string_view id)
 {
+    if (id == "graphics_quality")
+    {
+        return graphicsQualityPreset(settings);
+    }
     if (id == "bolster_monsters")
     {
         return settings.bolsterMonsters ? "true" : "false";
@@ -46,6 +87,10 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
     if (id == "vsync")
     {
         return settings.verticalSync ? "true" : "false";
+    }
+    if (id == "antialiasing")
+    {
+        return antialiasingValue(settings.antialiasing);
     }
     if (id == "view_distance")
     {
@@ -87,17 +132,21 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
     {
         return settings.waterSpriteReflections ? "true" : "false";
     }
-    if (id == "projectile_style")
-    {
-        return projectileStyleValue(settings.projectileStyle);
-    }
     if (id == "weather_quality")
     {
         return weatherQualityValue(settings.weatherQuality);
     }
+    if (id == "light_grid")
+    {
+        return lightGridQualityValue(settings.lightGrid);
+    }
     if (id == "wet_surfaces")
     {
         return settings.wetSurfaces ? "true" : "false";
+    }
+    if (id == "terrain_specular")
+    {
+        return settings.terrainSpecular ? "true" : "false";
     }
     if (id == "rain_ripples")
     {
@@ -110,6 +159,14 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
     if (id == "ambient_occlusion_strength")
     {
         return std::to_string(settings.ambientOcclusionStrength);
+    }
+    if (id == "bloom")
+    {
+        return settings.bloom ? "true" : "false";
+    }
+    if (id == "bloom_strength")
+    {
+        return std::to_string(settings.bloomStrength);
     }
     if (id == "cinematic_grading")
     {
@@ -241,6 +298,11 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
 
 bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std::string &value)
 {
+    if (id == "graphics_quality")
+    {
+        // Custom only names a mix of presets, so choosing it keeps the current options.
+        return value == "custom" || applyGraphicsQualityPreset(settings, value);
+    }
     if (id == "bolster_monsters")
     {
         if (value != "true" && value != "false")
@@ -331,6 +393,14 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
         settings.verticalSync = value == "true";
         return true;
     }
+    if (id == "antialiasing")
+    {
+        if (value != "off" && value != "2x" && value != "4x")
+        {
+            return false;
+        }
+        return parseAntialiasingValue(value, settings.antialiasing);
+    }
     if (id == "view_distance")
     {
         if (value != "default" && value != "32768" && value != "unlimited")
@@ -412,22 +482,22 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
         }
         return true;
     }
-    if (id == "projectile_style")
-    {
-        return (value == "enhanced" || value == "classic") &&
-            parseProjectileStyleValue(value, settings.projectileStyle);
-    }
     if (id == "weather_quality")
     {
         return parseWeatherQualityValue(value, settings.weatherQuality);
     }
-    if (id == "wet_surfaces" || id == "rain_ripples")
+    if (id == "light_grid")
+    {
+        return parseLightGridQualityValue(value, settings.lightGrid);
+    }
+    if (id == "wet_surfaces" || id == "rain_ripples" || id == "terrain_specular")
     {
         if (value != "true" && value != "false")
         {
             return false;
         }
-        (id == "wet_surfaces" ? settings.wetSurfaces : settings.rainRipples) = value == "true";
+        (id == "wet_surfaces" ? settings.wetSurfaces
+            : id == "rain_ripples" ? settings.rainRipples : settings.terrainSpecular) = value == "true";
         return true;
     }
     if (id == "water_reflection_size")
@@ -460,6 +530,26 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
             return false;
         }
         settings.ambientOcclusionStrength = number;
+        return true;
+    }
+    if (id == "bloom")
+    {
+        if (value != "true" && value != "false")
+        {
+            return false;
+        }
+        settings.bloom = value == "true";
+        return true;
+    }
+    if (id == "bloom_strength")
+    {
+        int number = 0;
+        const auto result = std::from_chars(value.data(), value.data() + value.size(), number);
+        if (result.ec != std::errc{} || result.ptr != value.data() + value.size() || number < 0 || number > 100)
+        {
+            return false;
+        }
+        settings.bloomStrength = number;
         return true;
     }
     if (id == "cinematic_grading")
@@ -725,6 +815,46 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
         return true;
     }
     return false;
+}
+
+std::string graphicsQualityPreset(const GameSettings &settings)
+{
+    for (size_t preset = 0; preset < GraphicsQualityPresets.size(); ++preset)
+    {
+        bool matches = settings.terrainSubdivision == GraphicsQualityTerrainSubdivisions[preset]
+            && settings.terrainAntiTiling == GraphicsQualityTerrainAntiTiling[preset]
+            && settings.skyResolutionScale == GraphicsQualitySkyResolutionScales[preset];
+        for (const GraphicsQualityOption &option : GraphicsQualityOptions)
+        {
+            matches = matches && menuSettingValue(settings, option.id) == option.values[preset];
+        }
+        if (matches)
+        {
+            return std::string(GraphicsQualityPresets[preset]);
+        }
+    }
+    return "custom";
+}
+
+bool applyGraphicsQualityPreset(GameSettings &settings, std::string_view preset)
+{
+    const auto found = std::find(GraphicsQualityPresets.begin(), GraphicsQualityPresets.end(), preset);
+    if (found == GraphicsQualityPresets.end())
+    {
+        return false;
+    }
+    const size_t index = size_t(found - GraphicsQualityPresets.begin());
+    for (const GraphicsQualityOption &option : GraphicsQualityOptions)
+    {
+        if (!setMenuSettingValue(settings, option.id, std::string(option.values[index])))
+        {
+            throw std::logic_error("Invalid graphics quality value for " + std::string(option.id));
+        }
+    }
+    settings.terrainSubdivision = GraphicsQualityTerrainSubdivisions[index];
+    settings.terrainAntiTiling = GraphicsQualityTerrainAntiTiling[index];
+    settings.skyResolutionScale = GraphicsQualitySkyResolutionScales[index];
+    return true;
 }
 
 bool sameMenuBinding(const InputBinding &left, const InputBinding &right)

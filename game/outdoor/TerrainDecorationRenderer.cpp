@@ -18,12 +18,33 @@ struct Vertex
     uint32_t color;
 };
 
-// Two crossed cards, each a fan over the TerrainDecorationCutoutVertices outline of its tuft layer: the vertex
-// shader places slot x of card y from the layer's cutout (u_terrainDecorationCutout).
+// One card, a fan over the TerrainDecorationCutoutVertices outline of its tuft layer: the vertex shader places slot x
+// from the layer's cutout (u_terrainDecorationCutout) and turns the card to face the camera.
 std::vector<Vertex> grassMesh()
 {
     std::vector<Vertex> vertices;
-    for (int card = 0; card < 2; ++card)
+    for (size_t slot = 0; slot < TerrainDecorationCutoutVertices; ++slot)
+    {
+        vertices.push_back({float(slot), 0.0f, 0.0f, 0.0f, 0.0f, 0xffffffff});
+    }
+    return vertices;
+}
+
+std::vector<uint16_t> grassIndices()
+{
+    std::vector<uint16_t> indices;
+    for (uint16_t slot = 1; slot + 1 < TerrainDecorationCutoutVertices; ++slot)
+    {
+        indices.insert(indices.end(), {0, slot, uint16_t(slot + 1)});
+    }
+    return indices;
+}
+
+// TerrainDecorationMaxClumpCards fans like grassMesh's, vertex y = the card; a clump draws the first cards.
+std::vector<Vertex> clumpMesh()
+{
+    std::vector<Vertex> vertices;
+    for (int card = 0; card < TerrainDecorationMaxClumpCards; ++card)
     {
         for (size_t slot = 0; slot < TerrainDecorationCutoutVertices; ++slot)
         {
@@ -33,10 +54,10 @@ std::vector<Vertex> grassMesh()
     return vertices;
 }
 
-std::vector<uint16_t> grassIndices()
+std::vector<uint16_t> clumpIndices()
 {
     std::vector<uint16_t> indices;
-    for (uint16_t card = 0; card < 2; ++card)
+    for (uint16_t card = 0; card < TerrainDecorationMaxClumpCards; ++card)
     {
         const uint16_t first = uint16_t(card * TerrainDecorationCutoutVertices);
         for (uint16_t slot = 1; slot + 1 < TerrainDecorationCutoutVertices; ++slot)
@@ -116,12 +137,15 @@ bool TerrainDecorationRenderer::initialize(
         for (size_t texel = 0; texel < alpha.size(); ++texel)
         {
             alpha[texel] = pixels[texel * 4 + 3];
-            // Texels the grass shader keeps at full coverage (alpha cutoff 0.4); pixels are BGRA.
+            // Texels the grass shader keeps at full coverage (alpha cutoff 0.4), with its shading by height; pixels
+            // are BGRA.
             if (alpha[texel] >= 102)
             {
-                foliage.color[0] += pixels[texel * 4 + 2];
-                foliage.color[1] += pixels[texel * 4 + 1];
-                foliage.color[2] += pixels[texel * 4];
+                const std::array<float, 3> shade =
+                    TerrainDecorationShade::average(1.0f - (float(texel / cellWidth) + 0.5f) / float(cellHeight));
+                foliage.color[0] += pixels[texel * 4 + 2] * shade[0];
+                foliage.color[1] += pixels[texel * 4 + 1] * shade[1];
+                foliage.color[2] += pixels[texel * 4] * shade[2];
                 foliage.fill += 1.0f;
             }
         }
@@ -154,6 +178,13 @@ bool TerrainDecorationRenderer::initialize(
         bgfx::copy(grassFan.data(), uint32_t(grassFan.size() * sizeof(uint16_t))));
     m_stoneMesh = bgfx::createVertexBuffer(
         bgfx::copy(stone.data(), uint32_t(stone.size() * sizeof(Vertex))), meshLayout);
+    const std::vector<Vertex> clump = clumpMesh();
+    const std::vector<uint16_t> clumpFans = clumpIndices();
+    m_clumpMesh = bgfx::createVertexBuffer(
+        bgfx::copy(clump.data(), uint32_t(clump.size() * sizeof(Vertex))), meshLayout);
+    m_clumpIndices = bgfx::createIndexBuffer(
+        bgfx::copy(clumpFans.data(), uint32_t(clumpFans.size() * sizeof(uint16_t))));
+    m_clumpUniform = bgfx::createUniform("u_terrainDecorationClump", bgfx::UniformType::Vec4);
     bgfx::VertexLayout instanceLayout;
     instanceLayout.begin().add(bgfx::Attrib::TexCoord7, 4, bgfx::AttribType::Float)
         .add(bgfx::Attrib::TexCoord6, 4, bgfx::AttribType::Float)
@@ -164,20 +195,18 @@ bool TerrainDecorationRenderer::initialize(
     m_sampler = bgfx::createUniform("s_texColor", bgfx::UniformType::Sampler);
     m_params = bgfx::createUniform("u_terrainDecorationParams", bgfx::UniformType::Vec4);
     m_lodUniform = bgfx::createUniform("u_terrainDecorationLod", bgfx::UniformType::Vec4);
-    const std::vector<float> foliage = buildTerrainFoliageMap(placement, foliageLayers);
-    const bgfx::Memory *pFoliage = bgfx::alloc(uint32_t(foliage.size() * sizeof(uint16_t)));
-    for (size_t index = 0; index < foliage.size(); ++index)
-    {
-        reinterpret_cast<uint16_t *>(pFoliage->data)[index] = bx::halfFromFloat(foliage[index]);
-    }
-    m_foliageMap = bgfx::createTexture2D(TerrainFoliageMapSize, TerrainFoliageMapSize, false, 1,
-        bgfx::TextureFormat::RGBA16F, BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP, pFoliage);
+    const std::vector<uint8_t> foliage = encodeTerrainFoliageMap(
+        buildTerrainFoliageMap(placement, foliageLayers, config.clump));
+    m_foliageMap = bgfx::createTexture2D(TerrainFoliageMapSize, TerrainFoliageMapSize, true, 1,
+        bgfx::TextureFormat::RGBA8, BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+        bgfx::copy(foliage.data(), uint32_t(foliage.size())));
     m_cutoutUniform = bgfx::createUniform("u_terrainDecorationCutout", bgfx::UniformType::Vec4,
         uint16_t(m_cutouts.size()));
     if (!bgfx::isValid(m_texture) || !bgfx::isValid(m_instances) || !bgfx::isValid(m_grassMesh) ||
         !bgfx::isValid(m_grassIndices) || !bgfx::isValid(m_cutoutUniform) ||
         !bgfx::isValid(m_stoneMesh) || !bgfx::isValid(m_sampler) || !bgfx::isValid(m_params) ||
-        !bgfx::isValid(m_lodUniform) || !bgfx::isValid(m_foliageMap))
+        !bgfx::isValid(m_lodUniform) || !bgfx::isValid(m_foliageMap) || !bgfx::isValid(m_clumpMesh) ||
+        !bgfx::isValid(m_clumpIndices) || !bgfx::isValid(m_clumpUniform))
     {
         shutdown(true);
         return false;
@@ -194,6 +223,9 @@ void TerrainDecorationRenderer::setPlacement(const TerrainDecorationConfig &conf
     TerrainDecorationPlacement placement)
 {
     m_lod = config.lod;
+    m_overhead = config.overhead;
+    m_clump = config.clump;
+    m_groundShade = config.groundShade;
     m_stoneDistance = config.stoneDistance;
     m_foliageTint = config.foliageTint;
     m_ranks.clear();
@@ -214,9 +246,12 @@ void TerrainDecorationRenderer::shutdown(bool destroyResources)
         {
             bgfx::destroy(m_program);
         }
-        if (bgfx::isValid(m_shadowProgram))
+        for (const bgfx::ProgramHandle handle : {m_shadowProgram, m_coverageProgram, m_coverageShadowProgram})
         {
-            bgfx::destroy(m_shadowProgram);
+            if (bgfx::isValid(handle))
+            {
+                bgfx::destroy(handle);
+            }
         }
         if (bgfx::isValid(m_instances))
         {
@@ -233,6 +268,18 @@ void TerrainDecorationRenderer::shutdown(bool destroyResources)
         if (bgfx::isValid(m_grassIndices))
         {
             bgfx::destroy(m_grassIndices);
+        }
+        if (bgfx::isValid(m_clumpMesh))
+        {
+            bgfx::destroy(m_clumpMesh);
+        }
+        if (bgfx::isValid(m_clumpIndices))
+        {
+            bgfx::destroy(m_clumpIndices);
+        }
+        if (bgfx::isValid(m_clumpUniform))
+        {
+            bgfx::destroy(m_clumpUniform);
         }
         if (bgfx::isValid(m_cutoutUniform))
         {
@@ -261,10 +308,16 @@ void TerrainDecorationRenderer::shutdown(bool destroyResources)
     }
     m_program = BGFX_INVALID_HANDLE;
     m_shadowProgram = BGFX_INVALID_HANDLE;
+    m_coverageProgram = BGFX_INVALID_HANDLE;
+    m_coverageShadowProgram = BGFX_INVALID_HANDLE;
+    m_coverageProgramsAttempted = false;
     m_instances = BGFX_INVALID_HANDLE;
     m_grassMesh = BGFX_INVALID_HANDLE;
     m_stoneMesh = BGFX_INVALID_HANDLE;
     m_grassIndices = BGFX_INVALID_HANDLE;
+    m_clumpMesh = BGFX_INVALID_HANDLE;
+    m_clumpIndices = BGFX_INVALID_HANDLE;
+    m_clumpUniform = BGFX_INVALID_HANDLE;
     m_cutoutUniform = BGFX_INVALID_HANDLE;
     m_texture = BGFX_INVALID_HANDLE;
     m_sampler = BGFX_INVALID_HANDLE;
@@ -276,6 +329,12 @@ void TerrainDecorationRenderer::shutdown(bool destroyResources)
     m_ranks.clear();
     m_foliageTint = 0.0f;
     m_viewValid = false;
+}
+
+void TerrainDecorationRenderer::setCameraAltitude(float altitude)
+{
+    const float progress = std::clamp((altitude - m_overhead.start) / (m_overhead.end - m_overhead.start), 0.0f, 1.0f);
+    m_overheadAmount = progress * progress * (3.0f - 2.0f * progress);
 }
 
 bool TerrainDecorationRenderer::setView(
@@ -383,18 +442,35 @@ bool TerrainDecorationRenderer::canMerge(
     const TerrainDecorationPatch &batch, const OutdoorSelectedFxLights &batchLights,
     const TerrainDecorationPatch &next, const OutdoorSelectedFxLights &nextLights)
 {
-    return batch.count != 0 && next.count != 0 && batch.stone == next.stone &&
+    return batch.count != 0 && next.count != 0 && batch.stone == next.stone && batch.clump == next.clump &&
         batch.first + batch.count == next.first && batchLights.positions == nextLights.positions &&
         batchLights.colors == nextLights.colors && batchLights.params == nextLights.params;
 }
 
+void TerrainDecorationRenderer::setCoveragePrograms(bgfx::ProgramHandle program, bgfx::ProgramHandle shadowProgram)
+{
+    for (const bgfx::ProgramHandle handle : {m_coverageProgram, m_coverageShadowProgram})
+    {
+        if (bgfx::isValid(handle))
+        {
+            bgfx::destroy(handle);
+        }
+    }
+    m_coverageProgram = program;
+    m_coverageShadowProgram = shadowProgram;
+    m_coverageProgramsAttempted = true;
+}
+
 void TerrainDecorationRenderer::submit(uint16_t viewId, const TerrainDecorationPatch &patch, float elapsedTime,
-    bool sunShadows)
+    bool sunShadows, bool alphaToCoverage)
 {
     const TerrainDecorationLod patchLod = lod(patch.stone);
-    // w: 1 = grass cards cut to their layer's outline, 0 = stones (plain mesh).
-    const float params[4] = {elapsedTime, patchLod.nearDistance, patchLod.farDistance, patch.stone ? 0.0f : 1.0f};
-    const float lodParams[4] = {patchLod.maxScale, 0.0f, 0.0f, 0.0f};
+    // w: 1 = grass cards cut to their layer's outline, 2 = clumps of them, 0 = stones (plain mesh).
+    const float params[4] = {elapsedTime, patchLod.nearDistance, patchLod.farDistance,
+        patch.stone ? 0.0f : patch.clump ? 2.0f : 1.0f};
+    // y = layers that fade as the camera flies (bit mask), z = that fade's progress (setCameraAltitude), w = the
+    // distance where clumps are down to one card.
+    const float lodParams[4] = {patchLod.maxScale, float(m_overhead.layerMask), m_overheadAmount, m_clump.distance};
     bgfx::setUniform(m_params, params);
     bgfx::setUniform(m_lodUniform, lodParams);
     if (patch.stone)
@@ -404,12 +480,32 @@ void TerrainDecorationRenderer::submit(uint16_t viewId, const TerrainDecorationP
     else
     {
         bgfx::setUniform(m_cutoutUniform, m_cutouts.data(), uint16_t(m_cutouts.size()));
-        bgfx::setVertexBuffer(0, m_grassMesh);
-        bgfx::setIndexBuffer(m_grassIndices);
+        if (patch.clump)
+        {
+            const float lean = m_clump.leanDegrees * 0.017453293f;
+            const float clumpParams[4] = {float(m_clump.cards), std::sin(lean), std::cos(lean), m_clump.cardScale};
+            bgfx::setUniform(m_clumpUniform, clumpParams);
+            bgfx::setVertexBuffer(0, m_clumpMesh);
+            bgfx::setIndexBuffer(m_clumpIndices, 0,
+                uint32_t(m_clump.cards) * uint32_t(TerrainDecorationCutoutVertices - 2) * 3);
+        }
+        else
+        {
+            bgfx::setVertexBuffer(0, m_grassMesh);
+            bgfx::setIndexBuffer(m_grassIndices);
+        }
     }
     bgfx::setInstanceDataBuffer(m_instances, patch.first, patch.count);
     bgfx::setTexture(0, m_sampler, m_texture);
-    bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS);
+    const uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS
+        | BGFX_STATE_MSAA;
+    if (alphaToCoverage && bgfx::isValid(m_coverageProgram) && bgfx::isValid(m_coverageShadowProgram))
+    {
+        bgfx::setState(state | BGFX_STATE_BLEND_ALPHA_TO_COVERAGE);
+        bgfx::submit(viewId, sunShadows ? m_coverageShadowProgram : m_coverageProgram);
+        return;
+    }
+    bgfx::setState(state);
     bgfx::submit(viewId, sunShadows ? m_shadowProgram : m_program);
 }
 } // namespace OpenYAMM::Game

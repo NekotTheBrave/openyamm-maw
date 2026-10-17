@@ -1,5 +1,6 @@
 #include "game/fx/WorldFxSystem.h"
 
+#include "game/StringUtils.h"
 #include "game/app/GameSession.h"
 #include "game/audio/GameAudioSystem.h"
 #include "game/data/GameDataRepository.h"
@@ -8,11 +9,13 @@
 #include "game/fx/import/EffectDefinitionLoader.h"
 #include "game/gameplay/ActorBehaviorRuntime.h"
 #include "game/gameplay/GameplayFxService.h"
+#include "game/gameplay/GameplayProjectileService.h"
 #include "game/gameplay/ActorModelPresentation.h"
 #include "game/maps/ActorModelManifest.h"
 #include "game/party/PartySpellSystem.h"
 #include "game/party/SpellIds.h"
 #include "game/tables/MonsterProjectileTable.h"
+#include "game/tables/ItemTable.h"
 #include "game/tables/ObjectTable.h"
 #include "game/tables/MonsterTable.h"
 #include "game/tables/SpriteTables.h"
@@ -372,6 +375,11 @@ void WorldFxSystem::reset()
     m_actorModelsConfigured = false;
     m_corpseSatchelStates.clear();
     m_satchelAssets = {};
+    m_projectileModels.clear();
+    m_projectileModelBindings.clear();
+    m_itemModels.clear();
+    m_loadedItemModels.clear();
+    m_itemModelBindings.clear();
     m_models.clear();
     m_modelAssets.clear();
     m_glowBillboards.clear();
@@ -2303,28 +2311,46 @@ namespace
 const Engine::ModelBounds NoActorModelBounds = {};
 }
 
-const Engine::ModelBounds *WorldFxSystem::actorModelBounds(size_t actorIndex) const
+std::optional<Engine::ModelInstanceHandle> WorldFxSystem::actorPickingHandle(size_t actorIndex) const
 {
     if (const CorpseSatchel *pCorpse = goneCorpse(actorIndex))
     {
-        const Engine::ModelBounds *pBounds = m_models.pickingBounds(pCorpse->handle);
-        return pBounds != nullptr ? pBounds : &NoActorModelBounds;
+        return pCorpse->handle;
     }
     const auto iterator = m_actorModels.find(actorIndex);
     if (iterator == m_actorModels.end())
     {
-        return nullptr;
+        return std::nullopt;
     }
     // A burnt-out body leaves only its loot satchel or visible attachments (such as charred remains).
     const std::optional<Engine::ModelBurn> burn = actorBurn(iterator->second);
     if (burn && Engine::modelBurnConsumed(*burn))
     {
         const auto corpse = m_corpseSatchelStates.find(actorIndex);
-        const Engine::ModelBounds *pBounds = corpse != m_corpseSatchelStates.end()
-            ? m_models.pickingBounds(corpse->second.handle) : m_models.pickingBounds(iterator->second.handle);
-        return pBounds != nullptr ? pBounds : &NoActorModelBounds;
+        if (corpse != m_corpseSatchelStates.end())
+        {
+            return corpse->second.handle;
+        }
     }
-    return m_models.pickingBounds(iterator->second.handle);
+    return iterator->second.handle;
+}
+
+const Engine::ModelBounds *WorldFxSystem::actorModelBounds(size_t actorIndex) const
+{
+    const std::optional<Engine::ModelInstanceHandle> handle = actorPickingHandle(actorIndex);
+    if (!handle)
+    {
+        return nullptr;
+    }
+    const Engine::ModelBounds *pBounds = m_models.pickingBounds(*handle);
+    return pBounds != nullptr ? pBounds : &NoActorModelBounds;
+}
+
+std::optional<float> WorldFxSystem::actorModelPickRay(size_t actorIndex, const std::array<float, 3> &origin,
+    const std::array<float, 3> &direction) const
+{
+    const std::optional<Engine::ModelInstanceHandle> handle = actorPickingHandle(actorIndex);
+    return handle ? m_models.pickRay(*handle, origin, direction) : std::nullopt;
 }
 
 std::optional<float> WorldFxSystem::actorModelStandingTop(size_t actorIndex) const
@@ -2520,46 +2546,340 @@ bool WorldFxSystem::loadNamedEffectLibrary(
     return true;
 }
 
-void WorldFxSystem::setProjectileFlightEffects(bool enabled)
-{
-    if (enabled == m_projectileFlightEffectsEnabled)
-    {
-        return;
-    }
-    m_projectileFlightEffectsEnabled = enabled;
-    if (!enabled)
-    {
-        stopProjectileFlightEffects();
-        stopSpellVisualFlights();
-        for (const PartyAuraEffect &aura : m_partyAuraEffects)
-        {
-            m_namedEffects.stop(aura.handle, EffectStopMode::Drain);
-        }
-        m_partyAuraEffects.clear();
-    }
-}
-
 const ProjectileEffectBinding *WorldFxSystem::projectileEffectBinding(
     FxRecipes::ProjectileRecipe recipe,
     int16_t monsterId) const
 {
-    if (!m_projectileFlightEffectsEnabled)
-    {
-        return nullptr;
-    }
     const MonsterTable::MonsterStatsEntry *pStats = monsterId != 0 && m_pProjectileMonsterTable != nullptr
         ? m_pProjectileMonsterTable->findStatsById(monsterId)
         : nullptr;
     return m_projectileEffectBindings.find(recipe, pStats != nullptr ? pStats->pictureName : std::string());
 }
 
+bool WorldFxSystem::loadProjectileModels(const Engine::AssetFileSystem &assets, std::string &error)
+{
+    constexpr const char *BindingsPath = "engine/models/projectiles.yml";
+    ProjectileModelBindings bindings;
+    if (!loadProjectileModelBindings(assets, BindingsPath, bindings, error))
+    {
+        return false;
+    }
+    std::unordered_map<int16_t, LoadedProjectileModel> loaded;
+    for (const auto &[objectId, binding] : bindings)
+    {
+        const Engine::ModelLoadResult result = m_modelAssets.load(assets, binding.model);
+        if (!result)
+        {
+            error = std::string(BindingsPath) + ": object " + std::to_string(objectId) + ": " + result.error;
+            return false;
+        }
+        const Engine::ModelBounds &bounds = result.asset->staticBounds;
+        const float extent = bounds.valid ? bounds.max[2] - bounds.min[2] : 0.0f;
+        if (extent <= 1.0e-4f)
+        {
+            error = std::string(BindingsPath) + ": object " + std::to_string(objectId) + ": " + binding.model +
+                " has no extent along +Z";
+            return false;
+        }
+        loaded[objectId] = {result.asset, binding.length / extent, binding.spinAxis,
+            binding.spinDegreesPerSecond * std::numbers::pi_v<float> / 180.0f};
+    }
+    for (const auto &[key, model] : m_projectileModels)
+    {
+        m_models.destroy(model.handle);
+    }
+    m_projectileModels.clear();
+    m_projectileModelBindings = std::move(loaded);
+    return true;
+}
+
+const WorldFxSystem::LoadedProjectileModel *WorldFxSystem::projectileModelBinding(uint16_t objectDescriptionId) const
+{
+    if (m_projectileModelBindings.empty() || m_pProjectileObjectTable == nullptr)
+    {
+        return nullptr;
+    }
+    const ObjectEntry *pObject = m_pProjectileObjectTable->get(objectDescriptionId);
+    if (pObject == nullptr)
+    {
+        return nullptr;
+    }
+    const auto found = m_projectileModelBindings.find(pObject->objectId);
+    return found != m_projectileModelBindings.end() ? &found->second : nullptr;
+}
+
+void WorldFxSystem::syncProjectileModels(GameSession &session)
+{
+    if (m_projectileModelBindings.empty() && m_projectileModels.empty())
+    {
+        return;
+    }
+    for (auto &[key, model] : m_projectileModels)
+    {
+        model.seen = false;
+    }
+    // Flying projectiles, then the world's armed Fire Spike traps (their own id space, in the key's high half).
+    std::vector<GameplayProjectilePresentationState> traps;
+    if (const IGameplayWorldRuntime *pWorld = session.activeWorldRuntime())
+    {
+        pWorld->collectFireSpikeTrapPresentationStates(traps);
+    }
+    const std::vector<GameplayProjectilePresentationState> &flying =
+        session.gameplayFxService().activeProjectilePresentationStates();
+    for (size_t index = 0; index < flying.size() + traps.size(); ++index)
+    {
+        const bool trap = index >= flying.size();
+        const GameplayProjectilePresentationState &projectile = trap ? traps[index - flying.size()] : flying[index];
+        const LoadedProjectileModel *pBinding = projectileModelBinding(projectile.objectDescriptionId);
+        if (pBinding == nullptr)
+        {
+            continue;
+        }
+        const uint64_t key = (uint64_t(trap ? 1 : 0) << 32) | projectile.projectileId;
+        auto [found, inserted] = m_projectileModels.try_emplace(key);
+        ProjectileModel &model = found->second;
+        if (inserted)
+        {
+            model.handle = m_models.create(pBinding->asset);
+            m_models.setStaticStandIn(model.handle, pBinding->asset);
+        }
+        model.seen = true;
+        model.sectorId = projectile.sectorId;
+        const float horizontalSpeed = std::hypot(projectile.velocityX, projectile.velocityY);
+        if (!projectile.isSettled && horizontalSpeed + std::abs(projectile.velocityZ) > 1.0e-3f)
+        {
+            model.yaw = std::atan2(projectile.velocityY, projectile.velocityX) - 0.5f * std::numbers::pi_v<float>;
+            model.pitch = std::atan2(projectile.velocityZ, horizontalSpeed);
+        }
+        // Yaw then pitch, so the model stays upright about its flight (its fins keep their roll), then its own spin;
+        // the model's forward is OpenYAMM +Y, its up +Z and its side +X before turning. A settled projectile lies
+        // level and still.
+        const float halfYaw = 0.5f * model.yaw;
+        const float halfPitch = projectile.isSettled ? 0.0f : 0.5f * model.pitch;
+        const std::array<float, 4> yawPitch = {std::cos(halfYaw) * std::sin(halfPitch),
+            std::sin(halfYaw) * std::sin(halfPitch), std::sin(halfYaw) * std::cos(halfPitch),
+            std::cos(halfYaw) * std::cos(halfPitch)};
+        std::array<float, 4> rotation = yawPitch;
+        if (pBinding->spinAxis != ProjectileModelSpinAxis::None && !projectile.isSettled)
+        {
+            // Projectile ticks run at 128 a second; each projectile starts at its own angle.
+            const float phase = float((projectile.projectileId * 2654435761u) >> 8) / float(1u << 24);
+            const float halfAngle = 0.5f * (pBinding->spinRadiansPerSecond
+                * float(projectile.timeSinceCreatedTicks) / 128.0f + phase * 2.0f * std::numbers::pi_v<float>);
+            const float sine = std::sin(halfAngle);
+            const std::array<float, 3> axis = pBinding->spinAxis == ProjectileModelSpinAxis::Forward
+                ? std::array<float, 3>{0.0f, 1.0f, 0.0f}
+                : pBinding->spinAxis == ProjectileModelSpinAxis::Up ? std::array<float, 3>{0.0f, 0.0f, 1.0f}
+                : std::array<float, 3>{1.0f, 0.0f, 0.0f};
+            const std::array<float, 4> spin = {axis[0] * sine, axis[1] * sine, axis[2] * sine, std::cos(halfAngle)};
+            const std::array<float, 4> &a = yawPitch;
+            rotation = {a[3] * spin[0] + a[0] * spin[3] + a[1] * spin[2] - a[2] * spin[1],
+                a[3] * spin[1] - a[0] * spin[2] + a[1] * spin[3] + a[2] * spin[0],
+                a[3] * spin[2] + a[0] * spin[1] - a[1] * spin[0] + a[2] * spin[3],
+                a[3] * spin[3] - a[0] * spin[0] - a[1] * spin[1] - a[2] * spin[2]};
+        }
+        const FxRecipes::ProjectileRecipe recipe = FxRecipes::classifyProjectileRecipe(
+            projectile.spellId, projectile.objectName, projectile.objectSpriteName, projectile.objectFlags);
+        // Where the flight effects sit, so the model and its trail line up.
+        const float anchorOffsetZ =
+            FxRecipes::projectileRecipeAnchorOffset(recipe, projectile.radius, projectile.height);
+        m_models.setTransform(model.handle, Engine::gltfModelPlacement(
+            {projectile.x, projectile.y, projectile.z + anchorOffsetZ}, rotation, pBinding->scale));
+    }
+    for (auto iterator = m_projectileModels.begin(); iterator != m_projectileModels.end();)
+    {
+        if (iterator->second.seen)
+        {
+            ++iterator;
+            continue;
+        }
+        m_models.destroy(iterator->second.handle);
+        iterator = m_projectileModels.erase(iterator);
+    }
+}
+
+void WorldFxSystem::setObjectModelVisibility(const std::function<bool(int16_t sectorId)> &visible)
+{
+    for (const auto &[key, model] : m_projectileModels)
+    {
+        m_models.setVisible(model.handle, visible(model.sectorId));
+    }
+    for (const auto &[key, model] : m_itemModels)
+    {
+        m_models.setVisible(model.handle, visible(model.sectorId));
+    }
+}
+
+bool WorldFxSystem::loadItemModels(const Engine::AssetFileSystem &assets, std::string &error)
+{
+    ItemModelBindings bindings;
+    if (!loadItemModelBindings(assets, "engine/models/items.yml", bindings, error))
+    {
+        return false;
+    }
+    for (const auto &[key, model] : m_itemModels)
+    {
+        m_models.destroy(model.handle);
+    }
+    m_itemModels.clear();
+    m_loadedItemModels.clear();
+    m_itemModelBindings = std::move(bindings);
+    m_pItemModelAssets = &assets;
+    return true;
+}
+
+const ItemModelBinding *WorldFxSystem::itemModelBinding(uint32_t itemId, std::string *pIcon) const
+{
+    const ItemDefinition *pItem =
+        m_itemModelBindings.empty() || m_pItemTable == nullptr ? nullptr : m_pItemTable->get(itemId);
+    if (pItem == nullptr)
+    {
+        return nullptr;
+    }
+    const std::string icon = toLowerCopy(pItem->iconName);
+    const auto found = m_itemModelBindings.find(icon);
+    if (found == m_itemModelBindings.end())
+    {
+        return nullptr;
+    }
+    if (pIcon != nullptr)
+    {
+        *pIcon = icon;
+    }
+    return &found->second;
+}
+
+bool WorldFxSystem::hasItemModel(uint32_t itemId) const
+{
+    std::string icon;
+    if (itemModelBinding(itemId, &icon) == nullptr)
+    {
+        return false;
+    }
+    const auto loaded = m_loadedItemModels.find(icon);
+    return loaded == m_loadedItemModels.end() || loaded->second.asset != nullptr;
+}
+
+const WorldFxSystem::LoadedItemModel *WorldFxSystem::loadedItemModel(uint32_t itemId)
+{
+    std::string icon;
+    const ItemModelBinding *pBinding = itemModelBinding(itemId, &icon);
+    if (pBinding == nullptr || m_pItemModelAssets == nullptr)
+    {
+        return nullptr;
+    }
+    auto [found, inserted] = m_loadedItemModels.try_emplace(icon);
+    if (inserted)
+    {
+        const Engine::ModelLoadResult result = m_modelAssets.load(*m_pItemModelAssets, pBinding->model);
+        const Engine::ModelBounds *pBounds = result ? &result.asset->staticBounds : nullptr;
+        // The longest horizontal side (glTF X and Z) takes the binding's length.
+        const float extent = pBounds != nullptr && pBounds->valid
+            ? std::max(pBounds->max[0] - pBounds->min[0], pBounds->max[2] - pBounds->min[2]) : 0.0f;
+        if (!result || extent <= 1.0e-4f)
+        {
+            std::cerr << "Item model " << pBinding->model << " failed to load: "
+                      << (result ? std::string("no horizontal extent") : result.error) << '\n';
+        }
+        else
+        {
+            found->second = {result.asset, pBinding->length / extent};
+        }
+    }
+    return found->second.asset != nullptr ? &found->second : nullptr;
+}
+
+void WorldFxSystem::syncItemModels(GameSession &session)
+{
+    m_pItemTable = &session.data().itemTable();
+    if (m_itemModelBindings.empty() && m_itemModels.empty())
+    {
+        return;
+    }
+    for (auto &[key, model] : m_itemModels)
+    {
+        model.seen = false;
+    }
+    std::vector<GameplayWorldItemPresentationState> items;
+    if (const IGameplayWorldRuntime *pWorld = session.activeWorldRuntime())
+    {
+        pWorld->collectWorldItemPresentationStates(items);
+    }
+    for (const GameplayWorldItemPresentationState &item : items)
+    {
+        const LoadedItemModel *pModel = loadedItemModel(item.itemId);
+        if (pModel == nullptr)
+        {
+            continue;
+        }
+        auto [found, inserted] = m_itemModels.try_emplace(item.key);
+        ItemModel &model = found->second;
+        if (!inserted && model.itemId != item.itemId)
+        {
+            m_models.destroy(model.handle);
+            inserted = true;
+        }
+        if (inserted)
+        {
+            model.handle = m_models.create(pModel->asset);
+            m_models.setStaticStandIn(model.handle, pModel->asset);
+            model.itemId = item.itemId;
+        }
+        model.seen = true;
+        model.sectorId = item.sectorId;
+        // Lying flat with a yaw of its own, from its key, so neighbouring items do not all point the same way; on the
+        // drawn ground, tilted to its slope and raised onto it.
+        const float halfYaw =
+            float((item.key * 2654435761u) >> 8) / float(1u << 24) * std::numbers::pi_v<float>;
+        std::array<float, 4> rotation = {0.0f, 0.0f, std::sin(halfYaw), std::cos(halfYaw)};
+        float z = item.z;
+        if (const std::optional<ItemGround> ground =
+                m_itemGroundSampler ? m_itemGroundSampler(item.x, item.y, item.z) : std::nullopt)
+        {
+            // Raised a hair over the ground so the underside's rim does not flicker into it.
+            z = ground->z + 0.5f;
+            // Shortest arc from up to the normal, then the yaw about the tilted up.
+            const std::array<float, 3> &n = ground->normal;
+            const float w = 1.0f + n[2];
+            const float length = std::sqrt(n[1] * n[1] + n[0] * n[0] + w * w);
+            const std::array<float, 4> tilt = {-n[1] / length, n[0] / length, 0.0f, w / length};
+            const std::array<float, 4> yaw = rotation;
+            rotation = {tilt[3] * yaw[0] + tilt[0] * yaw[3] + tilt[1] * yaw[2] - tilt[2] * yaw[1],
+                tilt[3] * yaw[1] - tilt[0] * yaw[2] + tilt[1] * yaw[3] + tilt[2] * yaw[0],
+                tilt[3] * yaw[2] + tilt[0] * yaw[1] - tilt[1] * yaw[0] + tilt[2] * yaw[3],
+                tilt[3] * yaw[3] - tilt[0] * yaw[0] - tilt[1] * yaw[1] - tilt[2] * yaw[2]};
+        }
+        m_models.setTransform(model.handle,
+            Engine::gltfModelPlacement({item.x, item.y, z}, rotation, pModel->scale));
+    }
+    for (auto iterator = m_itemModels.begin(); iterator != m_itemModels.end();)
+    {
+        if (iterator->second.seen)
+        {
+            ++iterator;
+            continue;
+        }
+        m_models.destroy(iterator->second.handle);
+        iterator = m_itemModels.erase(iterator);
+    }
+}
+
+void WorldFxSystem::setItemModelOutline(uint32_t key, uint32_t colorAbgr)
+{
+    const auto found = m_itemModels.find(key);
+    if (found != m_itemModels.end())
+    {
+        m_models.setOutlineColor(found->second.handle, colorAbgr);
+    }
+}
+
 bool WorldFxSystem::projectileShowsNativeSprite(const GameplayProjectilePresentationState &projectile) const
 {
-    const bool classic = projectile.visualMode != GameplayProjectileVisualMode::FxOnly;
-    if (!m_projectileFlightEffectsEnabled)
+    if (projectileModelBinding(projectile.objectDescriptionId) != nullptr)
     {
-        return classic;
+        return false;
     }
+    const bool classic = projectile.visualMode != GameplayProjectileVisualMode::FxOnly;
     const ProjectileEffectBinding *pBinding = projectileEffectBinding(
         FxRecipes::classifyProjectileRecipe(
             projectile.spellId,
@@ -2570,8 +2890,19 @@ bool WorldFxSystem::projectileShowsNativeSprite(const GameplayProjectilePresenta
     return pBinding != nullptr && pBinding->nativeSprite ? *pBinding->nativeSprite : classic;
 }
 
+bool WorldFxSystem::isWaterSplashImpact(const GameplayProjectileImpactPresentationState &impact) const
+{
+    const ObjectEntry *pObject =
+        m_pProjectileObjectTable != nullptr ? m_pProjectileObjectTable->get(impact.objectDescriptionId) : nullptr;
+    return pObject != nullptr && pObject->objectId == GameplayProjectileService::waterSplashObjectId();
+}
+
 bool WorldFxSystem::projectileImpactUsesNamedEffect(const GameplayProjectileImpactPresentationState &impact) const
 {
+    if (isWaterSplashImpact(impact))
+    {
+        return !m_projectileEffectBindings.waterSplash().empty();
+    }
     const FxRecipes::ProjectileRecipe recipe = FxRecipes::classifyProjectileRecipe(
         impact.sourceSpellId,
         impact.sourceObjectName,
@@ -2585,13 +2916,24 @@ bool WorldFxSystem::projectileImpactUsesNamedEffect(const GameplayProjectileImpa
     return pBinding != nullptr && !pBinding->impact.empty();
 }
 
+bool WorldFxSystem::projectileImpactShowsNativeSprite(const GameplayProjectileImpactPresentationState &impact) const
+{
+    if (projectileImpactUsesNamedEffect(impact))
+    {
+        return false;
+    }
+    const FxRecipes::ProjectileRecipe recipe = FxRecipes::classifyProjectileRecipe(
+        impact.sourceSpellId,
+        impact.sourceObjectName,
+        impact.sourceObjectSpriteName,
+        impact.sourceObjectFlags);
+    return !FxRecipes::projectileRecipeUsesDedicatedImpactFx(recipe)
+        || FxRecipes::projectileRecipeShowsImpactBillboard(recipe);
+}
+
 std::vector<std::string> WorldFxSystem::projectileEffectSpriteResources() const
 {
     std::vector<std::string> resources;
-    if (!m_projectileFlightEffectsEnabled)
-    {
-        return resources;
-    }
     std::vector<std::string> effectIds = m_projectileEffectBindings.effectIds();
     const std::vector<std::string> auraIds = m_spellAuraEffectBindings.effectIds();
     effectIds.insert(effectIds.end(), auraIds.begin(), auraIds.end());
@@ -2839,6 +3181,8 @@ void WorldFxSystem::syncProjectileFx(GameSession &session, float deltaSeconds, b
     m_pProjectileMonsterTable = &session.data().monsterTable();
     m_pMonsterProjectileTable = &session.data().monsterProjectileTable();
     m_pProjectileObjectTable = &session.data().objectTable();
+    syncProjectileModels(session);
+    syncItemModels(session);
     if (const IGameplayWorldRuntime *pWorld = session.activeWorldRuntime())
     {
         syncActorModelFx(*pWorld, deltaSeconds, refreshSpatialFx);
@@ -2862,7 +3206,7 @@ void WorldFxSystem::triggerPartySpellFx(const PartySpellCastResult &result)
 
     // The enhanced style plays one bound aura in front of the party instead of the particles around it.
     const bool buffAura = shouldTriggerPartySpellBuffAura(result.effectKind);
-    if (m_projectileFlightEffectsEnabled && (buffAura || shouldTriggerPartySpellSparkles(result.effectKind)))
+    if (buffAura || shouldTriggerPartySpellSparkles(result.effectKind))
     {
         const std::string &effectId = m_spellAuraEffectBindings.find(
             buffAura ? SpellAuraKind::PartyBuff : SpellAuraKind::Heal,
@@ -3517,6 +3861,11 @@ void WorldFxSystem::syncProjectileImpacts(GameSession &session)
             pEffectRebind == nullptr ? projectileEffectBinding(recipe, impact.sourceMonsterId) : nullptr;
         const std::string *pImpactEffect = pEffectRebind != nullptr ? pEffectRebind
             : pBinding != nullptr && !pBinding->impact.empty() ? &pBinding->impact : nullptr;
+        if (pImpactEffect == nullptr && !m_projectileEffectBindings.waterSplash().empty()
+            && isWaterSplashImpact(impact))
+        {
+            pImpactEffect = &m_projectileEffectBindings.waterSplash();
+        }
         if (pImpactEffect == nullptr && !FxRecipes::projectileRecipeUsesDedicatedImpactFx(recipe))
         {
             continue;
@@ -3531,7 +3880,8 @@ void WorldFxSystem::syncProjectileImpacts(GameSession &session)
                 EffectSpawnParams params;
                 params.position = {impact.x, impact.y, impact.z};
                 std::optional<std::array<float, 3>> targetPosition;
-                const bool followsTarget = pEffectRebind != nullptr || pBinding->impactFollowsTarget;
+                const bool followsTarget =
+                    pEffectRebind != nullptr || (pBinding != nullptr && pBinding->impactFollowsTarget);
                 if (followsTarget && impact.targetActorIndex != static_cast<size_t>(-1))
                 {
                     targetPosition = actorCenterPosition(session, impact.targetActorIndex);
@@ -3749,10 +4099,6 @@ bool WorldFxSystem::spawnActorAuraEffect(
     float actorHeight,
     size_t actorIndex)
 {
-    if (!m_projectileFlightEffectsEnabled)
-    {
-        return false;
-    }
     const std::string &effectId = m_spellAuraEffectBindings.find(kind, spellId);
     if (effectId.empty())
     {

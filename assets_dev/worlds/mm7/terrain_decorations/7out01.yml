@@ -11,104 +11,104 @@ rules:
   family: coastal_grass
   density: 0.9
   tint:
-  - 0.72
-  - 0.86
-  - 0.62
+  - 0.93
+  - 0.89
+  - 0.69
 - texture: 7grdrte
   family: coastal_grass
   density: 0.9
   tint:
-  - 0.72
-  - 0.86
-  - 0.62
+  - 0.93
+  - 0.89
+  - 0.69
   mask: masks/7grdrte_foreground.png
 - texture: 7grdrtn
   family: coastal_grass
   density: 0.9
   tint:
-  - 0.72
-  - 0.86
-  - 0.62
+  - 0.93
+  - 0.89
+  - 0.69
   mask: masks/7grdrtn_foreground.png
 - texture: 7grdrtne
   family: coastal_grass
   density: 0.9
   tint:
-  - 0.72
-  - 0.86
-  - 0.62
+  - 0.93
+  - 0.89
+  - 0.69
   mask: masks/7grdrtne_foreground.png
 - texture: 7grdrtnw
   family: coastal_grass
   density: 0.9
   tint:
-  - 0.72
-  - 0.86
-  - 0.62
+  - 0.93
+  - 0.89
+  - 0.69
   mask: masks/7grdrtnw_foreground.png
 - texture: 7grdrts
   family: coastal_grass
   density: 0.9
   tint:
-  - 0.72
-  - 0.86
-  - 0.62
+  - 0.93
+  - 0.89
+  - 0.69
   mask: masks/7grdrts_foreground.png
 - texture: 7grdrtse
   family: coastal_grass
   density: 0.9
   tint:
-  - 0.72
-  - 0.86
-  - 0.62
+  - 0.93
+  - 0.89
+  - 0.69
   mask: masks/7grdrtse_foreground.png
 - texture: 7grdrtsw
   family: coastal_grass
   density: 0.9
   tint:
-  - 0.72
-  - 0.86
-  - 0.62
+  - 0.93
+  - 0.89
+  - 0.69
   mask: masks/7grdrtsw_foreground.png
 - texture: 7grdrtw
   family: coastal_grass
   density: 0.9
   tint:
-  - 0.72
-  - 0.86
-  - 0.62
+  - 0.93
+  - 0.89
+  - 0.69
   mask: masks/7grdrtw_foreground.png
 - texture: 7grdrtxne
   family: coastal_grass
   density: 0.9
   tint:
-  - 0.72
-  - 0.86
-  - 0.62
+  - 0.93
+  - 0.89
+  - 0.69
   mask: masks/7grdrtxne_foreground.png
 - texture: 7grdrtxnw
   family: coastal_grass
   density: 0.9
   tint:
-  - 0.72
-  - 0.86
-  - 0.62
+  - 0.93
+  - 0.89
+  - 0.69
   mask: masks/7grdrtxnw_foreground.png
 - texture: 7grdrtxse
   family: coastal_grass
   density: 0.9
   tint:
-  - 0.72
-  - 0.86
-  - 0.62
+  - 0.93
+  - 0.89
+  - 0.69
   mask: masks/7grdrtxse_foreground.png
 - texture: 7grdrtxsw
   family: coastal_grass
   density: 0.9
   tint:
-  - 0.72
-  - 0.86
-  - 0.62
+  - 0.93
+  - 0.89
+  - 0.69
   mask: masks/7grdrtxsw_foreground.png
 - texture: 7swdrte
   family: marsh_reed

@@ -764,6 +764,31 @@ bool isOutdoorCylinderBlockedByFace(
     return isPointInsideOutdoorPolygonProjected(projectedPoint, geometry.vertices, geometry.normal);
 }
 
+namespace
+{
+// Whether (x, y) lies within the b-model's vertices' horizontal extent: no face outside it can hold the point. From the
+// vertices themselves, so moved mechanisms and edited b-models are always current.
+bool outdoorBModelSpansXY(const OutdoorBModel &bModel, float x, float y)
+{
+    if (bModel.vertices.empty())
+    {
+        return false;
+    }
+    int minX = bModel.vertices.front().x;
+    int maxX = minX;
+    int minY = bModel.vertices.front().y;
+    int maxY = minY;
+    for (const OutdoorBModelVertex &vertex : bModel.vertices)
+    {
+        minX = std::min(minX, vertex.x);
+        maxX = std::max(maxX, vertex.x);
+        minY = std::min(minY, vertex.y);
+        maxY = std::max(maxY, vertex.y);
+    }
+    return x >= float(minX) && x <= float(maxX) && y >= float(minY) && y <= float(maxY);
+}
+} // namespace
+
 OutdoorSupportFloorSample sampleOutdoorSupportFloor(
     const OutdoorMapData &outdoorMapData,
     float x,
@@ -784,6 +809,12 @@ OutdoorSupportFloorSample sampleOutdoorSupportFloor(
     for (size_t bModelIndex = 0; bModelIndex < outdoorMapData.bmodels.size(); ++bModelIndex)
     {
         const OutdoorBModel &bModel = outdoorMapData.bmodels[bModelIndex];
+
+        // The faces' own extent test below needs their geometry built first; most b-models are nowhere near.
+        if (!outdoorBModelSpansXY(bModel, x, y))
+        {
+            continue;
+        }
 
         for (size_t faceIndex = 0; faceIndex < bModel.faces.size(); ++faceIndex)
         {

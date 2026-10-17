@@ -2,7 +2,7 @@
 """Install an accepted 3D model (creature, attachment, decoration or prop) as a source, and its runtime copy.
 
 The accepted GLB goes to assets_source/<scope>/models/<name>.glb, the authoritative source (scope: worlds/<world> or
-engine). A model matching COOKED_MODELS (decorations since 2026-10-12) is then cooked into assets_dev
+engine). Decoration models of every world (<world>_deco_*.glb) are engine content and need --engine. A model matching COOKED_MODELS (decorations since 2026-10-12) is then cooked into assets_dev
 (tools/cook_models.py --only <path>). Any other model, until the switch to cooked models (ASSET_COOKING_PLAN.md
 section 12), gets an uncooked runtime copy at the same relative path in assets_dev, with hidden back faces culled
 (tools/model_backface_split.py).
@@ -10,8 +10,11 @@ section 12), gets an uncooked runtime copy at the same relative path in assets_d
     tools/install_model.py <accepted.glb> [--world mm6 | --engine] [--name <file name>]
 
 Install the unprocessed export: never copy a runtime copy back over a project export or a source.
+Installs are serialised (an exclusive lock on assets_source/.cook-cache/install.lock): several sessions may install
+at once, and concurrent cooks would race on the cook receipts.
 """
 import argparse
+import fcntl
 import fnmatch
 import os
 from pathlib import Path
@@ -21,8 +24,8 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
-# Models whose runtime copy is cooked: every model since the switch (2026-10-14); the build's
-# OPENYAMM_COOK_MODELS option is switched on.
+# Models whose runtime copy is cooked: every model since the switch (2026-10-14). Each install cooks its model for
+# desktop; Android cooks only on demand (tools/cook_android.sh).
 COOKED_MODELS = ("*",)
 
 
@@ -50,11 +53,22 @@ def main():
     model = args.model.resolve(strict=True)
     if model.suffix.lower() != ".glb":
         raise SystemExit(f"{model}: not a .glb")
-    relative = Path("engine" if args.engine else f"worlds/{args.world}") / "models" / (args.name or model.name)
+    name = args.name or model.name
+    if fnmatch.fnmatch(name, "mm*_deco_*.glb") and not args.engine:
+        raise SystemExit(f"{name}: decoration models are engine content (any world binds them); use --engine")
+    relative = Path("engine" if args.engine else f"worlds/{args.world}") / "models" / name
     source = ROOT / "assets_source" / relative
     runtime = ROOT / "assets_dev" / relative
     if model in (source, runtime):
         raise SystemExit("Install from the project's export, not from an installed copy")
+    lock_path = ROOT / "assets_source" / ".cook-cache" / "install.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return install(model, source, runtime, relative)
+
+
+def install(model, source, runtime, relative):
     copy_atomically(model, source)
     print(f"source: {source.relative_to(ROOT)}")
     if any(fnmatch.fnmatch(relative.as_posix(), pattern) for pattern in COOKED_MODELS):

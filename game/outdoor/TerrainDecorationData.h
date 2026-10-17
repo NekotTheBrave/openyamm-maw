@@ -80,6 +80,74 @@ struct TerrainDecorationUndergrowth
     std::vector<TerrainDecorationVariant> variants;
 };
 
+// Low 3D bushes (static models) placed with the grass: groups at tree lines (around the undergrowth decorations),
+// along buildings and walls, in lush hollows and rarely on open grass. Never on roads, rock or water: grass grows
+// all around each bush.
+struct TerrainDecorationBushModel
+{
+    std::string model; // Virtual path of the GLB.
+    float height = 120.0f;
+    float weight = 1.0f;
+};
+
+struct TerrainDecorationBushes
+{
+    std::vector<TerrainDecorationBushModel> models;
+    float heightJitter = 0.2f;
+    // Grid of candidate group positions for the open ground, lush hollows and verges.
+    float spacing = 640.0f;
+    float meadowChance = 0.02f;
+    float lushChance = 0.3f;
+    float lushBelow = -0.3f; // Meadow field value (-1 lush .. +1 dry).
+    float vergeChance = 0.35f;
+    float vergeDistance = 260.0f; // From buildings and walls.
+    // A group's chance per tree line decoration, at a distance in edgeRadius.
+    float edgeChance = 0.4f;
+    std::array<float, 2> edgeRadius = {300.0f, 650.0f};
+    int groupMax = 3;
+    float groupSpread = 150.0f;
+    // Grass grows all around this radius; buildings and decorations stay clearance beyond it.
+    float radius = 90.0f;
+    float clearance = 60.0f;
+    float minimumNormalZ = 0.8f;
+    int maxCount = 600;
+    // Camera distance over which the bushes dissolve out.
+    std::array<float, 2> fadeDistance = {5000.0f, 6500.0f};
+};
+
+struct TerrainBushInstance
+{
+    std::array<float, 3> position;
+    float yaw = 0.0f;
+    float heightScale = 1.0f; // Of the model's height.
+    uint32_t model = 0;
+};
+
+// Short grass drawn as a clump of cards in a star, each leaning outward, instead of one camera-facing card
+// (vs_terrain_decoration.sc): it reads as a tuft from the side, at a raised angle and from above.
+constexpr int TerrainDecorationMaxClumpCards = 8;
+
+struct TerrainDecorationClump
+{
+    uint32_t layerMask = 0; // Bit n: atlas layer n is drawn as a clump.
+    int cards = 5;
+    float leanDegrees = 25.0f;
+    float cardScale = 0.75f; // Of the instance's width and height.
+    // Camera distance where a clump is down to its first card (the others thin out over the last quarter).
+    float distance = 1500.0f;
+};
+
+// Plants that fade out as the camera flies (vs_terrain_decoration.sc): short mats seen from above are slivers, and the
+// terrain under them already has their colour.
+struct TerrainDecorationOverhead
+{
+    uint32_t layerMask = 0; // Bit n: atlas layer n fades.
+    float start = 250.0f; // Camera height above the ground under it where the fade begins and ends.
+    float end = 600.0f;
+    // How strongly the terrain takes the plants' colour from the foliage map when seen from above.
+    float ground = 0.0f;
+};
+
 // Distance level of detail (level_generation/terrain/GRASS_LOD.md), mirrored by vs_terrain_decoration.sc.
 struct TerrainDecorationLod
 {
@@ -96,6 +164,8 @@ struct TerrainDecorationConfig
     float stoneDistance = 2048.0f;
     // Strength of the terrain's grass colour where the tufts have thinned out (0 = none).
     float foliageTint = 1.0f;
+    // How much darker the ground is under dense grass while the grass is drawn (its shade between the tufts).
+    float groundShade = 0.0f;
     float minimumNormalZ = 0.85f;
     float densityVariation = 0.0f;
     float patchSize = 768.0f;
@@ -105,6 +175,9 @@ struct TerrainDecorationConfig
     TerrainDecorationFlowers flowers;
     TerrainDecorationVerges verges;
     TerrainDecorationUndergrowth undergrowth;
+    TerrainDecorationOverhead overhead;
+    TerrainDecorationClump clump;
+    TerrainDecorationBushes bushes;
     // Optional 128x128 cell-centred grayscale control: black = none, white = full density.
     std::vector<uint8_t> densityMask;
     std::string tuftTexture;
@@ -128,6 +201,7 @@ struct TerrainDecorationPatch
     uint32_t first = 0;
     uint32_t count = 0;
     bool stone = false;
+    bool clump = false; // Grass drawn with the clump mesh (TerrainDecorationClump).
     std::array<float, 3> min;
     std::array<float, 3> max;
 };
@@ -153,6 +227,7 @@ struct TerrainDecorationPlacement
     // One quadtree per mesh kind, depth first: a node's instances directly precede its first child's.
     std::vector<TerrainDecorationNode> nodes;
     std::vector<uint32_t> roots;
+    std::vector<TerrainBushInstance> bushes;
 };
 
 // Share of an area's instances drawn at a camera distance: all within nearDistance, then (near / distance)^2, which
@@ -163,6 +238,23 @@ float terrainDecorationScale(const TerrainDecorationLod &lod, float distance);
 // Number of a node's leading instances (sorted by rank) whose rank is below keep; ranks holds every instance's rank.
 uint32_t terrainDecorationPrefix(const std::vector<float> &ranks, const TerrainDecorationPatch &range, float keep);
 
+// Grass shading by height (vs_terrain_decoration.sc): rise 0 at the card's bottom row, 1 at its top. Root to tip
+// brightness, times the dry tips of some tufts (amount uniform squared, so a third on average).
+struct TerrainDecorationShade
+{
+    static constexpr float Root = 0.72f;
+    static constexpr float Tip = 1.28f;
+    static constexpr std::array<float, 3> DryTip = {1.15f, 1.1f, 0.85f};
+    // The average multiplier of a texel at this rise over all tufts.
+    static std::array<float, 3> average(float rise)
+    {
+        const float brightness = Root + (Tip - Root) * rise;
+        return {brightness * (1.0f + (DryTip[0] - 1.0f) * rise / 3.0f),
+            brightness * (1.0f + (DryTip[1] - 1.0f) * rise / 3.0f),
+            brightness * (1.0f + (DryTip[2] - 1.0f) * rise / 3.0f)};
+    }
+};
+
 // Average colour and filled share of one tuft atlas layer, for the foliage map.
 struct TerrainFoliageLayer
 {
@@ -170,13 +262,22 @@ struct TerrainFoliageLayer
     float fill = 0.0f;
 };
 
-constexpr int TerrainFoliageMapSize = 256;
+// 64 world units per texel: fine enough for the uncut patches and flower clusters seen from above.
+constexpr int TerrainFoliageMapSize = 1024;
+// Largest optical depth the encoded foliage map holds (alpha 1).
+constexpr float TerrainFoliageDepthRange = 4.0f;
 
-// The terrain's far grass colour: RGBA over the whole map (row 0 at the north edge, like the terrain weights),
-// rgb = average tuft colour premultiplied by a, a = optical depth of the grass cards seen edge on (projected card
-// area per ground area). Grass instances only.
+// The terrain's grass colour: RGBA over the whole map (row 0 at the north edge, like the terrain weights),
+// rgb = average tuft colour premultiplied by a, a = optical depth of the grass cards (card area per ground area).
+// Grass instances only.
+// clump: a clump instance's cards cover clumpArea(clump) times one card's area.
 std::vector<float> buildTerrainFoliageMap(const TerrainDecorationPlacement &placement,
-    const std::vector<TerrainFoliageLayer> &layers);
+    const std::vector<TerrainFoliageLayer> &layers, const TerrainDecorationClump &clump = {});
+// Card area of a clump relative to one card of the instance's size, seen from a random horizontal direction.
+float terrainDecorationClumpArea(const TerrainDecorationClump &clump);
+// The foliage map as RGBA8 with its full mip chain: rgb = average tuft colour (not premultiplied), a = optical depth
+// / TerrainFoliageDepthRange. Each level averages the premultiplied values of the one above.
+std::vector<uint8_t> encodeTerrainFoliageMap(const std::vector<float> &foliage);
 
 std::optional<TerrainDecorationConfig> loadTerrainDecorationConfig(
     const Engine::AssetFileSystem &assets, const OutdoorMapData &map, std::string &error);

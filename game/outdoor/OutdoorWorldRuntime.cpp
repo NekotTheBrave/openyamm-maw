@@ -2027,12 +2027,6 @@ GameplayProjectileVisualMode outdoorProjectileVisualModeForFxRecipe(
         : GameplayProjectileVisualMode::FxOnly;
 }
 
-bool outdoorMonsterProjectileFxRecipesEnabled(const OutdoorGameView *pGameplayView)
-{
-    return pGameplayView == nullptr
-        || pGameplayView->settingsSnapshot().monsterProjectileVisuals == MonsterProjectileVisuals::FxRecipes;
-}
-
 bool outdoorMonsterSelfBuffSpellName(const std::string &spellName)
 {
     return isMonsterSelfActionSpellName(spellName);
@@ -2052,7 +2046,6 @@ bool resolveProjectileDefinition(
     const MonsterProjectileTable &projectileTable,
     const ObjectTable &objectTable,
     const SpellTable &spellTable,
-    bool useFxRecipes,
     OutdoorWorldRuntime::ResolvedProjectileDefinition &definition)
 {
     definition = {};
@@ -2089,9 +2082,8 @@ bool resolveProjectileDefinition(
         definition.objectDescriptionId = *objectDescriptionId;
         definition.objectSpriteId = pObjectEntry->spriteId;
         definition.objectFlags = pObjectEntry->flags;
-        definition.visualMode = useFxRecipes
-            ? GameplayProjectileService::monsterProjectileVisualModeForObjectId(pProjectileEntry->objectId)
-            : GameplayProjectileVisualMode::SpriteBillboard;
+        definition.visualMode =
+            GameplayProjectileService::monsterProjectileVisualModeForObjectId(pProjectileEntry->objectId);
         definition.radius = static_cast<uint16_t>(std::max<int>(pObjectEntry->radius, 16));
         definition.height = static_cast<uint16_t>(std::max<int>(pObjectEntry->height, 16));
         definition.lifetimeTicks = static_cast<uint32_t>(std::max<int>(pObjectEntry->lifetimeTicks, 64));
@@ -2153,13 +2145,11 @@ bool resolveProjectileDefinition(
     definition.effectSoundId = pSpellEntry->effectSoundId;
     definition.objectName = pObjectEntry->internalName;
     definition.objectSpriteName = pObjectEntry->spriteName;
-    definition.visualMode = useFxRecipes
-        ? outdoorProjectileVisualModeForFxRecipe(
-            definition.spellId,
-            definition.objectName,
-            definition.objectSpriteName,
-            definition.objectFlags)
-        : GameplayProjectileVisualMode::SpriteBillboard;
+    definition.visualMode = outdoorProjectileVisualModeForFxRecipe(
+        definition.spellId,
+        definition.objectName,
+        definition.objectSpriteName,
+        definition.objectFlags);
 
     if (pSpellEntry->impactDisplayObjectId > 0)
     {
@@ -6083,6 +6073,64 @@ bool OutdoorWorldRuntime::spawnPartyFireSpikeTrap(
     }
 
     return true;
+}
+
+void OutdoorWorldRuntime::collectWorldItemPresentationStates(
+    std::vector<GameplayWorldItemPresentationState> &items) const
+{
+    items.clear();
+
+    for (size_t worldItemIndex = 0; worldItemIndex < m_worldItems.size(); ++worldItemIndex)
+    {
+        // worldItemState hides placed pickups the party may not see. Gold heaps carry their heap item's id.
+        const WorldItemState *pWorldItem = worldItemState(worldItemIndex);
+
+        if (pWorldItem == nullptr || pWorldItem->isExpired)
+        {
+            continue;
+        }
+
+        GameplayWorldItemPresentationState state = {};
+        state.key = pWorldItem->worldItemId;
+        state.itemId = pWorldItem->item.objectDescriptionId;
+        state.x = pWorldItem->x;
+        state.y = pWorldItem->y;
+        state.z = pWorldItem->z;
+        items.push_back(state);
+    }
+}
+
+void OutdoorWorldRuntime::collectFireSpikeTrapPresentationStates(
+    std::vector<GameplayProjectilePresentationState> &traps) const
+{
+    traps.clear();
+    traps.reserve(m_fireSpikeTraps.size());
+
+    for (const FireSpikeTrapState &trap : m_fireSpikeTraps)
+    {
+        if (trap.isExpired)
+        {
+            continue;
+        }
+
+        GameplayProjectilePresentationState state = {};
+        state.projectileId = trap.trapId;
+        state.objectDescriptionId = trap.objectDescriptionId;
+        state.objectSpriteId = trap.objectSpriteId;
+        state.objectSpriteFrameIndex = trap.objectSpriteFrameIndex;
+        state.objectFlags = trap.objectFlags;
+        state.radius = trap.radius;
+        state.height = trap.height;
+        state.spellId = trap.spellId;
+        state.objectName = trap.objectName;
+        state.objectSpriteName = trap.objectSpriteName;
+        state.x = trap.x;
+        state.y = trap.y;
+        state.z = trap.z;
+        state.timeSinceCreatedTicks = trap.timeSinceCreatedTicks;
+        state.isSettled = true;
+        traps.push_back(std::move(state));
+    }
 }
 
 std::optional<float> OutdoorWorldRuntime::sampleBModelWorldItemFloorHeight(
@@ -10991,7 +11039,6 @@ bool OutdoorWorldRuntime::spawnProjectileFromMapActor(
             *m_pMonsterProjectileTable,
             *m_pObjectTable,
             *m_pSpellTable,
-            outdoorMonsterProjectileFxRecipesEnabled(m_pInteractionView),
             definition))
     {
         const std::string projectileToken =
@@ -17702,21 +17749,6 @@ size_t OutdoorWorldRuntime::projectileImpactCount() const
 const OutdoorWorldRuntime::ProjectileImpactState *OutdoorWorldRuntime::projectileImpactState(size_t effectIndex) const
 {
     return projectileService().projectileImpactState(effectIndex);
-}
-
-size_t OutdoorWorldRuntime::fireSpikeTrapCount() const
-{
-    return m_fireSpikeTraps.size();
-}
-
-const OutdoorWorldRuntime::FireSpikeTrapState *OutdoorWorldRuntime::fireSpikeTrapState(size_t trapIndex) const
-{
-    if (trapIndex >= m_fireSpikeTraps.size())
-    {
-        return nullptr;
-    }
-
-    return &m_fireSpikeTraps[trapIndex];
 }
 
 size_t OutdoorWorldRuntime::bloodSplatCount() const

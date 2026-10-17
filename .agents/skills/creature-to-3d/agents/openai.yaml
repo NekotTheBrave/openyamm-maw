@@ -1,0 +1,4 @@
+interface:
+  display_name: "Creature to 3D"
+  short_description: "Build and review creatures with the shared Claude playbooks"
+  default_prompt: "Use $creature-to-3d for the requested creature work, following the shared Claude playbooks while preserving its scope and selected revisions."

@@ -3,8 +3,12 @@ $input v_texcoord0
 
 SAMPLER2D(s_gradeScene, 0);
 SAMPLER3D(s_gradeLut, 1);
+// The blurred half-resolution glow (bloom, lighting plan phase 7).
+SAMPLER2D(s_gradeBloom, 2);
 // x: grade strength, y and z: LUT scale and offset, w: sharpening 0..1.
 uniform vec4 u_gradeParams;
+// x: bloom strength (0: none).
+uniform vec4 u_gradeBloom;
 
 // Contrast-adaptive sharpening (after AMD FidelityFX CAS): subtracts the four direct neighbours, weighted down
 // where the neighbourhood already spans most of the range, so hard edges do not ring or brighten aliasing.
@@ -27,7 +31,7 @@ vec3 sharpen(vec3 centre, vec2 uv, float strength)
 void main()
 {
     vec4 original = texture2D(s_gradeScene, v_texcoord0);
-    if (u_gradeParams.x <= 0.0 && u_gradeParams.w <= 0.0)
+    if (u_gradeParams.x <= 0.0 && u_gradeParams.w <= 0.0 && u_gradeBloom.x <= 0.0)
     {
         gl_FragColor = original;
         return;
@@ -39,5 +43,12 @@ void main()
     }
     vec3 uvw = color * u_gradeParams.y + u_gradeParams.z;
     vec3 graded = texture3D(s_gradeLut, uvw).rgb;
-    gl_FragColor = vec4(mix(color, graded, u_gradeParams.x), original.a);
+    color = mix(color, graded, u_gradeParams.x);
+    if (u_gradeBloom.x > 0.0)
+    {
+        // Screen blend in display space: the glow lifts what is around an emitter without clipping it.
+        vec3 bloom = clamp(texture2D(s_gradeBloom, v_texcoord0).rgb * u_gradeBloom.x, 0.0, 1.0);
+        color = 1.0 - (1.0 - color) * (1.0 - bloom);
+    }
+    gl_FragColor = vec4(color, original.a);
 }

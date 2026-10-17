@@ -30,13 +30,13 @@ constexpr uint64_t ParticleAlphaRenderState =
     BGFX_STATE_WRITE_RGB
     | BGFX_STATE_WRITE_A
     | BGFX_STATE_DEPTH_TEST_LEQUAL
-    | BGFX_STATE_BLEND_ALPHA;
+    | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_MSAA;
 
 constexpr uint64_t ParticleAdditiveRenderState =
     BGFX_STATE_WRITE_RGB
     | BGFX_STATE_WRITE_A
     | BGFX_STATE_DEPTH_TEST_LEQUAL
-    | BGFX_STATE_BLEND_ADD;
+    | BGFX_STATE_BLEND_ADD | BGFX_STATE_MSAA;
 
 constexpr size_t ParticleMaterialCount = 6;
 constexpr size_t ParticleBlendModeCount = 2;
@@ -638,7 +638,15 @@ void ParticleRenderer::renderParticles(
                 BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
             bgfx::setUniform(resources.particleParamsUniformHandle(), particleParams);
             bgfx::setState(renderState);
-            bgfx::submit(viewId, resources.particleProgramHandle());
+            // Additive particles are light: they also draw into the bloom glow, with the same bindings.
+            const bool glow = additiveBlend && resources.glowView() != UINT16_MAX;
+            bgfx::submit(viewId, resources.particleProgramHandle(), 0, glow ? BGFX_DISCARD_NONE : BGFX_DISCARD_ALL);
+            if (glow)
+            {
+                bgfx::setState(renderState);
+                bgfx::submit(resources.glowView(), resources.particleProgramHandle());
+                resources.markGlowDrawn();
+            }
         };
 
     for (size_t material = 0; material < ParticleMaterialCount; ++material)

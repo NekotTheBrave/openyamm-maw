@@ -232,3 +232,77 @@ TEST_CASE("sharpening is off by default and its strength validates and persists"
     CHECK(bounded->sharpening == 100);
     std::filesystem::remove(path);
 }
+
+TEST_CASE("anti-aliasing is off by default and its sample count validates and persists")
+{
+    GameSettings settings = GameSettings::createDefault();
+    CHECK(settings.antialiasing == 0);
+    CHECK(menuSettingValue(settings, "antialiasing") == "off");
+    REQUIRE(setMenuSettingValue(settings, "antialiasing", "4x"));
+    for (const std::string value : {"8x", "1x", "4X", "on", ""})
+    {
+        CHECK_FALSE(setMenuSettingValue(settings, "antialiasing", value));
+    }
+    CHECK(menuSettingValue(settings, "antialiasing") == "4x");
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "openyamm-antialiasing-settings.ini";
+    std::string error;
+    REQUIRE(saveGameSettings(path, settings, error));
+    const std::optional<GameSettings> loaded = loadGameSettings(path, error);
+    REQUIRE_MESSAGE(loaded, error);
+    CHECK(loaded->antialiasing == 4);
+    {
+        std::ofstream file(path);
+        file << "[video]\nantialiasing=16x\n";
+    }
+    const std::optional<GameSettings> invalid = loadGameSettings(path, error);
+    REQUIRE_MESSAGE(invalid, error);
+    CHECK(invalid->antialiasing == 0);
+    {
+        std::ofstream file(path);
+        file << "[video]\nantialiasing=2X\n";
+    }
+    const std::optional<GameSettings> twoSamples = loadGameSettings(path, error);
+    REQUIRE_MESSAGE(twoSamples, error);
+    CHECK(twoSamples->antialiasing == 2);
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("graphics quality presets match the shipped profiles and report custom mixes")
+{
+    const std::filesystem::path root = OPENYAMM_SOURCE_DIR;
+    std::string error;
+    const std::optional<GameSettings> desktop = loadGameSettings(root / "settings_release.ini", error);
+    REQUIRE_MESSAGE(desktop, error);
+    CHECK(menuSettingValue(*desktop, "graphics_quality") == "high");
+    const std::optional<GameSettings> android = loadGameSettings(root / "android/settings.ini", error);
+    REQUIRE_MESSAGE(android, error);
+    CHECK(menuSettingValue(*android, "graphics_quality") == "low");
+
+    GameSettings settings = *desktop;
+    settings.sharpening = 40;
+    settings.cinematicGrading = true;
+    REQUIRE(setMenuSettingValue(settings, "graphics_quality", "high"));
+    CHECK(menuSettingValue(settings, "graphics_quality") == "high");
+    CHECK(settings.antialiasing == 4);
+    CHECK_FALSE(settings.ambientOcclusion);
+    CHECK(settings.terrainAnisotropy == "8x");
+    CHECK(settings.waterReflectionSize == 512);
+    CHECK(settings.viewDistance == "default");
+    CHECK(settings.sharpening == 40); // Taste options are not part of a preset.
+    CHECK(settings.cinematicGrading);
+
+    REQUIRE(setMenuSettingValue(settings, "graphics_quality", "low"));
+    CHECK(settings.terrainSubdivision == 2);
+    CHECK_FALSE(settings.terrainAntiTiling);
+    CHECK(settings.skyResolutionScale == 0.5f);
+    CHECK(menuSettingValue(settings, "graphics_quality") == "low");
+
+    REQUIRE(setMenuSettingValue(settings, "bloom", "true"));
+    CHECK(menuSettingValue(settings, "graphics_quality") == "custom");
+    REQUIRE(setMenuSettingValue(settings, "graphics_quality", "custom"));
+    CHECK(settings.bloom); // Choosing Custom keeps the current mix.
+    settings.terrainSubdivision = 4; // INI-only options count too.
+    REQUIRE(setMenuSettingValue(settings, "bloom", "false"));
+    CHECK(menuSettingValue(settings, "graphics_quality") == "custom");
+    CHECK_FALSE(setMenuSettingValue(settings, "graphics_quality", "ultra"));
+}

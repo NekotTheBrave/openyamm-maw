@@ -1,6 +1,7 @@
 #include "game/debug/GameImGuiBgfxRenderer.h"
 
 #include "game/render/TextureFiltering.h"
+#include "game/render/WaterMath.h"
 
 #include <imgui.h>
 #include <bgfx/embedded_shader.h>
@@ -18,7 +19,7 @@ namespace OpenYAMM::Game
 {
 namespace
 {
-constexpr bgfx::ViewId ImGuiViewId = 250;
+constexpr bgfx::ViewId ImGuiViewId = DebugImGuiView;
 
 static const std::array<bgfx::EmbeddedShader, 3> EmbeddedShaders = {{
     BGFX_EMBEDDED_SHADER(vs_ocornut_imgui),

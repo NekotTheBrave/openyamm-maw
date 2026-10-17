@@ -99,9 +99,14 @@ struct ModelMaterial
     ModelSampler burnMapSampler;
     // Static decoration extras: "openyamm_wind" sways the vertex by up to this many model units at the model's top,
     // growing with (height / model height)^2; "openyamm_billboard" turns the mesh (a quad in the model's x/up plane)
-    // about the vertical axis to face the camera, as a far impostor.
+    // about the vertical axis to face the camera, as a far impostor. "openyamm_billboard": "card" turns each primitive
+    // about the vertical axis through its own centre instead (off-centre flame and glow cards).
     float wind = 0.0f;
     bool billboard = false;
+    bool billboardCard = false;
+    // "openyamm_additive": a blended (alphaMode BLEND) material adds its colour times alpha instead of covering what
+    // is behind it, and fog fades it out (glow cards, halos); ignored on other materials. Static decorations only.
+    bool additive = false;
     // "openyamm_translucency": sunlight passing through thin leaves (0..1).
     float translucency = 0.0f;
     // "openyamm_specular": scale of sun, point-light and sky specular (0..1); foliage cards use a small value.
@@ -109,6 +114,18 @@ struct ModelMaterial
     // "openyamm_specular_mask": the metallic-roughness texture's red channel (unused by glTF) scales specular per
     // texel, so a matte head and glossy armour can share one material and one draw.
     bool specularMask = false;
+    // "openyamm_specular_occlusion": where the surface's ambient occlusion comes from, so specular (sky, sun and point
+    // lights) fades in creases and cavities: "orm" = the metallic-roughness texture's red channel (glTF occlusion
+    // packing), "color0" = COLOR_0 luminance divided by "openyamm_specular_occlusion_reference" (vertex-baked AO times
+    // a grade; the reference is the unoccluded value, default 1). Unset: no specular occlusion.
+    enum class SpecularOcclusion : uint8_t
+    {
+        None,
+        Orm,
+        Color0,
+    };
+    SpecularOcclusion specularOcclusion = SpecularOcclusion::None;
+    float specularOcclusionReference = 1.0f;
     // "openyamm_edge_darkening": how much the surface darkens toward the silhouette (0..1), a soft contour like the
     // sprites' dark rim. Skinned (creature) materials default to DefaultCreatureEdgeDarkening; others to none.
     float edgeDarkening = 0.0f;
@@ -117,7 +134,8 @@ struct ModelMaterial
     // second], frames left to right then top to bottom, looping with a per-placement phase (fire). "openyamm_flutter": cloth wave amplitude in model units; each vertex moves along
     // its normal by amplitude x COLOR_0 alpha x a wave travelling along texture coordinate u (flags).
     // "openyamm_pulse": [amplitude, period seconds]; the emission is scaled by 1 + amplitude x sin(2 pi t / period),
-    // with the per-placement phase (glowing crystals).
+    // with the per-placement phase (glowing crystals). "openyamm_flicker": [amplitude, changes per second] scales it
+    // by 1 + amplitude x smooth random noise instead (flames); stored as a pulse with a negative period.
     std::array<float, 2> uvScroll = {};
     std::array<float, 3> flipbook = {};
     float flutter = 0.0f;

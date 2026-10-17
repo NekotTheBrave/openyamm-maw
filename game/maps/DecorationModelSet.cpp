@@ -4,6 +4,7 @@
 #include "game/maps/DecorationModelPlacement.h"
 
 #include "engine/AssetFileSystem.h"
+#include "game/gameplay/InteractiveDecorationRules.h"
 #include "game/maps/MapAssetLoader.h"
 
 #include <yaml-cpp/yaml.h>
@@ -15,6 +16,7 @@
 #include <numbers>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace OpenYAMM::Game
 {
@@ -431,21 +433,14 @@ bool DecorationModelSet::loadStateOverlays(const Engine::AssetFileSystem &assets
     const std::unordered_map<std::string, uint32_t> &bindingByName, std::string &error)
 {
     // Apart from decorations.yml, a dependency of every baked outdoor map: overlays cast no baked shadow.
-    const std::string manifestPath = "worlds/" + worldId + "/models/decoration_overlays.yml";
-    const std::optional<std::string> text = assets.readTextFile(manifestPath);
-    if (!text)
+    std::vector<YAML::Node> entries;
+    if (!decorationOverlayEntries(assets, worldId, entries, error))
     {
-        return true;
+        return false;
     }
     try
     {
-        const YAML::Node document = YAML::Load(*text);
-        if (!document["overlays"].IsSequence())
-        {
-            error = "decoration overlay manifest requires an overlays sequence: " + manifestPath;
-            return false;
-        }
-        for (const YAML::Node &entry : document["overlays"])
+        for (const YAML::Node &entry : entries)
         {
             const std::string name = lowercase(entry["name"].as<std::string>());
             const auto bound = bindingByName.find(name);
@@ -492,7 +487,7 @@ bool DecorationModelSet::loadStateOverlays(const Engine::AssetFileSystem &assets
     }
     catch (const YAML::Exception &exception)
     {
-        error = manifestPath + ": " + exception.what();
+        error = "decoration overlay manifest: " + std::string(exception.what());
         return false;
     }
     return true;
@@ -503,25 +498,34 @@ bool DecorationModelSet::load(const Engine::AssetFileSystem &assets, const std::
 {
     clear();
     m_wallFinder = std::move(wallFinder);
-    const std::string manifestPath = decorationModelManifestPath(worldId, mapFile);
-    const std::optional<std::string> text = assets.readTextFile(manifestPath);
-    if (!text)
+    std::vector<YAML::Node> entries;
+    if (!decorationModelEntries(assets, worldId, mapFile, entries, error))
     {
-        return true;
+        return false;
+    }
+    // Only the decorations this map can show load their models: its placements, their lit/unlit counterparts and
+    // its events' SetSprite targets (the engine manifests bind every world's decorations).
+    std::unordered_set<std::string> shown = mapEventSpriteNames(assets, worldId, mapFile);
+    for (const DecorationBillboard &billboard : decorations.billboards)
+    {
+        const DecorationEntry *pPlaced = decorations.decorationTable.get(billboard.decorationId);
+        if (pPlaced == nullptr)
+        {
+            continue;
+        }
+        shown.insert(pPlaced->internalName);
+        if (const DecorationEntry *pCounterpart = toggleableDecorationCounterpart(decorations.decorationTable, *pPlaced))
+        {
+            shown.insert(pCounterpart->internalName);
+        }
     }
     std::unordered_map<std::string, uint32_t> bindingByName;
     try
     {
-        const YAML::Node document = YAML::Load(*text);
-        if (!document["decorations"].IsSequence())
-        {
-            error = "decoration model manifest requires a decorations sequence: " + manifestPath;
-            return false;
-        }
-        for (const YAML::Node &entry : document["decorations"])
+        for (const YAML::Node &entry : entries)
         {
             const std::string name = lowercase(entry["name"].as<std::string>());
-            if (!decorationModelBindsOnMap(entry, mapFile))
+            if (!shown.contains(name))
             {
                 continue;
             }
@@ -647,7 +651,7 @@ bool DecorationModelSet::load(const Engine::AssetFileSystem &assets, const std::
     }
     catch (const YAML::Exception &exception)
     {
-        error = manifestPath + ": " + exception.what();
+        error = "decoration model manifest: " + std::string(exception.what());
         return false;
     }
     if (!loadStateOverlays(assets, worldId, bindingByName, error))

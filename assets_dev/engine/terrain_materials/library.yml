@@ -15,6 +15,7 @@ materials:
     normal_ao_rough: grass_meadow/normal_ao_rough.oytex
     mean_color: [0.378, 0.4258, 0.1895]
     physical_size_m: 2.0
+    wet_sheen: 0.25
     license: CC0 1.0
     origin: https://ambientcg.com/view?id=Grass004
   grass_patchy:
@@ -22,6 +23,7 @@ materials:
     normal_ao_rough: grass_patchy/normal_ao_rough.oytex
     mean_color: [0.5979, 0.5755, 0.3435]
     physical_size_m: 2.0
+    wet_sheen: 0.25
     license: CC0 1.0
     origin: https://ambientcg.com/view?id=Ground037
   gravel_volcanic:
@@ -29,6 +31,7 @@ materials:
     normal_ao_rough: gravel_volcanic/normal_ao_rough.oytex
     mean_color: [0.2947, 0.2895, 0.2769]
     physical_size_m: 1.5
+    specular: 0.5
     license: CC0 1.0
     origin: https://ambientcg.com/view?id=Gravel024
   ground_crust:
@@ -50,6 +53,7 @@ materials:
     normal_ao_rough: road_flagstone/normal_ao_rough.oytex
     mean_color: [0.5001, 0.4183, 0.3401]
     physical_size_m: 2.0
+    specular: 0.5
     license: CC0 1.0
     origin: https://polyhaven.com/a/stone_pathway
   road_pebbles:
@@ -57,6 +61,7 @@ materials:
     normal_ao_rough: road_pebbles/normal_ao_rough.oytex
     mean_color: [0.2592, 0.2286, 0.1947]
     physical_size_m: 2.0
+    specular: 0.4
     license: CC0 1.0
     origin: https://polyhaven.com/a/large_pebbles
   rock_cliff:
@@ -64,6 +69,7 @@ materials:
     normal_ao_rough: rock_cliff/normal_ao_rough.oytex
     mean_color: [0.3795, 0.2719, 0.1931]
     physical_size_m: 2.38
+    specular: 0.7
     license: CC0 1.0
     origin: https://polyhaven.com/a/rock_face
   rock_ground:
@@ -71,6 +77,7 @@ materials:
     normal_ao_rough: rock_ground/normal_ao_rough.oytex
     mean_color: [0.4503, 0.42, 0.3592]
     physical_size_m: 3.0
+    specular: 0.6
     license: CC0 1.0
     origin: https://polyhaven.com/a/rock_ground_02
   rock_layered:
@@ -78,6 +85,7 @@ materials:
     normal_ao_rough: rock_layered/normal_ao_rough.oytex
     mean_color: [0.5504, 0.546, 0.5373]
     physical_size_m: 2.0
+    specular: 0.8
     license: CC0 1.0
     origin: https://ambientcg.com/view?id=Rock023
   rock_red:
@@ -85,6 +93,7 @@ materials:
     normal_ao_rough: rock_red/normal_ao_rough.oytex
     mean_color: [0.3632, 0.312, 0.2872]
     physical_size_m: 2.0
+    specular: 0.6
     license: CC0 1.0
     origin: https://ambientcg.com/view?id=Rock061
   sand_flat:
@@ -106,6 +115,7 @@ materials:
     normal_ao_rough: snow/normal_ao_rough.oytex
     mean_color: [0.874, 0.9345, 0.9872]
     physical_size_m: 2.0
+    specular: 0.15
     license: CC0 1.0
     origin: https://ambientcg.com/view?id=Snow008A
   soil:
@@ -120,6 +130,7 @@ materials:
     normal_ao_rough: soil_stony/normal_ao_rough.oytex
     mean_color: [0.5757, 0.5033, 0.4181]
     physical_size_m: 2.0
+    specular: 0.2
     license: CC0 1.0
     origin: https://polyhaven.com/a/rocky_trail
   swamp:
@@ -127,6 +138,7 @@ materials:
     normal_ao_rough: swamp/normal_ao_rough.oytex
     mean_color: [0.1409, 0.2343, 0.1078]
     physical_size_m: 2.0
+    specular: 0.6
     license: CC0 1.0
     origin: https://ambientcg.com/view?id=Moss004
     pools: true

@@ -66,6 +66,15 @@ std::array<uint8_t, LutSize * LutSize * LutSize * 4> makeLut()
     }
     return pixels;
 }
+
+// The sample count when the colour and depth targets can both be multisampled, else 0.
+uint8_t supportedSamples(uint8_t samples, bgfx::TextureFormat::Enum depthFormat)
+{
+    constexpr uint16_t required = BGFX_CAPS_FORMAT_TEXTURE_FRAMEBUFFER_MSAA;
+    const bgfx::Caps &caps = *bgfx::getCaps();
+    return (caps.formats[bgfx::TextureFormat::RGBA8] & required) == required
+        && (caps.formats[depthFormat] & required) == required ? samples : 0;
+}
 }
 
 bool CinematicGrading::initialize()
@@ -78,6 +87,11 @@ bool CinematicGrading::initialize()
     m_sceneSampler = bgfx::createUniform("s_gradeScene", bgfx::UniformType::Sampler);
     m_lutSampler = bgfx::createUniform("s_gradeLut", bgfx::UniformType::Sampler);
     m_params = bgfx::createUniform("u_gradeParams", bgfx::UniformType::Vec4);
+    m_gradeBloomSampler = bgfx::createUniform("s_gradeBloom", bgfx::UniformType::Sampler);
+    m_gradeBloom = bgfx::createUniform("u_gradeBloom", bgfx::UniformType::Vec4);
+    const uint32_t black = 0;
+    m_noBloom = bgfx::createTexture2D(1, 1, false, 1, bgfx::TextureFormat::RGBA8,
+        BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP, bgfx::copy(&black, sizeof(black)));
     const std::array<uint8_t, LutSize * LutSize * LutSize * 4> pixels = makeLut();
     m_lut = bgfx::createTexture3D(LutSize, LutSize, LutSize, false, bgfx::TextureFormat::RGBA8,
         BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_W_CLAMP,
@@ -87,7 +101,8 @@ bool CinematicGrading::initialize()
         .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
         .end();
     return bgfx::isValid(m_program) && bgfx::isValid(m_lut) && bgfx::isValid(m_sceneSampler)
-        && bgfx::isValid(m_lutSampler) && bgfx::isValid(m_params);
+        && bgfx::isValid(m_lutSampler) && bgfx::isValid(m_params) && bgfx::isValid(m_gradeBloomSampler)
+        && bgfx::isValid(m_gradeBloom) && bgfx::isValid(m_noBloom);
 }
 
 bool CinematicGrading::initializeAmbientOcclusion()
@@ -100,6 +115,8 @@ bool CinematicGrading::initializeAmbientOcclusion()
     m_aoProgram = loadRuntimeProgram("vs_cinematic_grading", "fs_ambient_occlusion");
     m_aoBlurProgram = loadRuntimeProgram("vs_cinematic_grading", "fs_ambient_occlusion_blur");
     m_aoCompositeProgram = loadRuntimeProgram("vs_cinematic_grading", "fs_ambient_occlusion_composite");
+    m_aoDepthMsaaProgram = loadRuntimeProgram("vs_cinematic_grading", "fs_ambient_occlusion_depth_msaa");
+    m_aoCompositeMsaaProgram = loadRuntimeProgram("vs_cinematic_grading", "fs_ambient_occlusion_composite_msaa");
     m_depthSampler = bgfx::createUniform("s_aoDepth", bgfx::UniformType::Sampler);
     m_aoSampler = bgfx::createUniform("s_ao", bgfx::UniformType::Sampler);
     m_aoLinearDepthSampler = bgfx::createUniform("s_aoLinearDepth", bgfx::UniformType::Sampler);
@@ -109,14 +126,71 @@ bool CinematicGrading::initializeAmbientOcclusion()
     m_aoDepthParams = bgfx::createUniform("u_aoDepthParams", bgfx::UniformType::Vec4);
     m_aoTexel = bgfx::createUniform("u_aoTexel", bgfx::UniformType::Vec4);
     return bgfx::isValid(m_aoDepthProgram) && bgfx::isValid(m_aoProgram) && bgfx::isValid(m_aoBlurProgram)
-        && bgfx::isValid(m_aoCompositeProgram) && bgfx::isValid(m_depthSampler) && bgfx::isValid(m_aoSampler)
+        && bgfx::isValid(m_aoCompositeProgram) && bgfx::isValid(m_aoDepthMsaaProgram)
+        && bgfx::isValid(m_aoCompositeMsaaProgram) && bgfx::isValid(m_depthSampler) && bgfx::isValid(m_aoSampler)
         && bgfx::isValid(m_aoLinearDepthSampler) && bgfx::isValid(m_aoRay)
         && bgfx::isValid(m_aoInverseProjection) && bgfx::isValid(m_aoParams)
         && bgfx::isValid(m_aoDepthParams) && bgfx::isValid(m_aoTexel);
 }
 
+bool CinematicGrading::initializeBloom()
+{
+    if (bgfx::isValid(m_bloomBlurProgram))
+    {
+        return true;
+    }
+    m_bloomDownsampleProgram = loadRuntimeProgram("vs_cinematic_grading", "fs_bloom_downsample");
+    m_bloomBlurProgram = loadRuntimeProgram("vs_cinematic_grading", "fs_bloom_blur");
+    m_bloomSourceSampler = bgfx::createUniform("s_bloomSource", bgfx::UniformType::Sampler);
+    m_bloomTexel = bgfx::createUniform("u_bloomTexel", bgfx::UniformType::Vec4);
+    return bgfx::isValid(m_bloomDownsampleProgram) && bgfx::isValid(m_bloomBlurProgram)
+        && bgfx::isValid(m_bloomSourceSampler) && bgfx::isValid(m_bloomTexel);
+}
+
+bool CinematicGrading::createBloomTargets()
+{
+    // The glow shares the world's depth attachment and sample count, so emitters drawn into it are hidden where the
+    // world is in front of them.
+    const uint64_t flags = BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
+    const uint64_t msaa = m_samples == 4 ? BGFX_TEXTURE_RT_MSAA_X4 : m_samples == 2 ? BGFX_TEXTURE_RT_MSAA_X2 : 0;
+    m_glowColor = bgfx::createTexture2D(m_width, m_height, false, 1, bgfx::TextureFormat::RGBA8,
+        msaa != 0 ? (flags & ~BGFX_TEXTURE_RT_MASK) | msaa : flags);
+    if (!bgfx::isValid(m_glowColor))
+    {
+        return false;
+    }
+    const bgfx::TextureHandle attachments[] = {m_glowColor, bgfx::getTexture(m_frameBuffer, 1)};
+    m_glowFrameBuffer = bgfx::createFrameBuffer(2, attachments, false);
+    const uint16_t halfWidth = uint16_t((m_width + 1) / 2);
+    const uint16_t halfHeight = uint16_t((m_height + 1) / 2);
+    for (bgfx::FrameBufferHandle &target : m_bloomFrameBuffers)
+    {
+        target = bgfx::createFrameBuffer(halfWidth, halfHeight, bgfx::TextureFormat::RGBA8, flags);
+    }
+    return bgfx::isValid(m_glowFrameBuffer) && bgfx::isValid(m_bloomFrameBuffers[0])
+        && bgfx::isValid(m_bloomFrameBuffers[1]);
+}
+
+void CinematicGrading::destroyBloomTargets()
+{
+    for (bgfx::FrameBufferHandle *pHandle : {&m_glowFrameBuffer, &m_bloomFrameBuffers[0], &m_bloomFrameBuffers[1]})
+    {
+        if (bgfx::isValid(*pHandle))
+        {
+            bgfx::destroy(*pHandle);
+        }
+        *pHandle = BGFX_INVALID_HANDLE;
+    }
+    if (bgfx::isValid(m_glowColor))
+    {
+        bgfx::destroy(m_glowColor);
+    }
+    m_glowColor = BGFX_INVALID_HANDLE;
+}
+
 void CinematicGrading::destroyTargets()
 {
+    destroyBloomTargets();
     // The composite shares the scene's colour attachment without owning it.
     for (bgfx::FrameBufferHandle handle : {m_aoCompositeFrameBuffer, m_aoBlurFrameBuffer,
         m_aoFrameBuffer, m_aoDepthFrameBuffer, m_frameBuffer})
@@ -133,23 +207,36 @@ void CinematicGrading::destroyTargets()
     m_frameBuffer = BGFX_INVALID_HANDLE;
     m_width = 0;
     m_height = 0;
+    m_samples = 0;
     m_aoTargets = false;
+    m_aoMsaaDepth = false;
 }
 
-bool CinematicGrading::resize(uint16_t width, uint16_t height, bool ambientOcclusion)
+bool CinematicGrading::resize(uint16_t width, uint16_t height, bool ambientOcclusion, uint8_t samples)
 {
-    if (bgfx::isValid(m_frameBuffer) && width == m_width && height == m_height && ambientOcclusion == m_aoTargets)
+    if (bgfx::isValid(m_frameBuffer) && width == m_width && height == m_height && ambientOcclusion == m_aoTargets
+        && samples == m_samples)
     {
         return true;
     }
     destroyTargets();
     const uint64_t flags = BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
     const uint64_t pointFlags = flags | BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT;
+    // Multisampled attachments are resolved when the view moves on, so sampling them (the presentation pass, the AO
+    // depth reads on OpenGL ES, see begin) sees one value per pixel. Without AO the depth is never sampled.
+    const uint64_t msaa = samples == 4 ? BGFX_TEXTURE_RT_MSAA_X4 : samples == 2 ? BGFX_TEXTURE_RT_MSAA_X2 : 0;
+    const uint64_t colorFlags = msaa != 0 ? (flags & ~BGFX_TEXTURE_RT_MASK) | msaa : flags;
+    // Desktop OpenGL samples a multisampled depth directly (its first sample), which saves resolving it with a depth
+    // blit each time a view leaves the world target (after the opaque world, after the transparencies, after the
+    // glow: about 0.1 ms per frame at 1600x900 with 4x MSAA).
+    const bool msaaDepth = ambientOcclusion && msaa != 0 && bgfx::getRendererType() == bgfx::RendererType::OpenGL;
+    const uint64_t depthFlags = !ambientOcclusion ? BGFX_TEXTURE_RT_WRITE_ONLY | msaa
+        : msaa != 0 ? (pointFlags & ~BGFX_TEXTURE_RT_MASK) | msaa | (msaaDepth ? BGFX_TEXTURE_MSAA_SAMPLE : 0)
+        : pointFlags;
     const bgfx::TextureHandle attachments[] = {
-        bgfx::createTexture2D(width, height, false, 1, bgfx::TextureFormat::RGBA8, flags),
+        bgfx::createTexture2D(width, height, false, 1, bgfx::TextureFormat::RGBA8, colorFlags),
         bgfx::createTexture2D(width, height, false, 1,
-            ambientOcclusion ? bgfx::TextureFormat::D32F : bgfx::TextureFormat::D24S8,
-            ambientOcclusion ? pointFlags : BGFX_TEXTURE_RT_WRITE_ONLY)
+            ambientOcclusion ? bgfx::TextureFormat::D32F : bgfx::TextureFormat::D24S8, depthFlags)
     };
     if (!bgfx::isValid(attachments[0]) || !bgfx::isValid(attachments[1]))
     {
@@ -182,7 +269,9 @@ bool CinematicGrading::resize(uint16_t width, uint16_t height, bool ambientOcclu
     }
     m_width = width;
     m_height = height;
+    m_samples = samples;
     m_aoTargets = ambientOcclusion;
+    m_aoMsaaDepth = msaaDepth;
     return bgfx::isValid(m_frameBuffer);
 }
 
@@ -201,6 +290,13 @@ void CinematicGrading::resetViews()
     bgfx::setViewFrameBuffer(0, BGFX_INVALID_HANDLE);
     bgfx::setViewFrameBuffer(1, BGFX_INVALID_HANDLE);
     bgfx::setViewFrameBuffer(GradingView, BGFX_INVALID_HANDLE);
+    if (m_bloomActive)
+    {
+        for (uint16_t view = WorldGlowView; view <= BloomBlurVerticalView; ++view)
+        {
+            bgfx::setViewFrameBuffer(view, BGFX_INVALID_HANDLE);
+        }
+    }
     if (m_aoActive)
     {
         for (uint16_t view = AmbientOcclusionDepthView; view <= WorldTransparentView; ++view)
@@ -211,18 +307,25 @@ void CinematicGrading::resetViews()
     m_active = false;
     m_aoActive = false;
     m_aoPrepared = false;
+    m_bloomActive = false;
+    m_alphaToCoverage = false;
 }
 
 bool CinematicGrading::begin(int width, int height, bool enabled, int strength, bool ambientOcclusion, int aoStrength,
-    int sharpening)
+    int sharpening, int antialiasing, bool bloom, int bloomStrength)
 {
     const bool grading = enabled && strength > 0;
     const bool sharpen = sharpening > 0;
     bool ao = ambientOcclusion && aoStrength > 0;
-    if ((!grading && !sharpen && !ao) || width <= 0 || height <= 0 || m_failed
+    bool glow = bloom && bloomStrength > 0;
+    uint8_t samples = antialiasing >= 4 ? 4 : antialiasing >= 2 ? 2 : 0;
+    m_alphaToCoverage = false;
+    m_bloomActive = false;
+    m_glowDrawn = false;
+    if ((!grading && !sharpen && !ao && !glow && samples == 0) || width <= 0 || height <= 0 || m_failed
         || bgfx::getRendererType() == bgfx::RendererType::Noop)
     {
-        if (!grading && !sharpen && !ao && bgfx::isValid(m_frameBuffer))
+        if (!grading && !sharpen && !ao && !glow && samples == 0 && bgfx::isValid(m_frameBuffer))
         {
             destroyTargets();
         }
@@ -240,18 +343,58 @@ bool CinematicGrading::begin(int width, int height, bool enabled, int strength, 
             std::cerr << "Ambient occlusion unavailable: sampled D32F, R32F and RG16F render targets are required.\n";
             m_aoUnsupportedLogged = true;
         }
-        if (!ao && !grading && !sharpen)
+    }
+    if (samples > 0)
+    {
+        // AO samples the depth: desktop OpenGL reads the first sample of the multisampled depth (resize), OpenGL ES
+        // resolves it with a blit (allowed by cmake/patches/bgfx-gl-msaa-depth-resolve.patch); others resolve colour
+        // only, so anti-aliasing takes priority.
+        const bgfx::RendererType::Enum renderer = bgfx::getRendererType();
+        const bool depthResolve = renderer == bgfx::RendererType::OpenGL || renderer == bgfx::RendererType::OpenGLES;
+        if (ao && !depthResolve && supportedSamples(samples, bgfx::TextureFormat::D24S8) > 0)
         {
-            destroyTargets();
-            return false;
+            ao = false;
+            if (!m_aoMsaaLogged)
+            {
+                std::cerr << "Ambient occlusion is off while anti-aliasing is on: this renderer cannot resolve "
+                             "multisampled depth.\n";
+                m_aoMsaaLogged = true;
+            }
+        }
+        samples = supportedSamples(samples, ao ? bgfx::TextureFormat::D32F : bgfx::TextureFormat::D24S8);
+        if (samples == 0 && !m_msaaUnsupportedLogged)
+        {
+            std::cerr << "Anti-aliasing unavailable: multisampled RGBA8 and depth render targets are required.\n";
+            m_msaaUnsupportedLogged = true;
         }
     }
-    if (!initialize() || (ao && !initializeAmbientOcclusion()) || !resize(uint16_t(width), uint16_t(height), ao))
+    if (!ao && !grading && !sharpen && !glow && samples == 0)
+    {
+        destroyTargets();
+        return false;
+    }
+    if (!initialize() || (ao && !initializeAmbientOcclusion())
+        || !resize(uint16_t(width), uint16_t(height), ao, samples))
     {
         shutdown();
         m_failed = true;
         std::cerr << "World post-processing could not allocate its shaders or render targets.\n";
         return false;
+    }
+    if (glow && (!initializeBloom() || (!bgfx::isValid(m_glowFrameBuffer) && !createBloomTargets())))
+    {
+        // Bloom needs a second colour target sharing the world depth; without it the rest of the frame stays.
+        destroyBloomTargets();
+        glow = false;
+        if (!m_bloomUnsupportedLogged)
+        {
+            std::cerr << "Bloom unavailable: the glow render targets could not be created.\n";
+            m_bloomUnsupportedLogged = true;
+        }
+    }
+    else if (!glow && bgfx::isValid(m_glowFrameBuffer))
+    {
+        destroyBloomTargets();
     }
     if (bgfx::getAvailTransientVertexBuffer(3, m_vertexLayout) != 3)
     {
@@ -265,7 +408,7 @@ bool CinematicGrading::begin(int width, int height, bool enabled, int strength, 
         {-1.0f, -3.0f, 0.0f, 0.0f, flip ? -1.0f : 2.0f}
     };
     std::memcpy(m_vertices.data, vertices, sizeof(vertices));
-    const std::array<uint16_t, WorldGradingView + 1> order = worldRenderViewOrder(true, ao);
+    const std::array<uint16_t, WorldGradingView + 1> order = worldRenderViewOrder(true, ao, glow);
     bgfx::setViewOrder(0, uint16_t(order.size()), order.data());
     bgfx::setViewFrameBuffer(0, m_frameBuffer);
     bgfx::setViewFrameBuffer(1, m_frameBuffer);
@@ -275,12 +418,34 @@ bool CinematicGrading::begin(int width, int height, bool enabled, int strength, 
     m_sharpening = float(std::clamp(sharpening, 0, 100)) / 100.0f;
     m_aoActive = ao;
     m_aoPrepared = false;
+    m_bloomActive = glow;
+    // 50 % matches the approved mock-up's glow.
+    m_bloomStrength = glow ? float(std::clamp(bloomStrength, 0, 100)) / 50.0f : 0.0f;
     m_active = true;
+    m_alphaToCoverage = samples > 1 && (bgfx::getCaps()->supported & BGFX_CAPS_ALPHA_TO_COVERAGE) != 0;
+    if (samples != m_loggedSamples)
+    {
+        if (samples > 0)
+        {
+            std::cout << "Anti-aliasing: " << int(samples) << "x MSAA, alpha to coverage "
+                      << (m_alphaToCoverage ? "on" : "unsupported (cut-outs stay alpha tested)") << ".\n";
+        }
+        m_loggedSamples = samples;
+    }
     return true;
 }
 
 void CinematicGrading::prepareWorldView(const float *pView, const float *pProjection)
 {
+    if (m_bloomActive)
+    {
+        bgfx::setViewName(WorldGlowView, "Bloom glow");
+        bgfx::setViewFrameBuffer(WorldGlowView, m_glowFrameBuffer);
+        bgfx::setViewRect(WorldGlowView, 0, 0, m_width, m_height);
+        bgfx::setViewClear(WorldGlowView, BGFX_CLEAR_COLOR, 0x00000000);
+        bgfx::setViewMode(WorldGlowView, bgfx::ViewMode::Sequential);
+        bgfx::setViewTransform(WorldGlowView, pView, pProjection);
+    }
     if (!m_aoActive)
     {
         return;
@@ -317,7 +482,8 @@ void CinematicGrading::submitAmbientOcclusion()
     const float params[] = {36.0f, 0.12f, m_aoStrength, 4096.0f};
     const bgfx::FrameBufferHandle targets[] = {m_aoDepthFrameBuffer, m_aoFrameBuffer, m_aoBlurFrameBuffer,
         m_aoCompositeFrameBuffer};
-    const bgfx::ProgramHandle programs[] = {m_aoDepthProgram, m_aoProgram, m_aoBlurProgram, m_aoCompositeProgram};
+    const bgfx::ProgramHandle programs[] = {m_aoMsaaDepth ? m_aoDepthMsaaProgram : m_aoDepthProgram, m_aoProgram,
+        m_aoBlurProgram, m_aoMsaaDepth ? m_aoCompositeMsaaProgram : m_aoCompositeProgram};
     const char *names[] = {"SSAO linear depth", "SSAO half resolution", "SSAO depth-aware filter", "SSAO composite"};
     for (size_t pass = 0; pass < 4; ++pass)
     {
@@ -352,6 +518,32 @@ void CinematicGrading::submitAmbientOcclusion()
     }
 }
 
+void CinematicGrading::submitBloom()
+{
+    const uint16_t halfWidth = uint16_t((m_width + 1) / 2);
+    const uint16_t halfHeight = uint16_t((m_height + 1) / 2);
+    // Downsample the glow, then blur it horizontally and vertically at half resolution.
+    const bgfx::TextureHandle sources[] = {m_glowColor, bgfx::getTexture(m_bloomFrameBuffers[0]),
+        bgfx::getTexture(m_bloomFrameBuffers[1])};
+    const bgfx::FrameBufferHandle targets[] = {m_bloomFrameBuffers[0], m_bloomFrameBuffers[1], m_bloomFrameBuffers[0]};
+    const float texels[3][4] = {{1.0f / m_width, 1.0f / m_height, 0.0f, 0.0f}, {1.0f / halfWidth, 0.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f / halfHeight, 0.0f, 0.0f}};
+    const char *names[] = {"Bloom downsample", "Bloom blur horizontal", "Bloom blur vertical"};
+    for (size_t pass = 0; pass < 3; ++pass)
+    {
+        const uint16_t view = uint16_t(BloomDownsampleView + pass);
+        bgfx::setViewName(view, names[pass]);
+        bgfx::setViewFrameBuffer(view, targets[pass]);
+        bgfx::setViewRect(view, 0, 0, halfWidth, halfHeight);
+        bgfx::setViewClear(view, BGFX_CLEAR_NONE);
+        bgfx::setUniform(m_bloomTexel, texels[pass]);
+        bgfx::setTexture(0, m_bloomSourceSampler, sources[pass]);
+        bgfx::setVertexBuffer(0, &m_vertices);
+        bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A);
+        bgfx::submit(view, pass == 0 ? m_bloomDownsampleProgram : m_bloomBlurProgram);
+    }
+}
+
 void CinematicGrading::submit(bgfx::FrameBufferHandle target)
 {
     if (!m_active)
@@ -362,7 +554,13 @@ void CinematicGrading::submit(bgfx::FrameBufferHandle target)
     {
         submitAmbientOcclusion();
     }
-    const bool filtered = m_strength > 0.0f || m_sharpening > 0.0f;
+    // Without a glow draw this frame the glow view does not even clear: skip the chain and the composite.
+    const bool bloom = m_bloomActive && m_glowDrawn;
+    if (bloom)
+    {
+        submitBloom();
+    }
+    const bool filtered = m_strength > 0.0f || m_sharpening > 0.0f || bloom;
     bgfx::setViewName(GradingView, filtered ? "Cinematic grading" : "World presentation");
     bgfx::setViewFrameBuffer(GradingView, target);
     bgfx::setViewRect(GradingView, 0, 0, m_width, m_height);
@@ -371,6 +569,9 @@ void CinematicGrading::submit(bgfx::FrameBufferHandle target)
     bgfx::setUniform(m_params, params);
     bgfx::setTexture(0, m_sceneSampler, bgfx::getTexture(m_frameBuffer));
     bgfx::setTexture(1, m_lutSampler, m_lut);
+    const float bloomValues[4] = {bloom ? m_bloomStrength : 0.0f, 0.0f, 0.0f, 0.0f};
+    bgfx::setUniform(m_gradeBloom, bloomValues);
+    bgfx::setTexture(2, m_gradeBloomSampler, bloom ? bgfx::getTexture(m_bloomFrameBuffers[0]) : m_noBloom);
     bgfx::setVertexBuffer(0, &m_vertices);
     bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A);
     bgfx::submit(GradingView, m_program);
@@ -393,7 +594,8 @@ void CinematicGrading::shutdown()
 {
     resetViews();
     destroyTargets();
-    for (bgfx::ProgramHandle handle : {m_aoDepthProgram, m_aoProgram, m_aoBlurProgram, m_aoCompositeProgram})
+    for (bgfx::ProgramHandle handle : {m_aoDepthProgram, m_aoProgram, m_aoBlurProgram, m_aoCompositeProgram,
+             m_aoDepthMsaaProgram, m_aoCompositeMsaaProgram, m_bloomDownsampleProgram, m_bloomBlurProgram})
     {
         if (bgfx::isValid(handle))
         {
@@ -401,7 +603,8 @@ void CinematicGrading::shutdown()
         }
     }
     for (bgfx::UniformHandle handle : {m_depthSampler, m_aoSampler, m_aoLinearDepthSampler, m_aoRay,
-        m_aoInverseProjection, m_aoParams, m_aoDepthParams, m_aoTexel})
+        m_aoInverseProjection, m_aoParams, m_aoDepthParams, m_aoTexel, m_bloomSourceSampler, m_bloomTexel,
+        m_gradeBloomSampler, m_gradeBloom})
     {
         if (bgfx::isValid(handle))
         {
@@ -412,6 +615,8 @@ void CinematicGrading::shutdown()
     m_aoProgram = BGFX_INVALID_HANDLE;
     m_aoBlurProgram = BGFX_INVALID_HANDLE;
     m_aoCompositeProgram = BGFX_INVALID_HANDLE;
+    m_aoDepthMsaaProgram = BGFX_INVALID_HANDLE;
+    m_aoCompositeMsaaProgram = BGFX_INVALID_HANDLE;
     m_depthSampler = BGFX_INVALID_HANDLE;
     m_aoSampler = BGFX_INVALID_HANDLE;
     m_aoLinearDepthSampler = BGFX_INVALID_HANDLE;
@@ -420,6 +625,17 @@ void CinematicGrading::shutdown()
     m_aoParams = BGFX_INVALID_HANDLE;
     m_aoDepthParams = BGFX_INVALID_HANDLE;
     m_aoTexel = BGFX_INVALID_HANDLE;
+    m_bloomDownsampleProgram = BGFX_INVALID_HANDLE;
+    m_bloomBlurProgram = BGFX_INVALID_HANDLE;
+    m_bloomSourceSampler = BGFX_INVALID_HANDLE;
+    m_bloomTexel = BGFX_INVALID_HANDLE;
+    m_gradeBloomSampler = BGFX_INVALID_HANDLE;
+    m_gradeBloom = BGFX_INVALID_HANDLE;
+    if (bgfx::isValid(m_noBloom))
+    {
+        bgfx::destroy(m_noBloom);
+    }
+    m_noBloom = BGFX_INVALID_HANDLE;
     if (bgfx::isValid(m_program))
     {
         bgfx::destroy(m_program);

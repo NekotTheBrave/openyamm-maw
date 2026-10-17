@@ -19,6 +19,9 @@ struct BakedStaticLightSource
     uint8_t green = 255;
     uint8_t blue = 255;
     float alpha = 1.0f;
+    // The light's index in the renderer's enabled-state list: map lights, then decoration billboards. It selects the
+    // light's reach (the sectors it may bake into).
+    uint32_t sourceId = 0;
 };
 
 constexpr float IndoorBakedStaticLightScale = 1.35f;

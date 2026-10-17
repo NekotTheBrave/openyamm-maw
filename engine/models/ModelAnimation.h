@@ -2,7 +2,10 @@
 
 #include "engine/models/ModelAsset.h"
 
+#include <array>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace OpenYAMM::Engine
@@ -37,6 +40,20 @@ ModelBounds modelPoseBounds(const ModelAsset &asset, const ModelPose &pose, cons
 // coarsestLod: bound the lowest LOD mesh instead (hover/picking: same silhouette within a few cm, far fewer
 // vertices to skin).
 ModelBounds modelExactPoseBounds(const ModelAsset &asset, const ModelPose &pose, bool coarsestLod = false);
+
+// The posed triangles behind modelExactPoseBounds: positions, a triangle list indexing them, and their bounds.
+struct ModelPoseGeometry
+{
+    std::vector<std::array<float, 3>> positions;
+    std::vector<uint32_t> indices;
+    ModelBounds bounds;
+};
+
+void modelExactPoseGeometry(const ModelAsset &asset, const ModelPose &pose, bool coarsestLod,
+    ModelPoseGeometry &geometry);
+// Distance along direction to the nearest triangle the ray meets from either side, or none.
+std::optional<float> intersectModelPoseGeometry(const ModelPoseGeometry &geometry,
+    const std::array<float, 3> &origin, const std::array<float, 3> &direction);
 
 void resetModelPose(const ModelAsset &asset, ModelPose &pose);
 void evaluateModelClip(const ModelAsset &asset, uint32_t clipIndex, float timeSeconds, ModelPose &pose);

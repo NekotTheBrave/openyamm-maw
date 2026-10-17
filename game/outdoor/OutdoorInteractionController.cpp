@@ -3000,10 +3000,15 @@ bool OutdoorInteractionController::hitTestActorBillboard(
             {
                 return false;
             }
-            pBounds = view.m_worldFxSystem.actorModelBounds(actorIndex);
-            return intersectRayAabb(rayOrigin, rayDirection,
-                {pBounds->min[0], pBounds->min[1], pBounds->min[2]},
-                {pBounds->max[0], pBounds->max[1], pBounds->max[2]}, distance);
+            // The boxes only gate the triangle test: a click between a wing and the body misses.
+            const std::optional<float> modelDistance = view.m_worldFxSystem.actorModelPickRay(actorIndex,
+                {rayOrigin.x, rayOrigin.y, rayOrigin.z}, {rayDirection.x, rayDirection.y, rayDirection.z});
+            if (!modelDistance)
+            {
+                return false;
+            }
+            distance = *modelDistance;
+            return true;
         }
     }
 

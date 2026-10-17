@@ -34,23 +34,6 @@ enum class ControlScheme
     Classic
 };
 
-enum class MonsterProjectileVisuals
-{
-    FxRecipes,
-    Sprites
-};
-
-// Projectiles: Enhanced flies those bound in engine/effects/projectiles.yml as layered effects (head, ribbon trail,
-// sheds); Classic keeps the original particle trails for all of them.
-enum class ProjectileStyle
-{
-    Enhanced,
-    Classic
-};
-
-bool parseProjectileStyleValue(const std::string &value, ProjectileStyle &result);
-std::string projectileStyleValue(ProjectileStyle style);
-
 // Slain creatures: Satchel sinks the body after its death and leaves a loot satchel sized by what it holds; Keep leaves
 // the bodies on the ground (each one a creature model or sprite to draw).
 enum class CorpseStyle
@@ -73,6 +56,21 @@ enum class WeatherQuality
 
 bool parseWeatherQualityValue(const std::string &value, WeatherQuality &result);
 std::string weatherQualityValue(WeatherQuality quality);
+
+// Size of the clustered light grid (engine/render/LightGrid.h): High 16x9x24 cells of up to 32 lights, Low 8x5x16 of
+// up to 16 (the Android default).
+enum class LightGridQuality
+{
+    Low,
+    High
+};
+
+bool parseLightGridQualityValue(const std::string &value, LightGridQuality &result);
+std::string lightGridQualityValue(LightGridQuality quality);
+
+// Multisample anti-aliasing of the 3D view: "off", "2x" or "4x" as samples 0, 2 or 4.
+bool parseAntialiasingValue(const std::string &value, int &samples);
+std::string antialiasingValue(int samples);
 
 struct GameSettings
 {
@@ -171,14 +169,17 @@ struct GameSettings
     int terrainSubdivision = 4;
     // A second, rotated sample per ground material hides its repeat (two more texture reads each).
     bool terrainAntiTiling = true;
-    ProjectileStyle projectileStyle = ProjectileStyle::Enhanced;
     // Enhanced sky render resolution relative to the view (0.25-1); the Android profile uses 0.5.
     float skyResolutionScale = 1.0f;
     bool waterMovementRipples = true;
     WeatherQuality weatherQuality = WeatherQuality::High;
+    LightGridQuality lightGrid = LightGridQuality::High;
+    bool lightGridEnabled = true; // Profiling switch (`render light_grid`); not in the INI.
     // Rain rings on water (with the water shader) and darker, glossier surfaces while wet.
     bool rainRipples = true;
     bool wetSurfaces = true;
+    // Sun and point-light highlights on smooth and wet ground (the materials terrain).
+    bool terrainSpecular = true;
     int waterReflectionSize = 512;
     std::string terrainFiltering = "anisotropic";
     // Level of every anisotropic sampler (terrain when enabled, buildings, models). 4x: at 16x the materials terrain
@@ -200,17 +201,21 @@ struct GameSettings
     bool verticalSync = false;
     bool ambientOcclusion = false;
     int ambientOcclusionStrength = 35;
+    // Glow around flames, glow cards, emissive surfaces and spell effects (display-space bloom).
+    bool bloom = true;
+    int bloomStrength = 65;
     bool cinematicGrading = true;
     int cinematicStrength = 60;
     // Contrast-adaptive sharpening of the 3D view, 0 (off) to 100; the interface is unaffected.
     int sharpening = 0;
+    // Multisample anti-aliasing of the 3D view (samples: 0 off, 2 or 4); off costs nothing.
+    int antialiasing = 0;
 
     bool startInMainMenu = false;
     std::string startupSaveFile;
     bool bolsterMonsters = false;
     bool indoorPathfinding = true;
     bool outdoorPathfinding = false;
-    MonsterProjectileVisuals monsterProjectileVisuals = MonsterProjectileVisuals::FxRecipes;
     BlasterSkillScalingMode blasterSkillScaling = BlasterSkillScalingMode::Default;
     int blasterMinimumRecoveryTicks = 0;
     bool logIndoorVisibility = false;

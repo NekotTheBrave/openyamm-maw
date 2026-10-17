@@ -2517,6 +2517,7 @@ void GameplayPartyOverlayInputController::handleCharacterOverlayInput(
     if (pParty != nullptr)
     {
         context.itemService().updateReadableScrollOverlayForHeldItem(
+            context,
             selectedPartyMemberIndex,
             hoveredCharacterTarget,
             isLeftMousePressed);

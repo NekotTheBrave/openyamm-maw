@@ -138,6 +138,10 @@ public:
     // Pose bounds of the coarsest LOD mesh: hover/picking precision for a fraction of the skinning work.
     // Once burnt out, only visible rigid attachments remain pickable.
     const ModelBounds *pickingBounds(ModelInstanceHandle handle) const;
+    // Distance along direction to where the ray meets the posed coarsest LOD triangles (once burnt out, the
+    // pickingBounds box); none on a miss. Callers test the cheaper bounds first.
+    std::optional<float> pickRay(ModelInstanceHandle handle, const std::array<float, 3> &origin,
+        const std::array<float, 3> &direction) const;
     const ModelBounds *cullingBounds(ModelInstanceHandle handle) const;
     const ModelBounds *motionBounds(ModelInstanceHandle handle) const;
     // Bind-space bounds of each skin joint's vertices (shared by every instance of the asset), behind cullingBounds.
@@ -190,6 +194,8 @@ private:
         ModelBounds motionBounds;
         mutable bool matricesDirty = true;
         mutable ModelBounds pickingBounds;
+        // The triangles behind pickingBounds; empty once burnt out.
+        mutable ModelPoseGeometry pickingGeometry;
         mutable uint64_t pickingBoundsRevision = UINT64_MAX;
         // Clip sampling/blending inputs changed; root-only moves just recompose the hierarchy.
         mutable bool localPoseDirty = true;

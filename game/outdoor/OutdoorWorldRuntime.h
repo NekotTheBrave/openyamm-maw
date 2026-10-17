@@ -854,6 +854,10 @@ public:
         float sourceZ,
         float yawRadians
     );
+    void collectWorldItemPresentationStates(
+        std::vector<GameplayWorldItemPresentationState> &items) const override;
+    void collectFireSpikeTrapPresentationStates(
+        std::vector<GameplayProjectilePresentationState> &traps) const override;
     bool spawnPartyFireSpikeTrap(
         uint32_t casterMemberIndex,
         uint32_t spellId,
@@ -866,8 +870,6 @@ public:
     const ProjectileState *projectileState(size_t projectileIndex) const;
     size_t projectileImpactCount() const;
     const ProjectileImpactState *projectileImpactState(size_t effectIndex) const;
-    size_t fireSpikeTrapCount() const;
-    const FireSpikeTrapState *fireSpikeTrapState(size_t trapIndex) const;
     void startGameplayScreenOverlay(uint32_t colorAbgr, float durationSeconds, float peakAlpha);
     bool tryStartArmageddon(
         size_t casterMemberIndex,

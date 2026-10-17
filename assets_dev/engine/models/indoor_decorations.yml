@@ -1,0 +1,641 @@
+# Indoor (BLV) map decorations drawn as static 3D models instead of their sprites, for every world; the same fields
+# and world extension as decorations.yml (outdoor maps), kept apart because decorations.yml is a dependency of baked
+# outdoor maps. Matched by decoration name; the decoration keeps its native collision, events, lights and picking.
+#   mount: wall turns the model's back (asset -z) onto the nearest steep face within reach (torch brackets: their map
+#     facing is always 0); ground (default) uses yaw as in decorations.yml. free_model stands where no wall is in reach.
+#   swing: [angle degrees, period seconds] swings the model about its top (chandeliers, hanging cages).
+#   still: true records that a natively animated sprite is drawn by a model without animation on purpose.
+# Lit/unlit pairs that events toggle (TrchB00/nwtrchnf, brazir2f/brzier00) switch models with the sprite.
+# Without maps, a binding applies to every dungeon.
+decorations:
+  # --- MM6 decorations ---
+  - name: 6torch01
+    model: engine/models/mm6_deco_torch.glb
+    free_model: engine/models/mm6_deco_torch_free.glb
+    height: 128
+    mount: wall
+  - name: torchnf
+    model: engine/models/mm6_deco_torch_unlit.glb
+    free_model: engine/models/mm6_deco_torch_unlit_free.glb
+    height: 74
+    mount: wall
+  # Outdoor models reused as they are (the same native sprites; their outdoor bindings' fields).
+  - name: smlbarel
+    model: engine/models/mm6_deco_keg.glb
+    height: 89
+    height_jitter: 0.05
+  - name: bigbarel
+    model: engine/models/mm6_deco_barrel.glb
+    height: 117
+  - name: sklplrev
+    model: engine/models/mm6_deco_skullpile_meshy.glb
+    height: 153
+    height_jitter: 0.05
+  - name: brnrock0
+    model: engine/models/mm6_deco_burningrock.glb
+    height: 169
+    height_jitter: 0.1
+    z_offset: -4
+  - name: ckfyr00
+    model: engine/models/mm6_deco_cauldron.glb
+    height: 222
+  - name: sta1a
+    model: engine/models/mm6_deco_fountain.glb
+    height: 266
+  - name: foodbowl
+    model: engine/models/mm6_deco_foodbowl.glb
+    height: 20
+  - name: corpse04
+    model: engine/models/mm6_deco_corpse04.glb
+    height: 177
+  - name: corpse05
+    model: engine/models/mm6_deco_corpse05.glb
+    height: 139
+  - name: corpse16
+    model: engine/models/mm6_deco_corpse16.glb
+    height: 139
+  - name: 6flower02
+    model: engine/models/mm6_deco_flower02.glb
+    height: 67
+    height_jitter: 0.15
+  - name: 6flower07
+    model: engine/models/mm6_deco_flower07.glb
+    height: 76
+    height_jitter: 0.15
+  - name: 6flower08
+    model: engine/models/mm6_deco_flower08.glb
+    height: 88
+    height_jitter: 0.15
+  - name: 6rock01
+    model: engine/models/mm6_deco_rock01.glb
+    height: 99
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 6rock03
+    model: engine/models/mm6_deco_rock03.glb
+    height: 53
+    height_jitter: 0.15
+    z_offset: -3
+  - name: 6rock04
+    model: engine/models/mm6_deco_rock04.glb
+    height: 111
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 6rock05
+    model: engine/models/mm6_deco_rock05.glb
+    height: 107
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 6rock06
+    model: engine/models/mm6_deco_rock06.glb
+    height: 92
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 6rock08
+    model: engine/models/mm6_deco_rock08.glb
+    height: 85
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 6rock09
+    model: engine/models/mm6_deco_rock09.glb
+    height: 63
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 6rock12
+    model: engine/models/mm6_deco_rock12.glb
+    height: 87
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 6rock13
+    model: engine/models/mm6_deco_rock13.glb
+    height: 52
+    height_jitter: 0.15
+    z_offset: -3
+  - name: 6tree03
+    model: engine/models/mm6_deco_tree03.glb
+    height: 363
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree07
+    model: engine/models/mm6_deco_tree07.glb
+    height: 347
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree17
+    model: engine/models/mm6_deco_tree17.glb
+    height: 440
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree19
+    model: engine/models/mm6_deco_tree19.glb
+    height: 312
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree25
+    model: engine/models/mm6_deco_tree25.glb
+    height: 287
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree27
+    model: engine/models/mm6_deco_tree27.glb
+    height: 292
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree28
+    model: engine/models/mm6_deco_tree28.glb
+    height: 287
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree29
+    model: engine/models/mm6_deco_tree29.glb
+    height: 117
+    height_jitter: 0.15
+    lod_pixels: [360, 180, 90]
+  - name: swptree1
+    model: engine/models/mm6_deco_swptree1.glb
+    height: 380
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: swptree3
+    model: engine/models/mm6_deco_swptree3.glb
+    height: 309
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  # Log-pile fire (mm6_new_sorpigal_3d/props/scripts/build_logfire.py): planks and split logs, flame and smoke cards.
+  - name: dec04
+    model: engine/models/mm6_deco_logfire.glb
+    height: 116
+  # Fire fixtures (mm6_dungeons_3d/fire/): braziers (brazir2f unlit, brzier00 lit, toggled by events), flambeaux,
+  # sconces, the small bubbling cauldron and the candle; flames on the shared Unity Labs flipbooks.
+  - name: brazir2f
+    model: engine/models/mm6_deco_brazier_unlit.glb
+    height: 146
+    z_offset: 3.5
+  - name: brzier00
+    model: engine/models/mm6_deco_brazier.glb
+    height: 146
+    z_offset: 3.5
+  - name: flamb00
+    model: engine/models/mm6_deco_flambeaux.glb
+    height: 199
+  - name: scon200
+    model: engine/models/mm6_deco_sconce2.glb
+    free_model: engine/models/mm6_deco_sconce2_free.glb
+    height: 127
+    mount: wall
+  - name: scon100
+    model: engine/models/mm6_deco_sconce1.glb
+    free_model: engine/models/mm6_deco_sconce1_free.glb
+    height: 98
+    mount: wall
+  - name: cauld00
+    model: engine/models/mm6_deco_cauldron_pot.glb
+    height: 96
+  - name: cndlab0
+    model: engine/models/mm6_deco_candle.glb
+    height: 36
+  # Torches (mm6_dungeons_3d/torches/): the iron torch pair TrchB00/nwtrchnf (toggled by events), the holder torch,
+  # the hanging brazier torch03 and the skull torch.
+  - name: trchb00
+    model: engine/models/mm6_deco_irontorch.glb
+    free_model: engine/models/mm6_deco_irontorch_free.glb
+    height: 130
+    mount: wall
+  - name: nwtrchnf
+    model: engine/models/mm6_deco_irontorch_unlit.glb
+    free_model: engine/models/mm6_deco_irontorch_unlit_free.glb
+    height: 93
+    mount: wall
+  - name: torch01
+    model: engine/models/mm6_deco_torch01.glb
+    free_model: engine/models/mm6_deco_torch01_free.glb
+    height: 128
+    mount: wall
+  - name: torch03
+    model: engine/models/mm6_deco_torch03.glb
+    height: 119
+    z_offset: 9
+  - name: torskul0
+    model: engine/models/mm6_deco_torskul.glb
+    free_model: engine/models/mm6_deco_torskul_free.glb
+    height: 179
+    mount: wall
+  # Containers and small props (mm6_dungeons_3d/containers/). crysdisc is a flat disc seen from above in its sprite:
+  # bound by its width (height 6 gives about 40 across).
+  - name: bag_a
+    model: engine/models/mm6_deco_bag_a.glb
+    height: 47
+    height_jitter: 0.08
+  - name: bag01
+    model: engine/models/mm6_deco_bag01.glb
+    height: 92
+    height_jitter: 0.08
+  - name: floursac
+    model: engine/models/mm6_deco_floursac.glb
+    height: 82
+    height_jitter: 0.08
+  - name: bucket
+    model: engine/models/mm6_deco_bucket.glb
+    height: 67
+  - name: trasheap
+    model: engine/models/mm6_deco_trasheap.glb
+    height: 138
+  - name: mushrm01
+    model: engine/models/mm6_deco_mushrm01.glb
+    height: 106
+  - name: mushrm02
+    model: engine/models/mm6_deco_mushrm02.glb
+    height: 87
+  - name: mushrm03
+    model: engine/models/mm6_deco_mushrm03.glb
+    height: 79
+  - name: mushrm05
+    model: engine/models/mm6_deco_mushrm05.glb
+    height: 88
+  - name: crysdisc
+    model: engine/models/mm6_deco_crysdisc.glb
+    height: 6
+  # Cages and the chandelier (mm6_dungeons_3d/hanging/). The native cages stand on the floor without a chain; the
+  # models hang them on a chain to the ceiling and swing them as MM7's cages do. Two placements under high ceilings
+  # take long-chain variants (per-map bindings: a map filter is applied before the duplicate-name check).
+  - name: hngncge2
+    model: engine/models/mm6_deco_hngncge2.glb
+    height: 321
+    z_offset: 1
+    swing: [1.0, 1.5]
+    maps: [6d14.blv, 6d17.blv, zddb10.blv]
+  - name: hngncge2
+    model: engine/models/mm6_deco_hngncge2_long.glb
+    height: 1159
+    swing: [0.4, 7.5]
+    maps: [6d20.blv]
+  - name: empty
+    model: engine/models/mm6_deco_empty.glb
+    height: 321
+    z_offset: 1
+    swing: [1.0, 1.5]
+    maps: [cd3.blv]
+  - name: empty
+    model: engine/models/mm6_deco_empty_long.glb
+    height: 704
+    swing: [0.5, 5.5]
+    maps: [6t8.blv]
+  - name: bonecage
+    model: engine/models/mm6_deco_bonecage.glb
+    height: 250
+  - name: chndlir0
+    model: engine/models/mm6_deco_chndlir0.glb
+    height: 159
+    z_offset: 22
+    swing: [0.75, 3.0]
+  # Crystals, stalagmites and the Corinthian column (mm6_dungeons_3d/crystals/). crystl0 and mcryst01 pulse
+  # (openyamm_pulse); columns keep the map facing so rows of them stay aligned with their room.
+  - name: crystl0
+    model: engine/models/mm6_deco_crystl0.glb
+    height: 92
+  - name: mcryst01
+    model: engine/models/mm6_deco_mcryst01.glb
+    height: 63
+  - name: crclstr
+    model: engine/models/mm6_deco_crclstr.glb
+    height: 128
+  - name: crys6
+    model: engine/models/mm6_deco_crys6.glb
+    height: 98
+  - name: crys5
+    model: engine/models/mm6_deco_crys5.glb
+    height: 77
+  - name: stlmite1
+    model: engine/models/mm6_deco_stlmite1.glb
+    height: 208
+  - name: stlmite2
+    model: engine/models/mm6_deco_stlmite2.glb
+    height: 190
+  - name: stlmite3
+    model: engine/models/mm6_deco_stlmite3.glb
+    height: 210
+  - name: corinth
+    model: engine/models/mm6_deco_corinth.glb
+    height: 448
+    yaw: facing
+  # Corpses, small rocks, trees and flowers (mm6_dungeons_3d/leftovers/). The rockNN sprites (MM8 art) differ from
+  # the 6rockNN ones (outdoor rock models); their models are named boulderNN.
+  - name: corpse
+    model: engine/models/mm6_deco_corpse.glb
+    height: 205
+  - name: corpse07
+    model: engine/models/mm6_deco_corpse07.glb
+    height: 204
+  - name: corpse08
+    model: engine/models/mm6_deco_corpse08.glb
+    height: 178
+  - name: corpse11
+    model: engine/models/mm6_deco_corpse11.glb
+    height: 222
+  - name: corpse14
+    model: engine/models/mm6_deco_corpse14.glb
+    height: 203
+  - name: corpse15
+    model: engine/models/mm6_deco_corpse15.glb
+    height: 177
+  - name: corpse18
+    model: engine/models/mm6_deco_corpse18.glb
+    height: 203
+  - name: corpse01
+    model: engine/models/mm6_deco_corpse01.glb
+    height: 47
+  - name: corpse02
+    model: engine/models/mm6_deco_corpse02.glb
+    height: 128
+  - name: corpse03
+    model: engine/models/mm6_deco_corpse03.glb
+    height: 165
+  - name: corpse09
+    model: engine/models/mm6_deco_corpse09.glb
+    height: 102
+  - name: corpse10
+    model: engine/models/mm6_deco_corpse10.glb
+    height: 127
+  - name: rock01
+    model: engine/models/mm6_deco_boulder01.glb
+    height: 71
+    height_jitter: 0.1
+    z_offset: -3
+  - name: rock04
+    model: engine/models/mm6_deco_boulder01.glb
+    height: 69
+    height_jitter: 0.1
+    z_offset: -3
+  - name: rock02
+    model: engine/models/mm6_deco_boulder02.glb
+    height: 39
+    height_jitter: 0.1
+    z_offset: -2
+  - name: rock03
+    model: engine/models/mm6_deco_boulder03.glb
+    height: 104
+    height_jitter: 0.1
+    z_offset: -4
+  - name: rock06
+    model: engine/models/mm6_deco_boulder06.glb
+    height: 16
+    height_jitter: 0.1
+    z_offset: -1
+  - name: rock10
+    model: engine/models/mm6_deco_boulder10.glb
+    height: 102
+    height_jitter: 0.1
+    z_offset: -4
+  - name: rock11
+    model: engine/models/mm6_deco_boulder11.glb
+    height: 53
+    height_jitter: 0.1
+    z_offset: -3
+  - name: 6rock02
+    model: engine/models/mm6_deco_rock02.glb
+    height: 115
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 6tree09
+    model: engine/models/mm6_deco_tree09.glb
+    height: 512
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree22
+    model: engine/models/mm6_deco_tree22.glb
+    height: 211
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree26
+    model: engine/models/mm6_deco_tree26.glb
+    height: 128
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 6tree30
+    model: engine/models/mm6_deco_tree30.glb
+    height: 60
+    height_jitter: 0.12
+    lod_pixels: [360, 180, 90]
+  - name: 6flower01
+    model: engine/models/mm6_deco_flower01.glb
+    height: 33
+    height_jitter: 0.15
+  - name: 6flower11
+    model: engine/models/mm6_deco_flower11.glb
+    height: 35
+    height_jitter: 0.15
+  # --- MM7 decorations ---
+  # Wall torches: torch01 is MM6's torch01 sprite; torch07/05/06 are the same torch with red, purple and green flames
+  # (mm7_3d/torches/, flames from shared_flames/).
+  - name: torch07
+    model: engine/models/mm7_deco_torch01_red.glb
+    free_model: engine/models/mm7_deco_torch01_red_free.glb
+    height: 128
+    mount: wall
+  - name: torch05
+    model: engine/models/mm7_deco_torch01_purple.glb
+    free_model: engine/models/mm7_deco_torch01_purple_free.glb
+    height: 128
+    mount: wall
+  - name: torch06
+    model: engine/models/mm7_deco_torch01_green.glb
+    free_model: engine/models/mm7_deco_torch01_green_free.glb
+    height: 128
+    mount: wall
+  - name: 7dec02
+    model: engine/models/mm6_deco_campfire.glb
+    height: 108
+  # Small props and heaps (mm7_3d/dressing/REPORT_heaps_small_props.md). 7dec10 binds at its model height: the
+  # sprite's art height includes the heap's depth seen from above.
+  - name: 7dec46
+    model: engine/models/mm7_deco_7dec46.glb
+    height: 46
+  - name: dec97
+    model: engine/models/mm7_deco_dec97.glb
+    height: 66
+  - name: 7dec11
+    model: engine/models/mm7_deco_7dec11.glb
+    height: 185
+  - name: 7dec10
+    model: engine/models/mm7_deco_7dec10.glb
+    height: 127
+  # Iron lantern (mm7_3d/fire/): 48 of the 56 placements hang 9-12 units from a wall like torches; the wall model
+  # adds a plate and an arm holding the handle.
+  - name: torch02
+    model: engine/models/mm7_deco_torch02.glb
+    free_model: engine/models/mm7_deco_torch02_free.glb
+    height: 130
+    mount: wall
+  # Barrels, bones and hanging cages (mm7_3d/dressing/README.md). 7dec32 is a barrel draped with a fishing net; its
+  # sprite's height includes the lid seen from above. dec19 lies on the ground: its height keeps the sprite's length.
+  - name: 7dec32
+    model: engine/models/mm7_deco_7dec32.glb
+    height: 121
+    height_jitter: 0.05
+  - name: 7dec21
+    model: engine/models/mm7_deco_7dec21.glb
+    height: 91
+  - name: 7dec20
+    model: engine/models/mm7_deco_7dec20.glb
+    height: 71
+  - name: 7dec18
+    model: engine/models/mm7_deco_7dec18.glb
+    height: 58
+    height_jitter: 0.05
+  - name: dec19
+    model: engine/models/mm7_deco_dec19.glb
+    height: 31
+    height_jitter: 0.05
+  # Hanging cages of 7d27 (their chains reach 2 units into the ceiling, which sits 180 above every cage's origin).
+  - name: 7dec05
+    model: engine/models/mm7_deco_7dec05.glb
+    height: 205
+    z_offset: -23
+    swing: [1.0, 1.5]
+  - name: 7dec06
+    model: engine/models/mm7_deco_7dec06.glb
+    height: 205
+    z_offset: -23
+    swing: [1.0, 1.5]
+  - name: 7dec07
+    model: engine/models/mm7_deco_7dec07.glb
+    height: 205
+    z_offset: -23
+    swing: [1.0, 1.5]
+  # Rocks of 7d29 (the outdoor models, graded for sunlight; mm7_3d/rocks/).
+  - name: 7rock03
+    model: engine/models/mm7_deco_7rock03.glb
+    height: 88
+    height_jitter: 0.15
+    z_offset: -4
+  - name: 7rock05
+    model: engine/models/mm7_deco_7rock05.glb
+    height: 120
+    height_jitter: 0.15
+    z_offset: -4
+  # Trees standing in 7d22 (the outdoor tree models; mm7_3d/trees_seasonal/, trees_a/).
+  - name: 7tree01
+    model: engine/models/mm7_deco_7tree01.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree16
+    model: engine/models/mm7_deco_7tree16.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree19
+    model: engine/models/mm7_deco_7tree19.glb
+    height: 1272
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: 7tree25
+    model: engine/models/mm7_deco_7tree25.glb
+    height: 1280
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree38
+    model: engine/models/mm7_deco_tree38.glb
+    height: 990
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  - name: tree37
+    model: engine/models/mm7_deco_tree37.glb
+    height: 990
+    height_jitter: 0.12
+    lod_pixels: [650, 320, 180]
+  # Dwarf statues of 7d34 (mm7_3d/dressing/REPORT_statues.md): directional sprites, so the models turn to the map
+  # facing; their fronts are asset +z, a quarter turn from the facing's axis.
+  - name: 7dec55
+    model: engine/models/mm7_deco_7dec55.glb
+    height: 171
+    yaw: facing
+    yaw_offset: -1.5708
+  - name: 7dec54
+    model: engine/models/mm7_deco_7dec54.glb
+    height: 169
+    yaw: facing
+    yaw_offset: -1.5708
+  # Art shared with MM8 (level_generation/decorations/mm8_3d/props/).
+  - name: 7dec01
+    model: engine/models/mm7_deco_trash_heap.glb
+    height: 92
+    height_jitter: 0.05
+  - name: 7dec48
+    model: engine/models/mm7_deco_goblet.glb
+    height: 30
+  - name: 7dec08
+    model: engine/models/mm7_deco_fruit_bowl.glb
+    height: 40
+  # --- MM8 decorations ---
+  # dec56 shows the same torch as torch01 (palette aside), so both use the MM6 torch01 model.
+  - name: dec56
+    model: engine/models/mm6_deco_torch01.glb
+    free_model: engine/models/mm6_deco_torch01_free.glb
+    height: 128
+    mount: wall
+  # MM8 models (level_generation/decorations/mm8_3d/).
+  - name: dec03
+    model: engine/models/mm8_deco_barrel.glb
+    height: 117
+    height_jitter: 0.05
+  # Hanging fixtures: the native sprites overlap the ceiling above them by a per-map amount; z_offset lowers each
+  # model so its chain meets the ceiling (measured from the BLV ceilings over every placement).
+  - name: dec07
+    model: engine/models/mm8_deco_lantern.glb
+    height: 128
+    z_offset: -56
+    swing: [1.2, 2.2]
+    maps: [d24.blv]
+  - name: dec07
+    model: engine/models/mm8_deco_lantern.glb
+    height: 128
+    z_offset: -32
+    swing: [1.2, 2.2]
+    maps: [d06.blv]
+  - name: dec08
+    model: engine/models/mm8_deco_chandelier1.glb
+    height: 127
+    swing: [1.0, 2.6]
+    maps: [d40.blv]
+  - name: dec08
+    model: engine/models/mm8_deco_chandelier1.glb
+    height: 127
+    z_offset: -31
+    swing: [1.0, 2.6]
+    maps: [d27.blv]
+  - name: dec27
+    model: engine/models/mm8_deco_chandelier2.glb
+    height: 127
+    z_offset: -39
+    swing: [1.0, 2.6]
+  - name: dec02
+    model: engine/models/mm8_deco_candlestick.glb
+    height: 123
+  # MM8 props (mm8_3d/props/); dec35 and dec28 are MM7 art (mm7_deco_*).
+  - name: dec05
+    model: engine/models/mm8_deco_skeleton.glb
+    height: 83
+    height_jitter: 0.05
+  - name: dec29
+    model: engine/models/mm8_deco_bonepile.glb
+    height: 39
+    height_jitter: 0.05
+  - name: dec32
+    model: engine/models/mm8_deco_metalbowls.glb
+    height: 37
+  - name: dec36
+    model: engine/models/mm8_deco_woodplate.glb
+    height: 6
+  - name: dec37
+    model: engine/models/mm8_deco_woodplates.glb
+    height: 14
+  - name: dec39
+    model: engine/models/mm8_deco_metalplates.glb
+    height: 16
+  - name: dec35
+    model: engine/models/mm7_deco_goblet.glb
+    height: 30
+  - name: dec28
+    model: engine/models/mm7_deco_fruit_bowl.glb
+    height: 40

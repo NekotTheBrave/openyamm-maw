@@ -36,14 +36,21 @@ void main()
     vec3 normal = cross(tangentX, tangentY);
     normal /= sqrt(max(dot(normal, normal), 0.000001));
     normal *= dot(normal, -position) < 0.0 ? -1.0 : 1.0;
-    float rotation = fract(sin(dot(floor(uv / u_aoTexel.zw), vec2(12.9898, 78.233))) * 43758.5453) * 6.2831853;
+    // Nine rotations within the 45 degrees between directions, in a 3x3 pattern: the 3x3 depth-aware filter after this
+    // pass averages each pixel over all nine, and neighbouring pixels repeat each other's tap offsets.
+    vec2 cell = mod(floor(uv / u_aoTexel.zw), 3.0);
+    float rotation = (cell.x + 3.0 * cell.y) * (0.78539816 / 9.0);
+    vec2 ray = vec2(cos(rotation), sin(rotation));
     vec2 radiusUv = 0.5 * u_aoParams.x / (u_aoRay.xy * max(distance, 1.0));
     radiusUv = min(radiusUv, vec2(0.12, 0.12));
     float occlusion = 0.0;
     for (int direction = 0; direction < 8; ++direction)
     {
-        float angle = rotation + float(direction) * 0.78539816;
-        vec2 ray = vec2(cos(angle), sin(angle));
+        if (direction > 0)
+        {
+            // The next direction, 45 degrees on.
+            ray = vec2(ray.x - ray.y, ray.x + ray.y) * 0.70710678;
+        }
         for (int step = 0; step < 2; ++step)
         {
             vec2 sampleUv = uv + ray * radiusUv * (0.4 + float(step) * 0.5);

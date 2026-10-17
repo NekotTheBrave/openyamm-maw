@@ -207,12 +207,14 @@ void includeBounds(std::array<float, 3> &min, std::array<float, 3> &max, const s
     }
 }
 
-// What an instance can cover at its largest LOD scale (vs_terrain_decoration): the crossed cards' half width (stones:
-// the mesh radius) plus the wind sway, tilted with the ground.
+// What an instance can cover at its largest LOD scale (vs_terrain_decoration): the card's half width (stones:
+// the mesh radius, clumps: plus their lean) plus the wind sway, tilted with the ground.
 void includeInstance(std::array<float, 3> &min, std::array<float, 3> &max, const TerrainDecorationInstance &instance,
-    float maxScale)
+    float maxScale, float clumpLean)
 {
-    const float reach = instance.sizeWindRank[0] * 0.5f * std::pow(maxScale, 1.5f);
+    // A clump's cards lean outward by up to clumpLean of the instance height (and start a little off its centre).
+    const float reach = (instance.sizeWindRank[0] * 0.5f + instance.sizeWindRank[1] * clumpLean)
+        * std::pow(maxScale, 1.5f);
     const float slope = reach * std::hypot(instance.groundNormal[0], instance.groundNormal[1])
         / std::max(instance.groundNormal[2], 0.5f);
     const float x = instance.positionYaw[0];
@@ -225,8 +227,8 @@ void includeInstance(std::array<float, 3> &min, std::array<float, 3> &max, const
 
 // Stores one mesh kind's instances as a rank quadtree (TerrainDecorationNode), depth first, children in the order
 // (x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1).
-void buildRankTree(const std::vector<TerrainDecorationInstance> &placed, bool stone, float maxScale,
-    TerrainDecorationPlacement &result)
+void buildRankTree(const std::vector<TerrainDecorationInstance> &placed, bool stone, bool clump, float maxScale,
+    float clumpLean, TerrainDecorationPlacement &result)
 {
     if (placed.empty())
     {
@@ -276,6 +278,7 @@ void buildRankTree(const std::vector<TerrainDecorationInstance> &placed, bool st
         node.range.first = uint32_t(result.instances.size());
         node.range.count = uint32_t(own.size());
         node.range.stone = stone;
+        node.range.clump = clump;
         node.range.min = {1.0e9f, 1.0e9f, 1.0e9f};
         node.range.max = {-1.0e9f, -1.0e9f, -1.0e9f};
         node.rankEnd = std::pow(0.25f, float(level));
@@ -283,7 +286,7 @@ void buildRankTree(const std::vector<TerrainDecorationInstance> &placed, bool st
         for (uint32_t index : own)
         {
             result.instances.push_back(placed[index]);
-            includeInstance(node.range.min, node.range.max, placed[index], maxScale);
+            includeInstance(node.range.min, node.range.max, placed[index], maxScale, clumpLean);
         }
         node.regionMin = node.range.min;
         node.regionMax = node.range.max;
@@ -438,6 +441,81 @@ std::optional<TerrainDecorationConfig> loadTerrainDecorationConfig(
         {
             config.verges.distance = boundedFloat(verges, "distance", 0.0f, 0.0f, 1024.0f);
             config.verges.tallChance = boundedFloat(verges, "tall_chance", 0.0f, 0.0f, 1.0f);
+        }
+        if (const YAML::Node overhead = block("overhead_fade"))
+        {
+            for (const YAML::Node &layer : overhead["layers"])
+            {
+                const int index = layer.as<int>();
+                if (index < 0 || index >= layerCount)
+                {
+                    throw std::runtime_error("overhead_fade layer outside the tuft atlas");
+                }
+                config.overhead.layerMask |= 1u << index;
+            }
+            config.overhead.start = boundedFloat(overhead, "start", 250.0f, 0.0f, 4096.0f);
+            config.overhead.end = boundedFloat(overhead, "end", 600.0f, config.overhead.start + 1.0f, 8192.0f);
+            config.overhead.ground = boundedFloat(overhead, "ground", 0.0f, 0.0f, 1.0f);
+        }
+        if (const YAML::Node shade = block("ground_shade"))
+        {
+            config.groundShade = std::clamp(shade.as<float>(), 0.0f, 0.8f);
+        }
+        if (const YAML::Node clump = block("clump"))
+        {
+            for (const YAML::Node &layer : clump["layers"])
+            {
+                const int index = layer.as<int>();
+                if (index < 0 || index >= layerCount)
+                {
+                    throw std::runtime_error("clump layer outside the tuft atlas");
+                }
+                config.clump.layerMask |= 1u << index;
+            }
+            config.clump.cards = std::clamp(clump["cards"].as<int>(5), 2, TerrainDecorationMaxClumpCards);
+            config.clump.leanDegrees = boundedFloat(clump, "lean", 25.0f, 0.0f, 60.0f);
+            config.clump.cardScale = boundedFloat(clump, "card_scale", 0.75f, 0.25f, 1.0f);
+            config.clump.distance = boundedFloat(clump, "distance", 1500.0f, 64.0f, 65536.0f);
+        }
+        if (const YAML::Node bushes = block("bushes"))
+        {
+            TerrainDecorationBushes &result = config.bushes;
+            for (const YAML::Node &model : bushes["models"])
+            {
+                result.models.push_back({model["model"].as<std::string>(),
+                    boundedFloat(model, "height", 120.0f, 16.0f, 1024.0f), boundedFloat(model, "weight", 1.0f, 0.01f, 100.0f)});
+            }
+            if (result.models.size() > 16)
+            {
+                throw std::runtime_error("at most 16 bush models");
+            }
+            result.heightJitter = boundedFloat(bushes, "height_jitter", 0.2f, 0.0f, 0.5f);
+            result.spacing = boundedFloat(bushes, "spacing", 640.0f, 128.0f, 8192.0f);
+            result.meadowChance = boundedFloat(bushes, "meadow_chance", 0.02f, 0.0f, 1.0f);
+            result.lushChance = boundedFloat(bushes, "lush_chance", 0.3f, 0.0f, 1.0f);
+            result.lushBelow = boundedFloat(bushes, "lush_below", -0.3f, -1.0f, 1.0f);
+            result.vergeChance = boundedFloat(bushes, "verge_chance", 0.35f, 0.0f, 1.0f);
+            result.vergeDistance = boundedFloat(bushes, "verge_distance", 260.0f, 0.0f, 2048.0f);
+            result.edgeChance = boundedFloat(bushes, "edge_chance", 0.4f, 0.0f, 1.0f);
+            if (bushes["edge_radius"])
+            {
+                result.edgeRadius = bushes["edge_radius"].as<std::array<float, 2>>();
+            }
+            result.groupMax = std::clamp(bushes["group_max"].as<int>(3), 1, 8);
+            result.groupSpread = boundedFloat(bushes, "group_spread", 150.0f, 0.0f, 1024.0f);
+            result.radius = boundedFloat(bushes, "radius", 90.0f, 8.0f, 512.0f);
+            result.clearance = boundedFloat(bushes, "clearance", 60.0f, 0.0f, 1024.0f);
+            result.minimumNormalZ = boundedFloat(bushes, "minimum_normal_z", 0.8f, 0.5f, 1.0f);
+            result.maxCount = std::clamp(bushes["max_count"].as<int>(600), 0, 4096);
+            if (bushes["fade_distance"])
+            {
+                result.fadeDistance = bushes["fade_distance"].as<std::array<float, 2>>();
+            }
+            if (result.edgeRadius[0] < 0.0f || result.edgeRadius[1] < result.edgeRadius[0]
+                || result.fadeDistance[0] <= 0.0f || result.fadeDistance[1] <= result.fadeDistance[0])
+            {
+                throw std::runtime_error("bush edge_radius and fade_distance must be increasing ranges");
+            }
         }
         if (const YAML::Node undergrowth = block("undergrowth"))
         {
@@ -647,6 +725,119 @@ void placeUndergrowth(const OutdoorMapData &map, const TerrainDecorationConfig &
                 tinted(pRule->tint, shade,
                     outdoorMeadowTint(moisture, config.meadow.dryTint, config.meadow.lushTint)),
                 {normal.x, normal.y, normal.z, float(variant.layer)}});
+        }
+    }
+}
+
+// Bush groups (TerrainDecorationBushes): tree lines first, then a jittered grid over the open ground, lush hollows and
+// verges, until maxCount.
+template <typename GrassGrows>
+void placeBushes(const OutdoorMapData &map, const TerrainDecorationConfig &config,
+    const OutdoorMeadowField &meadowField, const std::vector<std::array<bx::Vec3, 2>> &modelBounds,
+    float terrainSmoothing, const GrassGrows &grassGrows, std::vector<TerrainBushInstance> &placed)
+{
+    const TerrainDecorationBushes &bushes = config.bushes;
+    if (bushes.models.empty() || bushes.maxCount == 0)
+    {
+        return;
+    }
+    std::vector<TerrainDecorationVariant> weights;
+    for (const TerrainDecorationBushModel &model : bushes.models)
+    {
+        TerrainDecorationVariant weight;
+        weight.weight = model.weight;
+        weights.push_back(weight);
+    }
+    const auto groundHeight = [&](float px, float py)
+    {
+        return terrainSmoothing > 0.0f ? outdoorSmoothedTerrainHeight(map, outdoorWorldToGridXFloat(px),
+            outdoorWorldToGridYFloat(py), terrainSmoothing) : sampleOutdoorRenderedTerrainHeight(map, px, py);
+    };
+    const auto tryBush = [&](float px, float py, uint32_t &state)
+    {
+        const float gridX = outdoorWorldToGridXFloat(px);
+        const float gridY = outdoorWorldToGridYFloat(py);
+        if (placed.size() >= size_t(bushes.maxCount) || !grassGrows(gridX, gridY))
+        {
+            return;
+        }
+        const float reach = bushes.radius / OutdoorMapData::TerrainTileSize;
+        for (int direction = 0; direction < 6; ++direction)
+        {
+            const float angle = float(direction) * 1.0471976f;
+            if (!grassGrows(gridX + std::cos(angle) * reach, gridY + std::sin(angle) * reach))
+            {
+                return;
+            }
+        }
+        for (const TerrainBushInstance &other : placed)
+        {
+            const float dx = other.position[0] - px;
+            const float dy = other.position[1] - py;
+            if (dx * dx + dy * dy < bushes.radius * bushes.radius * 2.56f)
+            {
+                return;
+            }
+        }
+        const float z = groundHeight(px, py);
+        if (sampleOutdoorRenderedTerrainNormal(map, px, py).z < bushes.minimumNormalZ
+            || blocked(map, modelBounds, px, py, z, bushes.radius + bushes.clearance, bushes.radius + bushes.clearance))
+        {
+            return;
+        }
+        const float yaw = randomUnit(state) * 6.2831853f;
+        const float heightScale = 1.0f + bushes.heightJitter * (2.0f * randomUnit(state) - 1.0f);
+        placed.push_back({{px, py, z - 4.0f}, yaw, heightScale, uint32_t(chooseVariant(weights, randomUnit(state)))});
+    };
+    const auto group = [&](float px, float py, uint32_t &state)
+    {
+        const int members = 1 + std::min(int(randomUnit(state) * float(bushes.groupMax)), bushes.groupMax - 1);
+        for (int member = 0; member < members; ++member)
+        {
+            const float angle = randomUnit(state) * 6.2831853f;
+            const float distance = member == 0 ? 0.0f : bushes.groupSpread * (0.6f + 0.6f * randomUnit(state));
+            tryBush(px + std::cos(angle) * distance, py + std::sin(angle) * distance, state);
+        }
+    };
+    for (size_t entityIndex = 0; entityIndex < map.entities.size(); ++entityIndex)
+    {
+        const OutdoorEntity &entity = map.entities[entityIndex];
+        uint32_t state = hash(config.seed ^ hash(uint32_t(entityIndex) + 0x1b873593u));
+        if (!undergrowthDecoration(config.undergrowth, entity.name) || randomUnit(state) >= bushes.edgeChance)
+        {
+            continue;
+        }
+        const float angle = randomUnit(state) * 6.2831853f;
+        const float distance = bushes.edgeRadius[0] + (bushes.edgeRadius[1] - bushes.edgeRadius[0]) * randomUnit(state);
+        group(float(entity.x) + std::cos(angle) * distance, float(entity.y) + std::sin(angle) * distance, state);
+    }
+    const int steps = int(std::ceil(MapSize / bushes.spacing));
+    for (int row = 0; row < steps; ++row)
+    {
+        for (int column = 0; column < steps; ++column)
+        {
+            uint32_t state = hash(config.seed ^ hash(uint32_t(row * steps + column) + 0x2f6b0e7du));
+            const float px = MapMinimum + (float(column) + randomUnit(state)) * bushes.spacing;
+            const float py = MapMinimum + (float(row) + randomUnit(state)) * bushes.spacing;
+            if (!grassGrows(outdoorWorldToGridXFloat(px), outdoorWorldToGridYFloat(py)))
+            {
+                continue;
+            }
+            const float moisture = meadowField.sample(px, py);
+            float chance = bushes.meadowChance;
+            if (moisture < bushes.lushBelow)
+            {
+                chance = std::max(chance, bushes.lushChance * smoothUnit((bushes.lushBelow - moisture) / 0.3f));
+            }
+            if (bushes.vergeChance > 0.0f && blocked(map, modelBounds, px, py, groundHeight(px, py),
+                    bushes.radius + bushes.clearance + bushes.vergeDistance, 0.0f))
+            {
+                chance = std::max(chance, bushes.vergeChance);
+            }
+            if (randomUnit(state) < chance)
+            {
+                group(px, py, state);
+            }
         }
     }
 }
@@ -917,8 +1108,27 @@ TerrainDecorationPlacement scatterTerrainDecorations(const OutdoorMapData &map,
             placeUndergrowth(map, config, meadowField, rulesByTile, modelBounds, terrainSmoothing, footprintFits,
                 placed);
         }
-        buildRankTree(placed, stone, stone ? 1.0f : config.lod.maxScale, result);
+        if (stone)
+        {
+            buildRankTree(placed, true, false, 1.0f, 0.0f, result);
+            continue;
+        }
+        // Clump layers get their own tree: they draw with the clump mesh.
+        std::vector<TerrainDecorationInstance> clumps;
+        std::erase_if(placed, [&](const TerrainDecorationInstance &instance)
+        {
+            const bool clump = (config.clump.layerMask >> uint32_t(instance.groundNormal[3])) & 1u;
+            if (clump)
+            {
+                clumps.push_back(instance);
+            }
+            return clump;
+        });
+        buildRankTree(placed, false, false, config.lod.maxScale, 0.0f, result);
+        const float lean = std::sin(config.clump.leanDegrees * 0.017453293f) * config.clump.cardScale + 0.1f;
+        buildRankTree(clumps, false, true, config.lod.maxScale, lean, result);
     }
+    placeBushes(map, config, meadowField, modelBounds, terrainSmoothing, grassGrows, result.bushes);
     return result;
 }
 
@@ -1067,9 +1277,16 @@ uint32_t terrainDecorationPrefix(const std::vector<float> &ranks, const TerrainD
     return uint32_t(std::lower_bound(begin, begin + range.count, keep) - begin);
 }
 
-std::vector<float> buildTerrainFoliageMap(const TerrainDecorationPlacement &placement,
-    const std::vector<TerrainFoliageLayer> &layers)
+float terrainDecorationClumpArea(const TerrainDecorationClump &clump)
 {
+    // Each card faces a random horizontal direction: 2 / pi of its area on average.
+    return float(clump.cards) * clump.cardScale * clump.cardScale * 0.63662f;
+}
+
+std::vector<float> buildTerrainFoliageMap(const TerrainDecorationPlacement &placement,
+    const std::vector<TerrainFoliageLayer> &layers, const TerrainDecorationClump &clump)
+{
+    const float clumpArea = terrainDecorationClumpArea(clump);
     constexpr int size = TerrainFoliageMapSize;
     constexpr float texel = MapSize / float(size);
     std::vector<float> sums(size_t(size) * size * 4, 0.0f);
@@ -1087,9 +1304,9 @@ std::vector<float> buildTerrainFoliageMap(const TerrainDecorationPlacement &plac
             {
                 continue;
             }
-            // Two crossed cards seen edge on from a random horizontal direction: 2 / pi of their area each.
-            const float area = 2.0f * instance.sizeWindRank[0] * instance.sizeWindRank[1] * layers[layer].fill
-                * 0.63662f;
+            // One card turned to face the camera: its whole area; a clump its cards'.
+            const float area = instance.sizeWindRank[0] * instance.sizeWindRank[1] * layers[layer].fill
+                * (node.range.clump ? clumpArea : 1.0f);
             const std::array<float, 3> color = {layers[layer].color[0] * instance.color[0],
                 layers[layer].color[1] * instance.color[1], layers[layer].color[2] * instance.color[2]};
             // Bilinear splat between the four nearest texel centres; row 0 is the north edge.
@@ -1115,37 +1332,86 @@ std::vector<float> buildTerrainFoliageMap(const TerrainDecorationPlacement &plac
             }
         }
     }
-    // Per ground area, softened by a 3x3 tent so single tufts do not show as texels.
-    std::vector<float> result(sums.size(), 0.0f);
-    for (int y = 0; y < size; ++y)
+    // Per ground area, softened by a separable 3x3 tent so single tufts do not show as texels.
+    const auto tent = [&](const std::vector<float> &source, int stepX, int stepY)
     {
-        for (int x = 0; x < size; ++x)
+        std::vector<float> blurred(source.size(), 0.0f);
+        for (int y = 0; y < size; ++y)
         {
-            float total = 0.0f;
-            std::array<float, 4> value = {};
-            for (int dy = -1; dy <= 1; ++dy)
+            for (int x = 0; x < size; ++x)
             {
-                for (int dx = -1; dx <= 1; ++dx)
+                float total = 0.0f;
+                std::array<float, 4> value = {};
+                for (int offset = -1; offset <= 1; ++offset)
                 {
-                    const int sx = x + dx;
-                    const int sy = y + dy;
+                    const int sx = x + offset * stepX;
+                    const int sy = y + offset * stepY;
                     if (sx < 0 || sy < 0 || sx >= size || sy >= size)
                     {
                         continue;
                     }
-                    const float weight = float((2 - std::abs(dx)) * (2 - std::abs(dy)));
+                    const float weight = float(2 - std::abs(offset));
                     total += weight;
                     for (size_t channel = 0; channel < 4; ++channel)
                     {
-                        value[channel] += sums[(size_t(sy) * size + sx) * 4 + channel] * weight;
+                        value[channel] += source[(size_t(sy) * size + sx) * 4 + channel] * weight;
+                    }
+                }
+                for (size_t channel = 0; channel < 4; ++channel)
+                {
+                    blurred[(size_t(y) * size + x) * 4 + channel] = value[channel] / total;
+                }
+            }
+        }
+        return blurred;
+    };
+    std::vector<float> result = tent(tent(sums, 1, 0), 0, 1);
+    for (float &value : result)
+    {
+        value /= texel * texel;
+    }
+    return result;
+}
+
+std::vector<uint8_t> encodeTerrainFoliageMap(const std::vector<float> &foliage)
+{
+    std::vector<uint8_t> result;
+    std::vector<float> level = foliage;
+    for (int size = TerrainFoliageMapSize; size >= 1; size /= 2)
+    {
+        for (size_t texel = 0; texel < size_t(size) * size; ++texel)
+        {
+            const float *pValue = &level[texel * 4];
+            const float depth = pValue[3];
+            for (int channel = 0; channel < 3; ++channel)
+            {
+                const float color = depth > 0.0f ? pValue[channel] / depth : 0.0f;
+                result.push_back(uint8_t(std::lround(std::clamp(color, 0.0f, 1.0f) * 255.0f)));
+            }
+            result.push_back(uint8_t(std::lround(std::clamp(depth / TerrainFoliageDepthRange, 0.0f, 1.0f) * 255.0f)));
+        }
+        if (size == 1)
+        {
+            break;
+        }
+        // The next mip level averages the premultiplied values, so the colour follows the coverage.
+        const int half = size / 2;
+        std::vector<float> next(size_t(half) * half * 4, 0.0f);
+        for (int y = 0; y < half; ++y)
+        {
+            for (int x = 0; x < half; ++x)
+            {
+                for (int corner = 0; corner < 4; ++corner)
+                {
+                    const size_t source = (size_t(y * 2 + corner / 2) * size + x * 2 + corner % 2) * 4;
+                    for (size_t channel = 0; channel < 4; ++channel)
+                    {
+                        next[(size_t(y) * half + x) * 4 + channel] += level[source + channel] * 0.25f;
                     }
                 }
             }
-            for (size_t channel = 0; channel < 4; ++channel)
-            {
-                result[(size_t(y) * size + x) * 4 + channel] = value[channel] / (total * texel * texel);
-            }
         }
+        level.swap(next);
     }
     return result;
 }

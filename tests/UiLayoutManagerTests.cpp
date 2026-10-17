@@ -61,7 +61,7 @@ TEST_CASE("menu settings catalog has complete native layout controls")
             CHECK(pElement->parentId == prefix + "ScrollViewport");
         }
         CHECK(manager.findElement(id + "Control")->interactive);
-        if (setting["type"].as<std::string>() == "range")
+        if (setting["type"].as<std::string>() == "range" || setting["type"].as<std::string>() == "steps")
         {
             CHECK(manager.findElement(id + "Value") != nullptr);
         }

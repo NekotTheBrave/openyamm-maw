@@ -421,6 +421,13 @@ void MainMenuScreen::restoreDefaults()
                     {
                         m_draft.keyboard.restoreDefaults(m_draft.controlScheme);
                     }
+                    if (m_section == "video")
+                    {
+                        // Graphics quality presets also set these INI-only fields.
+                        m_draft.terrainSubdivision = defaults.terrainSubdivision;
+                        m_draft.terrainAntiTiling = defaults.terrainAntiTiling;
+                        m_draft.skyResolutionScale = defaults.skyResolutionScale;
+                    }
                 }
             });
 }
@@ -627,6 +634,57 @@ void MainMenuScreen::drawSettings(float deltaSeconds)
             {
                 chooseSetting(setting);
             }
+        }
+        else if (setting.type == "steps")
+        {
+            // A slider snapping to its options; a value that is none of them (Custom) shows no thumb.
+            button(id, rect, "", "text_field", enabled);
+            const int count = int(setting.options.size());
+            int current = -1;
+            std::string display = capitalized(value);
+            for (int index = 0; index < count; ++index)
+            {
+                if (setting.options[size_t(index)].first == value)
+                {
+                    current = index;
+                    display = setting.options[size_t(index)].second;
+                }
+            }
+            const auto stepX = [&](int index)
+            { return rect.x + rect.width * float(index) / float(std::max(1, count - 1)); };
+            const float y = rect.y + rect.height / 2;
+            drawSolidRect({rect.x, y - 2, rect.width, 4}, 0xff273629u);
+            if (current >= 0)
+            {
+                drawSolidRect({rect.x, y - 2, stepX(current) - rect.x, 4}, 0xff6a93acu);
+            }
+            for (int index = 0; index < count; ++index)
+            {
+                drawSolidRect({stepX(index) - 1, y - 5, 2, 10}, index <= current ? 0xff6a93acu : 0xff3d5163u);
+            }
+            if (current >= 0)
+            {
+                drawSolidRect({stepX(current) - 4, y - 7, 8, 14}, 0xff7bbad8u);
+            }
+            int chosen = -1;
+            if (enabled && !modalOpen() && pointerInside(rect) && leftMouseDown())
+            {
+                const float position = std::clamp((mouseX() - rect.x) / rect.width, 0.0f, 1.0f);
+                chosen = int(std::round(position * float(count - 1)));
+            }
+            if (enabled && focused(id))
+            {
+                const int delta = int(keyPressed(SDL_SCANCODE_RIGHT)) - int(keyPressed(SDL_SCANCODE_LEFT));
+                if (delta != 0)
+                {
+                    chosen = current < 0 ? count / 2 : std::clamp(current + delta, 0, count - 1);
+                }
+            }
+            if (chosen >= 0 && chosen != current)
+            {
+                editSetting(setting, setting.options[size_t(chosen)].first);
+            }
+            label(id + "Value", display, 0, -m_scroll);
         }
         else
         {

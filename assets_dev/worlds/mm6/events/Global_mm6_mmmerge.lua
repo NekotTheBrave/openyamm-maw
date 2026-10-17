@@ -5,7 +5,6 @@ local function searchFlourSack()
 
     if food > 0 then
         AddValue(Food, food)
-        evt.StatusText("You found " .. food .. " food!")
     else
         evt.StatusText("Empty sack")
     end

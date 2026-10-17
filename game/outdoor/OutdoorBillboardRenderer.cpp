@@ -57,19 +57,19 @@ constexpr uint64_t BillboardAlphaRenderState =
     | BGFX_STATE_WRITE_A
     | BGFX_STATE_WRITE_Z
     | BGFX_STATE_DEPTH_TEST_LEQUAL
-    | BGFX_STATE_BLEND_ALPHA;
+    | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_MSAA;
 constexpr size_t MaxPreloadDecodeWorkerCount = 8;
 constexpr bool DebugSpritePreloadLogging = false;
 constexpr uint64_t ColoredAlphaRenderState =
     BGFX_STATE_WRITE_RGB
     | BGFX_STATE_WRITE_A
     | BGFX_STATE_DEPTH_TEST_LEQUAL
-    | BGFX_STATE_BLEND_ALPHA;
+    | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_MSAA;
 constexpr uint64_t ColoredAdditiveRenderState =
     BGFX_STATE_WRITE_RGB
     | BGFX_STATE_WRITE_A
     | BGFX_STATE_DEPTH_TEST_LEQUAL
-    | BGFX_STATE_BLEND_ADD;
+    | BGFX_STATE_BLEND_ADD | BGFX_STATE_MSAA;
 constexpr float BillboardLightContributionScale = 0.7f;
 constexpr const char *ContactShadowTextureName = "__contact_shadow_blob__";
 constexpr float HoveredActorOutlineThicknessPixels = 2.0f;
@@ -1594,90 +1594,8 @@ void OutdoorBillboardRenderer::queueEventBillboardTextureWarmup(
     OutdoorGameView &view,
     const ScriptedEventProgram &eventProgram)
 {
-    const SpellTable &spellTable = view.data().spellTable();
-    const ObjectTable &objectTable = view.data().objectTable();
-
-    auto queueSpellObjectSpriteFrame =
-        [&view, &objectTable](int objectId)
-        {
-            if (objectId <= 0)
-            {
-                return;
-            }
-
-            const std::optional<uint16_t> descriptionId =
-                objectTable.findDescriptionIdByObjectId(static_cast<int16_t>(objectId));
-
-            if (!descriptionId)
-            {
-                return;
-            }
-
-            const ObjectEntry *pObjectEntry = objectTable.get(*descriptionId);
-
-            if (pObjectEntry == nullptr)
-            {
-                return;
-            }
-
-            if (pObjectEntry->spriteId != 0)
-            {
-                view.queueSpriteFrameWarmup(pObjectEntry->spriteId);
-                return;
-            }
-
-            if (pObjectEntry->spriteName.empty())
-            {
-                return;
-            }
-
-            const SpriteFrameTable *pSpriteFrameTable = nullptr;
-
-            if (view.m_outdoorSpriteObjectBillboardSet)
-            {
-                pSpriteFrameTable = &view.m_outdoorSpriteObjectBillboardSet->spriteFrameTable;
-            }
-            else if (view.m_outdoorActorPreviewBillboardSet)
-            {
-                pSpriteFrameTable = &view.m_outdoorActorPreviewBillboardSet->spriteFrameTable;
-            }
-
-            if (pSpriteFrameTable == nullptr)
-            {
-                return;
-            }
-
-            const std::optional<uint16_t> spriteFrameIndex =
-                pSpriteFrameTable->findFrameIndexBySpriteName(pObjectEntry->spriteName);
-
-            if (spriteFrameIndex)
-            {
-                view.queueSpriteFrameWarmup(*spriteFrameIndex);
-            }
-        };
-
-    for (uint32_t spellId : eventProgram.castSpellIds())
-    {
-        const EventProjectileSpellDefinition *pEventProjectile = eventProjectileSpellDefinition(spellId);
-
-        if (pEventProjectile != nullptr)
-        {
-            queueSpellObjectSpriteFrame(pEventProjectile->objectId);
-            queueSpellObjectSpriteFrame(pEventProjectile->impactObjectId);
-            continue;
-        }
-
-        const SpellEntry *pSpellEntry = spellTable.findById(static_cast<int>(spellId));
-
-        if (pSpellEntry == nullptr)
-        {
-            continue;
-        }
-
-        queueSpellObjectSpriteFrame(pSpellEntry->displayObjectId);
-        queueSpellObjectSpriteFrame(pSpellEntry->impactDisplayObjectId);
-    }
-
+    // Event spells need no sprite: no projectile or impact draws its native one. The sprites events switch
+    // decorations to still do.
     const SpriteFrameTable *pEventSpriteFrameTable = nullptr;
 
     if (view.m_outdoorDecorationBillboardSet)
@@ -3180,7 +3098,7 @@ void OutdoorBillboardRenderer::renderActorPreviewBillboards(
                 | BGFX_STATE_WRITE_Z
                 | BGFX_STATE_PT_LINES
                 | BGFX_STATE_LINEAA
-                | BGFX_STATE_DEPTH_TEST_LEQUAL);
+                | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_MSAA);
             bgfx::submit(viewId, view.m_programHandle);
         }
 
@@ -3547,8 +3465,8 @@ void OutdoorBillboardRenderer::renderActorPreviewBillboards(
                     HoveredActorOutlineThicknessPixels);
                 standardBillboardEffectUniformsActive = false;
                 // Soft outline fragments must not occlude the body's coplanar follow-up draw.
-                bgfx::setState(pTexture->atlas
-                    ? BillboardAlphaRenderState & ~BGFX_STATE_WRITE_Z : BillboardAlphaRenderState);
+                bgfx::setState((pTexture->atlas
+                    ? BillboardAlphaRenderState & ~BGFX_STATE_WRITE_Z : BillboardAlphaRenderState) | BGFX_STATE_MSAA);
                 bgfx::submit(viewId, view.m_spriteAtlasCache.bindOutline(
                     *pTexture, view.m_outdoorLitBillboardProgramHandle));
                 if (collectRenderDiagnostics)
@@ -3774,10 +3692,9 @@ void OutdoorBillboardRenderer::renderActorPreviewBillboards(
     {
         if (item.hasHealthBar && item.modelActor)
         {
-            EnemyHealthBarRenderer::render(view.m_gameSession.gameplayScreenRuntime(), item.actorIndex,
-                {item.x, item.y, item.z}, {item.x, item.y, item.questMarkerZ + 26.0f}, item.distanceSquared,
-                item.healthBarFocused, item.healthBarAttacking, viewId,
-                cameraPosition, pViewMatrix, pProjectionMatrix, view.m_lastRenderHeight);
+            view.m_pendingEnemyHealthBars.push_back({item.actorIndex, {item.x, item.y, item.z},
+                {item.x, item.y, item.questMarkerZ + 26.0f}, item.distanceSquared,
+                item.healthBarFocused, item.healthBarAttacking});
         }
         else if (item.hasHealthBar)
         {
@@ -3797,10 +3714,8 @@ void OutdoorBillboardRenderer::renderActorPreviewBillboards(
             const float standingTop = pStandingTexture->offsetY + pStandingTexture->height
                 * (1.0f - pStandingTexture->opacityMask.opaqueTopNormalized());
             const float anchorZ = item.z + (standingTop * pStandingFrame->scale + 26.0f) * item.heightScale;
-            EnemyHealthBarRenderer::render(view.m_gameSession.gameplayScreenRuntime(), item.actorIndex,
-                {item.x, item.y, item.z}, {item.x, item.y, anchorZ}, item.distanceSquared,
-                item.healthBarFocused, item.healthBarAttacking, viewId,
-                cameraPosition, pViewMatrix, pProjectionMatrix, view.m_lastRenderHeight);
+            view.m_pendingEnemyHealthBars.push_back({item.actorIndex, {item.x, item.y, item.z},
+                {item.x, item.y, anchorZ}, item.distanceSquared, item.healthBarFocused, item.healthBarAttacking});
         }
     }
 
@@ -4045,6 +3960,18 @@ void OutdoorBillboardRenderer::renderRuntimeWorldItems(
 
         if (pWorldItem == nullptr)
         {
+            continue;
+        }
+
+        // A model presents the item: it takes the hover outline, and no sprite is drawn.
+        if (!pWorldItem->isGold && view.m_worldFxSystem.hasItemModel(pWorldItem->item.objectDescriptionId))
+        {
+            const bool contextHighlighted = contextActionHighlightsWorldItem(pContextActionHit, worldItemIndex);
+            const bool hovered =
+                contextHighlighted || (hoveredWorldItemIndex.has_value() && *hoveredWorldItemIndex == worldItemIndex);
+            view.m_worldFxSystem.setItemModelOutline(pWorldItem->worldItemId,
+                hovered ? (contextHighlighted ? contextActionHighlightOutlineColor() : hoveredWorldItemOutlineColor())
+                    : 0);
             continue;
         }
 
@@ -4516,10 +4443,7 @@ void OutdoorBillboardRenderer::renderRuntimeProjectiles(
         view.m_gameSession.gameplayFxService().activeProjectilePresentationStates();
     const std::vector<GameplayProjectileImpactPresentationState> &impacts =
         view.m_gameSession.gameplayFxService().activeProjectileImpactPresentationStates();
-    drawItems.reserve(
-        projectiles.size()
-        + impacts.size()
-        + view.m_pOutdoorWorldRuntime->fireSpikeTrapCount());
+    drawItems.reserve(projectiles.size() + impacts.size());
 
     auto appendRuntimeDrawItem =
         [&](uint32_t runtimeId,
@@ -4699,25 +4623,8 @@ void OutdoorBillboardRenderer::renderRuntimeProjectiles(
 
     for (const GameplayProjectileImpactPresentationState &impact : impacts)
     {
-        const FxRecipes::ProjectileRecipe recipe = FxRecipes::classifyProjectileRecipe(
-            impact.sourceSpellId,
-            impact.sourceObjectName,
-            impact.sourceObjectSpriteName,
-            impact.sourceObjectFlags);
-
-        const bool hasImpactEffectRebind = view.m_worldFxSystem.projectileImpactUsesNamedEffect(impact);
-        if (hasImpactEffectRebind
-            || (FxRecipes::projectileRecipeUsesDedicatedImpactFx(recipe)
-                && !FxRecipes::projectileRecipeShowsImpactBillboard(recipe)))
+        if (!view.m_worldFxSystem.projectileImpactShowsNativeSprite(impact))
         {
-            if (impact.objectName.find("Trap") != std::string::npos)
-            {
-                std::cout << "Projectile draw skipped kind=impact"
-                          << " id=" << impact.effectId
-                          << " objectName=\"" << impact.objectName << "\""
-                          << " reason=" << (hasImpactEffectRebind ? "named_effect_rebind" : "dedicated_fx_recipe")
-                          << '\n';
-            }
             continue;
         }
 
@@ -4736,27 +4643,28 @@ void OutdoorBillboardRenderer::renderRuntimeProjectiles(
             impact.objectName.find("Trap") != std::string::npos);
     }
 
-    for (size_t trapIndex = 0; trapIndex < view.m_pOutdoorWorldRuntime->fireSpikeTrapCount(); ++trapIndex)
-    {
-        const OutdoorWorldRuntime::FireSpikeTrapState *pTrap = view.m_pOutdoorWorldRuntime->fireSpikeTrapState(trapIndex);
+    std::vector<GameplayProjectilePresentationState> traps;
+    view.m_pOutdoorWorldRuntime->collectFireSpikeTrapPresentationStates(traps);
 
-        if (pTrap == nullptr)
+    for (const GameplayProjectilePresentationState &trap : traps)
+    {
+        if (!view.m_worldFxSystem.projectileShowsNativeSprite(trap))
         {
             continue;
         }
 
         appendRuntimeDrawItem(
-            pTrap->trapId,
+            trap.projectileId,
             "fire_spike",
-            pTrap->x,
-            pTrap->y,
-            pTrap->z,
+            trap.x,
+            trap.y,
+            trap.z,
             0.0f,
             0.0f,
-            pTrap->objectSpriteFrameIndex,
-            pTrap->objectSpriteId,
-            pTrap->objectSpriteName,
-            pTrap->timeSinceCreatedTicks);
+            trap.objectSpriteFrameIndex,
+            trap.objectSpriteId,
+            trap.objectSpriteName,
+            trap.timeSinceCreatedTicks);
     }
 
     std::sort(

@@ -2679,6 +2679,12 @@ bool OutdoorGameView::initialize(
         std::cerr << "Failed to load shared effect library: " << effectLibraryError << '\n';
         return false;
     }
+    if (!m_worldFxSystem.loadProjectileModels(assetFileSystem, effectLibraryError)
+        || !m_worldFxSystem.loadItemModels(assetFileSystem, effectLibraryError))
+    {
+        std::cerr << "Failed to load projectile or item models: " << effectLibraryError << '\n';
+        return false;
+    }
     m_map = map;
     m_pOutdoorMapData = &outdoorMapData;
     m_distantSea = outdoorLandMask
@@ -2691,6 +2697,28 @@ bool OutdoorGameView::initialize(
     m_outdoorMapDeltaData = outdoorMapDeltaData;
     m_pGameAudioSystem = pGameAudioSystem;
     m_worldFxSystem.bindNamedEffectAudio(m_pGameAudioSystem);
+    // Item models lie on the drawn ground: the materials terrain's smoothed surface, not the native triangles items
+    // rest on, wherever the item lies on the terrain (within a few units of it) rather than on a building or a table.
+    m_worldFxSystem.setItemGroundSampler(
+        [this](float x, float y, float z) -> std::optional<WorldFxSystem::ItemGround>
+        {
+            if (m_pOutdoorMapData == nullptr
+                || std::abs(z - sampleOutdoorTerrainHeight(*m_pOutdoorMapData, x, y)) > 16.0f)
+            {
+                return std::nullopt;
+            }
+            const auto height = [&](float sampleX, float sampleY)
+            {
+                return m_terrainMaterials.ready() ? m_terrainMaterials.renderedHeight(sampleX, sampleY)
+                    : outdoorNativeTerrainHeight(*m_pOutdoorMapData, outdoorWorldToGridXFloat(sampleX),
+                        outdoorWorldToGridYFloat(sampleY));
+            };
+            constexpr float Step = 24.0f;
+            const float slopeX = (height(x + Step, y) - height(x - Step, y)) / (2.0f * Step);
+            const float slopeY = (height(x, y + Step) - height(x, y - Step)) / (2.0f * Step);
+            const float length = std::sqrt(slopeX * slopeX + slopeY * slopeY + 1.0f);
+            return WorldFxSystem::ItemGround{height(x, y), {-slopeX / length, -slopeY / length, 1.0f / length}};
+        });
     m_pOutdoorSceneRuntime = &sceneRuntime;
     m_pOutdoorPartyRuntime = &sceneRuntime.partyRuntime();
     m_pOutdoorWorldRuntime = &sceneRuntime.worldRuntime();
@@ -2825,6 +2853,10 @@ bool OutdoorGameView::initialize(
     m_outdoorFxLightPositionsUniformHandle = bgfx::createUniform("u_fxLightPositions", bgfx::UniformType::Vec4, 8);
     m_outdoorFxLightColorsUniformHandle = bgfx::createUniform("u_fxLightColors", bgfx::UniformType::Vec4, 8);
     m_outdoorFxLightParamsUniformHandle = bgfx::createUniform("u_fxLightParams", bgfx::UniformType::Vec4);
+    if (!m_lightGridBinding.create())
+    {
+        std::cerr << "OutdoorGameView: failed to create the light grid binding\n";
+    }
     m_outdoorSunlightUniformHandle = bgfx::createUniform("u_outdoorSunlight", bgfx::UniformType::Vec4);
     m_worldClipPlaneUniformHandle = bgfx::createUniform("u_worldClipPlane", bgfx::UniformType::Vec4);
     m_waterSurfaceControlUniformHandle = bgfx::createUniform("u_waterSurfaceControl", bgfx::UniformType::Vec4);
@@ -3362,6 +3394,11 @@ void OutdoorGameView::shutdown()
     m_effectRenderer.shutdown(Engine::BgfxContext::isBgfxInitialized());
     m_shieldDomeRenderer.shutdown(Engine::BgfxContext::isBgfxInitialized());
     m_modelRenderer.shutdown(Engine::BgfxContext::isBgfxInitialized());
+    if (Engine::BgfxContext::isBgfxInitialized())
+    {
+        m_lightGrid.destroy();
+    }
+    m_lightGridBinding.destroy(Engine::BgfxContext::isBgfxInitialized());
     syncGameplayMouseLookMode(SDL_GetMouseFocus(), false);
     GameplayScreenRuntime &screenRuntime = m_gameSession.gameplayScreenRuntime();
     GameplayScreenState &gameplayScreenState = m_gameSession.gameplayScreenState();
@@ -3403,6 +3440,7 @@ void OutdoorGameView::shutdown()
     screenRuntime.clearUiControllerRuntimeState();
     screenRuntime.shutdownHouseVideoPlayer();
     m_terrainDecorations.shutdown(Engine::BgfxContext::isBgfxInitialized());
+    m_terrainBushes.clear();
     m_terrainDecorationBatches.clear();
     m_terrainDecorationRefreshTick = 0;
     m_terrainDecorationLightCount = 0;
@@ -3447,6 +3485,7 @@ void OutdoorGameView::shutdown()
         m_outdoorBModelShadowArrayProgramHandle = BGFX_INVALID_HANDLE;
         m_outdoorTexturedFogArrayProgramHandle = BGFX_INVALID_HANDLE;
         m_outdoorTexturedFogShadowArrayProgramHandle = BGFX_INVALID_HANDLE;
+        m_terrainShadowProgramHandle = BGFX_INVALID_HANDLE;
         m_bmodelTextureLayerUniformHandle = BGFX_INVALID_HANDLE;
         m_bmodelTextureArrays.clear();
         m_bloodSplatVertexBufferHandle = BGFX_INVALID_HANDLE;
@@ -3556,7 +3595,8 @@ void OutdoorGameView::shutdown()
 
     for (bgfx::ProgramHandle *pProgram : {&m_outdoorTexturedFogShadowProgramHandle, &m_outdoorBModelShadowProgramHandle,
         &m_outdoorBModelLightmapArrayProgramHandle, &m_outdoorBModelShadowArrayProgramHandle,
-        &m_outdoorTexturedFogArrayProgramHandle, &m_outdoorTexturedFogShadowArrayProgramHandle})
+        &m_outdoorTexturedFogArrayProgramHandle, &m_outdoorTexturedFogShadowArrayProgramHandle,
+        &m_terrainShadowProgramHandle})
     {
         if (bgfx::isValid(*pProgram))
         {
@@ -4619,6 +4659,7 @@ void OutdoorGameView::reloadTerrainMaterials()
     m_terrainMaterialsInitializationAttempted = false;
     // Plants are placed on the drawn ground; scatter them again for the new surface.
     m_terrainDecorations.shutdown(Engine::BgfxContext::isBgfxInitialized());
+    m_terrainBushes.clear();
     m_terrainDecorationBatches.clear();
     m_terrainDecorationsInitializationAttempted = false;
 }

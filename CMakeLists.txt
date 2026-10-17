@@ -84,12 +84,23 @@ endif()
 set(OPENYAMM_RELEASE_SYSTEM_RUNTIME_DLLS "")
 set(OPENYAMM_RELEASE_COLLECT_RUNTIME_DEPENDENCIES OFF)
 set(OPENYAMM_RELEASE_RUNTIME_SEARCH_DIRS "")
-if (WIN32)
+if (WIN32 AND NOT CMAKE_CROSSCOMPILING)
     include(InstallRequiredSystemLibraries)
     string(REPLACE ";" "|" OPENYAMM_RELEASE_SYSTEM_RUNTIME_DLLS "${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS}")
     get_filename_component(OPENYAMM_RELEASE_COMPILER_RUNTIME_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
     set(OPENYAMM_RELEASE_COLLECT_RUNTIME_DEPENDENCIES ON)
     set(OPENYAMM_RELEASE_RUNTIME_SEARCH_DIRS "${OPENYAMM_RELEASE_COMPILER_RUNTIME_DIR}")
+endif()
+
+# Cross builds (the MinGW-w64 toolchain links its runtime statically) package with host-built tools.
+if (CMAKE_CROSSCOMPILING)
+    set(OPENYAMM_HOST_SPRITE_ATLAS_COOK "" CACHE FILEPATH "Host sprite atlas cooker used while cross-compiling.")
+    set(OPENYAMM_RELEASE_COOKER "${OPENYAMM_HOST_SPRITE_ATLAS_COOK}")
+    if (NOT ANDROID)
+        find_package(Python3 3.11 REQUIRED COMPONENTS Interpreter)
+    endif()
+else()
+    set(OPENYAMM_RELEASE_COOKER "$<TARGET_FILE:openyamm_sprite_atlas_cook>")
 endif()
 
 set(OPENYAMM_RELEASE_ROOT_DIR "${CMAKE_BINARY_DIR}/release")
@@ -114,7 +125,7 @@ if (OPENYAMM_BUILD_DESKTOP_EXECUTABLE)
             "-DOPENYAMM_RELEASE_SHADER_DIR=${OPENYAMM_RUNTIME_SHADER_DIR}"
             "-DOPENYAMM_RELEASE_ASSET_DEV_DIR=${OPENYAMM_DEV_ASSETS_DIR}"
             "-DOPENYAMM_RELEASE_PYTHON=${Python3_EXECUTABLE}"
-            "-DOPENYAMM_RELEASE_COOKER=$<TARGET_FILE:openyamm_sprite_atlas_cook>"
+            "-DOPENYAMM_RELEASE_COOKER=${OPENYAMM_RELEASE_COOKER}"
             "-DOPENYAMM_RELEASE_SETTINGS_TEMPLATE=${CMAKE_SOURCE_DIR}/settings_release.ini"
             -P "${CMAKE_SOURCE_DIR}/cmake/CreateOpenYammReleasePackage.cmake"
         DEPENDS openyamm openyamm_runtime_shaders

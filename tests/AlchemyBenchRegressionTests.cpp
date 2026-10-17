@@ -306,6 +306,50 @@ TEST_CASE("alchemy bench recipe search ignores case and matches inside names")
     CHECK_FALSE(AlchemyBenchRuntime::matchesSearch("Cure Poison", "haste"));
 }
 
+TEST_CASE("potion recipe scrolls teach every noted mix of their potion")
+{
+    constexpr uint32_t DivineRestorationRecipeItemId = 722;
+    constexpr uint32_t StoneToFleshRecipeItemId = 1551;
+    constexpr uint32_t DivineRestorationItemId = 252;
+    constexpr uint32_t StoneToFleshItemId = 262;
+
+    const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
+    const AlchemyBenchTables tables = benchTables(gameData);
+
+    CHECK(AlchemyBenchRuntime::recipeScrollPotionItemId(DivineRestorationRecipeItemId, tables)
+        == DivineRestorationItemId);
+    // "Stone To Flesh Recipe" names the potion, not the spell scroll or book of the same name.
+    CHECK(AlchemyBenchRuntime::recipeScrollPotionItemId(StoneToFleshRecipeItemId, tables) == StoneToFleshItemId);
+    CHECK_FALSE(AlchemyBenchRuntime::recipeScrollPotionItemId(HasteItemId, tables).has_value());
+
+    // Every recipe scroll resolves to a potion whose mixes the bench can learn.
+    for (const ItemDefinition &definition : gameData.itemTable.entries())
+    {
+        if (definition.equipStat == "Mscroll" && definition.name.ends_with(" Recipe"))
+        {
+            CAPTURE(definition.itemId);
+            const std::optional<uint32_t> potionItemId =
+                AlchemyBenchRuntime::recipeScrollPotionItemId(definition.itemId, tables);
+            REQUIRE(potionItemId.has_value());
+            CHECK_FALSE(AlchemyBenchRuntime::potionNoteIds(*potionItemId, tables).empty());
+        }
+    }
+
+    std::vector<uint32_t> noteIds = AlchemyBenchRuntime::potionNoteIds(DivineRestorationItemId, tables);
+    std::sort(noteIds.begin(), noteIds.end());
+    CHECK(noteIds == std::vector<uint32_t>{65, 66, 67});
+
+    const AlchemyBook book = AlchemyBenchRuntime::buildBook(
+        tables, {}, SkillMastery::Grandmaster, unlocked({noteIds.begin(), noteIds.end()}));
+    const auto found = std::find_if(book.entries.begin(), book.entries.end(),
+        [](const AlchemyBookEntry &entry)
+        {
+            return entry.resultItemId == DivineRestorationItemId;
+        });
+    REQUIRE(found != book.entries.end());
+    CHECK(found->recipes.size() == 3);
+}
+
 namespace
 {
 constexpr uint32_t PoppyPodItemId = 210;

@@ -1075,12 +1075,6 @@ GameplayProjectileVisualMode indoorProjectileVisualModeForFxRecipe(
         : GameplayProjectileVisualMode::FxOnly;
 }
 
-bool indoorMonsterProjectileFxRecipesEnabled(const IndoorGameView *pGameplayView)
-{
-    return pGameplayView == nullptr
-        || pGameplayView->settingsSnapshot().monsterProjectileVisuals == MonsterProjectileVisuals::FxRecipes;
-}
-
 struct IndoorResolvedProjectileDefinition
 {
     uint16_t objectDescriptionId = 0;
@@ -1664,7 +1658,6 @@ bool resolveIndoorMonsterProjectileDefinition(
     const MonsterProjectileTable &projectileTable,
     const ObjectTable &objectTable,
     const SpellTable &spellTable,
-    bool useFxRecipes,
     IndoorResolvedProjectileDefinition &definition)
 {
     definition = {};
@@ -1692,9 +1685,8 @@ bool resolveIndoorMonsterProjectileDefinition(
             return false;
         }
 
-        definition.visualMode = useFxRecipes
-            ? GameplayProjectileService::monsterProjectileVisualModeForObjectId(pProjectileEntry->objectId)
-            : GameplayProjectileVisualMode::SpriteBillboard;
+        definition.visualMode =
+            GameplayProjectileService::monsterProjectileVisualModeForObjectId(pProjectileEntry->objectId);
         return true;
     }
 
@@ -1724,13 +1716,11 @@ bool resolveIndoorMonsterProjectileDefinition(
 
     definition.spellId = pSpellEntry->id;
     definition.effectSoundId = pSpellEntry->effectSoundId;
-    definition.visualMode = useFxRecipes
-        ? indoorProjectileVisualModeForFxRecipe(
-            definition.spellId,
-            definition.objectName,
-            definition.objectSpriteName,
-            definition.objectFlags)
-        : GameplayProjectileVisualMode::SpriteBillboard;
+    definition.visualMode = indoorProjectileVisualModeForFxRecipe(
+        definition.spellId,
+        definition.objectName,
+        definition.objectSpriteName,
+        definition.objectFlags);
     return true;
 }
 
@@ -5765,7 +5755,6 @@ bool IndoorWorldRuntime::applyIndoorActorProjectileRequest(const ActorProjectile
         projectileAbilityFromActorAbility(projectileRequest.ability);
     IndoorResolvedProjectileDefinition definition = {};
     bool definitionResolved = false;
-    const bool useMonsterProjectileFxRecipes = indoorMonsterProjectileFxRecipesEnabled(m_pGameplayView);
 
     if (actorAbilityIsSpellProjectile(projectileRequest.ability) && projectileRequest.spellId != 0)
     {
@@ -5773,10 +5762,6 @@ bool IndoorWorldRuntime::applyIndoorActorProjectileRequest(const ActorProjectile
         definitionResolved =
             pSpellEntry != nullptr
             && fillIndoorProjectileDefinitionFromSpell(*pSpellEntry, *m_pObjectTable, definition);
-        if (definitionResolved && !useMonsterProjectileFxRecipes)
-        {
-            definition.visualMode = GameplayProjectileVisualMode::SpriteBillboard;
-        }
     }
 
     MonsterTable::MonsterStatsEntry projectileStats = *pStats;
@@ -5793,7 +5778,6 @@ bool IndoorWorldRuntime::applyIndoorActorProjectileRequest(const ActorProjectile
             *m_pMonsterProjectileTable,
             *m_pObjectTable,
             *m_pSpellTable,
-            useMonsterProjectileFxRecipes,
             definition))
     {
         return false;
@@ -8415,9 +8399,11 @@ void IndoorWorldRuntime::applyIndoorActorMovementIntegration(
         ++pDiagnostics->crowdOverrideActors;
     }
 
+    // As outdoors, routes serve melee pursuit or regaining sight; a ranged orbit keeps its own direction.
     const bool actorPathCanUseIntent =
         movementIntent.action == ActorAiMovementAction::Pursue
         && movementIntent.applyMovement
+        && (movementIntent.meleePursuitActive || !movementIntent.targetHasAttackLineOfSight)
         && !movementIntent.inMeleeRange;
     ActorPathResolveResult pathResult = {};
     bool pathDirectFallbackActive = false;
@@ -11257,8 +11243,52 @@ void IndoorWorldRuntime::collectProjectilePresentationState(
     }
 
     m_pGameplayProjectileService->collectProjectilePresentationState(projectiles, impacts);
+    std::vector<GameplayProjectilePresentationState> traps;
+    collectFireSpikeTrapPresentationStates(traps);
+    projectiles.insert(projectiles.end(), std::make_move_iterator(traps.begin()), std::make_move_iterator(traps.end()));
+}
 
-    projectiles.reserve(projectiles.size() + m_fireSpikeTraps.size());
+void IndoorWorldRuntime::collectWorldItemPresentationStates(
+    std::vector<GameplayWorldItemPresentationState> &items) const
+{
+    items.clear();
+    const MapDeltaData *pMapDeltaData = mapDeltaData();
+
+    if (pMapDeltaData == nullptr || m_pObjectTable == nullptr)
+    {
+        return;
+    }
+
+    for (size_t objectIndex = 0; objectIndex < pMapDeltaData->spriteObjects.size(); ++objectIndex)
+    {
+        const MapDeltaSpriteObject &spriteObject = pMapDeltaData->spriteObjects[objectIndex];
+        const ObjectEntry *pObjectEntry = m_pObjectTable->get(spriteObject.objectDescriptionId);
+
+        if ((spriteObject.attributes & SpriteAttrRemoved) != 0
+            || spriteObject.semanticLootContainer
+            || !hasContainingItemPayload(spriteObject.rawContainingItem)
+            || pObjectEntry == nullptr
+            || (pObjectEntry->flags & ObjectDescUnpickable) != 0)
+        {
+            continue;
+        }
+
+        GameplayWorldItemPresentationState state = {};
+        state.key = uint32_t(objectIndex);
+        state.itemId = spriteObjectContainedItemId(spriteObject.rawContainingItem);
+        state.x = float(spriteObject.x);
+        state.y = float(spriteObject.y);
+        state.z = float(spriteObject.z);
+        state.sectorId = spriteObject.sectorId;
+        items.push_back(state);
+    }
+}
+
+void IndoorWorldRuntime::collectFireSpikeTrapPresentationStates(
+    std::vector<GameplayProjectilePresentationState> &traps) const
+{
+    traps.clear();
+    traps.reserve(m_fireSpikeTraps.size());
 
     for (const FireSpikeTrapState &trap : m_fireSpikeTraps)
     {
@@ -11284,7 +11314,7 @@ void IndoorWorldRuntime::collectProjectilePresentationState(
         state.timeSinceCreatedTicks = trap.timeSinceCreatedTicks;
         state.sectorId = trap.sectorId;
         state.isSettled = true;
-        projectiles.push_back(std::move(state));
+        traps.push_back(std::move(state));
     }
 }
 

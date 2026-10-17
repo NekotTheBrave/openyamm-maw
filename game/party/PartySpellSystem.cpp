@@ -636,6 +636,19 @@ int manaCostForRule(const BackendSpellRule &rule, SkillMastery mastery)
     return index >= 0 ? rule.manaByMastery[static_cast<size_t>(index)] : 0;
 }
 
+uint32_t resolveManaCost(
+    const BackendSpellRule &rule,
+    const SpellEntry &spellEntry,
+    SkillMastery mastery,
+    uint32_t spellId)
+{
+    return static_cast<uint32_t>(std::max(
+        0,
+        ruleHasExplicitManaCost(rule)
+            ? manaCostForRule(rule, mastery)
+            : std::max(manaCostForSpellEntry(spellEntry, mastery), defaultManaCostForSpellId(spellId))));
+}
+
 int recoveryTicksForRule(const BackendSpellRule &rule, SkillMastery mastery)
 {
     const int index = masteryIndex(mastery);
@@ -1560,11 +1573,7 @@ PartySpellCastResult PartySpellSystem::castSpell(
             "Not skilled enough");
     }
 
-    result.manaCost = static_cast<uint32_t>(std::max(
-        0,
-        ruleHasExplicitManaCost(*rule)
-            ? manaCostForRule(*rule, skillMastery)
-            : std::max(manaCostForSpellEntry(*pSpellEntry, skillMastery), defaultManaCostForSpellId(request.spellId))));
+    result.manaCost = resolveManaCost(*rule, *pSpellEntry, skillMastery, request.spellId);
     const int baseSpellRecoveryTicks =
         ruleHasExplicitRecovery(*rule)
             ? recoveryTicksForRule(*rule, skillMastery)
@@ -2968,6 +2977,30 @@ PartySpellCastResult PartySpellSystem::castSpell(
 
     result.status = PartySpellCastStatus::Succeeded;
     return result;
+}
+
+std::optional<uint32_t> PartySpellSystem::manaCost(
+    const Character &caster,
+    const SpellTable &spellTable,
+    uint32_t spellId)
+{
+    const SpellEntry *pSpellEntry = spellTable.findById(static_cast<int>(spellId));
+    uint32_t skillLevel = 0;
+    SkillMastery skillMastery = SkillMastery::None;
+
+    if (pSpellEntry == nullptr || !resolveSpellSkill(caster, spellId, {}, skillLevel, skillMastery))
+    {
+        return std::nullopt;
+    }
+
+    const std::optional<BackendSpellRule> rule = resolveBackendSpellRule(spellId, skillMastery);
+
+    if (!rule)
+    {
+        return std::nullopt;
+    }
+
+    return resolveManaCost(*rule, *pSpellEntry, skillMastery, spellId);
 }
 
 std::optional<PartySpellDescriptor> PartySpellSystem::describeSpell(uint32_t spellId)

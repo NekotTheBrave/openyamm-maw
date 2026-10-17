@@ -19,12 +19,14 @@ endfunction()
 function(openyamm_bgfx_shader_targets outputVariable)
     if (ANDROID)
         set(shaderTargets "android|300_es|essl")
+    # Desktop GLSL 1.50, the newest the bundled shaderc validates, has Android's ESSL 3.00 features (texelFetch, integer
+    # maths, flat varyings), so one shader source behaves alike on both (docs/LIGHTING_AND_MATERIALS_ARCHITECTURE.md, D2).
     elseif (WIN32)
-        set(shaderTargets "windows|120|glsl")
+        set(shaderTargets "windows|150|glsl")
     elseif (APPLE)
-        set(shaderTargets "osx|120|glsl")
+        set(shaderTargets "osx|150|glsl")
     else()
-        set(shaderTargets "linux|120|glsl")
+        set(shaderTargets "linux|150|glsl")
     endif()
 
     if (OPENYAMM_USE_VULKAN)
@@ -101,6 +103,7 @@ function(openyamm_compile_bgfx_shader_for_target sourcePath shaderType outputNam
             "${CMAKE_SOURCE_DIR}/game/shaders/liquid_surface.sh"
             "${CMAKE_SOURCE_DIR}/game/shaders/outdoor_baked_lighting.sh"
             "${CMAKE_SOURCE_DIR}/game/shaders/sun_shadows.sh"
+            "${CMAKE_SOURCE_DIR}/game/shaders/light_grid.sh"
             "${CMAKE_SOURCE_DIR}/game/shaders/ambient_occlusion.sh"
             "${CMAKE_SOURCE_DIR}/game/shaders/model_skin.sh"
             "${CMAKE_SOURCE_DIR}/game/shaders/model_static.sh"
@@ -343,9 +346,9 @@ function(openyamm_configure_bgfx_runtime)
 
     set(OPENYAMM_HOST_SHADERC "" CACHE FILEPATH "Host bgfx shaderc executable used while cross-compiling.")
 
-    if (NOT TARGET openyamm_shaderc AND ANDROID)
+    if (NOT TARGET openyamm_shaderc AND CMAKE_CROSSCOMPILING)
         if (OPENYAMM_HOST_SHADERC STREQUAL "")
-            message(FATAL_ERROR "Set OPENYAMM_HOST_SHADERC to a host bgfx shaderc executable for Android builds.")
+            message(FATAL_ERROR "Set OPENYAMM_HOST_SHADERC to a host bgfx shaderc executable for cross builds.")
         endif()
 
         if (NOT EXISTS "${OPENYAMM_HOST_SHADERC}")
@@ -473,6 +476,11 @@ function(openyamm_configure_runtime_shaders)
             "${CMAKE_SOURCE_DIR}/game/shaders/${materialShader}.sc" "fragment" "${materialShader}_single_shadow.bin"
             "SINGLE_MATERIAL=1$<SEMICOLON>SUN_SHADOWS=1")
     endforeach()
+    # The terrain as a sun shadow caster.
+    openyamm_compile_bgfx_shader(
+        "${CMAKE_SOURCE_DIR}/game/shaders/vs_terrain_shadow.sc" "vertex" "vs_terrain_shadow.bin")
+    openyamm_compile_bgfx_shader(
+        "${CMAKE_SOURCE_DIR}/game/shaders/fs_terrain_shadow.sc" "fragment" "fs_terrain_shadow.bin")
     # Ordinary scenes keep the original receiver-free programs; enable mesh receivers only with live casters.
     foreach(shadowShader fs_outdoor_textured_fog fs_outdoor_bmodel_baked fs_terrain_decoration
             fs_terrain_decoration_baked fs_outdoor_terrain_materials fs_outdoor_terrain_materials_baked)
@@ -539,6 +547,18 @@ function(openyamm_configure_runtime_shaders)
         "${CMAKE_SOURCE_DIR}/game/shaders/vs_model_instanced.sc" "vertex" "vs_model_instanced.bin")
     openyamm_compile_bgfx_shader(
         "${CMAKE_SOURCE_DIR}/game/shaders/fs_model.sc" "fragment" "fs_model_prepassed.bin" "MODEL_PREPASSED=1")
+    # Alpha to coverage under multisample anti-aliasing: the foliage depth prepass and the grass. Loaded only while
+    # anti-aliasing is on.
+    openyamm_compile_bgfx_shader(
+        "${CMAKE_SOURCE_DIR}/game/shaders/fs_model.sc" "fragment" "fs_model_coverage.bin" "ALPHA_TO_COVERAGE=1")
+    foreach(coverageShader fs_terrain_decoration fs_terrain_decoration_baked)
+        openyamm_compile_bgfx_shader(
+            "${CMAKE_SOURCE_DIR}/game/shaders/${coverageShader}.sc"
+            "fragment" "${coverageShader}_coverage.bin" "ALPHA_TO_COVERAGE=1")
+        openyamm_compile_bgfx_shader(
+            "${CMAKE_SOURCE_DIR}/game/shaders/${coverageShader}.sc"
+            "fragment" "${coverageShader}_shadow_coverage.bin" "SUN_SHADOWS=1$<SEMICOLON>ALPHA_TO_COVERAGE=1")
+    endforeach()
     openyamm_compile_bgfx_shader(
         "${CMAKE_SOURCE_DIR}/game/shaders/vs_model_shadow_instanced.sc" "vertex" "vs_model_shadow_instanced.bin")
     openyamm_compile_bgfx_shader(
@@ -589,15 +609,24 @@ function(openyamm_configure_runtime_shaders)
         "${CMAKE_SOURCE_DIR}/game/shaders/fs_sky_upscale.sc" "fragment" "fs_sky_upscale.bin")
 
     foreach(shader fs_ambient_occlusion_depth fs_ambient_occlusion fs_ambient_occlusion_blur
-        fs_ambient_occlusion_composite)
+        fs_ambient_occlusion_composite fs_bloom_downsample fs_bloom_blur)
         openyamm_compile_bgfx_shader("${CMAKE_SOURCE_DIR}/game/shaders/${shader}.sc" "fragment" "${shader}.bin")
+    endforeach()
+    # The passes reading the world depth, on its first sample when multisampled (no depth resolve).
+    foreach(shader fs_ambient_occlusion_depth fs_ambient_occlusion_composite)
+        openyamm_compile_bgfx_shader(
+            "${CMAKE_SOURCE_DIR}/game/shaders/${shader}.sc" "fragment" "${shader}_msaa.bin" "AO_MSAA_DEPTH=1")
     endforeach()
 
     set(runtimeShaderNames
         fs_ambient_occlusion_depth.bin
+        fs_ambient_occlusion_depth_msaa.bin
         fs_ambient_occlusion.bin
         fs_ambient_occlusion_blur.bin
         fs_ambient_occlusion_composite.bin
+        fs_ambient_occlusion_composite_msaa.bin
+        fs_bloom_downsample.bin
+        fs_bloom_blur.bin
         vs_cinematic_grading.bin
         fs_cinematic_grading.bin
         vs_sky.bin
@@ -646,8 +675,11 @@ function(openyamm_configure_runtime_shaders)
         fs_outdoor_terrain_materials_shadow.bin fs_outdoor_terrain_materials_baked_shadow.bin
         fs_outdoor_terrain_materials_single.bin fs_outdoor_terrain_materials_baked_single.bin
         fs_outdoor_terrain_materials_single_shadow.bin fs_outdoor_terrain_materials_baked_single_shadow.bin
+        vs_terrain_shadow.bin fs_terrain_shadow.bin
         fs_outdoor_bmodel_lightmap_array.bin fs_outdoor_bmodel_baked_array.bin fs_outdoor_textured_fog_array.bin
-        fs_outdoor_bmodel_baked_array_shadow.bin fs_outdoor_textured_fog_array_shadow.bin)
+        fs_outdoor_bmodel_baked_array_shadow.bin fs_outdoor_textured_fog_array_shadow.bin
+        fs_model_coverage.bin fs_terrain_decoration_coverage.bin fs_terrain_decoration_baked_coverage.bin
+        fs_terrain_decoration_shadow_coverage.bin fs_terrain_decoration_baked_shadow_coverage.bin)
 
     # Android startup extracts exactly the shaders that this build produces.
     set_property(GLOBAL PROPERTY OPENYAMM_RUNTIME_SHADER_NAMES "${runtimeShaderNames}")

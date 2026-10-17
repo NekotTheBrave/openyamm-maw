@@ -426,6 +426,10 @@ public:
         float viewYawRadians,
         float viewPitchRadians,
         float viewAspectRatio) const override;
+    void collectWorldItemPresentationStates(
+        std::vector<GameplayWorldItemPresentationState> &items) const override;
+    void collectFireSpikeTrapPresentationStates(
+        std::vector<GameplayProjectilePresentationState> &traps) const override;
     bool spawnPartyFireSpikeTrap(
         uint32_t casterMemberIndex,
         uint32_t spellId,

@@ -1,0 +1,42 @@
+# 3D models of flying projectiles, by object id (object_list.txt ObjectId). A bound projectile draws its model,
+# pointed along its flight, instead of its native sprite, in both projectile styles; its effects (trail, light, impact)
+# stay. length: world units from tail to tip (the sprite's painted size). spin: the model's own axis it turns about in
+# flight (forward = roll, up = whirl in its own plane, side = end over end); a settled projectile lies level and still.
+# Models point along glTF +Z with their origin at the projectile's centre. Builders:
+# level_generation/props/projectiles_claude/.
+schema: openyamm.projectileModels.v1
+projectiles:
+  - {object: 545, model: engine/models/projectile_arrow.glb, length: 127}        # Arrow (party bows, monster archers)
+  - {object: 550, model: engine/models/projectile_fire_arrow.glb, length: 127}   # FireArrow (flipbook flames)
+  - {object: 560, model: engine/models/projectile_cannonball.glb, length: 75}    # Cannonball
+  - {object: 565, model: engine/models/projectile_boulder.glb, length: 59,       # Cyclops boulder
+     spin: {axis: side, degrees_per_second: 300}}
+  - {object: 4070, model: engine/models/projectile_rock.glb, length: 85,         # Rock Blast
+     spin: {axis: side, degrees_per_second: 360}}
+  - {object: 4090, model: engine/models/projectile_rock.glb, length: 85,         # Death Blossom seed
+     spin: {axis: side, degrees_per_second: 360}}
+  - {object: 4092, model: engine/models/projectile_rock.glb, length: 85,         # Death Blossom shards
+     spin: {axis: side, degrees_per_second: 480}}
+  - {object: 3030, model: engine/models/projectile_ice_shard.glb, length: 61,    # Ice Bolt
+     spin: {axis: forward, degrees_per_second: 360}}
+  - {object: 3090, model: engine/models/projectile_ice_shard.glb, length: 61,    # Ice Blast
+     spin: {axis: forward, degrees_per_second: 360}}
+  - {object: 3092, model: engine/models/projectile_ice_shard.glb, length: 61,    # Ice Blast shards
+     spin: {axis: forward, degrees_per_second: 480}}
+  - {object: 4050, model: engine/models/projectile_blades.glb, length: 110,      # Blades
+     spin: {axis: up, degrees_per_second: 900}}
+  - {object: 9040, model: engine/models/projectile_shrapnel.glb, length: 52,     # Shrap Metal
+     spin: {axis: side, degrees_per_second: 540}}
+  - {object: 1060, model: engine/models/projectile_fire_spike.glb, length: 63,   # Fire Spike (lies level when armed)
+     spin: {axis: up, degrees_per_second: 360}}
+  - {object: 7090, model: engine/models/projectile_fist.glb, length: 127}        # Flying Fist
+  - {object: 7030, model: engine/models/projectile_serpent.glb, length: 194}     # Harm (a golden serpent)
+  - {object: 9010, model: engine/models/projectile_toxic_cloud.glb, length: 79}  # Toxic Cloud (a green skull in smoke)
+  - {object: 2100, model: engine/models/projectile_starburst.glb, length: 126}   # Starburst star (flipbook flames)
+  - {object: 1080, model: engine/models/projectile_meteor.glb, length: 126}      # Meteor Shower (flipbook flames)
+  - {object: 307, model: engine/models/projectile_dagger.glb, length: 66,        # Thrown dagger (party, MM9 knives)
+     spin: {axis: side, degrees_per_second: 720}}
+  - {object: 309, model: engine/models/projectile_axe.glb, length: 110,          # Thrown axe (party, MM9 axes)
+     spin: {axis: side, degrees_per_second: 540}}
+  - {object: 384, model: engine/models/projectile_egg.glb, length: 52,           # MM9 egg
+     spin: {axis: side, degrees_per_second: 360}}

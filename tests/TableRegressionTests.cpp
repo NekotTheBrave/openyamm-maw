@@ -285,7 +285,6 @@ TEST_CASE("settings debug startup options round trip")
     settings.turboMovementEnabled = false;
     settings.bolsterMonsters = true;
     settings.outdoorPathfinding = true;
-    settings.monsterProjectileVisuals = OpenYAMM::Game::MonsterProjectileVisuals::Sprites;
     settings.logIndoorVisibility = true;
     settings.logOutdoorPathfinding = true;
     settings.fpsTrace = true;
@@ -326,7 +325,6 @@ TEST_CASE("settings debug startup options round trip")
     CHECK_FALSE(loadedSettings->turboMovementEnabled);
     CHECK(loadedSettings->bolsterMonsters);
     CHECK(loadedSettings->outdoorPathfinding);
-    CHECK(loadedSettings->monsterProjectileVisuals == OpenYAMM::Game::MonsterProjectileVisuals::Sprites);
     CHECK(loadedSettings->logIndoorVisibility);
     CHECK(loadedSettings->logOutdoorPathfinding);
     CHECK(loadedSettings->fpsTrace);
@@ -500,9 +498,6 @@ TEST_CASE("settings monster bolster feature defaults off")
 {
     CHECK_FALSE(OpenYAMM::Game::GameSettings::createDefault().bolsterMonsters);
     CHECK(
-        OpenYAMM::Game::GameSettings::createDefault().monsterProjectileVisuals
-        == OpenYAMM::Game::MonsterProjectileVisuals::FxRecipes);
-    CHECK(
         OpenYAMM::Game::GameSettings::createDefault().blasterSkillScaling
         == OpenYAMM::Game::BlasterSkillScalingMode::Default);
     CHECK_EQ(OpenYAMM::Game::GameSettings::createDefault().blasterMinimumRecoveryTicks, 0);
@@ -524,7 +519,6 @@ TEST_CASE("settings monster bolster feature defaults off")
     REQUIRE(loadedSettings.has_value());
     CHECK_FALSE(loadedSettings->bolsterMonsters);
     CHECK_FALSE(loadedSettings->outdoorPathfinding);
-    CHECK(loadedSettings->monsterProjectileVisuals == OpenYAMM::Game::MonsterProjectileVisuals::FxRecipes);
     CHECK(loadedSettings->blasterSkillScaling == OpenYAMM::Game::BlasterSkillScalingMode::Default);
     CHECK_EQ(loadedSettings->blasterMinimumRecoveryTicks, 0);
     CHECK_FALSE(loadedSettings->logIndoorVisibility);
@@ -947,13 +941,6 @@ TEST_CASE("monster hostility table follows merged merged party relations")
     CHECK(gameData.monsterTable.isHostileToParty(73));
     CHECK(gameData.monsterTable.isHostileToParty(74));
     CHECK(gameData.monsterTable.isHostileToParty(75));
-}
-
-TEST_CASE("harm projectile sprite resolves to an existing billboard texture")
-{
-    const OpenYAMM::Game::SpriteFrameTable spriteFrameTable = loadCommonSpriteFrameTable();
-
-    checkFirstSpriteFrameTexture(spriteFrameTable, "spell70", "spell70b10", "Spell70b10.bmp");
 }
 
 TEST_CASE("light bolt sprites resolve to existing billboard textures")

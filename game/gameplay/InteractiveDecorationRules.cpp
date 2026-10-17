@@ -380,7 +380,10 @@ std::optional<InteractiveDecorationFamily> classifyInteractiveDecorationFamily(
         return InteractiveDecorationFamily::Crystal;
     }
 
-    if (decorationMatchesAnyKey(keys, {"barrel", "dec03", "dec32"}))
+    // Bare decNN keys name the merged table's MM8 decorations; MM7's (7decNN) match by their hints. dec32 is MM8's
+    // metal bowls, dec01 its elf statue and dec21 its bones (the MM7 barrel, trash heap and cask are 7dec32, 7dec01
+    // and 7dec21); dec10 is an MM8 crystal (MM7's trash heap 7dec10).
+    if (decorationMatchesAnyKey(keys, {"barrel", "dec03"}))
     {
         return InteractiveDecorationFamily::Barrel;
     }
@@ -395,7 +398,7 @@ std::optional<InteractiveDecorationFamily> classifyInteractiveDecorationFamily(
         return InteractiveDecorationFamily::MightAndMagicSixTrashHeap;
     }
 
-    if (decorationMatchesAnyKey(keys, {"trash heap", "trash pile", "dec01", "dec10", "dec23"}))
+    if (decorationMatchesAnyKey(keys, {"trash heap", "trash pile", "dec23"}))
     {
         return InteractiveDecorationFamily::TrashHeap;
     }
@@ -405,7 +408,7 @@ std::optional<InteractiveDecorationFamily> classifyInteractiveDecorationFamily(
         return InteractiveDecorationFamily::CampFire;
     }
 
-    if (decorationMatchesAnyKey(keys, {"keg", "cask", "dec21"}))
+    if (decorationMatchesAnyKey(keys, {"keg", "cask"}))
     {
         return InteractiveDecorationFamily::Cask;
     }

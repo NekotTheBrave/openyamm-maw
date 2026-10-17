@@ -5,7 +5,7 @@ SAMPLER2D(s_ao, 1);
 
 void main()
 {
-    float depth = texture2D(s_aoDepth, v_texcoord0).r;
+    float depth = aoDepth(v_texcoord0);
     float distance = -aoViewPosition(v_texcoord0, depth).z;
     vec2 pixel = v_texcoord0 / u_aoTexel.zw - 0.5;
     vec2 base = (floor(pixel) + 0.5) * u_aoTexel.zw;

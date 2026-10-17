@@ -8,7 +8,7 @@ codec, so identical images used the same way are stored once and every profile s
 (tools/cook_model_geometry.py: hidden back faces culled, burn order baked per vertex, vertex cache order) run
 before the textures.
 
-The cook is incremental and idempotent: a model whose source, rules, cooker binary and cook scripts are unchanged,
+The cook is incremental and idempotent: a model whose source, rules, COOKER_REVISION and cook scripts are unchanged,
 and whose outputs are intact, is skipped without being read further; anything else is cooked again, and the same
 inputs give the same bytes. A full run (no --only) also removes cooked GLBs whose source is gone and textures that no
 model references. assets_dev then holds only cooked models; sources live in assets_source.
@@ -45,6 +45,10 @@ CHUNK_JSON = 0x4E4F534A
 CHUNK_BIN = 0x004E4942
 COOKED_EXTRAS = "openyamm_cooked"
 DEFAULT_OUTPUT = {"desktop": "assets_dev", "android": "assets_cooked/android"}
+# Bump when the cooker (openyamm_model_texture_cook: cook_model_textures_main.cpp, CookModelGeometry.cpp,
+# TextureBlockEncode.cpp) writes different output for the same inputs. Receipts record this instead of the binary's
+# hash, which changed with every rebuild of openyamm_engine and made the next cook redo every texture.
+COOKER_REVISION = 1
 
 
 def sha256(data):
@@ -413,10 +417,6 @@ def print_plan(rules, models, profiles):
         print(f"  {profile}: ~{totals[profile] / 1e6:.0f} MB of cooked textures (estimate)")
 
 
-def cooker_digest(cooker):
-    return sha256(cooker.read_bytes())
-
-
 def texture_fingerprint(recipe, texture, profile):
     codec, max_size = texture["decisions"][profile]
     return dict(recipe, png=texture["png_sha256"], codec=codec, max_size=max_size, semantic=texture["semantic"],
@@ -462,7 +462,7 @@ def cook(args, rules, paths):
     cooker = args.cooker.resolve(strict=True)
     cache_path = source_root / ".cook-cache" / "models" / f"{profile}.json"
     cache = json.loads(cache_path.read_text()) if cache_path.exists() and not args.force else {}
-    texture_recipe = {"cooker": cooker_digest(cooker), "rules": sha256(rules.text), "profile": profile}
+    texture_recipe = {"cooker": COOKER_REVISION, "rules": sha256(rules.text), "profile": profile}
     scripts = sha256(Path(__file__).read_bytes() + Path(cook_model_geometry.__file__).read_bytes())
     model_recipe = dict(texture_recipe, scripts=scripts, geometry=cook_model_geometry.recipe())
 

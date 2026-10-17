@@ -285,3 +285,103 @@ TEST_CASE("Verges grow tall grass along the grass edge and undergrowth rings tre
     CHECK(ferns > 6);
     CHECK(ferns <= 12);
 }
+
+TEST_CASE("Bushes group at tree lines and in lush hollows, on grass and apart")
+{
+    OutdoorMapData map = grassMap(30, 98);
+    // A road through the middle of the grass and a lake in the corner.
+    for (int y = 30; y <= 98; ++y)
+    {
+        map.tileMap[size_t(y) * 128 + 64] = 0;
+    }
+    map.attributeMap.resize(128 * 128, 0);
+    for (int y = 86; y < 94; ++y)
+    {
+        for (int x = 86; x < 94; ++x)
+        {
+            map.attributeMap[size_t(y) * 128 + x] = 0x02;
+        }
+    }
+    for (int tree = 0; tree < 20; ++tree)
+    {
+        OutdoorEntity entity;
+        entity.name = "6Tree01";
+        entity.x = int(outdoorGridCornerWorldX(36 + tree));
+        entity.y = int(outdoorGridCornerWorldY(40));
+        map.entities.push_back(entity);
+    }
+    TerrainDecorationConfig config = grassConfig();
+    config.undergrowth.decorations = {"tree"};
+    config.bushes.models = {{"a.glb", 120.0f, 1.0f}, {"b.glb", 80.0f, 1.0f}};
+    config.bushes.edgeChance = 1.0f;
+    config.bushes.meadowChance = 0.0f;
+    config.bushes.lushChance = 0.0f;
+    config.bushes.vergeChance = 0.0f;
+    const TerrainDecorationPlacement placement = scatterTerrainDecorations(map, grassTextures(), config);
+    REQUIRE(placement.bushes.size() >= 15);
+    std::array<size_t, 2> perModel = {};
+    for (const TerrainBushInstance &bush : placement.bushes)
+    {
+        ++perModel[bush.model];
+        // Near the tree line, at least edge_radius minus the group spread from it.
+        const float treeLine = outdoorGridCornerWorldY(40);
+        CHECK(std::abs(bush.position[1] - treeLine) < config.bushes.edgeRadius[1] + config.bushes.groupSpread * 1.3f);
+        // Off the road, with grass all around.
+        const float road = std::min(std::abs(bush.position[0] - outdoorGridCornerWorldX(64)),
+            std::abs(bush.position[0] - outdoorGridCornerWorldX(65)));
+        CHECK(road > config.bushes.radius * 0.9f);
+        CHECK(bush.heightScale >= 1.0f - config.bushes.heightJitter);
+        CHECK(bush.heightScale <= 1.0f + config.bushes.heightJitter);
+        for (const TerrainBushInstance &other : placement.bushes)
+        {
+            if (&other != &bush)
+            {
+                CHECK(std::hypot(other.position[0] - bush.position[0], other.position[1] - bush.position[1])
+                    >= config.bushes.radius * 1.6f - 0.01f);
+            }
+        }
+    }
+    CHECK(perModel[0] > 0);
+    CHECK(perModel[1] > 0);
+
+    // Without trees, lush ground along the lake grows bushes and dry open ground none; max_count caps them.
+    map.entities.clear();
+    config.bushes.lushChance = 1.0f;
+    config.bushes.spacing = 400.0f;
+    const TerrainDecorationPlacement lush = scatterTerrainDecorations(map, grassTextures(), config);
+    REQUIRE(!lush.bushes.empty());
+    for (const TerrainBushInstance &bush : lush.bushes)
+    {
+        CHECK(std::hypot(bush.position[0] - outdoorGridCornerWorldX(90), bush.position[1] - outdoorGridCornerWorldY(90))
+            < 6000.0f);
+    }
+    config.bushes.maxCount = 3;
+    CHECK(scatterTerrainDecorations(map, grassTextures(), config).bushes.size() == 3);
+}
+
+TEST_CASE("Clump layers are placed in their own rank tree")
+{
+    const OutdoorMapData map = grassMap(30, 98);
+    TerrainDecorationConfig config = grassConfig();
+    TerrainDecorationVariant other;
+    other.layer = 3;
+    config.rules[0].variants.push_back(other);
+    config.clump.layerMask = 1u << 0;
+    const TerrainDecorationPlacement placement = scatterTerrainDecorations(map, grassTextures(), config);
+    size_t clumps = 0;
+    size_t cards = 0;
+    for (const TerrainDecorationNode &node : placement.nodes)
+    {
+        for (uint32_t index = node.range.first; index < node.range.first + node.range.count; ++index)
+        {
+            const bool clumpLayer = placement.instances[index].groundNormal[3] == 0.0f;
+            REQUIRE(node.range.clump == clumpLayer);
+            clumps += clumpLayer;
+            cards += !clumpLayer;
+        }
+    }
+    CHECK(clumps > 0);
+    CHECK(cards > 0);
+    // A clump covers its cards' area in the foliage map.
+    CHECK(terrainDecorationClumpArea(config.clump) == doctest::Approx(5.0f * 0.75f * 0.75f * 0.63662f));
+}

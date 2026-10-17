@@ -10,20 +10,75 @@
 
 namespace OpenYAMM::Game
 {
-constexpr uint16_t FirstSunShadowView = 232;
-constexpr size_t SunShadowViews = 2;
+// Every bgfx view id the game uses outside 0 (sky or indoor world), 1 (outdoor world) and 2 (HUD) is declared here,
+// so a new view cannot silently share an id: the check below fails the build on a duplicate. A shared id merges
+// two passes (the pause menu drawn into the bloom target, 2026-10-16).
+// Bloom (lighting plan, phase 7): emitters drawn again into a glow target, then reduced and blurred.
+constexpr uint16_t WorldGlowView = 227;
+constexpr uint16_t BloomDownsampleView = 228;
+constexpr uint16_t BloomBlurHorizontalView = 229;
+constexpr uint16_t BloomBlurVerticalView = 230;
+// One per sun shadow cascade (ModelSunShadowCascades).
+constexpr uint16_t FirstSunShadowView = 231;
+constexpr size_t SunShadowViews = 3;
 constexpr uint16_t FirstWaterReflectionView = 234;
 constexpr size_t MaxWaterReflections = 2;
 // Reduced-resolution Enhanced sky, rendered before the main sky view upscales it.
 constexpr uint16_t SkyImageView = 238;
 // Offscreen actor inspect portrait (ActorModelPreview), rendered before the HUD view that draws it.
 constexpr uint16_t ActorPortraitView = 239;
+// MenuDesignScreen menus (pause, settings, save and load), drawn after the world and the HUD.
+constexpr uint16_t MenuDesignView = 240;
 constexpr uint16_t AmbientOcclusionDepthView = 244;
 constexpr uint16_t AmbientOcclusionView = 245;
 constexpr uint16_t AmbientOcclusionBlurView = 246;
 constexpr uint16_t AmbientOcclusionCompositeView = 247;
 constexpr uint16_t WorldTransparentView = 248;
 constexpr uint16_t WorldGradingView = 249;
+// The debug ImGui overlay, the loading screen's completion readback and the loading screen itself.
+constexpr uint16_t DebugImGuiView = 250;
+constexpr uint16_t LoadingReadbackView = 253;
+constexpr uint16_t LoadingOverlayView = 254;
+
+constexpr bool uniqueGameViewIds()
+{
+    std::array<uint16_t, 32> views = {};
+    size_t count = 0;
+    for (uint16_t view = WorldGlowView; view <= BloomBlurVerticalView; ++view)
+    {
+        views[count++] = view;
+    }
+    for (uint16_t view = FirstSunShadowView; view < FirstSunShadowView + SunShadowViews; ++view)
+    {
+        views[count++] = view;
+    }
+    for (uint16_t view = FirstWaterReflectionView; view < FirstWaterReflectionView + MaxWaterReflections * 2; ++view)
+    {
+        views[count++] = view;
+    }
+    for (uint16_t view : {SkyImageView, ActorPortraitView, MenuDesignView, AmbientOcclusionDepthView,
+             AmbientOcclusionView, AmbientOcclusionBlurView, AmbientOcclusionCompositeView, WorldTransparentView,
+             WorldGradingView, DebugImGuiView, LoadingReadbackView, LoadingOverlayView})
+    {
+        views[count++] = view;
+    }
+    for (size_t first = 0; first < count; ++first)
+    {
+        if (views[first] <= 2)
+        {
+            return false;
+        }
+        for (size_t second = first + 1; second < count; ++second)
+        {
+            if (views[first] == views[second])
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+static_assert(uniqueGameViewIds(), "Two game passes share a bgfx view id");
 
 // Matches the maximum normalized UV offset passed to waterReflection by both water shaders.
 constexpr float WaterReflectionDistortion = 0.014f;
@@ -154,7 +209,8 @@ inline WaterReflectionScissor waterReflectionScissor(const float *pViewProjectio
     return {uint16_t(left), uint16_t(top), uint16_t(right - left), uint16_t(bottom - top)};
 }
 
-constexpr std::array<uint16_t, WorldGradingView + 1> worldRenderViewOrder(bool grading, bool ambientOcclusion = false)
+constexpr std::array<uint16_t, WorldGradingView + 1> worldRenderViewOrder(bool grading, bool ambientOcclusion = false,
+    bool bloom = false)
 {
     std::array<uint16_t, WorldGradingView + 1> order = {};
     size_t index = 0;
@@ -177,6 +233,13 @@ constexpr std::array<uint16_t, WorldGradingView + 1> worldRenderViewOrder(bool g
             order[index++] = view;
         }
     }
+    if (bloom)
+    {
+        for (uint16_t view = WorldGlowView; view <= BloomBlurVerticalView; ++view)
+        {
+            order[index++] = view;
+        }
+    }
     if (grading)
     {
         order[index++] = WorldGradingView;
@@ -188,7 +251,8 @@ constexpr std::array<uint16_t, WorldGradingView + 1> worldRenderViewOrder(bool g
             && view != SkyImageView
             && view != ActorPortraitView
             && (!grading || view != WorldGradingView)
-            && (!ambientOcclusion || view < AmbientOcclusionDepthView || view > WorldTransparentView))
+            && (!ambientOcclusion || view < AmbientOcclusionDepthView || view > WorldTransparentView)
+            && (!bloom || view < WorldGlowView || view > BloomBlurVerticalView))
         {
             order[index++] = view;
         }

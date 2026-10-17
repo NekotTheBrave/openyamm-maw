@@ -36,7 +36,7 @@ codecs:
 # higher-quality codec of its uses. A model's <name>.cook.yml sidecar can override quality, max_size and
 # normal_scale for the model, and max_size or codec for one image (by glTF image name).
 classes:
-  - match: "worlds/*/models/mm6_deco_*.glb"
+  - match: "engine/models/mm*_deco_*.glb"
     quality: standard
     max_size: {desktop: 4096, android: 2048}
   - match: "worlds/*/models/*.glb"

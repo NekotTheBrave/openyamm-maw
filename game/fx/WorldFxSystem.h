@@ -6,6 +6,8 @@
 #include "game/fx/ParticleRecipes.h"
 #include "game/fx/ParticleSystem.h"
 #include "game/fx/ProjectileEffectBindings.h"
+#include "game/fx/ItemModelBindings.h"
+#include "game/fx/ProjectileModelBindings.h"
 #include "game/fx/SpellAuraEffectBindings.h"
 #include "game/fx/WaterRippleRuntime.h"
 #include "game/fx/import/EffectResourceLibrary.h"
@@ -41,6 +43,7 @@ class ActorModelManifest;
 class MonsterTable;
 class MonsterProjectileTable;
 class ObjectTable;
+class ItemTable;
 struct GameplayProjectilePresentationState;
 struct GameplayProjectileImpactPresentationState;
 class SpriteFrameTable;
@@ -139,6 +142,10 @@ public:
     // True when a model or a loot satchel presents this actor (its sprite is not drawn).
     bool hasActorModel(size_t actorIndex) const;
     const Engine::ModelBounds *actorModelBounds(size_t actorIndex) const;
+    // Distance along direction to where the ray meets the posed model (or loot satchel) presenting the actor: its
+    // triangles, not its bounds. Pickers test actorModelCullingBounds and actorModelPoseBounds first.
+    std::optional<float> actorModelPickRay(size_t actorIndex, const std::array<float, 3> &origin,
+        const std::array<float, 3> &direction) const;
     // World height of an actor model's standing pose above the actor's feet, at the actor's scale: where health bars
     // and quest markers sit. Empty without a model (also for a loot satchel).
     std::optional<float> actorModelStandingTop(size_t actorIndex) const;
@@ -217,17 +224,54 @@ public:
         float frontDirectionX,
         float frontDirectionY,
         size_t actorIndex = static_cast<size_t>(-1));
-    // Enhanced projectile visuals: engine/effects/projectiles.yml binds recipes (and monsters' variants of them) to
-    // named flight, settled and impact effects that replace the recipe's trail particles, beam and impact burst, and
-    // may override the native sprite and the flight light. Off (the classic setting) keeps every recipe as it was.
-    void setProjectileFlightEffects(bool enabled);
-    // The enhanced binding for a projectile of this recipe thrown by this monster (0: none); null when the setting
-    // is classic or nothing is bound.
+    // Projectile visuals: engine/effects/projectiles.yml binds recipes (and monsters' variants of them) to named
+    // flight, settled and impact effects that replace the recipe's trail particles, beam and impact burst, and may
+    // override the native sprite and the flight light.
+    // The binding for a projectile of this recipe thrown by this monster (0: none); null when nothing is bound.
     const ProjectileEffectBinding *projectileEffectBinding(FxRecipes::ProjectileRecipe recipe, int16_t monsterId) const;
-    // Whether a projectile's native sprite draws: its gameplay visual mode unless its binding overrides it.
+    // Projectile models (engine/models/projectiles.yml): a bound projectile draws its model, pointed along its
+    // flight, instead of its native sprite, in both projectile styles. Loads the bindings and their models.
+    bool loadProjectileModels(const Engine::AssetFileSystem &assets, std::string &error);
+    // The object table projectile models and the water splash are resolved through (each projectile sync sets the
+    // session's; diagnostics without a session set it here).
+    void setProjectileObjectTable(const ObjectTable *pObjectTable)
+    {
+        m_pProjectileObjectTable = pObjectTable;
+    }
+    // Whether a projectile model presents this object (object_list.txt ObjectId): its sprite is never drawn in flight.
+    bool hasProjectileModel(int16_t objectId) const
+    {
+        return m_projectileModelBindings.contains(objectId);
+    }
+    // Shows only the projectile and item models whose sector passes visible (indoors: revealed through the portals).
+    void setObjectModelVisibility(const std::function<bool(int16_t sectorId)> &visible);
+    // Item models (engine/models/items.yml, GROUND_ITEMS_3D_PLAN.md): an item lying on the ground draws its model,
+    // lying flat with a yaw of its own, instead of its sprite. Loads the bindings; each model loads the first time
+    // one of its items appears.
+    bool loadItemModels(const Engine::AssetFileSystem &assets, std::string &error);
+    // Whether a model presents this item (its sprite is not drawn); false before the first projectile sync.
+    bool hasItemModel(uint32_t itemId) const;
+    // Hover or context-action outline of an item's model (the world's presentation key), 0 for none.
+    void setItemModelOutline(uint32_t key, uint32_t colorAbgr);
+    // The drawn ground under an item (outdoors: the smoothed terrain, which departs from the native floor the item
+    // rests on): its height and normal, or nothing where the item does not lie on it (a building floor, a table).
+    struct ItemGround
+    {
+        float z = 0.0f;
+        std::array<float, 3> normal = {0.0f, 0.0f, 1.0f};
+    };
+    void setItemGroundSampler(std::function<std::optional<ItemGround>(float x, float y, float z)> sampler)
+    {
+        m_itemGroundSampler = std::move(sampler);
+    }
+    // Whether a projectile's native sprite draws: not when a model presents it; else its gameplay visual mode unless
+    // its binding overrides it.
     bool projectileShowsNativeSprite(const GameplayProjectilePresentationState &projectile) const;
     // Whether a named effect (a debug rebind or a bound impact) replaces an impact's native sprite and recipe burst.
     bool projectileImpactUsesNamedEffect(const GameplayProjectileImpactPresentationState &impact) const;
+    // Whether an impact's native sprite draws: not when a named effect (the water splash's too) or the recipe's
+    // dedicated burst replaces it.
+    bool projectileImpactShowsNativeSprite(const GameplayProjectileImpactPresentationState &impact) const;
     // The sprite resources of every bound projectile effect (none in the classic style), for preloading.
     std::vector<std::string> projectileEffectSpriteResources() const;
     bool setProjectileImpactEffectRebind(FxRecipes::ProjectileRecipe recipe, const std::string &effectId);
@@ -528,6 +572,8 @@ private:
     };
     // The satchel presenting an actor whose body is gone, or null.
     const CorpseSatchel *goneCorpse(size_t actorIndex) const;
+    // The model picked for an actor: its body, or once gone or burnt out, its loot satchel (the remains without one).
+    std::optional<Engine::ModelInstanceHandle> actorPickingHandle(size_t actorIndex) const;
     bool m_corpseSatchels = false;
     std::array<std::shared_ptr<const Engine::ModelAsset>, 6> m_satchelAssets;
     // By actor index, ordered: the per-frame sync walks it alongside the actors.
@@ -687,6 +733,56 @@ private:
     };
 
     ProjectileEffectBindings m_projectileEffectBindings;
+    struct LoadedProjectileModel
+    {
+        std::shared_ptr<const Engine::ModelAsset> asset;
+        // World units per model unit (the binding's length over the model's extent along +Z).
+        float scale = 1.0f;
+        ProjectileModelSpinAxis spinAxis = ProjectileModelSpinAxis::None;
+        float spinRadiansPerSecond = 0.0f;
+    };
+    // By object id.
+    std::unordered_map<int16_t, LoadedProjectileModel> m_projectileModelBindings;
+    struct ProjectileModel
+    {
+        Engine::ModelInstanceHandle handle;
+        int16_t sectorId = -1;
+        // Heading, kept while the projectile is still or settled (a settled one lies level).
+        float yaw = 0.0f;
+        float pitch = 0.0f;
+        bool seen = false;
+    };
+    // By projectile id (low half); Fire Spike traps by trap id with the high half 1.
+    std::unordered_map<uint64_t, ProjectileModel> m_projectileModels;
+    // Whether an impact is the splash of a projectile falling into water.
+    bool isWaterSplashImpact(const GameplayProjectileImpactPresentationState &impact) const;
+    // Item models by the world's presentation key; a key whose item changes gets a new model.
+    struct ItemModel
+    {
+        Engine::ModelInstanceHandle handle;
+        uint32_t itemId = 0;
+        int16_t sectorId = -1;
+        bool seen = false;
+    };
+    struct LoadedItemModel
+    {
+        // Null when the model failed to load (the item keeps its sprite).
+        std::shared_ptr<const Engine::ModelAsset> asset;
+        float scale = 1.0f;
+    };
+    ItemModelBindings m_itemModelBindings;
+    const Engine::AssetFileSystem *m_pItemModelAssets = nullptr;
+    // By icon, loaded on first use.
+    std::unordered_map<std::string, LoadedItemModel> m_loadedItemModels;
+    std::unordered_map<uint32_t, ItemModel> m_itemModels;
+    const ItemTable *m_pItemTable = nullptr;
+    std::function<std::optional<ItemGround>(float x, float y, float z)> m_itemGroundSampler;
+    const ItemModelBinding *itemModelBinding(uint32_t itemId, std::string *pIcon = nullptr) const;
+    const LoadedItemModel *loadedItemModel(uint32_t itemId);
+    void syncItemModels(GameSession &session);
+    // The model binding of a projectile's object, or null.
+    const LoadedProjectileModel *projectileModelBinding(uint16_t objectDescriptionId) const;
+    void syncProjectileModels(GameSession &session);
     std::unordered_map<uint32_t, ProjectileFlightEffect> m_projectileFlightEffects;
     std::vector<SpellVisualFlight> m_spellVisualFlights;
     SpellAuraEffectBindings m_spellAuraEffectBindings;
@@ -696,7 +792,6 @@ private:
     // Missile token -> object -> projectile recipe, for the colour of a ranged attack's charge.
     const MonsterProjectileTable *m_pMonsterProjectileTable = nullptr;
     const ObjectTable *m_pProjectileObjectTable = nullptr;
-    bool m_projectileFlightEffectsEnabled = true;
     bool m_shadowsEnabled = false;
 };
 }

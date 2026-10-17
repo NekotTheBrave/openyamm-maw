@@ -1,5 +1,5 @@
 $input a_position, a_normal, a_texcoord0, a_indices, a_weight, a_texcoord5, a_texcoord3
-$output v_texcoord0, v_worldNormal, v_worldPosition, v_color0, v_texcoord1, v_flowInfo
+$output v_texcoord0, v_worldNormal, v_worldPosition, v_color0, v_texcoord1, v_flowInfo, v_sector
 
 #include "common.sh"
 #include "model_skin.sh"
@@ -9,6 +9,8 @@ uniform vec4 u_modelOutline;
 uniform vec4 u_modelCamera;
 // Texture scroll offset (openyamm_uv_scroll x time, wrapped): creature wind and flowing surfaces.
 uniform vec4 u_modelScroll;
+// x: the model's indoor sector for the light grid's reach test (-1: none).
+uniform vec4 u_modelSector;
 
 void main()
 {
@@ -21,6 +23,7 @@ void main()
     v_color0 = vec4(1.0, 1.0, 1.0, 1.0);
     v_texcoord1 = vec4(0.0, 0.0, 0.0, 0.0);
     v_flowInfo = vec4(1.0, 1.0, 1.0, 1.0);
+    v_sector = u_modelSector.x;
     v_worldNormal = skinned ? normalize(mul(skin, vec4(a_normal, 0.0)).xyz)
         : mul(u_modelNormalMatrix, vec4(a_normal, 0.0)).xyz;
     if (u_modelOutline.w > 2.5)

@@ -373,6 +373,18 @@ struct GameplayProjectilePresentationState
     bool isSettled = false;
 };
 
+// An item lying on the ground (or dropped and still falling), for its 3D model.
+struct GameplayWorldItemPresentationState
+{
+    // Stable while the item lies there: the world's item id outdoors, its map object index indoors.
+    uint32_t key = 0;
+    uint32_t itemId = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+    int16_t sectorId = -1;
+};
+
 // A projectile that ended (hit something or ran out of lifetime) and where it stopped, so its flight effect can
 // reach that point before it fades.
 struct GameplayProjectileEndPresentationState
@@ -779,6 +791,16 @@ public:
         (void)viewPitchRadians;
         (void)viewAspectRatio;
         return collectMapActorIndicesWithinRadius(centerX, centerY, centerZ, radius, true, sourceX, sourceY, sourceZ);
+    }
+    // Items lying on the ground (their models replace the sprites, GROUND_ITEMS_3D_PLAN.md). None by default.
+    virtual void collectWorldItemPresentationStates(std::vector<GameplayWorldItemPresentationState> &items) const
+    {
+        items.clear();
+    }
+    // Armed party Fire Spike traps, as settled projectiles (their models lie on the ground). None by default.
+    virtual void collectFireSpikeTrapPresentationStates(std::vector<GameplayProjectilePresentationState> &traps) const
+    {
+        traps.clear();
     }
     virtual bool spawnPartyFireSpikeTrap(
         uint32_t casterMemberIndex,

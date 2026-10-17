@@ -1,0 +1,13 @@
+output_dir: ../output/pfem_3d_review
+exit: false
+steps:
+  - expect: gameplay
+  - key: "`"
+  - text: "actor spawn 596 1 -9728 -11719 161"
+  - key: Return
+  - text: "actor spawn 597 1 -9568 -11719 161"
+  - key: Return
+  - text: "actor count 595 596 597"
+  - key: Return
+  - key: "`"
+  - expect: gameplay

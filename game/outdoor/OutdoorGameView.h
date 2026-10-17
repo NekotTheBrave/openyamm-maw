@@ -17,6 +17,7 @@
 #include "game/outdoor/OutdoorLightingRuntime.h"
 #include "game/outdoor/OutdoorSpatialFxRuntime.h"
 #include "game/outdoor/OutdoorTerrainMaterials.h"
+#include "game/outdoor/TerrainBushSet.h"
 #include "game/outdoor/TerrainDecorationRenderer.h"
 #include "game/outdoor/WeatherAudio.h"
 #include "game/outdoor/WeatherPresentation.h"
@@ -49,6 +50,7 @@
 #include "game/tables/RosterTable.h"
 #include "game/tables/SpellTable.h"
 #include "game/gameplay/GameplayDialogController.h"
+#include "game/ui/EnemyHealthBarRenderer.h"
 #include "game/ui/GameplayHudCommon.h"
 #include "game/ui/GameplayUiController.h"
 #include "game/ui/GameplayOverlayTypes.h"
@@ -743,8 +745,11 @@ private:
     bgfx::ProgramHandle m_outdoorBModelShadowArrayProgramHandle = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_outdoorTexturedFogArrayProgramHandle = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_outdoorTexturedFogShadowArrayProgramHandle = BGFX_INVALID_HANDLE;
+    // The terrain as a sun shadow caster.
+    bgfx::ProgramHandle m_terrainShadowProgramHandle = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_bmodelTextureLayerUniformHandle = BGFX_INVALID_HANDLE;
     TerrainDecorationRenderer m_terrainDecorations;
+    TerrainBushSet m_terrainBushes;
     WaterRenderer m_waterRenderer;
     SkyRenderer m_skyRenderer;
     bool m_skyRendererInitializeAttempted = false;
@@ -838,6 +843,10 @@ private:
     EffectRenderer m_effectRenderer;
     ShieldDomeRenderer m_shieldDomeRenderer;
     Engine::ModelRenderer m_modelRenderer;
+    // The main view's clustered light grid: the object lights (authored and dynamic) for 3D models; buildings take
+    // its dynamic lights.
+    Engine::LightGridTextures m_lightGrid;
+    Engine::LightGridBinding m_lightGridBinding;
     // Baked sunlight probes per 3D model instance. A probe depends only on position (line of sight to the baked
     // probe grid), so it is re-sampled after the model moves; time-of-day colour is still applied every frame.
     struct ModelProbeCacheEntry
@@ -980,6 +989,7 @@ private:
     PendingSavePreviewCaptureState m_pendingSavePreviewCapture;
     int m_lastRenderWidth = 0;
     int m_lastRenderHeight = 0;
+    std::vector<EnemyHealthBarRenderer::Draw> m_pendingEnemyHealthBars;
     std::vector<CombatFloatingText> m_combatFloatingTexts;
 };
 }

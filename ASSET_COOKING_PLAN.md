@@ -44,7 +44,7 @@ lossless, any size        recorded in a cook ledger         android profile as a
   - Lossless GLBs with full-resolution PNG textures (what the builders export today).
   - Meshy returns, Codex HD masters and sprite source frames. The last already live here
     (`assets_source/engine/sprites_new`, 32 GB).
-- **Layout:** mirrors `assets_dev`, e.g. `assets_source/worlds/mm6/models/mm6_deco_torch.glb`, so the mapping is one
+- **Layout:** mirrors `assets_dev`, e.g. `assets_source/engine/models/mm6_deco_torch.glb`, so the mapping is one
   path, not a table.
 - **The game never mounts it.** Builders (`--install`) write here instead of into `assets_dev`.
 - **Git:** today `/assets_source/` is ignored, and `.gitattributes` already routes its PNG/BMP/TIFF/EXR/PSD/KRA/BLEND
@@ -202,7 +202,7 @@ override says so.
 Commands (the cooker is a host tool: `cmake --build build --target openyamm_model_texture_cook`):
 
 ```sh
-tools/cook_models.py --plan [--only 'worlds/mm6/models/mm6_deco_*.glb']   # decisions and projected sizes
+tools/cook_models.py --plan [--only 'engine/models/mm6_deco_*.glb']   # decisions and projected sizes
 tools/cook_models.py --profile desktop      # assets_source -> assets_dev (GLBs + textures)
 tools/cook_models.py --profile android      # assets_source -> assets_cooked/android (textures only)
 tools/cook_models.py --verify               # cooked GLBs, both profiles' textures, uses and leftovers
@@ -378,8 +378,12 @@ Prepared; the cook is not run yet: the user switches to cooked models later. Tes
   without parsing; anything else is cooked again; the same inputs give byte-identical files (checked: a fresh cook of
   ten models matched file for file). A full run also removes cooked GLBs whose source is gone. Measured on ten models:
   first cook 18 s (mostly BC7), one changed model 7 s, nothing changed 0.4 s.
-- **Build:** `openyamm_cook_models` (game/CMakeLists.txt) keeps `assets_dev` current, like the surface textures, once
-  `OPENYAMM_COOK_MODELS` is on (off until the switch).
+- **Build (2026-10-15, user decision):** desktop cooks stay automatic and incremental: `tools/install_model.py` cooks
+  each install, and every `openyamm` build runs `openyamm_cook_assets` (model, surface, HUD and sky cooks into
+  `assets_dev`; `-DOPENYAMM_COOK_ON_BUILD=OFF` skips them). Android cooks only on demand, before a release or push:
+  `tools/cook_android.sh` (all Android cooks, incremental, then `--verify`). Receipts record `COOKER_REVISION` in
+  `tools/cook_models.py` (bump it when the cooker's output changes) instead of the cooker binary's hash, which
+  changed with every engine rebuild and made the next cook redo every texture (about an hour for Android).
 - **Sources (done 2026-10-12, user decision):** every accepted model GLB is a source in
   `assets_source/worlds/mm6/models/` (233) and `assets_source/engine/models/` (6 satchels); `assets_dev` keeps
   uncooked runtime copies at the same paths until the switch. Creatures processed in place earlier that day were
@@ -397,8 +401,8 @@ Prepared; the cook is not run yet: the user switches to cooked models later. Tes
   textures for them (`--profile android`), which the Android packager requires for every cooked model texture.
 - **The switch** (when the user decides): `tools/cook_models.py --migrate` (lists models found only in `assets_dev`;
   `--apply` moves them), `tools/cook_models.py --profile desktop` (replaces the runtime copies with cooked ones),
-  `--profile android`, then set `COOKED_MODELS = True` in `tools/install_model.py` and configure with
-  `-DOPENYAMM_COOK_MODELS=ON` so the build keeps `assets_dev` current.
+  `--profile android`, then set `COOKED_MODELS = True` in `tools/install_model.py` (cooking itself runs on demand,
+  see Build above).
 - **Still open for step 4:** the lighting bake dependencies (decoration GLB hashes in `stale_bakes.py` and the bake's
   Blender import) must switch to the sources; D1 (what git versions) decides `.gitignore`; the Android cook is slow
   (etc2comp at effort 80: 6 minutes for one creature's four textures).
@@ -409,8 +413,7 @@ Every model is cooked now (desktop). `tools/cook_models.py --profile desktop` (a
 creature, attachment and satchel GLBs and their textures into `assets_dev`; the 164 decorations are unchanged. The MM6
 actor regression suite matches the uncooked state (61/64; the three failures predate the switch). `--verify`: desktop
 clean (Android textures still missing for every model). `tools/install_model.py` cooks every install
-(`COOKED_MODELS = ("*",)`) and `build/` is configured with `-DOPENYAMM_COOK_MODELS=ON`, so a normal build keeps
-`assets_dev` current (an unchanged run skips all 259 models). The previous uncooked runtime copies are hard-linked in
+(`COOKED_MODELS = ("*",)`) and a normal build keeps `assets_dev` current (an unchanged run skips all 259 models). The previous uncooked runtime copies are hard-linked in
 `output/precook_backup_20261014/`.
 
 Two engine rules the first attempts broke (each rejected the whole MM6 actor registry; rolled back automatically):
@@ -432,3 +435,16 @@ Visually lossless reductions are cook decisions (`reductions` in `tools/cook/mod
 maps, roughness maps that measure >= 38 dB at half size, and mostly empty colour maps. The plan estimate went from
 about 554 to 503 MB desktop and 358 to 320 MB Android. They replace `tools/minimize_model_textures.py` (removed), which
 edited runtime copies the cook overwrites.
+
+## 14. Decoration models are engine content (2026-10-15, user decision)
+
+Decoration models of every world (`mm6_deco_*`, `mm7_deco_*`, `mm8_deco_*`) are sources in
+`assets_source/engine/models/`, so any world, including future ones, can bind them. Each world's
+`decorations.yml`/`indoor_decorations.yml` keeps its bindings and names them as `engine/models/...`.
+- **Migration.** The 164 `mm6_deco_*` sources moved there from `assets_source/worlds/mm6/models/`. The cook class is
+  `engine/models/mm*_deco_*.glb`, and the desktop cook moved their cooked copies and textures. The Android overlay
+  still has them under `worlds/mm6/models/textures/` until the next on-demand Android cook (`tools/cook_android.sh`).
+- **Installs.** `tools/install_model.py` refuses a `mm*_deco_*` name without `--engine`. It also serialises installs
+  with an exclusive lock on `assets_source/.cook-cache/install.lock`, because several sessions install at once.
+- **Bakes.** The MM6 outdoor bakes record their model dependencies by path, so they turned stale with the move and
+  need a re-bake.

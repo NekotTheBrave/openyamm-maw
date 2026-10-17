@@ -82,6 +82,9 @@ struct DecorationBillboard
     uint16_t eventIdPrimary = 0;
     uint16_t eventIdSecondary = 0;
     int16_t sectorId = -1;
+    // Indoors: the map light beside this torch lights further, so the decoration leaves the lighting to it
+    // (resolveDuplicateTorchLights).
+    bool litByMapLight = false;
     std::string name;
 
     uint32_t spriteOverrideKey() const
@@ -98,6 +101,14 @@ struct DecorationBillboardSet
     std::vector<DecorationBillboard> billboards;
     // Sprites a 3D model draws on this map (DecorationModelSet bindings): their textures are never loaded.
     std::unordered_set<uint16_t> modelSpriteIds;
+    // Indoors, by map light id: a torch decoration beside the light reaches at least as far and lights in its place
+    // (resolveDuplicateTorchLights).
+    std::vector<bool> mapLightsReplacedByDecorations;
+
+    bool mapLightReplaced(size_t lightId) const
+    {
+        return lightId < mapLightsReplacedByDecorations.size() && mapLightsReplacedByDecorations[lightId];
+    }
 };
 
 enum class ActorPreviewSource
@@ -257,6 +268,12 @@ struct MapAssetInfo
 
 size_t mapRenderSourcePixelBytes(const MapAssetInfo &mapAssetInfo);
 void clearMapRenderSourcePixels(MapAssetInfo &mapAssetInfo);
+// MM6 maps place a map light 64 units from each torch (radius 4 to 1024) while the torch decoration also carries the
+// decoration table's light (mostly 256): together they light it about twice as brightly. Each map light with a radius
+// claims the nearest unclaimed light-emitting decoration within 128 units, and only the one of the pair that reaches
+// further lights: the decoration on a tie, since it follows the torch's state. MM7 map lights have no radius and MM8
+// places none beside its torches, so their lights are unchanged.
+void resolveDuplicateTorchLights(const IndoorMapData &indoorMapData, DecorationBillboardSet &billboardSet);
 // A world surface texture (Data/bitmaps) whose best match in the active scale tier is its cooked file
 // (tools/cook_surface_textures.py): GPU blocks with the runtime's mip chain and the source's statistics, so nothing is
 // decoded, keyed or filtered at load. Empty when the best match is a source image. Throws on a corrupt cooked file

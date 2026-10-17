@@ -76,14 +76,19 @@ private:
     static ModelSceneLighting modelSceneLighting(OutdoorGameView &view,
         const OutdoorWorldRuntime::AtmosphereState *pAtmosphereState, const OutdoorLightingData *pLightingData,
         float farClipDistance);
-    // A creature's lighting: baked probes (sampled at most a few creatures per frame), nearby lights and sky.
+    // A creature's lighting: baked probes (sampled at most a few creatures per frame), sky and, without the view's
+    // light grid (water reflections), its nearby lights.
     static Engine::ModelRenderLighting creatureModelLighting(OutdoorGameView &view, const ModelSceneLighting &scene,
         const OutdoorWorldRuntime::AtmosphereState *pAtmosphereState, const OutdoorLightingData *pLightingData,
-        Engine::ModelInstanceHandle instance, const Engine::ModelBounds &modelBounds, uint32_t &modelProbeSamples);
+        Engine::ModelInstanceHandle instance, const Engine::ModelBounds &modelBounds, uint32_t &modelProbeSamples,
+        bool selectPointLights);
     // Whether a resolved bmodel group has a texture to draw this frame, and which animation frame (arrayed groups and
     // arrayed materials are single-frame).
     static bool resolvedBModelGroupFrame(const OutdoorGameView &view,
         const OutdoorGameView::ResolvedBModelDrawGroup &group, uint32_t elapsedTicks, size_t &frameIndex);
+    // The view's light grid for a world surface draw: its dynamic lights in the main camera's views; other cameras
+    // (water reflections) and surfaces without it bind none and take their uniform list.
+    static void bindLightGrid(OutdoorGameView &view, bool mainCamera);
     static void submitResolvedBModelDrawGroup(OutdoorGameView &view,
         const OutdoorGameView::ResolvedBModelDrawGroup &group, uint16_t viewId, size_t frameIndex, uint32_t transform);
     static void ensureTerrainDecorations(OutdoorGameView &view, const OutdoorMapData &outdoorMapData);
@@ -91,9 +96,13 @@ private:
     static bool ensureTerrainMaterials(OutdoorGameView &view);
     // Draws the terrain's visible chunks into viewId; openWater also draws water cells without a seabed. A water
     // reflection draws every triangle with one material and no anti-tiling: blends and detail are lost in its ripples.
+    // The main view's dynamic lights come from the light grid, a reflection's from the shared uniform list.
     static void submitTerrainMaterials(OutdoorGameView &view, uint16_t viewId, const ViewFrustum &frustum,
-        const bx::Vec3 &cameraPosition, bool localLights, bool openWater, bool sunShadows, bool reflection);
+        const bx::Vec3 &cameraPosition, bool openWater, bool sunShadows, bool reflection);
     static void ensureDecorationModels(OutdoorGameView &view);
+    // Light (baked probes, as decoration models) and distance fade of the low bushes placed with the grass.
+    static void updateTerrainBushes(OutdoorGameView &view, const OutdoorLightingData *pBakedLighting,
+        const OutdoorWorldRuntime::AtmosphereState *pAtmosphereState, const std::array<float, 3> &camera);
     // Event visibility and light of each decoration-model placement for this frame. Baked probes are sampled once.
     static void updateDecorationModels(OutdoorGameView &view, const OutdoorLightingData *pBakedLighting,
         const OutdoorWorldRuntime::AtmosphereState *pAtmosphereState);
@@ -141,6 +150,9 @@ private:
     // The bake's direct-only sun page for a sun page index (decoded on first use); invalid for pre-v5 bakes.
     static bgfx::TextureHandle bakedSunDirectTexture(OutdoorGameView &view, uint32_t sunPageIndex);
     static void ensureSunShadowPrograms(OutdoorGameView &view);
+    // The alpha-to-coverage variants of the grass and foliage-prepass programs, loaded the first time anti-aliasing is
+    // on; returns whether this frame's world target takes alpha to coverage.
+    static bool ensureAlphaToCoveragePrograms(OutdoorGameView &view);
     static void applyOutdoorFxLightUniforms(OutdoorGameView &view, const bx::Vec3 &cameraPosition);
     static void destroyResolvedBModelDrawGroups(OutdoorGameView &view);
     static void rebuildResolvedBModelDrawGroups(OutdoorGameView &view);

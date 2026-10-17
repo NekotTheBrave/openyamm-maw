@@ -251,18 +251,12 @@ each runtime font, its measured height/baseline, and its actual TTF filename. AU
 synthetic shadow while retaining caller-controlled ink color. SPELL uses the same policy after its own source and
 Lloyd’s Beacon UI review. MM9 still needs PCX replacement support.
 
-The current working setting remains:
-
-```ini
-[fonts]
-prefer_ttf=true
-ttf_fonts=arrus,create,lucida,smallnum,comic,book2,autonote,endgame,spell
-```
-
-Add `rudeblack,rudered` only after implementing and checking the MM9 path. Do not
-paste unbuilt replacements into the working INI. Selected broken FNT replacements report errors rather than
-silently falling back. `prefer_ttf=false` restores the bitmap preference; restart after changing the file.
-The separate `[video_quality] fonts` value controls asset tiers, not this replacement list.
+Since 2026-10-15 every legacy face is drawn from its replacement: there is no font setting (`[fonts] prefer_ttf`,
+`ttf_fonts` and the `[video_quality] fonts` tier are gone) and no bitmap rendering path. `engine/fonts/english_text` keeps
+only the FNTs of the faces with a descriptor (arrus, create, lucida, smallnum, comic, book2, autonote, endgame,
+spell): each supplies its face's layout metrics and reserved symbol glyphs. A face referenced by the UI must have a
+descriptor; a missing or broken one reports an error. The MM9 RUDE dialogue fonts stay PCX bitmaps until their
+replacement is implemented and checked.
 
 ### 8. Verify layout, appearance and cost in the actual game
 

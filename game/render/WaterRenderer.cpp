@@ -520,7 +520,7 @@ void WaterRenderer::renderBillboard(uint16_t viewId, std::span<const WaterVertex
     bindCoverage(3);
     bgfx::setVertexBuffer(0, &buffer);
     bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
-        | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_ALPHA);
+        | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_MSAA);
     bgfx::submit(viewId, m_program);
 }
 
@@ -579,7 +579,7 @@ void WaterRenderer::submitSurface(Surface &surface, uint16_t viewId, float secon
     bgfx::setTexture(5, m_liquidPatternSampler, m_lavaPatternTexture);
     bgfx::setVertexBuffer(0, surface.buffer, 0, surface.vertexCount);
     bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
-        | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_ALPHA);
+        | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_MSAA);
     WaterRippleDrawSet ripples;
     // Movement ripples belong to water.
     if (surface.planar && surface.liquid == LiquidKind::Water && pRipples != nullptr && pRipples->enabled()

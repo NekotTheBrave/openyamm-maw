@@ -83,6 +83,16 @@ settings:
   name: Skip event cutscenes
   type: toggle
   desc: Skip event movies. Leave off for a first adventure.
+- id: graphics_quality
+  section: video
+  group: Display
+  name: Graphics quality
+  type: steps
+  options:
+  - [low, Low]
+  - [medium, Medium]
+  - [high, High]
+  desc: Set the detail options below at once; changing one of them shows Custom.
 - id: window_mode
   section: video
   group: Display
@@ -108,6 +118,16 @@ settings:
   name: Vertical sync
   type: toggle
   desc: Reduce screen tearing by syncing frames to the display.
+- id: antialiasing
+  section: video
+  group: Display
+  name: Anti-aliasing
+  type: select
+  options:
+  - ['off', 'Off']
+  - [2x, 2x MSAA]
+  - [4x, 4x MSAA]
+  desc: Smooth jagged edges and shimmering foliage.
 - id: view_distance
   section: video
   group: World detail
@@ -172,17 +192,6 @@ settings:
   name: Terrain details
   type: toggle
   desc: Draw extra terrain decorations where available.
-- id: projectile_style
-  section: video
-  group: World detail
-  name: Projectiles
-  type: select
-  options:
-  - - enhanced
-    - Enhanced
-  - - classic
-    - Classic
-  desc: Enhanced gives spell bolts glowing heads and flowing trails; Classic keeps the original.
 - id: weather_quality
   section: video
   group: World detail
@@ -198,12 +207,29 @@ settings:
   - - 'off'
     - 'Off'
   desc: Density of falling rain and snow; Off hides them while the weather itself goes on.
+- id: light_grid
+  section: video
+  group: World detail
+  name: Light detail
+  type: select
+  options:
+  - - high
+    - High
+  - - low
+    - Low
+  desc: How finely torches, spells and other lights are sorted across the view; Low is lighter on phones.
 - id: wet_surfaces
   section: video
   group: World detail
   name: Wet surfaces
   type: toggle
   desc: Rain darkens the ground and buildings, which dry slowly after it stops.
+- id: terrain_specular
+  section: video
+  group: World detail
+  name: Ground highlights
+  type: toggle
+  desc: Smooth rock and rain-wet ground catch the sun and nearby lights.
 - id: water_reflections
   section: video
   group: Water
@@ -263,6 +289,22 @@ settings:
   unit: '%'
   depends: ambient_occlusion
   desc: Adjust the strength of contact shading.
+- id: bloom
+  section: video
+  group: Colour & effects
+  name: Glow
+  type: toggle
+  desc: Flames, glowing crystals and spell light bloom softly into their surroundings.
+- id: bloom_strength
+  section: video
+  group: Colour & effects
+  name: Glow intensity
+  type: range
+  min: 0
+  max: 100
+  unit: '%'
+  depends: bloom
+  desc: Adjust how far and how brightly the glow spreads.
 - id: cinematic_grading
   section: video
   group: Colour & effects

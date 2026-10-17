@@ -751,6 +751,49 @@ TEST_CASE("ModelAnimation burnt corpse picking follows visible attachments and i
     CHECK(instances.pickingBounds(handle)->max[2] == doctest::Approx(40));
 }
 
+TEST_CASE("ModelAnimation picking rays meet the coarsest LOD triangles, not their bounds")
+{
+    using namespace OpenYAMM::Engine;
+    std::shared_ptr<ModelAsset> asset = makeAnimatedAsset();
+    asset->nodes[1].meshIndex = 0;
+    // Full detail: one quad across the gap. Coarsest LOD: two quads (x = 0 plane) with a gap at y = 0.
+    ModelPrimitive full;
+    full.vertices = {{{0, -10, -10}}, {{0, 10, -10}}, {{0, 10, 10}}, {{0, -10, 10}}};
+    full.indices = {0, 1, 2, 0, 2, 3};
+    ModelPrimitive coarse;
+    coarse.vertices = {
+        {{0, -10, -10}}, {{0, -5, -10}}, {{0, -5, 10}}, {{0, -10, 10}},
+        {{0, 5, -10}}, {{0, 10, -10}}, {{0, 10, 10}}, {{0, 5, 10}}};
+    coarse.indices = {0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7};
+    ModelMesh fullMesh;
+    fullMesh.primitives.push_back(full);
+    fullMesh.lodMeshes = {1};
+    ModelMesh coarseMesh;
+    coarseMesh.primitives.push_back(coarse);
+    asset->meshes = {fullMesh, coarseMesh};
+
+    ModelInstanceSystem instances;
+    const ModelInstanceHandle handle = instances.create(asset);
+    ModelTransform placement;
+    placement.translation = {100, 0, 0};
+    REQUIRE(instances.sample(handle, 0, 0, placement));
+    const ModelBounds *pBounds = instances.pickingBounds(handle);
+    REQUIRE(pBounds->valid);
+    CHECK(pBounds->min[1] == doctest::Approx(-10));
+    CHECK(pBounds->max[1] == doctest::Approx(10));
+
+    // Inside the bounds but through the gap: a miss.
+    CHECK_FALSE(instances.pickRay(handle, {0, 0, 0}, {1, 0, 0}));
+    const std::optional<float> front = instances.pickRay(handle, {0, -7.5f, 0}, {1, 0, 0});
+    REQUIRE(front);
+    CHECK(*front == doctest::Approx(100));
+    // Either face: a thin wing is picked from behind too.
+    const std::optional<float> back = instances.pickRay(handle, {250, 7.5f, 0}, {-1, 0, 0});
+    REQUIRE(back);
+    CHECK(*back == doctest::Approx(150));
+    CHECK_FALSE(instances.pickRay(handle, {0, -7.5f, 0}, {-1, 0, 0}));
+}
+
 TEST_CASE("ModelAnimation skinning applies inverse bind, all influences, morphs and root placement")
 {
     using namespace OpenYAMM::Engine;
@@ -1231,6 +1274,29 @@ TEST_CASE("ModelAnimation loader reads vertex colours and static decoration mate
     const ModelLoadResult fractionalFlipbook = GltfModelLoader().load(assets, "engine/models/fixture.gltf");
     CHECK_FALSE(fractionalFlipbook);
     CHECK(fractionalFlipbook.error.find("flipbook") != std::string::npos);
+    json.replace(json.find("[2.5, 2, 1]"), 11, "[4, 2, 12]");
+    // Flame cards: a card billboard, additive blending and a random flicker (a pulse with a negative period).
+    json.replace(json.find("\"openyamm_billboard\": true"), 26,
+        "\"openyamm_billboard\": \"card\", \"openyamm_additive\": true, \"openyamm_flicker\": [0.3, 8]");
+    writeFile(root / "assets_dev/engine/models/fixture.gltf", json);
+    const ModelLoadResult flame = GltfModelLoader().load(assets, "engine/models/fixture.gltf");
+    REQUIRE_MESSAGE(flame, flame.error);
+    const ModelMaterial &card = flame.asset->materials[0];
+    CHECK(card.billboard);
+    CHECK(card.billboardCard);
+    CHECK(card.additive);
+    CHECK_EQ(card.pulse[0], doctest::Approx(0.3f));
+    CHECK_EQ(card.pulse[1], doctest::Approx(-0.125f));
+    json.replace(json.find("[0.3, 8]"), 8, "[0.3, 90]");
+    writeFile(root / "assets_dev/engine/models/fixture.gltf", json);
+    const ModelLoadResult fastFlicker = GltfModelLoader().load(assets, "engine/models/fixture.gltf");
+    CHECK_FALSE(fastFlicker);
+    CHECK(fastFlicker.error.find("flicker") != std::string::npos);
+    json.replace(json.find("[0.3, 90]"), 9, "[0.3, 8], \"openyamm_pulse\": [0.2, 2]");
+    writeFile(root / "assets_dev/engine/models/fixture.gltf", json);
+    const ModelLoadResult flickerAndPulse = GltfModelLoader().load(assets, "engine/models/fixture.gltf");
+    CHECK_FALSE(flickerAndPulse);
+    CHECK(flickerAndPulse.error.find("flicker") != std::string::npos);
     assets.shutdown();
     std::filesystem::remove_all(root);
 }

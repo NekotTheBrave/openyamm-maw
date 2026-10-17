@@ -10,6 +10,7 @@
 #include <cstring>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
 
 namespace OpenYAMM::Game
@@ -427,31 +428,75 @@ void DebugConsole::executeLine(const std::string &line)
 
     for (const std::string &commandLine : commandLines)
     {
-        const std::vector<std::string> tokens = tokenize(commandLine);
+        dispatchCommand(commandLine, true);
+    }
+}
 
-        if (tokens.empty())
+bool DebugConsole::dispatchCommand(const std::string &commandLine, bool reportSuccess)
+{
+    const std::vector<std::string> tokens = tokenize(commandLine);
+
+    if (tokens.empty())
+    {
+        return true;
+    }
+
+    const auto commandIt = m_commands.find(normalizeCommandName(tokens.front()));
+
+    if (commandIt == m_commands.end())
+    {
+        addMessage(MessageKind::Error, "Unknown command: " + tokens.front());
+        return false;
+    }
+
+    CommandContext context = {};
+    context.args.assign(tokens.begin() + 1, tokens.end());
+    const CommandResult result = commandIt->second.callback(context);
+
+    if (!result.message.empty() && (reportSuccess || !result.success))
+    {
+        addMessage(result.success ? MessageKind::Success : MessageKind::Error, result.message);
+    }
+
+    return result.success;
+}
+
+DebugConsole::CommandResult DebugConsole::executeFile(const std::string &path)
+{
+    std::ifstream file(path);
+
+    if (!file)
+    {
+        return {false, "Cannot open " + path};
+    }
+
+    size_t commands = 0;
+    size_t failed = 0;
+    std::string line;
+
+    while (std::getline(file, line))
+    {
+        const size_t first = line.find_first_not_of(" \t\r");
+
+        if (first == std::string::npos || line[first] == '#')
         {
             continue;
         }
 
-        const std::string commandName = normalizeCommandName(tokens.front());
-        const auto commandIt = m_commands.find(commandName);
-
-        if (commandIt == m_commands.end())
+        for (const std::string &commandLine : splitCommandLine(line))
         {
-            addMessage(MessageKind::Error, "Unknown command: " + tokens.front());
-            continue;
-        }
+            if (tokenize(commandLine).empty())
+            {
+                continue;
+            }
 
-        CommandContext context = {};
-        context.args.assign(tokens.begin() + 1, tokens.end());
-        const CommandResult result = commandIt->second.callback(context);
-
-        if (!result.message.empty())
-        {
-            addMessage(result.success ? MessageKind::Success : MessageKind::Error, result.message);
+            ++commands;
+            failed += dispatchCommand(commandLine, false) ? 0 : 1;
         }
     }
+
+    return {failed == 0, "Ran " + std::to_string(commands) + " commands from " + path
+        + (failed > 0 ? ", " + std::to_string(failed) + " failed" : std::string())};
 }
 
 void DebugConsole::render(int width, int height)

@@ -202,6 +202,11 @@ public:
     // Case-insensitive substring match; an empty search matches everything.
     static bool matchesSearch(const std::string &name, const std::string &search);
 
+    // The potion a recipe scroll teaches: "Divine Restoration Recipe" teaches the Divine Restoration potion.
+    static std::optional<uint32_t> recipeScrollPotionItemId(uint32_t scrollItemId, const AlchemyBenchTables &tables);
+    // The notes of every mix that brews the potion; unlocking them teaches the bench all of its recipes.
+    static std::vector<uint32_t> potionNoteIds(uint32_t potionItemId, const AlchemyBenchTables &tables);
+
     // Bottle and reagent recipes are always known; potion recipes are known once their potion note is.
     static AlchemyBook buildBook(
         const AlchemyBenchTables &tables,
