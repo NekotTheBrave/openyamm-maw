@@ -11,6 +11,7 @@
 #include "game/gameplay/HouseInteraction.h"
 #include "game/gameplay/MasteryTeacherDialog.h"
 #include "game/gameplay/MercenaryRecruitmentRuntime.h"
+#include "game/gameplay/PartyHostileAlert.h"
 #include "game/gameplay/TravelRuntime.h"
 #include "game/mm9/Mm9RudeDialogue.h"
 #include "game/mm9/Mm9MapTransition.h"
@@ -49,7 +50,6 @@ constexpr uint32_t DefaultAdventurersInnHouseId = 185;
 constexpr uint32_t ArcomageRulesTextId = 136;
 constexpr uint32_t AutoNoteVariableTag = 0x00E1u;
 constexpr uint32_t HeroismEffectSoundId = 14060;
-constexpr float OeYellowAlertDistance = 5120.0f;
 constexpr int OutdoorMapTravelFoodCost = 5;
 constexpr size_t MaxNpcFollowerCount = 4;
 constexpr uint32_t MaxNpcFollowerFeePercent = 100;
@@ -507,41 +507,7 @@ void logMapTransitionConfirmed(
 
 bool partyHasIndoorExitAlert(const GameplayDialogController::Context &context)
 {
-    if (context.pWorldRuntime == nullptr)
-    {
-        return false;
-    }
-
-    const float partyX = context.pWorldRuntime->partyX();
-    const float partyY = context.pWorldRuntime->partyY();
-    const float partyFootZ = context.pWorldRuntime->partyFootZ();
-
-    for (size_t actorIndex = 0; actorIndex < context.pWorldRuntime->mapActorCount(); ++actorIndex)
-    {
-        GameplayRuntimeActorState actorState = {};
-
-        if (!context.pWorldRuntime->actorRuntimeState(actorIndex, actorState)
-            || actorState.isDead
-            || actorState.isInvisible
-            || !actorState.hostileToParty
-            || !actorState.hasDetectedParty)
-        {
-            continue;
-        }
-
-        const float deltaX = actorState.preciseX - partyX;
-        const float deltaY = actorState.preciseY - partyY;
-        const float deltaZ = actorState.preciseZ - partyFootZ;
-        const float centerDistance = std::sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
-        const float edgeDistance = std::max(0.0f, centerDistance - static_cast<float>(actorState.radius));
-
-        if (edgeDistance < OeYellowAlertDistance)
-        {
-            return true;
-        }
-    }
-
-    return false;
+    return context.pWorldRuntime != nullptr && partyHasYellowAlert(*context.pWorldRuntime);
 }
 
 void playSpeechReaction(

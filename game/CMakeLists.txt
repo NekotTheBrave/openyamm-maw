@@ -249,6 +249,7 @@ add_library(openyamm_game STATIC
     ui/GameplaySpellTargetingOverlayRenderer.cpp
     ui/GameplayUiRenderer.cpp
     gameplay/GameplaySpeechRules.cpp
+    gameplay/PartyHostileAlert.cpp
     gameplay/GameplayScreenRuntime.cpp
     ui/GameplayAlchemyBenchRenderer.cpp
     ui/GameplayAlchemyBenchView.cpp

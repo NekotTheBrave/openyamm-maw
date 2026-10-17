@@ -1,6 +1,7 @@
 #include "game/party/PartySpellSystem.h"
 
 #include "game/gameplay/GameMechanics.h"
+#include "game/gameplay/PartyHostileAlert.h"
 #include "game/items/ItemEnchantRuntime.h"
 #include "game/items/ItemEnchantTables.h"
 #include "game/items/InventoryItemMixingRuntime.h"
@@ -215,25 +216,6 @@ bool canApplyEnchantItemSpell(const ItemDefinition &itemDefinition, const Invent
         && item.standardEnchantId == 0
         && item.standardEnchantPower == 0
         && item.artifactId == 0;
-}
-
-bool hasNearbyHostileActor(const IGameplayWorldRuntime &worldRuntime)
-{
-    for (size_t actorIndex = 0; actorIndex < worldRuntime.mapActorCount(); ++actorIndex)
-    {
-        GameplayRuntimeActorState actor = {};
-
-        if (worldRuntime.actorRuntimeState(actorIndex, actor)
-            && !actor.isDead
-            && !actor.isInvisible
-            && actor.hostileToParty
-            && actor.hasDetectedParty)
-        {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 bool isSummonWispMonsterId(int16_t monsterId)
@@ -1797,7 +1779,7 @@ PartySpellCastResult PartySpellSystem::castSpell(
         if (spellId == SpellId::TownPortal)
         {
             if (skillMastery < SkillMastery::Grandmaster
-                && hasNearbyHostileActor(worldRuntime))
+                && partyHasYellowAlert(worldRuntime))
             {
                 return makeFailureWithRecovery(
                     PartySpellCastStatus::Failed,
@@ -1865,7 +1847,7 @@ PartySpellCastResult PartySpellSystem::castSpell(
 
     if (rule->effectKind == PartySpellCastEffectKind::PartyBuff)
     {
-        if (spellId == SpellId::Invisibility && hasNearbyHostileActor(worldRuntime))
+        if (spellId == SpellId::Invisibility && partyHasYellowAlert(worldRuntime))
         {
             return makeFailureWithRecovery(
                 PartySpellCastStatus::Failed,
