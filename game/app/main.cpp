@@ -190,6 +190,25 @@ bool parseCommonArguments(
     return true;
 }
 
+// A packaged game ships its settings as settings.default.ini and takes them as settings.ini on its first start, so
+// that a newer package copied over an installed one leaves the player's settings as they are.
+void installDefaultSettingsIfMissing()
+{
+    const std::filesystem::path settingsPath = "settings.ini";
+    const std::filesystem::path defaultsPath = "settings.default.ini";
+    std::error_code errorCode;
+
+    if (!std::filesystem::exists(settingsPath, errorCode) && std::filesystem::exists(defaultsPath, errorCode))
+    {
+        std::filesystem::copy_file(defaultsPath, settingsPath, errorCode);
+
+        if (errorCode)
+        {
+            std::cerr << "Failed to create settings.ini from settings.default.ini: " << errorCode.message() << '\n';
+        }
+    }
+}
+
 void applySettingsConfigOverridesIfConfigured(
     OpenYAMM::Engine::ApplicationConfig &config,
     bool worldArgumentProvided,
@@ -250,6 +269,7 @@ int runApplication(int argc, char **argv)
         return 2;
     }
 
+    installDefaultSettingsIfMissing();
     applySettingsConfigOverridesIfConfigured(config, worldArgumentProvided, assetScaleArgumentProvided);
 
     if (!arguments.empty() && arguments[0].rfind("--headless-", 0) == 0)

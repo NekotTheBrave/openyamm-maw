@@ -7,11 +7,12 @@ Run from the fork's root in Git Bash, with the build's PATH (Strawberry's bin, P
 
   python tools/maw/package.py --maw C:/Users/.../Maw-Mod-MMMerge-main --merge C:/Users/.../mmmerge-Rodril
 
---no-release reuses build/release/Release/OpenYAMM as it is (the release target takes a few minutes)."""
+--folder writes an unzipped folder instead, to try a build before releasing it. --no-release reuses build/release/Release/OpenYAMM as it is (the release target takes a few minutes)."""
 
 import argparse
 import datetime
 import hashlib
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -73,6 +74,13 @@ cannot be loaded in the original.
 
 To play OpenYAMM without MAW, set "enabled: false" in mods.yml.
 
+Upgrading
+---------
+Close the game, then unzip the new version over the folder you have, replacing the files it asks about. Your saves
+(saves), your settings (settings.ini, made from settings.default.ini on the first start) and MAW's settings file
+(mods/maw/files) are not in the zip, so they are kept. mods.yml is replaced: set "enabled: false" again if you had.
+To start from the default settings, delete settings.ini.
+
 Logs
 ----
 If something goes wrong, logs/mod_runtime.log has what MAW's scripts did in the last session, with any errors.
@@ -111,6 +119,8 @@ def main():
     parser.add_argument("--maw", required=True, type=Path, help="MAW's source checkout (the pinned commit)")
     parser.add_argument("--merge", required=True, type=Path, help="the Merge base (mods.yml's merge_base)")
     parser.add_argument("--no-release", action="store_true", help="reuse the existing release stage")
+    parser.add_argument("--folder", action="store_true",
+                        help="write the package as a folder (build/release/OpenYAMM-MAW-<version>) instead of a zip")
     args = parser.parse_args()
 
     for folder, name in ((args.maw / "Scripts", "MAW"), (args.merge / "Scripts", "Merge base"),
@@ -131,13 +141,34 @@ def main():
     commit = git("rev-parse", "--short", "HEAD")
     version = f"{datetime.date.today():%Y-%m-%d}-{commit}"
     output = Root / "build" / "release" / f"{PackageName}-{version}.zip"
-    # The mod's data folder (mods/maw/files: MAW's settings and its death counter) is the player's, made at first run.
-    entries = [(path, relative) for path, relative in tree(Stage, set())]
+    # The player's files are not in the package, so that a newer one unzipped over an installed one keeps them: the
+    # saves, the mod's data folder (mods/maw/files: MAW's settings and its death counter) and the settings, which ship
+    # as settings.default.ini and become settings.ini on the first start.
+    entries = [(path, "settings.default.ini" if relative == "settings.ini" else relative)
+               for path, relative in tree(Stage, set())]
     entries += [(path, "mods/maw/source/" + relative) for path, relative in tree(args.maw, set())]
     entries += [(path, "mods/maw/merge/" + relative) for path, relative in tree(args.merge, set())]
     entries += [(path, "mods/maw/port/" + relative) for path, relative in tree(Root / "tools/maw/port", set())]
     entries += [(path, "mods/maw/assets/" + relative)
                 for path, relative in tree(Root / "mods/maw/assets", {"conversion_report.txt"})]
+
+    readme = Readme.format(version=version, commit=commit)
+
+    if args.folder:
+        folder = output.with_suffix("")
+
+        if folder.exists():
+            sys.exit(f"{folder} exists already")
+
+        for path, relative in entries:
+            target = folder / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
+
+        (folder / "mods.yml").write_text(ModsYml, encoding="utf-8")
+        (folder / "README-MAW.txt").write_text(readme, encoding="utf-8")
+        print(f"{folder} ({len(entries) + 2} files)")
+        return
 
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for path, relative in entries:
@@ -145,7 +176,7 @@ def main():
             compression = zipfile.ZIP_STORED if path.suffix.lower() == ".zip" else zipfile.ZIP_DEFLATED
             archive.write(path, f"{PackageName}/{relative}", compress_type=compression)
         archive.writestr(f"{PackageName}/mods.yml", ModsYml)
-        archive.writestr(f"{PackageName}/README-MAW.txt", Readme.format(version=version, commit=commit))
+        archive.writestr(f"{PackageName}/README-MAW.txt", readme)
 
     digest = hashlib.sha256()
     with output.open("rb") as stream:
