@@ -434,11 +434,187 @@ local function sortBagsOf(slot)
     return true
 end
 
--- G: every party member's bags, each character's on its own.
-local function sortEveryonesBags()
-    for slot = 0, Party.High do
-        sortBagsOf(slot)
+-- Fills bags across party members, a tier at a time: each tier is a list of {slot, bag}, at most one bag a member,
+-- and each item, in order, goes into the first of them with room (MAW's evt.Add, which gives an item to the first
+-- member it fits); what fits nowhere in a tier goes on to the next. `filled[slot][bag]` holds what each bag has.
+-- The members' backpacks are empty before and after. Returns what fitted nowhere.
+local function fillAcross(tiers, items, filled)
+    local left = items
+
+    for _, tier in ipairs(tiers) do
+        if #left == 0 then
+            break
+        end
+
+        for _, entry in ipairs(tier) do
+            for _, item in ipairs(filled[entry.slot][entry.bag] or {}) do
+                modrt.inventoryPut(entry.slot, item, item.X, item.Y)
+            end
+        end
+
+        local carry = {}
+
+        for _, item in ipairs(left) do
+            local placed = false
+
+            for _, entry in ipairs(tier) do
+                if modrt.inventoryPut(entry.slot, item) then
+                    placed = true
+                    break
+                end
+            end
+
+            if not placed then
+                carry[#carry + 1] = item
+            end
+        end
+
+        for _, entry in ipairs(tier) do
+            filled[entry.slot][entry.bag] = modrt.inventoryTake(entry.slot) or {}
+        end
+
+        left = carry
     end
+
+    return left
+end
+
+-- G: MAW's gigaChadSort. Every party member's five bags (of the current tab) are emptied, their items sorted
+-- together in MAW's order and dealt out again bag by bag: everyone's first bag (the first member with room taking
+-- each item), then everyone's second, and so on. With a character chosen for alchemy items (E), those go into that
+-- character's bags and nothing else does. Crafting materials go into the crafting bags first, and the other items
+-- into the crafting bags' room last, as C does (the port's addition). Everyone keeps the bag they had open.
+local function sortPartyBags()
+    local snapshot = newSnapshot()
+    local saved, bases, crafting = {}, {}, {}
+    local items, filled = {}, {}
+
+    for slot = 0, Party.High do
+        local pl = Party[slot]
+        local bags = bagsOf(pl)
+        local base = math.floor(bags.CurrentBag / 100) * 100
+        bases[slot], saved[slot], filled[slot], crafting[slot] = base, {}, {}, {}
+
+        for _, item in ipairs(takeInto(snapshot, slot)) do
+            items[#items + 1] = item
+        end
+
+        for bag = base + 1, base + 5 do
+            saved[slot][bag] = bags[bag]
+
+            if bag ~= bags.CurrentBag then
+                for _, item in ipairs(bags[bag] or {}) do
+                    items[#items + 1] = item
+                end
+            end
+        end
+
+        for _, bag in ipairs(craftingBagsOf(pl, true)) do
+            if bag > base and bag <= base + 5 then
+                crafting[slot][bag] = true
+            end
+        end
+    end
+
+    table.sort(items, before)
+    local alchemyPlayer = vars.alchemyPlayer or -1
+
+    if alchemyPlayer > Party.High then
+        alchemyPlayer = -1
+    end
+
+    -- The tiers of bags, first to fifth: `wanted(slot, bag)` says which bags take part.
+    local function tiers(wanted)
+        local list = {}
+
+        for offset = 1, 5 do
+            local tier = {}
+
+            for slot = 0, Party.High do
+                local bag = bases[slot] + offset
+
+                if wanted(slot, bag) then
+                    tier[#tier + 1] = {slot = slot, bag = bag}
+                end
+            end
+
+            if #tier > 0 then
+                list[#list + 1] = tier
+            end
+        end
+
+        return list
+    end
+
+    local craftingBags = tiers(function(slot, bag) return crafting[slot][bag] == true end)
+    local materials, alchemy, others = {}, {}, {}
+
+    for _, item in ipairs(items) do
+        if #craftingBags > 0 and isMaterial(item.Number) then
+            materials[#materials + 1] = item
+        elseif alchemyPlayer >= 0 and isAlchemy(item.Number) then
+            alchemy[#alchemy + 1] = item
+        else
+            others[#others + 1] = item
+        end
+    end
+
+    -- What does not fit where it belongs joins the other items (MAW would drop it on the floor).
+    for _, item in ipairs(fillAcross(craftingBags, materials, filled)) do
+        others[#others + 1] = item
+    end
+
+    if #alchemy > 0 then
+        local alchemyBags = tiers(function(slot, bag) return slot == alchemyPlayer and not crafting[slot][bag] end)
+
+        for _, item in ipairs(fillAcross(alchemyBags, alchemy, filled)) do
+            others[#others + 1] = item
+        end
+    end
+
+    table.sort(others, before)
+    local left = fillAcross(tiers(function(slot, bag)
+        return slot ~= alchemyPlayer and not crafting[slot][bag]
+    end), others, filled)
+    left = fillAcross(craftingBags, left, filled)
+
+    -- Last, room anywhere: the alchemy character's bags, for a party with nowhere else.
+    if #left > 0 and alchemyPlayer >= 0 then
+        left = fillAcross(tiers(function(slot, bag) return slot == alchemyPlayer end), left, filled)
+    end
+
+    if #left > 0 then
+        restore(snapshot)
+
+        for slot = 0, Party.High do
+            local bags = bagsOf(Party[slot])
+
+            for bag = bases[slot] + 1, bases[slot] + 5 do
+                bags[bag] = saved[slot][bag]
+            end
+        end
+
+        Game.ShowStatusText("Not enough room to sort")
+        return false
+    end
+
+    for slot = 0, Party.High do
+        local bags = bagsOf(Party[slot])
+
+        for bag = bases[slot] + 1, bases[slot] + 5 do
+            local list = filled[slot][bag]
+            bags[bag] = list and #list > 0 and list or nil
+        end
+
+        local open = bags[bags.CurrentBag] or {}
+        bags[bags.CurrentBag] = nil
+
+        for _, item in ipairs(open) do
+            modrt.inventoryPut(slot, item, item.X, item.Y)
+        end
+    end
+
+    return true
 end
 
 -- MAW's bag buttons (multibagButton, bags 1..5 then tabs 1..5) go in the character screen's top bar, right of the
@@ -488,7 +664,7 @@ local function install()
     sortMultibag = function()
         return sortBagsOf(Game.CurrentPlayer)
     end
-    gigaChadSort = sortEveryonesBags
+    gigaChadSort = sortPartyBags
 end
 
 -- MAW's button tick (it hands it to its scheduler in its own GameInitialized2, after this file's) places the buttons

@@ -1,0 +1,121 @@
+id: mod_runtime.maw.party_sort
+title: MAW's G sorts the whole party's bags together and deals them out bag by bag
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# G (MAW's gigaChadSort, the port's in zMaw-Bags.lua) takes every party member's five bags, sorts their items
+# together in MAW's order and deals them out again: everyone's first bag (the first member with room taking each
+# item), then everyone's second, and so on; with a character chosen for alchemy items, those go to that character and
+# nothing else does. Found in play: it had sorted each character's bags on its own. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: First
+        class: Knight
+        level: 1
+        skills: []
+        equipment: {}
+      - name: Second
+        class: Knight
+        level: 1
+        skills: []
+        equipment: {}
+      - name: Third
+        class: Cleric
+        level: 1
+        skills: []
+        equipment: {}
+- mod_lua:
+    code: |
+      function Peek(slot)
+        local items = modrt.inventoryTake(slot)
+        for _, item in ipairs(items) do modrt.inventoryPut(slot, item, item.X, item.Y) end
+        return items
+      end
+      -- Every item of a member: the open backpack and the stored bags.
+      function Holdings(slot)
+        local list = {}
+        for _, item in ipairs(Peek(slot)) do list[#list + 1] = item.Number end
+        local bags = vars.mawbags and vars.mawbags[Party[slot]:GetIndex()] or {}
+        for bag = 1, 5 do
+          if bag ~= (bags.CurrentBag or 1) then
+            for _, item in ipairs(bags[bag] or {}) do list[#list + 1] = item.Number end
+          end
+        end
+        table.sort(list)
+        return list
+      end
+      -- Items as a bag keeps them: taken out of a backpack.
+      function Stored(numbers)
+        modrt.inventoryTake(0)
+        for _, number in ipairs(numbers) do modrt.inventoryPut(0, {Number = number}) end
+        return modrt.inventoryTake(0)
+      end
+      function Setup()
+        vars.mawbags = {}
+        for slot = 0, 2 do modrt.inventoryTake(slot) end
+        local second, third = Stored({61}), Stored({94, 221})
+        modrt.inventoryPut(0, {Number = 849})
+        modrt.inventoryPut(1, {Number = 11})
+        modrt.inventoryPut(2, {Number = 220})
+        vars.mawbags[Party[1]:GetIndex()] = {CurrentBag = 1, [3] = second}
+        vars.mawbags[Party[2]:GetIndex()] = {CurrentBag = 1, [2] = third}
+      end
+      Setup()
+      vars.alchemyPlayer = -1
+      return #Holdings(0) + #Holdings(1) + #Holdings(2)
+    expect: "6"
+# No alchemy character: all six fit the first member's first bag; the others are left with nothing.
+- mod_lua:
+    code: |
+      gigaChadSort()
+      local first = Peek(0)
+      return #first, table.concat(Holdings(0), ","), #Holdings(1), #Holdings(2), ModRT.totalErrorCount
+    expect: "6\t11,61,94,220,221,849\t0\t0\t0"
+# The order is MAW's: the first item in the backpack is the largest.
+- mod_lua:
+    code: |
+      local items = Peek(0)
+      local largest = 0
+      for _, item in ipairs(items) do largest = math.max(largest, item.Height) end
+      table.sort(items, function(a, b) return a.Y < b.Y or (a.Y == b.Y and a.X < b.X) end)
+      return items[1].Height == largest
+    expect: "true"
+# The third member takes alchemy items (E): the potions go there, nothing else does.
+- mod_lua:
+    code: |
+      Setup()
+      vars.alchemyPlayer = 2
+      gigaChadSort()
+      return table.concat(Holdings(0), ","), #Holdings(1), table.concat(Holdings(2), ","), ModRT.totalErrorCount
+    expect: "11,61,94,849\t0\t220,221\t0"
+# More than a backpack holds: the first member's first bag fills, then the second member's first bag, before anyone's
+# second bag.
+- mod_lua:
+    code: |
+      vars.mawbags = {}
+      vars.alchemyPlayer = -1
+      for slot = 0, 2 do modrt.inventoryTake(slot) end
+      local placed = 0
+      for slot = 0, 1 do
+        for n = 1, 10 do
+          if modrt.inventoryPut(slot, {Number = 11}) then placed = placed + 1 end
+        end
+      end
+      PerBackpack = 0
+      modrt.inventoryTake(2)
+      while modrt.inventoryPut(2, {Number = 11}) do PerBackpack = PerBackpack + 1 end
+      modrt.inventoryTake(2)
+      gigaChadSort()
+      local bags0 = vars.mawbags[Party[0]:GetIndex()] or {}
+      local stored0 = 0
+      for bag = 2, 5 do stored0 = stored0 + #(bags0[bag] or {}) end
+      return placed, #Peek(0) == PerBackpack, #Peek(1) == placed - PerBackpack, stored0, #Peek(2),
+        ModRT.totalErrorCount
+    expect: "20\ttrue\ttrue\t0\t0\t0"
