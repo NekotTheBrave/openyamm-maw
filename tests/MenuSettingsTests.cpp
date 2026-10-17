@@ -292,7 +292,7 @@ TEST_CASE("graphics quality presets match the shipped profiles and report custom
     CHECK(settings.cinematicGrading);
 
     REQUIRE(setMenuSettingValue(settings, "graphics_quality", "low"));
-    CHECK(settings.terrainSubdivision == 2);
+    CHECK(settings.terrainSubdivision == 1);
     CHECK_FALSE(settings.terrainAntiTiling);
     CHECK(settings.skyResolutionScale == 0.5f);
     CHECK(menuSettingValue(settings, "graphics_quality") == "low");

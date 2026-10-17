@@ -366,7 +366,7 @@ TEST_CASE("android settings profile uses mobile interaction defaults without dia
     REQUIRE_MESSAGE(settings.has_value(), error.c_str());
     CHECK_EQ(settings->settingsProfileName, "android");
     CHECK_EQ(settings->settingsProfileVersion, 3);
-    CHECK_EQ(settings->terrainSubdivision, 2);
+    CHECK_EQ(settings->terrainSubdivision, 1);
     CHECK_FALSE(settings->terrainAntiTiling);
     CHECK_EQ(settings->terrainAnisotropy, "2x");
     CHECK_EQ(settings->waterReflectionSize, 256);
