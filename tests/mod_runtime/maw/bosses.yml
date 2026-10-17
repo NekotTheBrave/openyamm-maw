@@ -1,0 +1,52 @@
+id: mod_runtime.maw.bosses
+title: MAW's bosses come from MAW difficulty up, named and drawn larger, sprites or 3D models
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW makes bosses as a map is ready (mawBossesOnMapReady, zzMaw-Monsters.lua) at bolster 100 and up only (MAW,
+# Hard, Hell, Nightmare; not Easy or Normal): ceil((monsters - 30) / 150) of the strongest kind of the map's monsters
+# become bosses (NameId 221 to 299, named "<skill> <monster>"), drawn 1.4 times as large indoors (MonsterSpriteScale,
+# which the engine applies to sprites and 3D models alike). The checks run with actor_models on. Run with the MAW
+# mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+- mod_lua:
+    code: |
+      ModRT.Difficulty.set("Normal")
+      function Bosses()
+        local list = {}
+        for i = 0, Map.Monsters.High do
+          local m = Map.Monsters[i]
+          if m.NameId >= 220 and m.NameId < 300 then list[#list + 1] = i end
+        end
+        return list
+      end
+      return Game.BolsterAmount
+    expect: "50"
+# Normal: none, as in MAW.
+- load_map: {map: 6d07.blv}
+- mod_lua:
+    code: |
+      return #Bosses(), ModRT.totalErrorCount
+    expect: "0\t0"
+- load_map: {map: oute3.odm}
+- mod_lua:
+    code: |
+      ModRT.Difficulty.set("MAW")
+      return Game.BolsterAmount
+    expect: "100"
+# MAW difficulty, a dungeon not visited yet: its boss, named, larger.
+- load_map: {map: 6d08.blv}
+- mod_lua:
+    code: |
+      local bosses = Bosses()
+      local expected = math.ceil((Map.Monsters.Count - 30) / 150)
+      local i = bosses[1]
+      local m = i and Map.Monsters[i]
+      local name = m and Game.PlaceMonTxt[m.NameId] or ""
+      return #bosses == expected and expected > 0, m and m.Id % 3 == 0, name:find(" ", 1, true) ~= nil,
+        i and ModRT.Stats.monsterSpriteScale(i), ModRT.totalErrorCount
+    expect: "true\ttrue\ttrue\t1.4\t0"
