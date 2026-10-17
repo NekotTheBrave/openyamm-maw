@@ -130,6 +130,59 @@ TEST_CASE("quick Heal selects the injured living member with lowest current HP")
     CHECK_FALSE(session.gameplayScreenState().pendingSpellTarget().active);
 }
 
+TEST_CASE("quick cast attacks instead when the quick spell lacks mana or a target")
+{
+    using namespace OpenYAMM;
+    const std::filesystem::path sourceRoot = OPENYAMM_SOURCE_DIR;
+    Engine::AssetFileSystem assets;
+    REQUIRE(assets.initialize(sourceRoot, sourceRoot / "assets_dev", Engine::AssetScaleTier::X1));
+    Game::GameDataLoader loader;
+    REQUIRE(loader.loadForHeadlessGameplay(assets));
+    Game::GameDataRepository data;
+    data.bind(loader);
+    Game::Party party;
+    party.seed(Tests::createSpellRegressionPartySeed());
+    Game::Character *pCaster = party.member(0);
+    REQUIRE(pCaster != nullptr);
+    pCaster->skills["BodyMagic"] = {"BodyMagic", 5, Game::SkillMastery::Normal};
+    pCaster->learnSpell(Game::spellIdValue(Game::SpellId::Heal));
+    pCaster->quickSpellName = "Heal";
+    party.member(1)->health = 1;
+    Tests::PartySpellTestWorldRuntime world;
+    world.bindParty(&party);
+    Game::GameSession session;
+    session.bindDataRepository(&data);
+    session.bindActiveWorldRuntime(&world);
+    Game::GameplayScreenRuntime &runtime = session.gameplayScreenRuntime();
+    Game::GameplaySpellService &spells = session.gameplaySpellService();
+    REQUIRE_EQ(party.activeMemberIndex(), 0);
+    Game::GameplaySpellService::QuickSpellStartDisposition expected =
+        Game::GameplaySpellService::QuickSpellStartDisposition::AttackFallback;
+
+    SUBCASE("an injured member is healed")
+    {
+        expected = Game::GameplaySpellService::QuickSpellStartDisposition::CastStarted;
+    }
+    SUBCASE("without enough mana")
+    {
+        pCaster->spellPoints = 0;
+    }
+    SUBCASE("without a target")
+    {
+        party.member(1)->health = Game::Party::effectiveMaximumHealth(*party.member(1));
+    }
+
+    const int spellPoints = pCaster->spellPoints;
+    const Game::GameplaySpellService::QuickSpellStartResolution resolution = spells.tryStartQuickSpellCast(runtime, {});
+    CHECK(resolution.disposition == expected);
+
+    if (expected == Game::GameplaySpellService::QuickSpellStartDisposition::AttackFallback)
+    {
+        CHECK_EQ(pCaster->spellPoints, spellPoints);
+        CHECK_EQ(pCaster->recoverySecondsRemaining, 0.0f);
+    }
+}
+
 TEST_CASE("out of mana spells yield the character turn without blocking combat")
 {
     using namespace OpenYAMM;

@@ -108,13 +108,35 @@ GameplaySpellService::QuickSpellStartResolution GameplaySpellService::tryStartQu
         return resolution;
     }
 
-    if (tryCastSpellFromMember(
-            runtime,
-            pParty->activeMemberIndex(),
-            uint32_t(pSpellEntry->id),
-            pSpellEntry->name,
-            true,
-            &targetQueries))
+    const size_t casterMemberIndex = pParty->activeMemberIndex();
+    const uint32_t spellId = uint32_t(pSpellEntry->id);
+
+    if (!pCaster->knowsSpell(spellId))
+    {
+        runtime.setStatusBarEvent("Spell not learned");
+        return resolution;
+    }
+
+    // A caster without the mana or a target for the quick spell attacks instead, so the character is never stuck.
+    const std::optional<uint32_t> manaCost = PartySpellSystem::manaCost(*pCaster, *pSpellTable, spellId);
+
+    if (manaCost && !pParty->canSpendSpellPoints(casterMemberIndex, int(*manaCost)))
+    {
+        resolution.disposition = QuickSpellStartDisposition::AttackFallback;
+        return resolution;
+    }
+
+    PartySpellCastRequest request = {};
+    request.casterMemberIndex = casterMemberIndex;
+    request.spellId = spellId;
+
+    if (!tryPrepareQuickCastRequest(runtime, request, pSpellEntry->name, targetQueries))
+    {
+        resolution.disposition = QuickSpellStartDisposition::AttackFallback;
+        return resolution;
+    }
+
+    if (runtime.tryCastSpellRequest(request, pSpellEntry->name))
     {
         resolution.disposition = QuickSpellStartDisposition::CastStarted;
     }
@@ -152,6 +174,7 @@ GameplaySpellService::MemberSpellCastResolution GameplaySpellService::castSpellF
         && pTargetQueries != nullptr
         && !tryPrepareQuickCastRequest(runtime, request, spellName, *pTargetQueries))
     {
+        runtime.setStatusBarEvent("No valid target exists!", 3.0f);
         return resolution;
     }
 
@@ -199,13 +222,7 @@ bool GameplaySpellService::tryPrepareQuickCastRequest(
             PartySpellCastEffectKind::ActorEffect
         };
 
-        if (tryResolveQuickCastRequest(runtime, request, fearTargetDescriptor, targetQueries))
-        {
-            return true;
-        }
-
-        runtime.setStatusBarEvent("No valid target exists!", 3.0f);
-        return false;
+        return tryResolveQuickCastRequest(runtime, request, fearTargetDescriptor, targetQueries);
     }
 
     const std::optional<PartySpellDescriptor> descriptor = PartySpellSystem::describeSpell(request.spellId);
@@ -216,14 +233,7 @@ bool GameplaySpellService::tryPrepareQuickCastRequest(
     }
 
     request.quickCast = true;
-
-    if (tryResolveQuickCastRequest(runtime, request, *descriptor, targetQueries))
-    {
-        return true;
-    }
-
-    runtime.setStatusBarEvent("No valid target exists!", 3.0f);
-    return false;
+    return tryResolveQuickCastRequest(runtime, request, *descriptor, targetQueries);
 }
 
 bool GameplaySpellService::tryResolveQuickCastRequest(
