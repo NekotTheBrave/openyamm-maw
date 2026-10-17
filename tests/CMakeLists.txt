@@ -207,6 +207,8 @@ add_executable(openyamm_unit_tests
     ../game/maps/MapPresentation.cpp
     ../game/maps/OutdoorSceneYml.cpp
     ../game/maps/TerrainTileData.cpp
+    ../game/mod/ModBindings.cpp
+    ../game/mod/ModHooks.cpp
     ../game/indoor/IndoorCollisionPrimitives.cpp
     ../game/indoor/IndoorGeometryUtils.cpp
     ../game/indoor/IndoorLightingRuntime.cpp
@@ -352,6 +354,11 @@ target_link_libraries(openyamm_unit_tests
 )
 
 add_dependencies(openyamm_unit_tests openyamm_ffmpeg_build)
+
+# libavutil's random seed (av_random_bytes) uses BCrypt on Windows.
+if (WIN32)
+    target_link_libraries(openyamm_unit_tests PRIVATE bcrypt)
+endif()
 
 if (UNIX AND NOT APPLE)
     target_link_options(openyamm_unit_tests

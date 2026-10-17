@@ -176,11 +176,12 @@ public:
         return m_actors.size() - 1;
     }
 
-    void setPartyPosition(float x, float y, float footZ)
+    bool setPartyPosition(float x, float y, float footZ) override
     {
         m_partyX = x;
         m_partyY = y;
         m_partyFootZ = footZ;
+        return true;
     }
 
     void setBountyHuntSpawnPoint(Game::GameplayWorldPoint point)

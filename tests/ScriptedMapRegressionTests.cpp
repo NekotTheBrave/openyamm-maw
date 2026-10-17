@@ -298,11 +298,12 @@ private:
 class RecordingGameplayWorldContext : public RecordingSceneEventContext, public OpenYAMM::Game::IGameplayWorldRuntime
 {
 public:
-    void setPartyPosition(float x, float y, float z)
+    bool setPartyPosition(float x, float y, float z) override
     {
         m_partyX = x;
         m_partyY = y;
         m_partyZ = z;
+        return true;
     }
 
     void setIndoorMap(bool indoorMap)
