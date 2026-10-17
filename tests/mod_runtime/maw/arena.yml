@@ -32,12 +32,27 @@ steps:
 - mod_lua:
     code: return "A", tostring(vars.highestArenaWave), ModRT.totalErrorCount
     expect: "A	0	0"
+# A buff the party has keeps through the move into the arena (MAW's snapshotPlayerBuffs, the port's version).
+- mod_lua:
+    code: |
+      local buff = Party[0].SpellBuffs[const.PlayerBuff.Bless]
+      buff.ExpireTime = Game.Time + const.Hour
+      buff.Power = 5
+      ArenaBuffExpire = buff.ExpireTime
+      return buff.ExpireTime > Game.Time
+    expect: "true"
 - speak_npc:
     source_id: 313
 - select_topic:
     action_id: 996
 - select_topic:
     action_id: 996
+- advance_runtime: {seconds: 0.5}
+- mod_lua:
+    code: |
+      local buff = Party[0].SpellBuffs[const.PlayerBuff.Bless]
+      return buff.ExpireTime > Game.Time, buff.Power, ModRT.totalErrorCount
+    expect: "true	5	0"
 - mod_lua:
     code: return "B", tostring(vars.highestArenaWave), ModRT.totalErrorCount
     expect: "B	0	0"

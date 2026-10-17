@@ -33,6 +33,11 @@ steps:
 - mod_lua:
     code: |
       function events.PlayerHitOrMiss(t) t.Result = true end
+      -- The original's AfterMonsterAttacked follows each hit (MAW gives the monster its combat speed there).
+      AfterAttacked = 0
+      function events.AfterMonsterAttacked(t)
+        if t.Monster and t.Attacker and t.Attacker.Player then AfterAttacked = AfterAttacked + 1 end
+      end
       -- Up to 12 targets of a kind around the party (whichever is in front is hit), and 6 other friendly peasants
       -- 600 away, out of reach.
       function Setup(targetName, targetHostile)
@@ -78,8 +83,8 @@ steps:
 - mod_lua:
     code: |
       local hit, hostile = Report()
-      return hit > 0, hostile
-    expect: "true	0"
+      return hit > 0, hostile, AfterAttacked > 0
+    expect: "true	0	true"
 # A peasant hit: the other peasants near it turn hostile, as in the original.
 - mod_lua:
     code: |

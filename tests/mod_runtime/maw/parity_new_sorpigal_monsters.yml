@@ -87,9 +87,11 @@ steps:
       end
       return alive >= 179 and alive <= 259, kings >= 8 and kings <= 20, mages >= 8 and mages <= 20
     expect: "true\ttrue\ttrue"
-# The speed monsters move at. MAW speeds up every melee monster faster than 150 on arrival (v + (400 - v) / 2 + 100)
-# and makes every monster that is not a wimp (AI type 1) suicidal (0). The real game: Guards 200 and 400, Peasants
-# 140 and 140, on first arrival and the same after loading a save, so the speed-up does not build on itself.
+# The speed monsters move at. MAW speeds up every hostile melee monster faster than 150 on arrival (v + (400 - v) / 2
+# + 100) and makes every monster that is not a wimp (AI type 1) suicidal (0). The real game: Guards 200 and 400,
+# Peasants 140 and 140, on first arrival and the same after loading a save, so the speed-up does not build on itself.
+# Since MAW 06759a13 ("solid speedfix for allied units") a friendly monster keeps its own speed until it is attacked
+# (AfterMonsterAttacked): the Guards move at 200.
 - mod_lua:
     code: |
       local seen, out = {}, {}
@@ -102,7 +104,7 @@ steps:
       end
       table.sort(out)
       return table.concat(out, "; ")
-    expect: "550 speed 160 moves at 380 ai type 0; 553 speed 200 moves at 400 ai type 0; 595 speed 140 moves at 140 ai type 1"
+    expect: "550 speed 160 moves at 380 ai type 0; 553 speed 200 moves at 200 ai type 0; 595 speed 140 moves at 140 ai type 1"
 - save_game: maw_parity_monster_speed
 - load_game: maw_parity_monster_speed
 - mod_lua:
@@ -117,4 +119,4 @@ steps:
       end
       table.sort(out)
       return table.concat(out, "; ")
-    expect: "550 speed 160 moves at 380 ai type 0; 553 speed 200 moves at 400 ai type 0; 595 speed 140 moves at 140 ai type 1"
+    expect: "550 speed 160 moves at 380 ai type 0; 553 speed 200 moves at 200 ai type 0; 595 speed 140 moves at 140 ai type 1"

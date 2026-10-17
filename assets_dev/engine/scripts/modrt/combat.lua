@@ -161,6 +161,10 @@ function Combat.damageToMonster(
     ModRT.fire("CalcDamageToMonster", event)
     monsterHit, monsterHitIndex = previousHit, previousIndex
 
+    -- The original's AfterMonsterAttacked: Monster, MonsterIndex, and Attacker as WhoHitMonster has it. Raised here,
+    -- before the engine takes the hit off, which its one user does not mind (MAW gives the monster its combat speed).
+    ModRT.fire("AfterMonsterAttacked", {Monster = event.Monster, MonsterIndex = actorIndex, Attacker = attack})
+
     local result = event.Result
 
     if type(result) ~= "number" or result ~= result then
