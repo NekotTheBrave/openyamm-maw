@@ -417,7 +417,8 @@ bool migrateLegacyAndroidSettings(GameSettings &settings)
 {
     constexpr uint32_t InitialAndroidSettingsProfileVersion = 1;
     constexpr uint32_t CharacterCreationAndroidSettingsProfileVersion = 2;
-    constexpr uint32_t CurrentAndroidSettingsProfileVersion = 3;
+    constexpr uint32_t PhoneTerrainAndroidSettingsProfileVersion = 3;
+    constexpr uint32_t CurrentAndroidSettingsProfileVersion = 4;
 
     if (settings.settingsProfileName == "android"
         && settings.settingsProfileVersion >= CurrentAndroidSettingsProfileVersion)
@@ -463,7 +464,7 @@ bool migrateLegacyAndroidSettings(GameSettings &settings)
         settings.settingsProfileVersion = CharacterCreationAndroidSettingsProfileVersion;
     }
 
-    if (settings.settingsProfileVersion < CurrentAndroidSettingsProfileVersion)
+    if (settings.settingsProfileVersion < PhoneTerrainAndroidSettingsProfileVersion)
     {
         // The ground materials terrain is the only one: on phones it takes lighter anisotropic filtering and smaller
         // water reflections (which redraw it). Values a player changed from the earlier defaults stay.
@@ -475,9 +476,34 @@ bool migrateLegacyAndroidSettings(GameSettings &settings)
         {
             settings.waterReflectionSize = 256;
         }
+        settings.settingsProfileVersion = PhoneTerrainAndroidSettingsProfileVersion;
+    }
+
+    if (settings.settingsProfileVersion < CurrentAndroidSettingsProfileVersion)
+    {
+        // Releases up to 1.3 wrote actor_models=false; MM6 creatures exist only as models since then.
+        settings.actorModels = true;
         settings.settingsProfileVersion = CurrentAndroidSettingsProfileVersion;
     }
 
+    return true;
+}
+
+bool migrateLegacyDesktopSettings(GameSettings &settings)
+{
+    constexpr uint32_t CurrentDesktopSettingsProfileVersion = 1;
+
+    if (settings.settingsProfileName == "desktop"
+        && settings.settingsProfileVersion >= CurrentDesktopSettingsProfileVersion)
+    {
+        return false;
+    }
+
+    // Desktop settings carried no profile before version 1. Releases up to 1.3 wrote actor_models=false, which the
+    // Flatpak wrapper keeps across updates; MM6 creatures exist only as models since then.
+    settings.settingsProfileName = "desktop";
+    settings.actorModels = true;
+    settings.settingsProfileVersion = CurrentDesktopSettingsProfileVersion;
     return true;
 }
 

@@ -365,7 +365,7 @@ TEST_CASE("android settings profile uses mobile interaction defaults without dia
 
     REQUIRE_MESSAGE(settings.has_value(), error.c_str());
     CHECK_EQ(settings->settingsProfileName, "android");
-    CHECK_EQ(settings->settingsProfileVersion, 3);
+    CHECK_EQ(settings->settingsProfileVersion, 4);
     CHECK_EQ(settings->terrainSubdivision, 2);
     CHECK_FALSE(settings->terrainAntiTiling);
     CHECK_EQ(settings->terrainAnisotropy, "2x");
@@ -421,7 +421,7 @@ TEST_CASE("legacy Android settings migration changes platform defaults once and 
 
     REQUIRE(OpenYAMM::Game::migrateLegacyAndroidSettings(settings));
     CHECK_EQ(settings.settingsProfileName, "android");
-    CHECK_EQ(settings.settingsProfileVersion, 3);
+    CHECK_EQ(settings.settingsProfileVersion, 4);
     CHECK(settings.contextActionPopup);
     CHECK(settings.startInMainMenu);
     CHECK(settings.verticalSync);
@@ -464,7 +464,7 @@ TEST_CASE("Android profile version two only migrates character creation defaults
     settings.allowIncompleteCharacterCreation = true;
 
     REQUIRE(OpenYAMM::Game::migrateLegacyAndroidSettings(settings));
-    CHECK_EQ(settings.settingsProfileVersion, 3);
+    CHECK_EQ(settings.settingsProfileVersion, 4);
     CHECK_EQ(settings.soundVolume, 5);
     CHECK_EQ(settings.startWorldId, "mm6");
     CHECK_FALSE(settings.contextActionPopup);
@@ -482,7 +482,7 @@ TEST_CASE("Android profile version three lightens terrain filtering and water re
     settings.waterReflectionSize = 512;
 
     REQUIRE(OpenYAMM::Game::migrateLegacyAndroidSettings(settings));
-    CHECK_EQ(settings.settingsProfileVersion, 3);
+    CHECK_EQ(settings.settingsProfileVersion, 4);
     CHECK_EQ(settings.terrainAnisotropy, "2x");
     CHECK_EQ(settings.waterReflectionSize, 256);
 
@@ -492,6 +492,45 @@ TEST_CASE("Android profile version three lightens terrain filtering and water re
     REQUIRE(OpenYAMM::Game::migrateLegacyAndroidSettings(settings));
     CHECK_EQ(settings.terrainAnisotropy, "8x");
     CHECK_EQ(settings.waterReflectionSize, 1024);
+}
+
+TEST_CASE("Android profile version four and desktop profile version one enable actor models once")
+{
+    OpenYAMM::Game::GameSettings android = OpenYAMM::Game::GameSettings::createDefault();
+    android.settingsProfileName = "android";
+    android.settingsProfileVersion = 3;
+    android.actorModels = false;
+    android.terrainAnisotropy = "4x";
+
+    REQUIRE(OpenYAMM::Game::migrateLegacyAndroidSettings(android));
+    CHECK_EQ(android.settingsProfileVersion, 4);
+    CHECK(android.actorModels);
+    CHECK_EQ(android.terrainAnisotropy, "4x");
+
+    android.actorModels = false;
+    CHECK_FALSE(OpenYAMM::Game::migrateLegacyAndroidSettings(android));
+    CHECK_FALSE(android.actorModels);
+
+    OpenYAMM::Game::GameSettings desktop = OpenYAMM::Game::GameSettings::createDefault();
+    desktop.actorModels = false;
+    desktop.soundVolume = 7;
+
+    REQUIRE(OpenYAMM::Game::migrateLegacyDesktopSettings(desktop));
+    CHECK_EQ(desktop.settingsProfileName, "desktop");
+    CHECK_EQ(desktop.settingsProfileVersion, 1);
+    CHECK(desktop.actorModels);
+    CHECK_EQ(desktop.soundVolume, 7);
+
+    desktop.actorModels = false;
+    CHECK_FALSE(OpenYAMM::Game::migrateLegacyDesktopSettings(desktop));
+    CHECK_FALSE(desktop.actorModels);
+
+    const std::filesystem::path releasePath =
+        std::filesystem::path(OPENYAMM_SOURCE_DIR) / "settings_release.ini";
+    std::string error;
+    std::optional<OpenYAMM::Game::GameSettings> release = OpenYAMM::Game::loadGameSettings(releasePath, error);
+    REQUIRE_MESSAGE(release.has_value(), error.c_str());
+    CHECK_FALSE(OpenYAMM::Game::migrateLegacyDesktopSettings(*release));
 }
 
 TEST_CASE("settings monster bolster feature defaults off")

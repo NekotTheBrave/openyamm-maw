@@ -6859,6 +6859,12 @@ void GameApplication::loadOrCreateSettings()
         std::cout << "GameApplication: migrated legacy settings to Android profile version "
                   << m_settings.settingsProfileVersion << '\n';
     }
+#else
+    if (migrateLegacyDesktopSettings(m_settings))
+    {
+        std::cout << "GameApplication: migrated legacy settings to desktop profile version "
+                  << m_settings.settingsProfileVersion << '\n';
+    }
 #endif
 
     m_settings.startWorldId = normalizeWorldId(m_config.activeWorldId);

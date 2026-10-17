@@ -319,6 +319,12 @@ bool CinematicGrading::begin(int width, int height, bool enabled, int strength, 
     bool ao = ambientOcclusion && aoStrength > 0;
     bool glow = bloom && bloomStrength > 0;
     uint8_t samples = antialiasing >= 4 ? 4 : antialiasing >= 2 ? 2 : 0;
+#if defined(__ANDROID__)
+    // Android renders without multisampling or ambient occlusion, and its menu offers neither: a phone crashed at the
+    // highest video settings, which enable both.
+    ao = false;
+    samples = 0;
+#endif
     m_alphaToCoverage = false;
     m_bloomActive = false;
     m_glowDrawn = false;

@@ -308,6 +308,7 @@ bool setBakedLightingSetting(
     GameSettings &settings, const std::string &name, const std::string &value, std::string &error);
 bool saveGameSettings(const std::filesystem::path &path, const GameSettings &settings, std::string &error);
 bool migrateLegacyAndroidSettings(GameSettings &settings);
+bool migrateLegacyDesktopSettings(GameSettings &settings);
 CharacterAttackTuning characterAttackTuningFromSettings(const GameSettings &settings);
 uint8_t textureAnisotropyLevel(const GameSettings &settings);
 float resolveViewDistanceSetting(const std::string &value, float defaultDistance);

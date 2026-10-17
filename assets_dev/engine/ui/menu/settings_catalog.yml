@@ -128,6 +128,8 @@ settings:
   - [2x, 2x MSAA]
   - [4x, 4x MSAA]
   desc: Smooth jagged edges and shimmering foliage.
+  # Android renders without multisampling (game/render/CinematicGrading.cpp).
+  desktop_only: true
 - id: view_distance
   section: video
   group: World detail
@@ -279,6 +281,8 @@ settings:
   name: Ambient occlusion
   type: toggle
   desc: Add soft shading where solid surfaces meet.
+  # Android renders without ambient occlusion (game/render/CinematicGrading.cpp).
+  desktop_only: true
 - id: ambient_occlusion_strength
   section: video
   group: Colour & effects
@@ -289,6 +293,8 @@ settings:
   unit: '%'
   depends: ambient_occlusion
   desc: Adjust the strength of contact shading.
+  # Android renders without ambient occlusion (game/render/CinematicGrading.cpp).
+  desktop_only: true
 - id: bloom
   section: video
   group: Colour & effects

@@ -7,6 +7,10 @@ masters there). Each profile cooks one tier into the runtime tree:
   desktop  assets_source/worlds/<w>/textures_x4/*.png -> assets_dev/worlds/<w>/textures_x4/<stem>.oytex   BC7
   android  assets_source/worlds/<w>/textures_x2/*.png -> assets_cooked/android/worlds/<w>/textures_x2/... ASTC 4x4
 
+Face textures with an x4 master but no x2 file (terrain tiles that also cover BModel faces, sky ceilings) cook for
+Android from the x4 master without its largest level, which is the runtime's own half-size mip; packages carry no x1
+or x4 surface textures to fall back to, so such faces would not draw at all.
+
 The map loader prefers the cooked file in each scale tier (Engine::findCookedOrImageAssetPath) and uploads its blocks
 and stored mip chain directly, so nothing is decoded, keyed or filtered at load. The original x1 BMPs are source art
 too, in assets_source/worlds/<w>/textures: the lighting bake reads them (bounce colour, cutout shadows) and records
@@ -44,6 +48,7 @@ import struct
 import subprocess
 import tempfile
 
+from PIL import Image
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -56,7 +61,11 @@ PROFILES = {
 }
 # Cooker job columns after input/output and codec: semantic, alpha cutoff, mips, max size, linear channels; the
 # source hash and the job kind follow per texture.
-JOB_SETTINGS = ("linear", "0", "1", "8192", "0")
+FULL_SIZE = 8192
+
+
+def job_settings(max_size):
+    return ("linear", "0", "1", str(max_size), "0")
 # Bump when the cooker's output for the same settings changes (encoder, mip filter, decode or container); the
 # cooker binary itself relinks with every engine change, so it cannot identify the cook.
 COOK_REVISION = 2
@@ -101,8 +110,20 @@ def file_stat(path):
     return [stat.st_size, stat.st_mtime_ns]
 
 
+def sources_by_stem(source_dir, is_liquid):
+    """{lower-case stem: preferred source} in one tier folder (empty when it is missing)."""
+    by_stem = {}
+    if source_dir.is_dir():
+        for path in source_dir.iterdir():
+            if path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES and not is_liquid(path.stem):
+                by_stem.setdefault(path.stem.lower(), []).append(path)
+    return {stem: min(paths, key=lambda path: SOURCE_SUFFIXES.index(path.suffix.lower()))
+            for stem, paths in by_stem.items()}
+
+
 def world_pairs(sources_root, output_root, profile, only):
-    """{world: {cooked path: source path}} for worlds whose source folder exists."""
+    """{world: {cooked path: (source path, max size)}} for worlds whose source folder exists. Android adds the x4
+    masters of face textures without an x2 file, capped at half their size."""
     tier = PROFILES[profile][0]
     is_liquid = liquid_face_matcher()
     result = {}
@@ -110,16 +131,17 @@ def world_pairs(sources_root, output_root, profile, only):
         source_dir = sources_root / "worlds" / world / tier
         if not source_dir.is_dir():
             continue
-        by_stem = {}
-        for path in source_dir.iterdir():
-            if path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES and not is_liquid(path.stem):
-                by_stem.setdefault(path.stem.lower(), []).append(path)
+        sources = {stem: (source, FULL_SIZE) for stem, source in sources_by_stem(source_dir, is_liquid).items()}
+        if profile == "android":
+            masters = sources_by_stem(sources_root / "worlds" / world / "textures_x4", is_liquid)
+            for stem in masters.keys() - sources.keys():
+                with Image.open(masters[stem]) as image:
+                    sources[stem] = (masters[stem], max(image.size) // 2)
         pairs = {}
-        for paths in by_stem.values():
-            source = min(paths, key=lambda path: SOURCE_SUFFIXES.index(path.suffix.lower()))
+        for source, max_size in sources.values():
             if only and not any(fnmatch.fnmatch(f"{world}/{source.stem.lower()}", pattern) for pattern in only):
                 continue
-            pairs[output_root / "worlds" / world / tier / (source.stem + ".oytex")] = source
+            pairs[output_root / "worlds" / world / tier / (source.stem + ".oytex")] = (source, max_size)
         result[world] = pairs
     return result
 
@@ -146,7 +168,6 @@ def cook(sources_root, output_root, profile, cooker, only, force, plan):
         raise SystemExit(f"Missing cooker {cooker}; cmake --build build --target openyamm_model_texture_cook")
     path = receipts_path(output_root)
     receipts = {} if force or not path.is_file() else json.loads(path.read_text())
-    settings_text = "\t".join((codec,) + JOB_SETTINGS + ("surface",))
     pending, current, orphans = [], 0, []
     worlds = world_pairs(sources_root, output_root, profile, only)
     for world in WORLDS:
@@ -154,10 +175,11 @@ def cook(sources_root, output_root, profile, cooker, only, force, plan):
             print(f"{world}: no sources in {sources_root / 'worlds' / world / tier}; its cooked files are kept",
                   flush=True)
     for world, pairs in worlds.items():
-        for target, source in sorted(pairs.items()):
+        for target, (source, max_size) in sorted(pairs.items()):
             current += 1
             key = target.relative_to(output_root).as_posix()
             receipt = receipts.get(key)
+            settings_text = "\t".join((codec,) + job_settings(max_size) + ("surface",))
             settings = {"source": source.name, "settings": settings_text, "revision": COOK_REVISION}
             if receipt and target.is_file() and {k: receipt["inputs"].get(k) for k in settings} == settings:
                 # Unchanged files are recognised by size and modification time; otherwise by content.
@@ -169,14 +191,14 @@ def cook(sources_root, output_root, profile, cooker, only, force, plan):
                     continue
             else:
                 source_hash = sha256(source)
-            pending.append((source, target, source_hash, {**settings, "source_sha256": source_hash}))
+            pending.append((source, target, max_size, source_hash, {**settings, "source_sha256": source_hash}))
         output_dir = output_root / "worlds" / world / tier
         if not only and output_dir.is_dir():
             orphans += sorted(set(output_dir.glob("*.oytex")) - set(pairs))
     print(f"{profile}: {current} surface textures, {len(pending)} to cook, {len(orphans)} orphaned cooked files",
           flush=True)
     if plan:
-        for source, target, _, _ in pending[:20]:
+        for source, target, _, _, _ in pending[:20]:
             print(f"  cook {source.relative_to(sources_root)} -> {target.relative_to(output_root)}")
         for orphan in orphans[:20]:
             print(f"  remove {orphan.relative_to(output_root)}")
@@ -191,13 +213,13 @@ def cook(sources_root, output_root, profile, cooker, only, force, plan):
         batch = pending[start:start + batch_size]
         with tempfile.TemporaryDirectory() as scratch:
             job_file = Path(scratch) / "jobs.tsv"
-            job_file.write_text("".join("\t".join((str(source), str(target), codec, *JOB_SETTINGS, source_hash[:16],
-                                                    "surface")) + "\n"
-                                        for source, target, source_hash, _ in batch))
+            job_file.write_text("".join("\t".join((str(source), str(target), codec, *job_settings(max_size),
+                                                    source_hash[:16], "surface")) + "\n"
+                                        for source, target, max_size, source_hash, _ in batch))
             result = subprocess.run([str(cooker), str(job_file)], text=True, capture_output=True)
         print(result.stderr, end="")
         done = {Path(line.split("\t")[1]) for line in result.stdout.splitlines() if line.startswith("cooked\t")}
-        for source, target, _, inputs in batch:
+        for source, target, _, _, inputs in batch:
             if target in done:
                 receipts[target.relative_to(output_root).as_posix()] = {
                     "inputs": inputs, "output": sha256(target), "stat": [file_stat(source), file_stat(target)]}
@@ -219,7 +241,7 @@ def verify(sources_root, output_root, profile, cooker, only, require_sources=Fal
                      for world in WORLDS if world not in worlds]
     paths = []
     for world, pairs in worlds.items():
-        for target, source in sorted(pairs.items()):
+        for target, (source, _) in sorted(pairs.items()):
             if not target.is_file():
                 problems.append(f"missing {target.relative_to(output_root)}")
                 continue

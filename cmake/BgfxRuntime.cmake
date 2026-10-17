@@ -94,6 +94,7 @@ function(openyamm_compile_bgfx_shader_for_target sourcePath shaderType outputNam
         DEPENDS
             "${sourcePath}"
             "${CMAKE_SOURCE_DIR}/game/shaders/varying.def.sc"
+            "${CMAKE_SOURCE_DIR}/game/shaders/common.sh"
             "${CMAKE_SOURCE_DIR}/game/shaders/billboard_lit.sh"
             "${CMAKE_SOURCE_DIR}/game/shaders/outdoor_textured_fog.sh"
             "${CMAKE_SOURCE_DIR}/game/shaders/outdoor_terrain_materials.sh"
@@ -111,7 +112,7 @@ function(openyamm_compile_bgfx_shader_for_target sourcePath shaderType outputNam
             "${CMAKE_SOURCE_DIR}/game/shaders/outdoor_lighting.sh"
             "${CMAKE_SOURCE_DIR}/game/shaders/sky_common.sh"
             "${CMAKE_SOURCE_DIR}/game/shaders/weather_wetness.sh"
-            "${OPENYAMM_BGFX_SOURCE_DIR}/examples/common/common.sh"
+            "${OPENYAMM_BGFX_SOURCE_DIR}/examples/common/shaderlib.sh"
             openyamm_shaderc
         VERBATIM
     )

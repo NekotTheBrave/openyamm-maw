@@ -106,6 +106,12 @@ void MainMenuScreen::loadCatalog()
             }
         }
         menuSettingValue(m_draft, setting.id); // An unknown catalog field is an installation error.
+#if defined(__ANDROID__)
+        if (item["desktop_only"].as<bool>(false))
+        {
+            continue;
+        }
+#endif
         m_settings.push_back(std::move(setting));
     }
     for (const YAML::Node &item : catalog["bindings"])
