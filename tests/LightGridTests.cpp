@@ -162,3 +162,22 @@ TEST_CASE("low light grid uses the smaller layout")
     CHECK_EQ(data.cellTexels.size(), size_t(8 * 5 * 16 * 4));
     CHECK_EQ(data.lightCount, 1u);
 }
+
+TEST_CASE("light grid keeps the far cells of many large lights near the camera")
+{
+    // Fireballs bursting on the party: each light near the camera fills the screen across many depth slices, and
+    // together they need more entries than a fixed 16384-entry list had (every farther slice then went dark).
+    const TestView view = testView();
+    std::vector<LightGridLight> lights;
+    for (int index = 0; index < 20; ++index)
+    {
+        lights.push_back(light(float(index % 5) * 40.0f - 80.0f, 120.0f, float(index / 5) * 20.0f, 2048.0f));
+    }
+    const LightGridConfig config = LightGridConfig::high(4096.0f);
+    const LightGridData data = buildLightGrid(config, lights, view.view, view.projection, view.camera);
+    CHECK(data.stats.cellEntries > 16384u);
+    // A point 1500 units ahead, beyond the slices a short list reached, still has all of them.
+    const int32_t farCell = lightGridCellForPoint(config, view.view, view.projection, {0.0f, 1500.0f, 0.0f});
+    REQUIRE(farCell >= 0);
+    CHECK_EQ(cellLights(data, farCell).size(), 20u);
+}

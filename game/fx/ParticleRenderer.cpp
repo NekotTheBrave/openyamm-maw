@@ -1,5 +1,6 @@
 #include "game/fx/ParticleRenderer.h"
 
+#include "game/fx/EffectViewFade.h"
 #include "game/fx/FxSharedTypes.h"
 #include "game/fx/ParticleSystem.h"
 #include "game/fx/WorldFxRenderResources.h"
@@ -520,9 +521,6 @@ void ParticleRenderer::renderParticles(
         const uint32_t colorAbgr = lerpColorAbgr(particle.startColorAbgr, particle.endColorAbgr, normalizedAge);
         const uint8_t fadedAlpha = static_cast<uint8_t>(
             std::lround(static_cast<float>(channelAt(colorAbgr, 24)) * std::clamp(fadeAlpha, 0.0f, 1.0f)));
-        const uint32_t finalColorAbgr =
-            (colorAbgr & 0x00ffffffu) | (static_cast<uint32_t>(fadedAlpha) << 24);
-
         if (fadedAlpha == 0)
         {
             continue;
@@ -542,6 +540,14 @@ void ParticleRenderer::renderParticles(
 
         const float halfWidth = currentSize * 0.5f;
         const bx::Vec3 center = {particle.x, particle.y, particle.z};
+        const float viewFade = effectViewFade(
+            bx::dot(bx::sub(center, cameraPosition), cameraForward), halfWidth * std::max(1.0f, particle.stretch));
+        const uint8_t viewFadedAlpha = static_cast<uint8_t>(std::lround(float(fadedAlpha) * viewFade));
+        if (viewFadedAlpha == 0)
+        {
+            continue;
+        }
+        const uint32_t finalColorAbgr = (colorAbgr & 0x00ffffffu) | (static_cast<uint32_t>(viewFadedAlpha) << 24);
 
         bx::Vec3 right = {0.0f, 0.0f, 0.0f};
         bx::Vec3 up = {0.0f, 0.0f, 0.0f};
@@ -593,6 +599,11 @@ void ParticleRenderer::renderParticles(
         WorldFxParticleVertex *pWrite = batch.data() + batchWriteOffsets[particleBatchIndex];
         writeParticleQuad(pWrite, center, right, up, finalColorAbgr);
         batchWriteOffsets[particleBatchIndex] += 6;
+    }
+    // Faded-out particles were counted but not written.
+    for (size_t batchIndexValue = 0; batchIndexValue < batches.size(); ++batchIndexValue)
+    {
+        batches[batchIndexValue].resize(batchWriteOffsets[batchIndexValue]);
     }
 
     auto submitParticleBatch =

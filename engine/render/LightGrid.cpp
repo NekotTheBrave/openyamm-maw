@@ -40,6 +40,12 @@ uint16_t gridTextureRows(uint32_t texels)
     return uint16_t((texels + LightGridTextureWidth - 1) / LightGridTextureWidth);
 }
 
+// Index texels with room for every cell full.
+uint32_t lightGridIndexTexels(const LightGridConfig &config)
+{
+    return (uint32_t(config.tilesX) * config.tilesY * config.slices * config.cellCap + 3) / 4;
+}
+
 float smoothstep(float edge0, float edge1, float value)
 {
     const float t = std::clamp((value - edge0) / (edge1 - edge0), 0.0f, 1.0f);
@@ -75,7 +81,6 @@ LightGridData buildLightGrid(const LightGridConfig &config, const std::vector<Li
     const uint32_t cellCount = uint32_t(config.tilesX) * config.tilesY * config.slices;
     // Padded to whole rows of the grid texture, which the uploads copy.
     data.cellTexels.assign(size_t(gridTextureRows(cellCount)) * LightGridTextureWidth * 4, 0.0f);
-    data.indexTexels.assign(size_t(LightGridIndexTexels) * 4, 0.0f);
     data.lightTexels.assign(size_t(gridTextureRows(uint32_t(config.maxLights) * LightGridTexelsPerLight))
         * LightGridTextureWidth * 4, 0.0f);
 
@@ -212,16 +217,20 @@ LightGridData buildLightGrid(const LightGridConfig &config, const std::vector<Li
     data.lightCount = uint32_t(candidates.size());
     data.stats.binnedLights = data.lightCount;
 
-    uint32_t offset = 0;
-    const uint32_t capacity = LightGridIndexTexels * 4;
+    // The index list has room for every cell full (lightGridIndexTexels), so no cell loses its lights: a fixed list
+    // used to run out with a few large lights near the camera, and every farther depth slice went dark.
+    uint32_t entries = 0;
     for (uint32_t cell = 0; cell < cellCount; ++cell)
     {
-        uint32_t count = cellCounts[cell];
-        if (offset + count > capacity)
-        {
-            data.stats.overflowEntries += offset + count - capacity;
-            count = capacity - offset;
-        }
+        entries += cellCounts[cell];
+    }
+    // At least one row: the upload copies one even when the grid is empty.
+    const uint16_t indexRows = std::max<uint16_t>(gridTextureRows((entries + 3) / 4), 1);
+    data.indexTexels.assign(size_t(indexRows) * LightGridTextureWidth * 4, 0.0f);
+    uint32_t offset = 0;
+    for (uint32_t cell = 0; cell < cellCount; ++cell)
+    {
+        const uint32_t count = cellCounts[cell];
         data.cellTexels[size_t(cell) * 4 + 0] = float(offset);
         data.cellTexels[size_t(cell) * 4 + 1] = float(count);
         for (uint32_t entry = 0; entry < count; ++entry)
@@ -264,7 +273,7 @@ void LightGridTextures::upload(const LightGridData &data)
     const uint32_t cellCount = uint32_t(config.tilesX) * config.tilesY * config.slices;
     const uint16_t cellRow = gridTextureRows(uint32_t(config.maxLights) * LightGridTexelsPerLight);
     const uint16_t indexRow = uint16_t(cellRow + gridTextureRows(cellCount));
-    const uint16_t rows = uint16_t(indexRow + gridTextureRows(LightGridIndexTexels));
+    const uint16_t rows = uint16_t(indexRow + gridTextureRows(lightGridIndexTexels(config)));
     if (!valid() || rows != m_rows)
     {
         destroy();

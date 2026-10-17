@@ -5,6 +5,7 @@
 #include "engine/ParallelFor.h"
 #include "engine/render/CookedTexture.h"
 #include "game/fx/EffectSystem.h"
+#include "game/fx/EffectViewFade.h"
 #include "game/fx/WorldFxRenderResources.h"
 #include "game/fx/import/EffectResourceLibrary.h"
 #include "game/render/RuntimeShader.h"
@@ -295,11 +296,31 @@ void EffectRenderer::render(
         {
             return;
         }
+        const float halfSize = 0.5f * scale
+            * std::max(atlas.logicalWidth * std::abs(stretchU), atlas.logicalHeight * std::abs(stretchV));
+        const float viewFade = effectViewFade(depth, halfSize);
+        if (viewFade <= 0.001f)
+        {
+            return;
+        }
+        // A fading multiply sprite tends to white, which leaves the scene unchanged.
+        std::array<float, 4> fadedColor = color;
+        if (blendMode == EffectBlendMode::Multiply)
+        {
+            for (size_t channel = 0; channel < 3; ++channel)
+            {
+                fadedColor[channel] = 1.0f + (color[channel] - 1.0f) * viewFade;
+            }
+        }
+        else
+        {
+            fadedColor[3] *= viewFade;
+        }
         const size_t frameIndex = static_cast<size_t>(
             spriteAnimationSeconds * static_cast<float>(atlas.framesPerSecond)) % atlas.frameUvs.size();
         draws.push_back({
             .position = position,
-            .color = color,
+            .color = fadedColor,
             .scale = scale,
             .stretchU = stretchU,
             .stretchV = stretchV,

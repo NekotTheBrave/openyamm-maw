@@ -372,8 +372,8 @@ A variant needs no new mesh: give it a tier ramp, a scale and attachments, plus 
 
 Console `render <switch> on|off|toggle`. Layers: `terrain`, `bmodels`, `sky`, `water`, `grass`, `deco_models`,
 `deco_sprites`, `actors`, `creature_models`, `effects`. Settings: `foliage`, `instancing`, `shadows`, `ao`,
-`grading`, `model_lods`, `lightmaps`, `creature_outlines`, `light_grid` (off: no point lights from the grid), `freeze`.
-`render lod <-1..3>` forces a LOD. Every change logs
+`grading`, `model_lods`, `lightmaps`, `creature_outlines`, `light_grid` (off: no point lights from the grid), `freeze`,
+`hud` (off: gameplay draws only the world, for clean captures). `render lod <-1..3>` forces a LOD. Every change logs
 `[RenderLayers]`. Scripts and results:
 [decoration and reference-pose profiling](../../output/performance/decorations_20261008/README.md).
 

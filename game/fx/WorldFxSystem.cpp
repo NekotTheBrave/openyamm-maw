@@ -66,6 +66,14 @@ constexpr float AuraMaxScale = 3.0f;
 // into the lower part of the view.
 constexpr float PartyAuraDistance = 150.0f;
 constexpr float PartyAuraDrop = 75.0f;
+// An impact on the party (within PartyHitReach of its body) plays this far in front of its eyes along the view, a
+// little lower and smaller, so a fireball bursting on the party shows in front of it instead of blinding it; its light
+// stays where it struck.
+constexpr float PartyHitReach = 224.0f;
+constexpr float PartyHitBodyDrop = 80.0f;
+constexpr float PartyHitDistance = 160.0f;
+constexpr float PartyHitDrop = 40.0f;
+constexpr float PartyHitScale = 0.6f;
 
 // value modulo a positive period, in [0, period): std::fmod compiles to a slow x87 loop, and every actor model runs
 // several of these each frame.
@@ -3846,6 +3854,7 @@ void WorldFxSystem::syncProjectileImpacts(GameSession &session)
 
     const std::vector<GameplayProjectileImpactPresentationState> &impacts =
         session.gameplayFxService().activeProjectileImpactPresentationStates();
+    const IGameplayWorldRuntime *pWorld = session.activeWorldRuntime();
 
     for (const GameplayProjectileImpactPresentationState &impact : impacts)
     {
@@ -3873,12 +3882,31 @@ void WorldFxSystem::syncProjectileImpacts(GameSession &session)
 
         const bool isNewImpact = m_seenImpactIds.insert(impact.effectId).second;
 
+        // Where the impact effect plays: on the party, in front of its eyes (PartyHitReach). Its loose particles
+        // spray from where it struck, mostly out of view.
+        std::array<float, 3> shownPosition = {impact.x, impact.y, impact.z};
+        float shownScale = 1.0f;
+        if (pWorld != nullptr && impact.targetActorIndex == static_cast<size_t>(-1))
+        {
+            const float dx = impact.x - pWorld->partyX();
+            const float dy = impact.y - pWorld->partyY();
+            const float dz = impact.z - (pWorld->partyEyeZ() - PartyHitBodyDrop);
+            if (dx * dx + dy * dy + dz * dz <= PartyHitReach * PartyHitReach)
+            {
+                const float yaw = pWorld->gameplayCameraYawRadians();
+                shownPosition = {pWorld->partyX() + std::cos(yaw) * PartyHitDistance,
+                    pWorld->partyY() + std::sin(yaw) * PartyHitDistance, pWorld->partyEyeZ() - PartyHitDrop};
+                shownScale = PartyHitScale;
+            }
+        }
+
         if (isNewImpact)
         {
             if (pImpactEffect != nullptr)
             {
                 EffectSpawnParams params;
-                params.position = {impact.x, impact.y, impact.z};
+                params.position = shownPosition;
+                params.scale = shownScale;
                 std::optional<std::array<float, 3>> targetPosition;
                 const bool followsTarget =
                     pEffectRebind != nullptr || (pBinding != nullptr && pBinding->impactFollowsTarget);

@@ -4219,7 +4219,7 @@ void GameApplication::registerDebugConsoleCommands()
                 {"ao", &m_settings.ambientOcclusion}, {"grading", &m_settings.cinematicGrading},
                 {"model_lods", &m_settings.modelLods}, {"lightmaps", &m_settings.lightmaps},
                 {"creature_outlines", &m_settings.creatureOutlines}, {"light_grid", &m_settings.lightGridEnabled},
-                {"freeze", &m_renderFreezeWorld}};
+                {"freeze", &m_renderFreezeWorld}, {"hud", &m_renderHud}};
             const auto describe = [&]()
             {
                 std::ostringstream out;
@@ -10496,7 +10496,10 @@ void GameApplication::renderFrame(int width, int height, float mouseWheelDelta, 
         m_cinematicGrading.submit();
         recordFrameDiagnostics(m_framePerformanceDiagnostics.renderWorldNanoseconds, renderWorldBeginTickCount);
         const uint64_t renderGameplayUiBeginTickCount = collectFrameDiagnostics ? SDL_GetTicksNS() : 0;
-        m_gameSession.renderGameplayUi(width, height);
+        if (m_renderHud)
+        {
+            m_gameSession.renderGameplayUi(width, height);
+        }
         recordFrameDiagnostics(
             m_framePerformanceDiagnostics.renderGameplayUiNanoseconds,
             renderGameplayUiBeginTickCount);

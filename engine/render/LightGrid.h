@@ -52,9 +52,8 @@ struct LightGridConfig
 };
 
 // The grid texture: LightGridTextureWidth texels per row; light data first (LightGridTexelsPerLight per light), then
-// one texel per cell, then the index list (4 light indices per texel, LightGridIndexTexels texels).
+// one texel per cell, then the index list (4 light indices per texel; room for every cell full, lightGridIndexTexels).
 constexpr uint16_t LightGridTextureWidth = 64;
-constexpr uint32_t LightGridIndexTexels = 64 * 64;
 // Position + radius; colour + intensity; sector, dynamic (1 or 0), reach count, 0; the reach sectors, 4 per texel.
 constexpr uint16_t LightGridTexelsPerLight = 3 + LightGridMaxReach / 4;
 // The texture stage of s_lightGrid in every shader that includes light_grid.sh.
