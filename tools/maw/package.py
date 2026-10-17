@@ -81,6 +81,13 @@ Close the game, then unzip the new version over the folder you have, replacing t
 (mods/maw/files) are not in the zip, so they are kept. mods.yml is replaced: set "enabled: false" again if you had.
 To start from the default settings, delete settings.ini.
 
+Known issues
+------------
+- Black spots in some water (Emerald Isle's stepped pools east of the town, for one): the smoothed terrain pokes up
+  through raised water surfaces. This is an OpenYAMM issue, waiting for a fix there. Work-around: set
+  "terrain_subdivision=1" in settings.ini (under [video]); the spots go, but the landscapes are blockier. Choosing
+  a graphics quality preset in the game sets it back to 2 or 4.
+
 Logs
 ----
 If something goes wrong, logs/mod_runtime.log has what MAW's scripts did in the last session, with any errors.
