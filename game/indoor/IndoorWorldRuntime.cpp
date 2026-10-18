@@ -6818,8 +6818,9 @@ void IndoorWorldRuntime::populateIndoorProjectileAreaImpact(
     areaInput.partyZ = facts.partyPosition.z;
     areaInput.partyCollisionRadius = facts.partyCollisionRadius;
     areaInput.partyCollisionHeight = facts.partyCollisionHeight;
-    areaInput.canHitParty = facts.canHitParty
-        && facts.collision.kind != GameplayProjectileService::ProjectileFrameCollisionKind::Party;
+    // MAW port: an area spell striking the party reaches every member through this impact (updateProjectileFrame
+    // leaves it no direct hit on one member).
+    areaInput.canHitParty = facts.canHitParty;
     areaInput.nonPartyProjectileDamage = facts.nonPartyProjectileDamage;
     areaInput.actors = std::move(actors);
     frameResult.areaImpact->impact = m_pGameplayProjectileService->buildProjectileAreaImpact(projectile, areaInput);

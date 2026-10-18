@@ -1867,7 +1867,11 @@ GameplayProjectileService::ProjectileFrameResult GameplayProjectileService::upda
         return result;
     }
 
-    const bool directPartyDamage = facts.collision.kind == ProjectileFrameCollisionKind::Party;
+    const float impactRadius = spellImpactDamageRadius(static_cast<uint32_t>(projectile.spellId));
+    // MAW port: an area spell that strikes the party explodes on it and reaches every member, as in the original (a
+    // Fire Archer's Fireball); only the area impact below damages the party then, not a hit on one member.
+    const bool directPartyDamage =
+        facts.collision.kind == ProjectileFrameCollisionKind::Party && impactRadius <= 0.0f;
     const bool directActorImpact = facts.collision.kind == ProjectileFrameCollisionKind::Actor;
 
     if (directPartyDamage)
@@ -1886,8 +1890,6 @@ GameplayProjectileService::ProjectileFrameResult GameplayProjectileService::upda
         input.nonPartyProjectileDamage = facts.nonPartyProjectileDamage;
         result.directActorImpact = buildProjectileDirectActorImpact(projectile, input);
     }
-
-    const float impactRadius = spellImpactDamageRadius(static_cast<uint32_t>(projectile.spellId));
 
     if (impactRadius > 0.0f)
     {

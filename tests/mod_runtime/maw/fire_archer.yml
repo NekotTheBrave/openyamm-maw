@@ -1,0 +1,135 @@
+id: mod_runtime.maw.fire_archer
+title: A Fire Archer's Fireball reaches the whole party, outdoors and in a dungeon
+world: mm6
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Valerie
+        class: Knight
+        level: 50
+        might: 18
+        intellect: 9
+        personality: 9
+        endurance: 200
+        accuracy: 15
+        speed: 15
+        luck: 11
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment:
+          main_hand: 11
+      - name: Brom
+        class: Knight
+        level: 50
+        might: 18
+        intellect: 9
+        personality: 9
+        endurance: 200
+        accuracy: 15
+        speed: 15
+        luck: 11
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment:
+          main_hand: 11
+      - name: Cass
+        class: Knight
+        level: 50
+        might: 18
+        intellect: 9
+        personality: 9
+        endurance: 200
+        accuracy: 15
+        speed: 15
+        luck: 11
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment:
+          main_hand: 11
+      - name: Dara
+        class: Knight
+        level: 50
+        might: 18
+        intellect: 9
+        personality: 9
+        endurance: 200
+        accuracy: 15
+        speed: 15
+        luck: 11
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment:
+          main_hand: 11
+# MM6's third tier archer (monster 477) casts Fireball (spell 6), 20% of its attacks in MAW's table. Its explosion
+# reaches every member, as in the original; OpenYAMM had a Fireball that struck the party hit one member only (the
+# area spell's direct hit took the place of its explosion). The handler groups the Fireball's PlayerAttacked calls
+# by the time they come at: one Fireball, one time. The archers cast it whenever they can (SpellChance 100): in a
+# dungeon they shoot seldom, mostly closing in.
+- mod_lua:
+    code: |
+      FireballHits = {}
+      function events.PlayerAttacked(t)
+        if t.Attacker and t.Attacker.Spell == 6 then
+          FireballHits[Game.Time] = (FireballHits[Game.Time] or 0) + 1
+        end
+      end
+      function SpawnFireArchers(dx, dy)
+        FireballHits = {}
+        pseudoSpawnpoint{monster = 477, x = Party.X + (dx or 1000), y = Party.Y + (dy or 0), z = Party.Z, count = 6,
+          powerChances = {0, 0, 100}, radius = (dx and 150 or 200), group = 3,
+          transform = function(mon) mon.Hostile = true mon.SpellChance = 100 end}
+      end
+      function HealParty()
+        for i = 0, Party.High do
+          Party[i].HP = Party[i]:GetFullHP() Party[i].Dead = 0 Party[i].Unconscious = 0
+        end
+      end
+      -- How many Fireballs struck, and how many of them reached fewer than four members.
+      function FireballReport()
+        local fireballs, partial = 0, 0
+        for _, members in pairs(FireballHits) do
+          fireballs = fireballs + 1
+          if members < 4 then partial = partial + 1 end
+        end
+        return fireballs > 0, partial
+      end
+      SpawnFireArchers()
+      return 0
+    expect: "0"
+- advance_runtime: {seconds: 15}
+- mod_lua: {code: "HealParty() return 0", expect: "0"}
+- advance_runtime: {seconds: 15}
+- mod_lua:
+    code: return FireballReport()
+    expect: "true\t0"
+# In a dungeon the indoor runtime builds the explosion itself. The archers come in 600 units north of the party, in
+# its sight (a point 1000 units east is behind a wall, and next to the party they pursue it instead of shooting).
+- load_map:
+    map: d05.blv
+- mod_lua: {code: "HealParty() SpawnFireArchers(0, 600) return 0", expect: "0"}
+- advance_runtime: {seconds: 15}
+- mod_lua: {code: "HealParty() return 0", expect: "0"}
+- advance_runtime: {seconds: 15}
+- mod_lua: {code: "HealParty() return 0", expect: "0"}
+- advance_runtime: {seconds: 15}
+- mod_lua: {code: "HealParty() return 0", expect: "0"}
+- advance_runtime: {seconds: 15}
+- mod_lua:
+    code: return FireballReport()
+    expect: "true\t0"
