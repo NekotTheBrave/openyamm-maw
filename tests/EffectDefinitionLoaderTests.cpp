@@ -760,7 +760,7 @@ TEST_CASE("Item model bindings parse icons and name installed models")
     Engine::AssetFileSystem assetFileSystem;
     REQUIRE(assetFileSystem.initialize(sourceRoot, sourceRoot / "assets_dev", Engine::AssetScaleTier::X1, "mm6"));
     Game::ItemModelBindings installed;
-    REQUIRE_MESSAGE(Game::loadItemModelBindings(assetFileSystem, "engine/models/items.yml", installed, error), error);
+    REQUIRE_MESSAGE(Game::loadItemModelBindings(assetFileSystem, "engine/world_items/items.yml", installed, error), error);
     for (const auto &[icon, binding] : installed)
     {
         INFO(icon << ": " << binding.model);

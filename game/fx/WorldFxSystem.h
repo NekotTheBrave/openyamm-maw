@@ -131,11 +131,10 @@ public:
     // Animation LOD: actors far from the party sample their clips at 15 Hz (beyond ~14 m) and 8 Hz (beyond ~28 m).
     // Off by default (exact clip timing, e.g. for diagnostics); the game enables it with the model LOD setting.
     void setActorAnimationLod(bool enabled) { m_actorAnimationLod = enabled; }
-    // Loot satchels (the default "corpses" setting): a slain creature's body, model or sprite, sinks and dissolves once
-    // it has come to rest, and a satchel sized by its loot value takes its place (none for an empty corpse). Hover,
-    // picking and sprite hiding then go through the satchel, as through an actor model. Off keeps the bodies.
+    // Loot satchels: a slain creature's body, model or sprite, sinks and dissolves once it has come to rest, and a
+    // satchel sized by its loot value takes its place (none for an empty corpse). Hover, picking and sprite hiding
+    // then go through the satchel, as through an actor model.
     bool configureCorpseSatchels(const Engine::AssetFileSystem &assets, std::string &error);
-    void setCorpseSatchels(bool enabled);
     void syncCorpseSatchels(const IGameplayWorldRuntime &world, float deltaSeconds);
     // World units a sinking corpse sprite is lowered by (0 when it is not sinking).
     float actorCorpseSinkDepth(size_t actorIndex) const;
@@ -245,10 +244,10 @@ public:
     }
     // Shows only the projectile and item models whose sector passes visible (indoors: revealed through the portals).
     void setObjectModelVisibility(const std::function<bool(int16_t sectorId)> &visible);
-    // Item models (engine/models/items.yml, GROUND_ITEMS_3D_PLAN.md): an item lying on the ground draws its model,
+    // Item models (engine/world_items/items.yml, GROUND_ITEMS_3D_PLAN.md): an item lying on the ground draws its model,
     // lying flat with a yaw of its own, instead of its sprite. Loads the bindings; each model loads the first time
     // one of its items appears.
-    bool loadItemModels(const Engine::AssetFileSystem &assets, std::string &error);
+    bool loadItemModels(const Engine::AssetFileSystem &assets, bool enabled, std::string &error);
     // Whether a model presents this item (its sprite is not drawn); false before the first projectile sync.
     bool hasItemModel(uint32_t itemId) const;
     // Hover or context-action outline of an item's model (the world's presentation key), 0 for none.
@@ -574,7 +573,6 @@ private:
     const CorpseSatchel *goneCorpse(size_t actorIndex) const;
     // The model picked for an actor: its body, or once gone or burnt out, its loot satchel (the remains without one).
     std::optional<Engine::ModelInstanceHandle> actorPickingHandle(size_t actorIndex) const;
-    bool m_corpseSatchels = false;
     std::array<std::shared_ptr<const Engine::ModelAsset>, 6> m_satchelAssets;
     // By actor index, ordered: the per-frame sync walks it alongside the actors.
     std::map<size_t, CorpseSatchel> m_corpseSatchelStates;

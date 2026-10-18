@@ -384,17 +384,6 @@ settings:
   name: Melee camera kick
   type: toggle
   desc: Nudge the view along the blow on critical hits and kills.
-- id: corpses
-  section: video
-  group: Colour & effects
-  name: Slain creatures
-  type: select
-  options:
-  - - satchel
-    - Loot satchel
-  - - keep
-    - Keep bodies
-  desc: A satchel replaces each body once it sinks away; keeping bodies costs more GPU time.
 - id: sound_volume
   section: audio
   group: Volume

@@ -1724,20 +1724,6 @@ bool WorldFxSystem::configureCorpseSatchels(const Engine::AssetFileSystem &asset
     return true;
 }
 
-void WorldFxSystem::setCorpseSatchels(bool enabled)
-{
-    if (enabled == m_corpseSatchels)
-    {
-        return;
-    }
-    m_corpseSatchels = enabled;
-    for (const auto &[index, corpse] : m_corpseSatchelStates)
-    {
-        m_models.destroy(corpse.handle);
-    }
-    m_corpseSatchelStates.clear();
-}
-
 void WorldFxSystem::syncShieldDomes(const IGameplayWorldRuntime &world, float deltaSeconds)
 {
     constexpr float GrowSeconds = 0.35f;
@@ -1816,7 +1802,7 @@ void WorldFxSystem::syncShieldDomes(const IGameplayWorldRuntime &world, float de
 
 void WorldFxSystem::syncCorpseSatchels(const IGameplayWorldRuntime &world, float deltaSeconds)
 {
-    if (!m_corpseSatchels || m_satchelAssets[0] == nullptr)
+    if (m_satchelAssets[0] == nullptr)
     {
         return;
     }
@@ -2718,10 +2704,10 @@ void WorldFxSystem::setObjectModelVisibility(const std::function<bool(int16_t se
     }
 }
 
-bool WorldFxSystem::loadItemModels(const Engine::AssetFileSystem &assets, std::string &error)
+bool WorldFxSystem::loadItemModels(const Engine::AssetFileSystem &assets, bool enabled, std::string &error)
 {
     ItemModelBindings bindings;
-    if (!loadItemModelBindings(assets, "engine/models/items.yml", bindings, error))
+    if (enabled && !loadItemModelBindings(assets, "engine/world_items/items.yml", bindings, error))
     {
         return false;
     }
@@ -2732,7 +2718,8 @@ bool WorldFxSystem::loadItemModels(const Engine::AssetFileSystem &assets, std::s
     m_itemModels.clear();
     m_loadedItemModels.clear();
     m_itemModelBindings = std::move(bindings);
-    m_pItemModelAssets = &assets;
+    m_pItemModelAssets = enabled ? &assets : nullptr;
+    error.clear();
     return true;
 }
 

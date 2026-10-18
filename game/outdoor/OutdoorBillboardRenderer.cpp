@@ -3964,7 +3964,7 @@ void OutdoorBillboardRenderer::renderRuntimeWorldItems(
         }
 
         // A model presents the item: it takes the hover outline, and no sprite is drawn.
-        if (!pWorldItem->isGold && view.m_worldFxSystem.hasItemModel(pWorldItem->item.objectDescriptionId))
+        if (view.m_worldFxSystem.hasItemModel(pWorldItem->item.objectDescriptionId))
         {
             const bool contextHighlighted = contextActionHighlightsWorldItem(pContextActionHit, worldItemIndex);
             const bool hovered =

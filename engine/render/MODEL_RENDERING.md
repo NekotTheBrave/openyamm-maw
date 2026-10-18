@@ -71,7 +71,7 @@ per creature, which is what instancing (section 4) batches.
   held time on the first corpse: every mesh node with its colour and shadow LOD chains skinned and morphed into
   asset space on identity nodes, with the source's materials and images (so GPU textures are shared). A baked node
   must carry an identity `matrix`, because poses read `node.matrix`, not the TRS.
-- **Loot satchels (default `gameplay.corpses=satchel`).** Once a slain creature's body is at rest (model: its baked
+- **Loot satchels (always on).** Once a slain creature's body is at rest (model: its baked
   stand-in is shown; sprite: its dead frame), `WorldFxSystem::syncCorpseSatchels` waits 0.1 s, then the body dissolves
   (`ModelInstanceSystem::setCoverage`, screen-door dither on the stand-in and attachment placements) while it sinks by
   its height over 0.9 s (a sprite is only lowered, through `actorCorpseSinkDepth`). The satchel
@@ -86,7 +86,7 @@ per creature, which is what instancing (section 4) batches.
   empty corpse dissolves and leaves nothing. The loot is rolled at death (`ensureMapActorCorpseView`), and for older
   saves on the first actor update after loading. Once the body is gone, hover outlines and picking go through the
   satchel; a sunk empty corpse reports empty bounds and is not picked. Corpses seen already at rest (a loaded map)
-  show their satchels at once. `corpses=keep` leaves the bodies as before.
+  show their satchels at once.
 - **Projectile models (2026-10-16).** `engine/models/projectiles.yml` binds a model to a projectile object id
   (`object_list.txt` ObjectId) with its length in world units and an optional spin about the model's forward, up or
   side axis; the model points along glTF +Z with its origin at the projectile's centre.

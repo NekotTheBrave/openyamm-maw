@@ -13,6 +13,7 @@
 #include "game/gameplay/GameMechanics.h"
 #include "game/gameplay/GameplayWorldItemInteraction.h"
 #include "game/gameplay/InteractiveDecorationRules.h"
+#include "game/gameplay/PartyHostileAlert.h"
 #include "game/gameplay/ReputationRuntime.h"
 #include "game/gameplay/SavePreviewImage.h"
 #include "game/indoor/IndoorMapData.h"
@@ -10277,4 +10278,30 @@ TEST_CASE("item class restrictions accept role-only base classes and promotions"
     explicitClass.className = "Knight";
     explicitClass.role = "Paladin";
     CHECK_FALSE(OpenYAMM::Game::ItemRuntime::characterMeetsClassRestriction(explicitClass, broderickItem));
+}
+
+TEST_CASE("party yellow alert counts only detected hostile actors within the original alert range")
+{
+    OpenYAMM::Game::GameplayRuntimeActorState actor = {};
+    actor.hostileToParty = true;
+    actor.hasDetectedParty = true;
+    actor.radius = 100;
+    actor.preciseX = 5000.0f;
+    CHECK(OpenYAMM::Game::actorRaisesPartyYellowAlert(actor, 0.0f, 0.0f, 0.0f));
+
+    // A hostile that once detected the party but was left far behind must not block Town Portal or Invisibility.
+    actor.preciseX = 20000.0f;
+    CHECK_FALSE(OpenYAMM::Game::actorRaisesPartyYellowAlert(actor, 0.0f, 0.0f, 0.0f));
+
+    actor.preciseX = 1000.0f;
+    actor.hasDetectedParty = false;
+    CHECK_FALSE(OpenYAMM::Game::actorRaisesPartyYellowAlert(actor, 0.0f, 0.0f, 0.0f));
+
+    actor.hasDetectedParty = true;
+    actor.isDead = true;
+    CHECK_FALSE(OpenYAMM::Game::actorRaisesPartyYellowAlert(actor, 0.0f, 0.0f, 0.0f));
+
+    actor.isDead = false;
+    actor.hostileToParty = false;
+    CHECK_FALSE(OpenYAMM::Game::actorRaisesPartyYellowAlert(actor, 0.0f, 0.0f, 0.0f));
 }

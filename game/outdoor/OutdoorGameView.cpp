@@ -2680,7 +2680,7 @@ bool OutdoorGameView::initialize(
         return false;
     }
     if (!m_worldFxSystem.loadProjectileModels(assetFileSystem, effectLibraryError)
-        || !m_worldFxSystem.loadItemModels(assetFileSystem, effectLibraryError))
+        || !m_worldFxSystem.loadItemModels(assetFileSystem, settings.itemModels, effectLibraryError))
     {
         std::cerr << "Failed to load projectile or item models: " << effectLibraryError << '\n';
         return false;

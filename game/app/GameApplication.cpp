@@ -7842,7 +7842,8 @@ bool GameApplication::initializeSelectedMapRuntime(bool initializeView)
                 m_gameDataLoader.getObjectTable(),
                 m_gameDataLoader.getItemTable(),
                 m_gameDataLoader.getChestTable(),
-                m_gameDataLoader.getHouseTable()))
+                m_gameDataLoader.getHouseTable(),
+                m_settings.itemModels))
         {
             std::cerr
                 << "GameApplication: indoor renderer initialization failed for map "
@@ -10468,17 +10469,13 @@ void GameApplication::renderFrame(int width, int height, float mouseWheelDelta, 
         const uint64_t postWorldBeginTickCount = collectFrameDiagnostics ? SDL_GetTicksNS() : 0;
         WorldFxSystem &worldFx = m_pMapSceneRuntime->kind() == SceneKind::Outdoor
             ? m_outdoorGameView.worldFxSystem() : m_indoorRenderer.worldFxSystem();
-        if (m_settings.corpseStyle == CorpseStyle::Satchel)
+        std::string satchelError;
+        if (!worldFx.configureCorpseSatchels(*m_pAssetFileSystem, satchelError))
         {
-            std::string error;
-            if (!worldFx.configureCorpseSatchels(*m_pAssetFileSystem, error))
-            {
-                std::cerr << "Loot satchel load failed: " << error << '\n';
-                requestApplicationQuit();
-                return;
-            }
+            std::cerr << "Loot satchel load failed: " << satchelError << '\n';
+            requestApplicationQuit();
+            return;
         }
-        worldFx.setCorpseSatchels(m_settings.corpseStyle == CorpseStyle::Satchel);
         // Before the models: a corpse whose body is gone has no actor model to update.
         worldFx.syncCorpseSatchels(*pWorldRuntime, gameplayWorldPaused ? 0.0f : scaledGameplayDeltaSeconds);
         worldFx.syncShieldDomes(*pWorldRuntime, gameplayWorldPaused ? 0.0f : scaledGameplayDeltaSeconds);

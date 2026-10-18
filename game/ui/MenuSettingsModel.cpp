@@ -212,10 +212,6 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
     {
         return settings.meleeCameraKick ? "true" : "false";
     }
-    if (id == "corpses")
-    {
-        return corpseStyleValue(settings.corpseStyle);
-    }
     if (id == "sound_volume")
     {
         return std::to_string(settings.soundVolume);
@@ -654,10 +650,6 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
         }
         settings.meleeCameraKick = value == "true";
         return true;
-    }
-    if (id == "corpses")
-    {
-        return (value == "satchel" || value == "keep") && parseCorpseStyleValue(value, settings.corpseStyle);
     }
     if (id == "sound_volume")
     {

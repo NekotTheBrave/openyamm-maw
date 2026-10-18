@@ -23,7 +23,7 @@ struct ItemModelBinding
 // Item icon (items.txt "Pic File", lower case) -> binding: items sharing an icon share a model.
 using ItemModelBindings = std::unordered_map<std::string, ItemModelBinding>;
 
-// Reads engine/models/items.yml (schema openyamm.itemModels.v1): an items list of {icon, model, length}. A missing file
+// Reads engine/world_items/items.yml (schema openyamm.itemModels.v1): a list of {icon, model, length}. A missing file
 // binds nothing; an unknown key, a repeated icon or a bad length fails.
 bool loadItemModelBindings(
     const Engine::AssetFileSystem &assetFileSystem,

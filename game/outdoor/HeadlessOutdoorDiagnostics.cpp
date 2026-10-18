@@ -7621,6 +7621,441 @@ int HeadlessGameplayDiagnostics::runRegressionSuite(
         return true;
     };
 
+    runCase("mm8_wyvern_actor_models_keep_native_tiers_and_motion", [&](std::string &failure)
+    {
+        RegressionScenario scenario;
+        if (!initializeRegressionScenario(gameDataLoader, *gameDataLoader.getSelectedMap(), scenario))
+        {
+            failure = "could not initialize Wyvern scenario";
+            return false;
+        }
+        const size_t first = scenario.world.mapActorCount();
+        for (int tier = 0; tier < 3; ++tier)
+        {
+            if (!scenario.world.summonHostileMonsterById(121 + tier, 1, 1000 + tier * 400, 1000, 0, 0))
+            {
+                failure = "could not summon Wyvern tier";
+                return false;
+            }
+        }
+        SpriteFrameTable frames;
+        WorldFxSystem fx;
+        if (!loadModelSpriteFrames(frames, failure)
+            || !fx.configureActorModels(assetFileSystem, "worlds/mm8/models/actors.yml",
+                gameDataLoader.getMonsterTable(), &frames, failure))
+        {
+            return false;
+        }
+        const OutdoorWorldRuntime::Snapshot before = scenario.world.snapshot();
+        fx.syncActorModels(scenario.world);
+        float firstHeight = 0.0f;
+        for (size_t tier = 0; tier < 3; ++tier)
+        {
+            const size_t index = first + tier;
+            const OutdoorWorldRuntime::MapActorState *pActor = scenario.world.mapActorState(index);
+            const Engine::ModelBounds *pBounds = fx.actorModelBounds(index);
+            const OutdoorWorldRuntime::MapActorState &original = before.mapActors[index];
+            if (!pActor || !pBounds || !pBounds->valid || pActor->currentHp != original.currentHp
+                || pActor->monsterId != original.monsterId || pActor->preciseX != original.preciseX
+                || pActor->preciseY != original.preciseY || pActor->animationTimeTicks != original.animationTimeTicks)
+            {
+                failure = "Wyvern binding missing or changed simulation state";
+                return false;
+            }
+            const float height = pBounds->max[2] - pBounds->min[2];
+            if (tier == 0)
+            {
+                firstHeight = height;
+            }
+            else if (std::abs(height - firstHeight) > 0.01f)
+            {
+                failure = "Wyvern tiers must keep their equal native frame scale";
+                return false;
+            }
+        }
+        const Engine::ModelAsset *pShared = nullptr;
+        for (const Engine::ModelInstanceHandle handle : fx.models().handles())
+        {
+            const Engine::ModelAsset *pAsset = fx.models().asset(handle);
+            if (pAsset->sourcePath.find("mm8_m560.glb") == std::string::npos)
+            {
+                continue;
+            }
+            if (pShared && pShared != pAsset)
+            {
+                failure = "Wyvern tiers duplicate their shared model";
+                return false;
+            }
+            pShared = pAsset;
+        }
+        if (!pShared || !pShared->findNode("Neck5") || !pShared->findNode("Tail9"))
+        {
+            failure = "Wyvern neck or tail chain missing";
+            return false;
+        }
+        for (const char *pClip : {"Fly", "Attack", "Hit", "Death", "Dead"})
+        {
+            if (!pShared->findClip(pClip))
+            {
+                failure = std::string("Wyvern clip missing: ") + pClip;
+                return false;
+            }
+        }
+        return true;
+    });
+
+    runCase("mm8_crystal_walker_actor_models_keep_rigid_parts_and_native_tiers", [&](std::string &failure)
+    {
+        RegressionScenario scenario;
+        if (!initializeRegressionScenario(gameDataLoader, *gameDataLoader.getSelectedMap(), scenario))
+        {
+            failure = "could not initialize Crystal Walker scenario";
+            return false;
+        }
+        const size_t first = scenario.world.mapActorCount();
+        for (int tier = 0; tier < 3; ++tier)
+        {
+            if (!scenario.world.summonHostileMonsterById(148 + tier, 1, 1000 + tier * 250, 1000, 0, 0))
+            {
+                failure = "could not summon Crystal Walker tier";
+                return false;
+            }
+        }
+        SpriteFrameTable frames;
+        WorldFxSystem fx;
+        if (!loadModelSpriteFrames(frames, failure)
+            || !fx.configureActorModels(assetFileSystem, "worlds/mm8/models/actors.yml",
+                gameDataLoader.getMonsterTable(), &frames, failure))
+        {
+            return false;
+        }
+        const OutdoorWorldRuntime::Snapshot before = scenario.world.snapshot();
+        fx.syncActorModels(scenario.world);
+        std::array<float, 3> heights = {};
+        for (size_t tier = 0; tier < heights.size(); ++tier)
+        {
+            const size_t index = first + tier;
+            const OutdoorWorldRuntime::MapActorState *pActor = scenario.world.mapActorState(index);
+            const Engine::ModelBounds *pBounds = fx.actorModelBounds(index);
+            const OutdoorWorldRuntime::MapActorState &original = before.mapActors[index];
+            if (!pActor || !pBounds || !pBounds->valid || pActor->currentHp != original.currentHp
+                || pActor->monsterId != original.monsterId || pActor->preciseX != original.preciseX
+                || pActor->preciseY != original.preciseY || pActor->animationTimeTicks != original.animationTimeTicks)
+            {
+                failure = "Crystal Walker model missing or changed simulation state";
+                return false;
+            }
+            heights[tier] = pBounds->max[2] - pBounds->min[2];
+        }
+        if (std::abs(heights[0] - 191.0f) > 3.0f || std::abs(heights[1] / heights[0] - 1.3f) > 0.01f
+            || std::abs(heights[2] / heights[0] - 1.6f) > 0.01f)
+        {
+            failure = "Crystal Walker heights do not match native silhouette and tier scales";
+            return false;
+        }
+        const Engine::ModelAsset *pShared = nullptr;
+        for (const Engine::ModelInstanceHandle handle : fx.models().handles())
+        {
+            const Engine::ModelAsset *pAsset = fx.models().asset(handle);
+            if (pAsset->sourcePath.find("mm8_m596.glb") == std::string::npos)
+            {
+                continue;
+            }
+            if (pShared && pShared != pAsset)
+            {
+                failure = "Crystal Walker tiers duplicate their shared model";
+                return false;
+            }
+            pShared = pAsset;
+        }
+        if (!pShared || !pShared->findNode("CrystalWalker") || !pShared->findNode("RightHand"))
+        {
+            failure = "Crystal Walker body or attack socket missing";
+            return false;
+        }
+        for (const char *pClip : {"Standing", "Walking", "Running", "Attack", "Hit", "Death", "Dead", "Fidget"})
+        {
+            if (!pShared->findClip(pClip))
+            {
+                failure = std::string("Crystal Walker clip missing: ") + pClip;
+                return false;
+            }
+        }
+        for (const Engine::ModelMesh &mesh : pShared->meshes)
+        {
+            for (const Engine::ModelPrimitive &primitive : mesh.primitives)
+            {
+                for (const Engine::ModelVertexInfluences &influences : primitive.influences)
+                {
+                    if (std::count_if(influences.weights.begin(), influences.weights.end(),
+                            [](float weight) { return weight > 0.0001f; }) != 1)
+                    {
+                        failure = "Crystal Walker LOD bends a rigid crystal part";
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    });
+
+    runCase("mm8_gorgon_actor_models_keep_native_tiers_and_simulation", [&](std::string &failure)
+    {
+        RegressionScenario scenario;
+        if (!initializeRegressionScenario(gameDataLoader, *gameDataLoader.getSelectedMap(), scenario))
+        {
+            failure = "could not initialize Gorgon scenario";
+            return false;
+        }
+        const size_t first = scenario.world.mapActorCount();
+        for (int tier = 0; tier < 3; ++tier)
+        {
+            if (!scenario.world.summonHostileMonsterById(124 + tier, 1, 1000 + tier * 350, 1000, 0, 0))
+            {
+                failure = "could not summon Gorgon tier";
+                return false;
+            }
+        }
+        SpriteFrameTable frames;
+        WorldFxSystem fx;
+        if (!loadModelSpriteFrames(frames, failure)
+            || !fx.configureActorModels(assetFileSystem, "worlds/mm8/models/actors.yml",
+                gameDataLoader.getMonsterTable(), &frames, failure))
+        {
+            return false;
+        }
+        const OutdoorWorldRuntime::Snapshot initial = scenario.world.snapshot();
+        for (int animation = 0; animation < 8; ++animation)
+        {
+            OutdoorWorldRuntime::Snapshot pose = initial;
+            for (size_t index = first; index < first + 3; ++index)
+            {
+                pose.mapActors[index].animation = OutdoorWorldRuntime::ActorAnimation(animation);
+                pose.mapActors[index].animationTimeTicks = 32;
+            }
+            scenario.world.restoreSnapshot(pose);
+            fx.syncActorModels(scenario.world);
+            for (size_t index = first; index < first + 3; ++index)
+            {
+                const OutdoorWorldRuntime::MapActorState *pActor = scenario.world.mapActorState(index);
+                const Engine::ModelBounds *pBounds = fx.actorModelBounds(index);
+                if (!pActor || !pBounds || !pBounds->valid || pActor->currentHp != initial.mapActors[index].currentHp
+                    || pActor->preciseX != pose.mapActors[index].preciseX
+                    || pActor->preciseY != pose.mapActors[index].preciseY || pActor->animationTimeTicks != 32)
+                {
+                    failure = "Gorgon presentation missing or changed native simulation";
+                    return false;
+                }
+            }
+        }
+        const Engine::ModelAsset *pShared = nullptr;
+        size_t count = 0;
+        for (const Engine::ModelInstanceHandle handle : fx.models().handles())
+        {
+            const Engine::ModelAsset *pAsset = fx.models().asset(handle);
+            if (pAsset->sourcePath.find("mm8_m564.glb") == std::string::npos)
+            {
+                continue;
+            }
+            if (pShared && pShared != pAsset)
+            {
+                failure = "Gorgon tiers duplicate shared geometry";
+                return false;
+            }
+            pShared = pAsset;
+            ++count;
+        }
+        if (count != 3 || !pShared || !pShared->findNode("FrontHoof_L") || !pShared->findNode("HindHoof_R"))
+        {
+            failure = "three Gorgon tiers or fitted hoof rig missing";
+            return false;
+        }
+        for (const char *pClip : {"Standing", "Walking", "Running", "Attack", "Hit", "Death", "Dead", "Fidget"})
+        {
+            if (!pShared->findClip(pClip))
+            {
+                failure = std::string("Gorgon clip missing: ") + pClip;
+                return false;
+            }
+        }
+        return true;
+    });
+
+    runCase("mm8_serpentman_actor_models_keep_native_tiers_and_simulation", [&](std::string &failure)
+    {
+        RegressionScenario scenario;
+        if (!initializeRegressionScenario(gameDataLoader, *gameDataLoader.getSelectedMap(), scenario))
+        {
+            failure = "could not initialize Serpentman scenario";
+            return false;
+        }
+        const size_t first = scenario.world.mapActorCount();
+        for (int tier = 0; tier < 3; ++tier)
+        {
+            if (!scenario.world.summonHostileMonsterById(94 + tier, 1, 1000 + tier * 350, 1000, 0, 0))
+            {
+                failure = "could not summon Serpentman tier";
+                return false;
+            }
+        }
+        SpriteFrameTable frames;
+        WorldFxSystem fx;
+        if (!loadModelSpriteFrames(frames, failure)
+            || !fx.configureActorModels(assetFileSystem, "worlds/mm8/models/actors.yml",
+                gameDataLoader.getMonsterTable(), &frames, failure))
+        {
+            return false;
+        }
+        const OutdoorWorldRuntime::Snapshot initial = scenario.world.snapshot();
+        for (int animation = 0; animation < 8; ++animation)
+        {
+            OutdoorWorldRuntime::Snapshot pose = initial;
+            for (size_t index = first; index < first + 3; ++index)
+            {
+                pose.mapActors[index].animation = OutdoorWorldRuntime::ActorAnimation(animation);
+                pose.mapActors[index].animationTimeTicks = 32;
+            }
+            scenario.world.restoreSnapshot(pose);
+            fx.syncActorModels(scenario.world);
+            for (size_t index = first; index < first + 3; ++index)
+            {
+                const OutdoorWorldRuntime::MapActorState *pActor = scenario.world.mapActorState(index);
+                const Engine::ModelBounds *pBounds = fx.actorModelBounds(index);
+                if (!pActor || !pBounds || !pBounds->valid || pActor->currentHp != initial.mapActors[index].currentHp
+                    || pActor->preciseX != pose.mapActors[index].preciseX
+                    || pActor->preciseY != pose.mapActors[index].preciseY || pActor->animationTimeTicks != 32)
+                {
+                    failure = "Serpentman presentation missing or changed native simulation";
+                    return false;
+                }
+            }
+        }
+        const Engine::ModelAsset *pShared = nullptr;
+        size_t count = 0;
+        for (const Engine::ModelInstanceHandle handle : fx.models().handles())
+        {
+            const Engine::ModelAsset *pAsset = fx.models().asset(handle);
+            if (pAsset->sourcePath.find("mm8_m524.glb") == std::string::npos)
+            {
+                continue;
+            }
+            if (pShared && pShared != pAsset)
+            {
+                failure = "Serpentman tiers duplicate shared geometry";
+                return false;
+            }
+            pShared = pAsset;
+            ++count;
+        }
+        if (count != 3 || !pShared || !pShared->findNode("L_Digit0_2") || !pShared->findNode("Tail_25"))
+        {
+            failure = "three Serpentman tiers or fitted three-claw and tail rig missing";
+            return false;
+        }
+        for (const char *pClip : {"Standing", "Walk", "Running", "Attack", "Hit", "Death", "Dead", "Fidget"})
+        {
+            if (!pShared->findClip(pClip))
+            {
+                failure = std::string("Serpentman clip missing: ") + pClip;
+                return false;
+            }
+        }
+        return true;
+    });
+
+    runCase("mm8_couatl_actor_models_keep_native_tiers_and_motion", [&](std::string &failure)
+    {
+        RegressionScenario scenario;
+        if (!initializeRegressionScenario(gameDataLoader, *gameDataLoader.getSelectedMap(), scenario))
+        {
+            failure = "could not initialize Couatl scenario";
+            return false;
+        }
+        const size_t first = scenario.world.mapActorCount();
+        for (int tier = 0; tier < 3; ++tier)
+        {
+            if (!scenario.world.summonHostileMonsterById(7 + tier, 1, 1000 + tier * 350, 1000, 0, 0))
+            {
+                failure = "could not summon Couatl tier";
+                return false;
+            }
+        }
+        SpriteFrameTable frames;
+        WorldFxSystem fx;
+        if (!loadModelSpriteFrames(frames, failure)
+            || !fx.configureActorModels(assetFileSystem, "worlds/mm8/models/actors.yml",
+                gameDataLoader.getMonsterTable(), &frames, failure))
+        {
+            return false;
+        }
+        const OutdoorWorldRuntime::Snapshot initial = scenario.world.snapshot();
+        for (int animation = 0; animation < 8; ++animation)
+        {
+            OutdoorWorldRuntime::Snapshot pose = initial;
+            for (size_t index = first; index < first + 3; ++index)
+            {
+                pose.mapActors[index].animation = OutdoorWorldRuntime::ActorAnimation(animation);
+                pose.mapActors[index].animationTimeTicks = 32;
+            }
+            scenario.world.restoreSnapshot(pose);
+            fx.syncActorModels(scenario.world);
+            for (size_t index = first; index < first + 3; ++index)
+            {
+                const OutdoorWorldRuntime::MapActorState *pActor = scenario.world.mapActorState(index);
+                const Engine::ModelBounds *pBounds = fx.actorModelBounds(index);
+                if (!pActor || !pBounds || !pBounds->valid || pActor->currentHp != initial.mapActors[index].currentHp
+                    || pActor->preciseX != pose.mapActors[index].preciseX
+                    || pActor->preciseY != pose.mapActors[index].preciseY || pActor->animationTimeTicks != 32)
+                {
+                    failure = "Couatl presentation missing or changed native simulation";
+                    return false;
+                }
+            }
+        }
+        const Engine::ModelAsset *pShared = nullptr;
+        size_t count = 0;
+        for (const Engine::ModelInstanceHandle handle : fx.models().handles())
+        {
+            const Engine::ModelAsset *pAsset = fx.models().asset(handle);
+            if (pAsset->sourcePath.find("mm8_m408.glb") == std::string::npos)
+            {
+                continue;
+            }
+            if (pShared && pShared != pAsset)
+            {
+                failure = "Couatl tiers duplicate shared geometry";
+                return false;
+            }
+            pShared = pAsset;
+            ++count;
+        }
+        for (size_t index = first; index < first + 3; ++index)
+        {
+            const OutdoorWorldRuntime::MapActorState *pActor = scenario.world.mapActorState(index);
+            if (!fx.actorLaunchPoint(index, index == first + 2, pActor->preciseX, pActor->preciseY,
+                    pActor->preciseZ, float(pActor->radius), float(pActor->height)))
+            {
+                failure = "Couatl mouth release point is missing or outside its native collision bounds";
+                return false;
+            }
+        }
+        if (count != 3 || !pShared || !pShared->findNode("MouthSocket") || !pShared->findNode("Tail_20")
+            || !pShared->findNode("WingFan_L") || !pShared->findNode("WingFan_R"))
+        {
+            failure = "Couatl tiers, mouth socket or fitted snake and feather rig missing";
+            return false;
+        }
+        for (const char *pClip : {"Standing", "Walk", "Run", "Attack", "Cast", "Hit", "Death", "Dead", "Fidget"})
+        {
+            if (!pShared->findClip(pClip))
+            {
+                failure = std::string("Couatl clip missing: ") + pClip;
+                return false;
+            }
+        }
+        return true;
+    });
+
     runCase("mm6_demon_actor_models_keep_simulation_and_death_rules", [&](std::string &failure)
     {
         if (!gameDataLoader.loadMapByFileNameForHeadlessGameplay(assetFileSystem, "oute3.odm"))

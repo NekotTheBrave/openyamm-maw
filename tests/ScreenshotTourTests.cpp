@@ -9,6 +9,34 @@
 
 using namespace OpenYAMM::Game;
 
+TEST_CASE("ground item models default to sprites and persist an explicit rendering setting")
+{
+    CHECK_FALSE(GameSettings{}.itemModels);
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "openyamm-item-model-settings-test.ini";
+    std::string error;
+    for (const bool enabled : {true, false})
+    {
+        {
+            std::ofstream output(path);
+            output << "[rendering]\nitem_models=" << (enabled ? "true" : "false") << '\n';
+        }
+        const std::optional<GameSettings> settings = loadGameSettings(path, error);
+        REQUIRE_MESSAGE(settings, error);
+        CHECK(settings->itemModels == enabled);
+        REQUIRE(saveGameSettings(path, *settings, error));
+        const std::optional<GameSettings> reloaded = loadGameSettings(path, error);
+        REQUIRE_MESSAGE(reloaded, error);
+        CHECK(reloaded->itemModels == enabled);
+    }
+    {
+        std::ofstream output(path);
+        output << "[rendering]\nitem_models=invalid\n";
+    }
+    CHECK_FALSE(loadGameSettings(path, error));
+    CHECK(error == "item_models must be a boolean.");
+    std::filesystem::remove(path);
+}
+
 TEST_CASE("screenshot tour loads ordered poses and relative output with per-shot delays")
 {
     const std::filesystem::path path = std::filesystem::temp_directory_path() / "openyamm-screenshot-tour-test.yml";

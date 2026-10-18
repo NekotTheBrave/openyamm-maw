@@ -90,7 +90,8 @@ public:
         const ObjectTable &objectTable,
         const ItemTable &itemTable,
         const ChestTable &chestTable,
-        const HouseTable &houseTable
+        const HouseTable &houseTable,
+        bool itemModels
     );
     void render(
         int width,

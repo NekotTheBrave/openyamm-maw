@@ -2655,7 +2655,8 @@ bool IndoorRenderer::initialize(
     const ObjectTable &objectTable,
     const ItemTable &itemTable,
     const ChestTable &chestTable,
-    const HouseTable &houseTable
+    const HouseTable &houseTable,
+    bool itemModels
 )
 {
     shutdown();
@@ -2674,7 +2675,7 @@ bool IndoorRenderer::initialize(
             return false;
         }
         if (!m_worldFxSystem.loadProjectileModels(*pAssetFileSystem, error)
-            || !m_worldFxSystem.loadItemModels(*pAssetFileSystem, error))
+            || !m_worldFxSystem.loadItemModels(*pAssetFileSystem, itemModels, error))
         {
             std::cerr << "Failed to load projectile or item models: " << error << '\n';
             return false;

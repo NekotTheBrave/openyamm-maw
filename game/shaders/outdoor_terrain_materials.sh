@@ -194,9 +194,9 @@ vec3 shoreAlbedo(vec3 albedo, vec3 position, float shore)
 // project from above; the slope layer projects onto the vertical planes so cliffs are not stretched. With
 // u_terrainMaterialMisc.z, a second projection (rotated from above, or the other vertical plane) hides the repeat
 // and blends cliff sides; detail scales its share (zero on the plain seabed). That branch is uniform, so
-// anisotropic filtering keeps its implicit derivatives.
-void sampleTerrainLayer(float layer, vec3 tint, vec3 world, vec3 geometric, float variation, float detail,
-    out vec4 albedoHeight, out vec3 normal, out vec2 occlusionRoughness)
+// anisotropic filtering keeps its implicit derivatives. faceUp is the triangle's own normal.z.
+void sampleTerrainLayer(float layer, vec3 tint, vec3 world, vec3 geometric, float faceUp, float variation,
+    float detail, out vec4 albedoHeight, out vec3 normal, out vec2 occlusionRoughness)
 {
     vec4 params = u_terrainLayerParams[int(layer + 0.5)];
     vec4 variant = u_terrainLayerVariant[int(layer + 0.5)];
@@ -254,10 +254,11 @@ void sampleTerrainLayer(float layer, vec3 tint, vec3 world, vec3 geometric, floa
     }
     // Ground layers on banks too gentle for the slope layer: the projection from above stretches down the slope, so
     // the steeper part blends to the two vertical planes. The coordinates come before the branch, so their implicit
-    // derivatives hold in it; only bank pixels pay for the extra samples.
+    // derivatives hold in it; only bank pixels pay for the extra samples. A flat triangle is never a bank: along the
+    // foot of an abrupt cliff the smooth normals, taken across the step, tilt the flat strip below it.
     vec2 sideUvX = vec2(world.y, -world.z) * params.x;
     vec2 sideUvY = vec2(world.x, -world.z) * params.x;
-    float bank = slope ? 0.0 : 1.0 - smoothstep(0.72, 0.92, geometric.z);
+    float bank = slope ? 0.0 : 1.0 - smoothstep(0.72, 0.92, max(geometric.z, faceUp));
     if (bank > 0.0)
     {
         // The plane the bank faces. Without anti-tiling it is the only one, switching at the diagonal like the slope
@@ -308,6 +309,9 @@ void main()
 {
     clipWorldPosition(v_worldPosition);
     vec3 position = v_worldPosition;
+    // The triangle's own normal.z from the screen-space derivatives, taken before any branch.
+    vec3 faceNormal = cross(dFdx(position), dFdy(position));
+    float faceUp = abs(faceNormal.z) * inversesqrt(max(dot(faceNormal, faceNormal), 1.0e-12));
     vec2 mapUv = vec2(position.x + 32768.0, 32768.0 - position.y) / 65536.0;
     vec2 cellCoord = mapUv * 128.0;
     vec2 cell = clamp(floor(cellCoord), vec2_splat(0.0), vec2_splat(126.0));
@@ -452,16 +456,16 @@ void main()
         }
         secondLayer = firstLayer;
         secondWeight = 0.0;
-        sampleTerrainLayer(firstLayer, firstTint, position, geometricNormal, variation, 1.0 - plain, firstColor,
-            firstNormal, firstSurface);
+        sampleTerrainLayer(firstLayer, firstTint, position, geometricNormal, faceUp, variation, 1.0 - plain,
+            firstColor, firstNormal, firstSurface);
         secondColor = firstColor;
         secondNormal = firstNormal;
         secondSurface = firstSurface;
 #else
-        sampleTerrainLayer(firstLayer, firstTint, position, geometricNormal, variation, 1.0 - plain, firstColor,
-            firstNormal, firstSurface);
-        sampleTerrainLayer(secondLayer, secondTint, position, geometricNormal, variation, 1.0 - plain, secondColor,
-            secondNormal, secondSurface);
+        sampleTerrainLayer(firstLayer, firstTint, position, geometricNormal, faceUp, variation, 1.0 - plain,
+            firstColor, firstNormal, firstSurface);
+        sampleTerrainLayer(secondLayer, secondTint, position, geometricNormal, faceUp, variation, 1.0 - plain,
+            secondColor, secondNormal, secondSurface);
 #endif
         // Height blend: the taller material shows through first where both are present.
         float total = max(firstWeight + max(secondWeight, 0.0), 0.0001);

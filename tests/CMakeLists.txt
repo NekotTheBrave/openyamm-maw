@@ -170,6 +170,7 @@ add_executable(openyamm_unit_tests
     ../game/gameplay/GameplayDialogController.cpp
     ../game/gameplay/GameplayCombatController.cpp
     ../game/gameplay/GameplaySpeechRules.cpp
+    ../game/gameplay/PartyHostileAlert.cpp
     ../game/gameplay/GameplayWorldItemInteraction.cpp
     ../game/gameplay/InteractiveDecorationRules.cpp
     ../game/gameplay/BountyHuntRuntime.cpp

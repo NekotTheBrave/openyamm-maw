@@ -609,30 +609,6 @@ bool setBakedLightingSetting(
     return false;
 }
 
-bool parseCorpseStyleValue(const std::string &value, CorpseStyle &result)
-{
-    const std::string normalized = toLowerCopy(trimCopy(value));
-
-    if (normalized == "satchel")
-    {
-        result = CorpseStyle::Satchel;
-        return true;
-    }
-
-    if (normalized == "keep")
-    {
-        result = CorpseStyle::Keep;
-        return true;
-    }
-
-    return false;
-}
-
-std::string corpseStyleValue(CorpseStyle style)
-{
-    return style == CorpseStyle::Keep ? "keep" : "satchel";
-}
-
 bool parseWeatherQualityValue(const std::string &value, WeatherQuality &result)
 {
     static const std::array<std::pair<const char *, WeatherQuality>, 4> Values = {{
@@ -993,11 +969,6 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         }
     }
 
-    if (const std::optional<std::string> value = getIniValue(document, "gameplay", "corpses"))
-    {
-        parseCorpseStyleValue(*value, settings.corpseStyle);
-    }
-
     if (const std::optional<std::string> value = getIniValue(document, "video", "blood_splats"))
     {
         bool parsed = settings.bloodSplats;
@@ -1044,6 +1015,14 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         if (parseIntValue(*value, parsed) && parsed >= 0 && parsed <= 3)
         {
             settings.modelShadowQuality = parsed;
+        }
+    }
+    if (const std::optional<std::string> value = getIniValue(document, "rendering", "item_models"))
+    {
+        if (!parseBoolValue(*value, settings.itemModels))
+        {
+            error = "item_models must be a boolean.";
+            return std::nullopt;
         }
     }
     if (const std::optional<std::string> value = getIniValue(document, "video", "model_lods"))
@@ -1958,7 +1937,6 @@ bool saveGameSettings(const std::filesystem::path &path, const GameSettings &set
         << "melee_hit_effects=" << (settings.meleeHitEffects ? "true" : "false") << '\n'
         << "melee_hit_flash=" << (settings.meleeHitFlash ? "true" : "false") << '\n'
         << "melee_camera_kick=" << (settings.meleeCameraKick ? "true" : "false") << '\n'
-        << "corpses=" << corpseStyleValue(settings.corpseStyle) << '\n'
         << "context_action_popup=" << (settings.contextActionPopup ? "true" : "false") << "\n\n"
         << "[startup]\n"
         << "start_in_main_menu=" << (settings.startInMainMenu ? "true" : "false") << '\n'
@@ -1993,6 +1971,8 @@ bool saveGameSettings(const std::filesystem::path &path, const GameSettings &set
 
     output
         << '\n'
+        << "[rendering]\n"
+        << "item_models=" << (settings.itemModels ? "true" : "false") << "\n\n"
         << "[video]\n"
         << "blood_splats=" << (settings.bloodSplats ? "true" : "false") << '\n'
         << "colored_lights=" << (settings.coloredLights ? "true" : "false") << '\n'

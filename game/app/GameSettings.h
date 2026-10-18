@@ -34,17 +34,6 @@ enum class ControlScheme
     Classic
 };
 
-// Slain creatures: Satchel sinks the body after its death and leaves a loot satchel sized by what it holds; Keep leaves
-// the bodies on the ground (each one a creature model or sprite to draw).
-enum class CorpseStyle
-{
-    Satchel,
-    Keep
-};
-
-bool parseCorpseStyleValue(const std::string &value, CorpseStyle &result);
-std::string corpseStyleValue(CorpseStyle style);
-
 // Rain and snow particle density; Off hides precipitation (weather, sound and gameplay are unchanged).
 enum class WeatherQuality
 {
@@ -151,6 +140,8 @@ struct GameSettings
     bool shadows = false;
     int modelShadowQuality = 2;
     bool modelLods = true;
+    // Optional ground-item models under engine/world_items; takes effect when loading a map.
+    bool itemModels = false;
     // Dark contour shell around 3D creatures (ModelRenderer::setCreatureContour).
     bool creatureOutlines = false;
     int modelLodOverride = -1; // Debug review only; native AI/picking always use the original model.
@@ -292,7 +283,6 @@ struct GameSettings
     bool meleeHitFlash = false;
     // Small camera turn along the blow on critical hits and kills.
     bool meleeCameraKick = false;
-    CorpseStyle corpseStyle = CorpseStyle::Keep;
 #if defined(__ANDROID__)
     bool contextActionPopup = true;
 #else
