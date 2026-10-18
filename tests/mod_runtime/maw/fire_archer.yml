@@ -79,8 +79,8 @@ steps:
 # MM6's third tier archer (monster 477) casts Fireball (spell 6), 20% of its attacks in MAW's table. Its explosion
 # reaches every member, as in the original; OpenYAMM had a Fireball that struck the party hit one member only (the
 # area spell's direct hit took the place of its explosion). The handler groups the Fireball's PlayerAttacked calls
-# by the time they come at: one Fireball, one time. The archers cast it whenever they can (SpellChance 100): in a
-# dungeon they shoot seldom, mostly closing in.
+# by the time they come at: one Fireball, one time. The kind casts it whenever it can (its SpellChance 100 in the
+# monster table; a map monster's own SpellChance is not kept by the engine): in a dungeon they shoot seldom.
 - mod_lua:
     code: |
       FireballHits = {}
@@ -91,9 +91,11 @@ steps:
       end
       function SpawnFireArchers(dx, dy)
         FireballHits = {}
+        -- (Merge's adaptive stats put the table back as a map loads.)
+        Game.MonstersTxt[477].SpellChance = 100
         pseudoSpawnpoint{monster = 477, x = Party.X + (dx or 1000), y = Party.Y + (dy or 0), z = Party.Z, count = 6,
           powerChances = {0, 0, 100}, radius = (dx and 150 or 200), group = 3,
-          transform = function(mon) mon.Hostile = true mon.SpellChance = 100 end}
+          transform = function(mon) mon.Hostile = true end}
       end
       function HealParty()
         for i = 0, Party.High do
