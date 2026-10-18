@@ -53,6 +53,10 @@ struct ModHost
     std::function<int()> turnBasedPhase;
     // Ends the party's turn-based walk, as the original does when its phase is set away from 3.
     std::function<void()> endTurnBasedWalk;
+    // A script set party member `memberIndex`'s recovery (Player:SetRecoveryDelay; seconds as the engine keeps
+    // recovery) during turn-based combat: as MMExtension's, it becomes the member's turn-based delay, and the member's
+    // turn ends with it when it is theirs (MAW's quick heals). Nothing outside turn-based combat.
+    std::function<void(size_t memberIndex, float recoverySeconds)> setTurnBasedRecovery;
     // The shop page open, in the original's numbers (Game.HouseScreen): 2 a shop's goods, 95 its special goods, 0
     // none.
     std::function<int()> houseShopPage;

@@ -1,0 +1,67 @@
+id: mod_runtime.maw.turn_based_quick_heal
+title: In turn-based combat MAW's quick heal ends the healer's turn, as any cast does
+world: mm6
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW takes a quick-cast heal over (autoTargetHeals, Action 25: processAutoTargetHeal aims it at the most hurt member)
+# and charges the healer with pl:SetRecoveryDelay. MMExtension's SetRecoveryDelay makes that the member's turn-based
+# delay and ends their turn when it is theirs; the port's had set only the real-time recovery, so in turn-based combat
+# a quick heal cost no turn (reported by a player: "quick heal having 0 recovery in turn based"). Run with the MAW
+# mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Healer
+        class: Cleric
+        level: 10
+        personality: 30
+        skills:
+        - name: Body
+          level: 10
+          mastery: 1
+        spells: [68]
+        equipment:
+          main_hand: 61
+      - name: Fighter
+        class: Knight
+        level: 10
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment:
+          main_hand: 11
+# Heal (spell 68) as the healer's quick spell, both members hurt and the healer's spell points full.
+- mod_lua:
+    code: |
+      Party[0].QuickSpell = 68
+      for i = 0, Party.High do Party[i].HP = math.max(1, Party[i]:GetFullHP() - 30) end
+      Party[0].SP = Party[0]:GetFullSP()
+      Cost = Game.Spells[68].SpellPointsNormal
+      return Cost > 0, Party[0].SP >= 2 * Cost
+    expect: "true\ttrue"
+- press_action: combat
+- mod_lua:
+    code: return Game.TurnBased
+    expect: "true"
+# Turn-based combat starts with the wait before the party's turn (phase 1); then the party's attacks (phase 2), the
+# healer first.
+- advance_runtime: {seconds: 3}
+- press_action: {action: select_member, member_index: 0}
+- mod_lua:
+    code: |
+      SpellPointsBefore = Party[0].SP
+      return Game.TurnBasedPhase, Game.CurrentPlayer
+    expect: "2\t0"
+# Two presses of the quick-cast key: the first heals and ends the healer's turn, the second is not the healer's.
+- press_action: cast_ready
+- press_action: cast_ready
+- mod_lua:
+    code: return (SpellPointsBefore - Party[0].SP) / Cost
+    expect: "1"

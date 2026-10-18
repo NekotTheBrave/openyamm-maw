@@ -847,6 +847,17 @@ int nativePlayerSet(lua_State *pLuaState)
     {
         pCharacter->recoverySecondsRemaining =
             static_cast<float>(std::clamp<int64_t>(integerArgument(pLuaState, 3), 0, 1000000)) / 60.0f;
+
+        // In turn-based combat it is the member's turn-based delay too (MMExtension's SetRecoveryDelay): without it a
+        // turn a script took over (MAW's quick heal) cost nothing.
+        const ModHost *pHost = hostFromUpvalue(pLuaState);
+        const int64_t memberIndex = integerArgument(pLuaState, 1);
+
+        if (pHost != nullptr && pHost->setTurnBasedRecovery && memberIndex >= 0 && memberIndex < InnPlayerBase)
+        {
+            pHost->setTurnBasedRecovery(static_cast<size_t>(memberIndex), pCharacter->recoverySecondsRemaining);
+        }
+
         lua_pushboolean(pLuaState, true);
         return 1;
     }

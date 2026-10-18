@@ -3069,7 +3069,8 @@ bool runPressAction(
         return true;
     }
 
-    if (action == "attack" || action == "cast_ready")
+    // combat: the turn-based mode key (Enter), as the player presses it.
+    if (action == "attack" || action == "cast_ready" || action == "combat")
     {
         if (!ensureRuntimeDriver(context, failures))
         {
@@ -3079,7 +3080,11 @@ bool runPressAction(
                                                   : 1.0f / 30.0f;
         std::string failure;
         if (!context.runtimeDriver->holdGameplayAction(
-                action == "attack" ? KeyboardAction::Attack : KeyboardAction::CastReady, seconds, failure))
+                action == "attack"
+                    ? KeyboardAction::Attack
+                    : (action == "combat" ? KeyboardAction::Combat : KeyboardAction::CastReady),
+                seconds,
+                failure))
         {
             failures.push_back(stepLocation(step) + ": " + failure);
             return false;

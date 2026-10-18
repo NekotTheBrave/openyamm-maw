@@ -2999,6 +2999,21 @@ GameApplication::GameApplication(const Engine::ApplicationConfig &config)
             turnBased.finishMovementPhase();
         }
     };
+    modHost.setTurnBasedRecovery = [this](size_t memberIndex, float recoverySeconds)
+    {
+        TurnBasedCombatRuntime &turnBased = m_gameSession.turnBasedCombatRuntime();
+        Party *pParty = m_gameSession.gameplayScreenRuntime().party();
+
+        if (!turnBased.active() || pParty == nullptr || recoverySeconds <= 0.0f)
+        {
+            return;
+        }
+
+        // Kept for the member's next action when it is not their turn; applyPlayerAction ends it when it is (it does
+        // nothing for a member not at the front of the queue, or outside the party's attacks).
+        turnBased.storeMemberTurnRecovery(memberIndex, recoverySeconds);
+        turnBased.applyPlayerAction(*pParty, memberIndex, recoverySeconds);
+    };
     modHost.currentCharScreen = [this]()
     {
         switch (m_gameSession.gameplayScreenRuntime().characterScreenReadOnly().page)
