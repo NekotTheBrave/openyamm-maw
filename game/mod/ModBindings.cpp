@@ -1361,6 +1361,41 @@ int nativePlayerSpellGet(lua_State *pLuaState)
     return 1;
 }
 
+// modrt.playerAwardGet(player, award): whether the character has the award (Party[i].Awards[award]).
+int nativePlayerAwardGet(lua_State *pLuaState)
+{
+    const Character *pCharacter = playerArgument(pLuaState, 1);
+    const int64_t awardId = integerArgument(pLuaState, 2);
+    lua_pushboolean(
+        pLuaState, pCharacter != nullptr && awardId > 0 && pCharacter->awards.contains(static_cast<uint32_t>(awardId)));
+    return 1;
+}
+
+// modrt.playerAwardSet(player, award, has): gives the character the award or takes it away.
+int nativePlayerAwardSet(lua_State *pLuaState)
+{
+    Character *pCharacter = playerArgument(pLuaState, 1);
+    const int64_t awardId = integerArgument(pLuaState, 2);
+
+    if (pCharacter == nullptr || awardId <= 0)
+    {
+        lua_pushboolean(pLuaState, false);
+        return 1;
+    }
+
+    if (lua_toboolean(pLuaState, 3))
+    {
+        pCharacter->awards.insert(static_cast<uint32_t>(awardId));
+    }
+    else
+    {
+        pCharacter->awards.erase(static_cast<uint32_t>(awardId));
+    }
+
+    lua_pushboolean(pLuaState, true);
+    return 1;
+}
+
 // modrt.playerSpellSet(player, spell, known): the character learns or forgets the spell.
 int nativePlayerSpellSet(lua_State *pLuaState)
 {
@@ -5647,6 +5682,8 @@ void registerModBindings(lua_State *pLuaState, const ModHost &host)
         {"playerSkillSet", nativePlayerSkillSet},
         {"playerSpellGet", nativePlayerSpellGet},
         {"playerSpellSet", nativePlayerSpellSet},
+        {"playerAwardGet", nativePlayerAwardGet},
+        {"playerAwardSet", nativePlayerAwardSet},
         {"partyRefreshBonuses", nativePartyRefreshBonuses},
         {"playerSkillCap", nativePlayerSkillCap},
         {"setRule", nativeSetRule},

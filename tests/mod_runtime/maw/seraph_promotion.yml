@@ -1,0 +1,60 @@
+id: mod_runtime.maw.seraph_promotion
+title: MAW promotes a Seraphim with the cleric quests, to Angel and then to Archangel
+world: mm7
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's own classes 53-55 (Seraphim, Angel, Archangel; Kind 17) are promoted by the cleric quests' QBits
+# (zzClasses.lua, checkPromo, on every map load and after every global event): a cleric's first promotion (MM7's
+# 1607/1608) makes a Seraphim an Angel, the second (MM7's High Priest, 1609-1612) an Angel an Archangel. The second
+# looks for the class to promote to with `for v=0,#Game.ClassesExtra`, which read 0 in the port (MMExtension's
+# arrays keep the rows a script read, so there it is the highest class): an Angel stayed an Angel (found in play,
+# 2026-10-18). Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: 7out01.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Seraph
+        class: Cleric
+        level: 10
+        skills:
+        - name: Body
+          level: 1
+          mastery: 1
+        equipment:
+          main_hand: 61
+      - name: Plain
+        class: Cleric
+        level: 10
+        skills:
+        - name: Body
+          level: 1
+          mastery: 1
+        equipment:
+          main_hand: 61
+# Before any promotion: an ordinary Cleric stays one when the check runs. The class's honorary award
+# (Party[i].Awards[31]) was an unbound stand-in, which read as true and counted as a promotion: with the lookup above
+# mended, every class would have gone to its last step at once.
+- mod_lua:
+    code: |
+      local before = Party[1].Class
+      events.call("EvtGlobal", 1)
+      return Party[1].Class == before, Party[1].Awards[31], Game.ClassesExtra[before].Step
+    expect: "true\tfalse\t0"
+- mod_lua:
+    code: |
+      Party[0].Class = 53
+      evt.Add{"QBits", 1607}
+      events.call("EvtGlobal", 836)
+      return Party[0].Class, Game.ClassNames[Party[0].Class]
+    expect: "54\tAngel"
+- mod_lua:
+    code: |
+      evt.Add{"QBits", 1609}
+      events.call("EvtGlobal", 837)
+      return Party[0].Class, Game.ClassNames[Party[0].Class], #Game.ClassesExtra == Game.Classes.HPFactor.High
+    expect: "55\tArchangel\ttrue"

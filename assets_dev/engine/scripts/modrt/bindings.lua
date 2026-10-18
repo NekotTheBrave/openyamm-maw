@@ -456,6 +456,26 @@ local function spellsObject(playerIndex, path)
     })
 end
 
+-- Party[i].Awards[award]: whether the character has the award, as the original's award bits (MAW's promotion check
+-- reads a class's honorary award there; an unbound stand-in read as true, every class as promoted once).
+local AwardCount = 512
+
+local function awardsObject(playerIndex, path)
+    return boundObject(path, {
+        index = function(id)
+            id = floor(id)
+            return id >= 1 and id < AwardCount and modrt.playerAwardGet(playerIndex, id) or false
+        end,
+        newindex = function(id, value)
+            id = floor(id)
+            return id >= 1 and id < AwardCount
+                and modrt.playerAwardSet(playerIndex, id, value ~= nil and value ~= false and value ~= 0)
+        end,
+        get = sizeFields(function() return AwardCount end),
+        range = function() return 0, AwardCount - 1 end,
+    })
+end
+
 local equippedItemAt = cached(function(key)
     local playerIndex, slot = key >> 8, key & 0xFF
     return itemObject(playerIndex, "equip", slot, "Party[].Items[]")
@@ -669,6 +689,7 @@ local function playerObject(playerIndex)
     local path = "Party[]"
     local skills = skillsObject(playerIndex, path .. ".Skills")
     local spells = spellsObject(playerIndex, path .. ".Spells")
+    local awards = awardsObject(playerIndex, path .. ".Awards")
     local items = itemsObject(playerIndex, path .. ".Items")
     -- EquippedItems[slot] is the item's number in Items, 0 for an empty slot.
     local equipped = boundObject(path .. ".EquippedItems", {
@@ -722,6 +743,8 @@ local function playerObject(playerIndex)
                 return skills
             elseif key == "Spells" then
                 return spells
+            elseif key == "Awards" then
+                return awards
             elseif key == "Items" then
                 return items
             elseif key == "EquippedItems" then
@@ -1855,6 +1878,10 @@ local classesExtra = boundObject("Game.ClassesExtra", {
     end,
     get = sizeFields(classCount),
     range = function() return 0, classCount() - 1 end,
+    -- #Game.ClassesExtra: the highest class. MMExtension's arrays keep each row read in the table, so once a script
+    -- has read them all (MAW's checkPromo does, before it looks for the class to promote to with
+    -- `for v=0,#Game.ClassesExtra`) the length is that; 0 here kept a Seraph from becoming an Archangel.
+    len = function() return classCount() - 1 end,
 })
 
 -- Game.GetStatisticEffect(value): what a statistic's value is worth (13 gives 0, 15 gives 1, ...).
