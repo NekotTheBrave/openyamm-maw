@@ -31,6 +31,13 @@ public:
     static void renderQuickReferenceOverlay(GameplayScreenRuntime &context, int width, int height);
 
 private:
+    // The spell info box with these texts, beside its source rectangle: the spellbook's, and a spell book's.
+    static void renderSpellInspectPopup(
+        GameplayScreenRuntime &context,
+        int width,
+        int height,
+        const GameplayUiController::SpellInspectOverlayState &overlay);
+
     static void renderSaveLoadOverlay(
         GameplayScreenRuntime &context,
         int width,

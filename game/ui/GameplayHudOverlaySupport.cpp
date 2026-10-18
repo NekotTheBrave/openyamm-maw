@@ -1231,38 +1231,56 @@ void GameplayHudOverlaySupport::updateSpellInspectOverlay(
             continue;
         }
 
-        const SpellEntry *pSpellEntry = context.spellTable()->findById(spellId);
-
-        if (pSpellEntry == nullptr)
+        if (!fillSpellInspectOverlayTexts(context, spellId, overlay))
         {
+            overlay = {};
             return;
         }
 
-        overlay.active = true;
-        overlay.spellId = spellId;
-        const SpellbookSchoolUiDefinition *pSpellSchoolDefinition = findSpellbookSchoolUiDefinitionForSpellId(spellId);
-        const GameplayUiController::SpellbookSchool spellSchool =
-            pSpellSchoolDefinition != nullptr ? pSpellSchoolDefinition->school : context.spellbookReadOnly().school;
-        const Character *pActiveMember =
-            context.partyReadOnly() != nullptr ? context.partyReadOnly()->activeMember() : nullptr;
-        const SkillMastery casterMastery = spellInspectCasterMasteryForSpell(pActiveMember, spellId);
+        if (overlay.school.empty())
+        {
+            overlay.school = spellbookSchoolDisplayName(context.spellbookReadOnly().school);
+        }
 
-        overlay.school = spellbookSchoolDisplayName(spellSchool);
-        overlay.manaCost = std::max(0, spellInspectManaCostForMastery(*pSpellEntry, casterMastery));
-        overlay.hasManaCost = true;
-        overlay.title = pSpellEntry->name;
-        overlay.body = pSpellEntry->description;
-        overlay.normal = pSpellEntry->normalText.empty() ? "" : "Normal: " + pSpellEntry->normalText;
-        overlay.expert = pSpellEntry->expertText.empty() ? "" : "Expert: " + pSpellEntry->expertText;
-        overlay.master = pSpellEntry->masterText.empty() ? "" : "Master: " + pSpellEntry->masterText;
-        overlay.grandmaster =
-            pSpellEntry->grandmasterText.empty() ? "" : "Grand Master: " + pSpellEntry->grandmasterText;
+        overlay.active = true;
         overlay.sourceX = resolved->x;
         overlay.sourceY = resolved->y;
         overlay.sourceWidth = std::max(1.0f, resolved->width);
         overlay.sourceHeight = std::max(1.0f, resolved->height);
         return;
     }
+}
+
+bool GameplayHudOverlaySupport::fillSpellInspectOverlayTexts(
+    GameplayScreenRuntime &context,
+    uint32_t spellId,
+    GameplayUiController::SpellInspectOverlayState &overlay)
+{
+    const SpellEntry *pSpellEntry = context.spellTable() != nullptr ? context.spellTable()->findById(spellId) : nullptr;
+
+    if (pSpellEntry == nullptr)
+    {
+        return false;
+    }
+
+    overlay.spellId = spellId;
+    const SpellbookSchoolUiDefinition *pSpellSchoolDefinition = findSpellbookSchoolUiDefinitionForSpellId(spellId);
+    const Character *pActiveMember =
+        context.partyReadOnly() != nullptr ? context.partyReadOnly()->activeMember() : nullptr;
+    const SkillMastery casterMastery = spellInspectCasterMasteryForSpell(pActiveMember, spellId);
+
+    overlay.school =
+        pSpellSchoolDefinition != nullptr ? spellbookSchoolDisplayName(pSpellSchoolDefinition->school) : std::string();
+    overlay.manaCost = std::max(0, spellInspectManaCostForMastery(*pSpellEntry, casterMastery));
+    overlay.hasManaCost = true;
+    overlay.title = pSpellEntry->name;
+    overlay.body = pSpellEntry->description;
+    overlay.normal = pSpellEntry->normalText.empty() ? "" : "Normal: " + pSpellEntry->normalText;
+    overlay.expert = pSpellEntry->expertText.empty() ? "" : "Expert: " + pSpellEntry->expertText;
+    overlay.master = pSpellEntry->masterText.empty() ? "" : "Master: " + pSpellEntry->masterText;
+    overlay.grandmaster =
+        pSpellEntry->grandmasterText.empty() ? "" : "Grand Master: " + pSpellEntry->grandmasterText;
+    return true;
 }
 
 void GameplayHudOverlaySupport::renderGameplayMouseLookOverlay(

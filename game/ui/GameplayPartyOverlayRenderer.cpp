@@ -22,6 +22,7 @@
 #include "game/tables/RosterTable.h"
 #include "game/tables/SpellTable.h"
 #include "game/ui/GameplayHudCommon.h"
+#include "game/ui/GameplayHudOverlaySupport.h"
 #include "game/ui/GameplayJournalMapUi.h"
 #include "game/party/SkillData.h"
 #include "game/gameplay/GameplayScreenRuntime.h"
@@ -2537,6 +2538,31 @@ std::string actorInspectSpellDisplayName(const std::string &spellName)
 std::string formatMonsterResistanceText(int value)
 {
     return value >= 200 ? "Imm" : std::to_string(value);
+}
+
+// A spell book's spell (its Mod1 is "S<spell number>"); nothing for any other item.
+std::optional<uint32_t> spellBookSpellId(const ItemDefinition &itemDefinition)
+{
+    const std::string &mod1 = itemDefinition.mod1;
+
+    if (itemDefinition.equipStat != "Book" || mod1.size() < 2 || (mod1[0] != 'S' && mod1[0] != 's'))
+    {
+        return std::nullopt;
+    }
+
+    uint32_t spellId = 0;
+
+    for (size_t index = 1; index < mod1.size(); ++index)
+    {
+        if (!std::isdigit(static_cast<unsigned char>(mod1[index])) || spellId > 100000)
+        {
+            return std::nullopt;
+        }
+
+        spellId = spellId * 10 + static_cast<uint32_t>(mod1[index] - '0');
+    }
+
+    return spellId > 0 ? std::optional<uint32_t>(spellId) : std::nullopt;
 }
 
 std::string resolveItemInspectTypeText(const InventoryItem *pItemState, const ItemDefinition &itemDefinition)
@@ -5951,6 +5977,24 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
         return;
     }
 
+    // MAW port: a spell book shows its spell's info box, as in the original (MM8): what the spellbook shows of the
+    // spell for the active member, with what a mod adds to its description (MAW's "Not Learned", "Can't learn").
+    if (const std::optional<uint32_t> bookSpellId = spellBookSpellId(*pItemDefinition))
+    {
+        GameplayUiController::SpellInspectOverlayState spellOverlay = {};
+
+        if (GameplayHudOverlaySupport::fillSpellInspectOverlayTexts(context, *bookSpellId, spellOverlay))
+        {
+            spellOverlay.active = true;
+            spellOverlay.sourceX = overlay.sourceX;
+            spellOverlay.sourceY = overlay.sourceY;
+            spellOverlay.sourceWidth = std::max(1.0f, overlay.sourceWidth);
+            spellOverlay.sourceHeight = std::max(1.0f, overlay.sourceHeight);
+            renderSpellInspectPopup(context, width, height, spellOverlay);
+            return;
+        }
+    }
+
     const GameplayScreenRuntime::HudLayoutElement *pRootLayout = context.findHudLayoutElement("ItemInspectRoot");
 
     if (pRootLayout == nullptr)
@@ -7138,8 +7182,15 @@ void GameplayPartyOverlayRenderer::renderCharacterInspectOverlay(GameplayScreenR
 
 void GameplayPartyOverlayRenderer::renderSpellInspectOverlay(GameplayScreenRuntime &context, int width, int height)
 {
-    const GameplayUiController::SpellInspectOverlayState &overlay = context.spellInspectOverlayReadOnly();
+    renderSpellInspectPopup(context, width, height, context.spellInspectOverlayReadOnly());
+}
 
+void GameplayPartyOverlayRenderer::renderSpellInspectPopup(
+    GameplayScreenRuntime &context,
+    int width,
+    int height,
+    const GameplayUiController::SpellInspectOverlayState &overlay)
+{
     if (!overlay.active
         || !context.hasHudRenderResources()
         || width <= 0
