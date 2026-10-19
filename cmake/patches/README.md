@@ -26,6 +26,21 @@ the actual patched upload function against a recording Direct3D context, coverin
 partial and pitched updates, array/cube indexing, uncompressed textures, and compressed 3D slice pitches.
 It does not replace a visual check on a Windows GPU.
 
+## Metal compressed texture updates
+
+`bgfx-metal-compressed-updates.patch` rounds the row pitch of compressed texture updates up to complete blocks, the
+Metal counterpart of the Direct3D 11 fix above. The pinned upload computes `(width / blockWidth) * blockSize`, one
+block short whenever the width is not a block multiple. Apple GPUs reject such uploads (`AGX: Texture read/write
+assertion failed: bytes_per_row >= used_bytes_per_row`) and leave the mip empty. `SpriteAtlasCache` uploads its
+compressed atlas pages mip by mip. In the Apple port, the MM6 creature atlases OpenYAMM used to ship (1798x1731 down
+to 112x108) drew as black rectangles on macOS. iOS uses the same upload with ETC2 and ASTC data. The rounding matches
+upstream bgfx #3822, but divides instead of calling `bx::alignUp`, whose mask is wrong for ASTC blocks 5, 6, 10 or 12
+pixels wide. Initial uploads (`TextureMtl::create`) need no change: bimg already rounds their mip sizes.
+
+Run `python3 tests/test_bgfx_metal_texture_updates.py` after configuring the macOS build. The check compiles the
+actual patched upload function against a recording Metal device, covering uneven mip sizes in BC4/BC5/BC7, ETC2 and
+ASTC 5x5, both the direct and blit upload paths, explicit pitches, uncompressed and PVRTC textures.
+
 ## GLES compressed texture updates
 
 `bgfx-gles-unpack-row-length.patch` recognizes `GL_UNPACK_ROW_LENGTH` as core functionality in GLES 3.
