@@ -3088,8 +3088,14 @@ int ModRuntime::itemValue(const InventoryItem &item, int engineValue)
     return value;
 }
 
-void ModRuntime::itemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh)
+void ModRuntime::itemTooltip(
+    const InventoryItem &item, ModItemTooltip &texts, bool fresh, InventoryItem *pChangedItem, bool *pChanged)
 {
+    if (pChanged != nullptr)
+    {
+        *pChanged = false;
+    }
+
     if (!m_active || !m_host.party || m_host.party() == nullptr)
     {
         return;
@@ -3149,6 +3155,25 @@ void ModRuntime::itemTooltip(const InventoryItem &item, ModItemTooltip &texts, b
     }
 
     setModEventItem(pPreviousEventItem);
+
+    // The scripts made it another item (MAW's sealed spell book opened): the caller puts it in the item's place, and
+    // these texts, which were the old item's, are not kept.
+    if (eventItem.objectDescriptionId != item.objectDescriptionId && eventItem.objectDescriptionId != 0)
+    {
+        if (pChangedItem != nullptr)
+        {
+            *pChangedItem = eventItem;
+        }
+
+        if (pChanged != nullptr)
+        {
+            *pChanged = true;
+        }
+
+        m_itemTooltipCache.valid = false;
+        return;
+    }
+
     m_itemTooltipCache.valid = true;
     m_itemTooltipCache.time = now;
     m_itemTooltipCache.itemKey = itemKey;

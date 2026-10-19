@@ -1,0 +1,54 @@
+id: mod_runtime.maw.sealed_spell_books
+title: MAW's sealed spell books open when someone who can read them looks at them
+world: mm7
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's spell book rework (zzMaw-Spells.lua): a spell book that drops or lies in a chest comes as a sealed book of its
+# school (971-979, "Body Magic Book"), the book itself kept in BonusStrength. Looking at it (its information box) with
+# a character whose mastery in the school is enough for the book (Novice, Expert from an identify value of 5, Master
+# from 10, Grandmaster from 15) opens it: MAW's tooltip section makes the item the book it holds (it.Number =
+# it.BonusStrength). The port gave the scripts a copy of the item, so the books never opened (found in play,
+# 2026-10-18: they could not be read, worn or sold). Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: 7out01.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Reader
+        class: Cleric
+        level: 10
+        skills:
+        - name: Body
+          level: 3
+          mastery: 1
+        equipment:
+          main_hand: 61
+# A Body Magic Book holding Body Resistance (1983, identify value 2: a Novice opens it), and a Fire Magic Book holding
+# Fire Bolt (401), which a character without Fire Magic cannot open.
+- mod_lua:
+    code: |
+      modrt.inventoryPut(0, {Number = 977, EnchantPower = 1983})
+      modrt.inventoryPut(0, {Number = 971, EnchantPower = 401})
+      local function slot(number)
+        for k = 1, 138 do
+          local it = Party[0].Items[k]
+          if it and it.Number == number then return k end
+        end
+      end
+      BodySlot, FireSlot = slot(977), slot(971)
+      Game.CurrentPlayer = 0
+      local _, _, _, _, fireText = modrt.itemTooltip(0, "inv", FireSlot - 1, "", "", "", "", "")
+      modrt.itemTooltip(0, "inv", BodySlot - 1, "", "", "", "", "")
+      return Party[0].Items[BodySlot].Number, Game.ItemsTxt[Party[0].Items[BodySlot].Number].Name,
+        Party[0].Items[FireSlot].Number, fireText:find("You need at least") ~= nil
+    expect: "1983\tBody Resistance\t971\ttrue"
+# The opened book is a spell book like any other (the same kind as an ordinary one, item 400) and has a price.
+- mod_lua:
+    code: |
+      local book = Game.ItemsTxt[Party[0].Items[BodySlot].Number]
+      return book.EquipStat == Game.ItemsTxt[400].EquipStat, book.Value > 0
+    expect: "true\ttrue"

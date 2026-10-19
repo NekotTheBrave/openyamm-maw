@@ -5012,7 +5012,22 @@ int nativeItemTooltip(lua_State *pLuaState)
         fields[index]->assign(pText, length);
     }
 
-    modItemTooltip(item, texts, true);
+    // A script that made it another item (MAW's sealed spell book opened) changed the item itself, as in the original.
+    InventoryItem changedItem = {};
+
+    if (modItemTooltip(item, texts, true, &changedItem))
+    {
+        *view.pItemId = changedItem.objectDescriptionId;
+        *view.pIdentified = changedItem.identified;
+        *view.pBroken = changedItem.broken;
+        *view.pStolen = changedItem.stolen;
+        *view.pStandardEnchantId = changedItem.standardEnchantId;
+        *view.pStandardEnchantPower = changedItem.standardEnchantPower;
+        *view.pSpecialEnchantId = changedItem.specialEnchantId;
+        *view.pCurrentCharges = changedItem.currentCharges;
+        *view.pMaxCharges = changedItem.maxCharges;
+        *view.pModData = changedItem.modData;
+    }
 
     for (const std::string *pField : fields)
     {

@@ -328,7 +328,11 @@ public:
     // The texts of the item's information box; `texts` come in as the engine's and go out as the mod leaves them.
     // The box is built on every frame it shows, so the answer for the same item and texts is reused for a moment
     // unless `fresh` asks the scripts again.
-    virtual void itemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh) = 0;
+    // `pChangedItem`, when given, gets the item as the scripts left it when they made it another item (the original
+    // hands them the item itself: MAW opens a sealed spell book, 971-979, by making it the book it holds when one
+    // who can read it looks at it); false when they did not.
+    virtual void itemTooltip(
+        const InventoryItem &item, ModItemTooltip &texts, bool fresh, InventoryItem *pChangedItem, bool *pChanged) = 0;
 
     // The part of a statistic that comes from the character's skills: Bodybuilding in hit points, the armor
     // skills in armor class, the weapon skills in attack and damage. `statId` is the original engine's statistic
@@ -487,7 +491,9 @@ IModHooks *activeModHooks();
 void setActiveModHooks(IModHooks *pModHooks);
 
 // Runs the mod's event over the texts of an item's information box; without a mod runtime they stay as they are.
-void modItemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh = false);
+// True when the scripts made the item another one (`changedItem`, which the caller puts in the item's place).
+bool modItemTooltip(
+    const InventoryItem &item, ModItemTooltip &texts, bool fresh = false, InventoryItem *pChangedItem = nullptr);
 
 // The mod's word on a character's skill total, and on whether an item can be identified or repaired; the engine's
 // without a mod runtime.

@@ -6092,7 +6092,26 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
             .description = itemDescription,
         };
         const ModItemTooltip engineTexts = texts;
-        modItemTooltip(resolvedItemState, texts);
+        InventoryItem changedItem = {};
+
+        // A script that made the item another one changes the item itself, as the original hands it the item: MAW's
+        // sealed spell book (971-979) opens into the book it holds when someone who can read it looks at it. Done
+        // for the party's backpack, where such books are opened; the box shows the new item from the next frame.
+        if (modItemTooltip(resolvedItemState, texts, false, &changedItem)
+            && overlay.sourceType == GameplayUiController::ItemInspectSourceType::Inventory
+            && context.party() != nullptr)
+        {
+            if (InventoryItem *pItem = context.party()->memberInventoryItemMutable(
+                    overlay.sourceMemberIndex, overlay.sourceGridX, overlay.sourceGridY);
+                pItem != nullptr && pItem->objectDescriptionId == resolvedItemState.objectDescriptionId)
+            {
+                pItem->objectDescriptionId = changedItem.objectDescriptionId;
+                pItem->identified = changedItem.identified;
+                pItem->standardEnchantId = changedItem.standardEnchantId;
+                pItem->standardEnchantPower = changedItem.standardEnchantPower;
+                pItem->specialEnchantId = changedItem.specialEnchantId;
+            }
+        }
 
         if (!(texts == engineTexts))
         {

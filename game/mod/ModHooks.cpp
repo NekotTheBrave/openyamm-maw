@@ -293,12 +293,16 @@ void setActiveModHooks(IModHooks *pModHooks)
     g_pActiveModHooks = pModHooks;
 }
 
-void modItemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh)
+bool modItemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh, InventoryItem *pChangedItem)
 {
+    bool changed = false;
+
     if (IModHooks *pModHooks = activeModHooks())
     {
-        pModHooks->itemTooltip(item, texts, fresh);
+        pModHooks->itemTooltip(item, texts, fresh, pChangedItem, &changed);
     }
+
+    return changed;
 }
 
 int modPlayerSkillTotal(ModPlayerSkillTotal kind, const Character &character, int engineValue)

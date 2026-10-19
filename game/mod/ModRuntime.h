@@ -85,7 +85,8 @@ public:
     int statisticEffect(int value, int engineEffect) override;
     int attackDelay(const Character &character, bool ranged, int engineTicks) override;
     int itemValue(const InventoryItem &item, int engineValue) override;
-    void itemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh) override;
+    void itemTooltip(const InventoryItem &item, ModItemTooltip &texts, bool fresh, InventoryItem *pChangedItem,
+        bool *pChanged) override;
     ModPlayerActionResult playerAction(int action, int param, int param2) override;
     int playerSkillTotal(ModPlayerSkillTotal kind, const Character &character, int engineValue) override;
     bool canHandleItem(bool repair, uint32_t itemId, bool engineAnswer) override;
