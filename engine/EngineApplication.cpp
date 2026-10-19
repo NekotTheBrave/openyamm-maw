@@ -495,7 +495,8 @@ int EngineApplication::run() const
     uint64_t fpsBgfxFrameNanoseconds = 0;
     std::vector<uint64_t> cpuFrameTimes;
     std::vector<uint64_t> gpuFrameTimes;
-    uint32_t lastGpuFrameNumber = UINT32_MAX;
+    int64_t lastGpuTimeBegin = -1;
+    int64_t lastGpuTimeEnd = -1;
     const auto syncManagedTextInput = [this, &pWindow]()
     {
         if (!m_textInputActiveCallback)
@@ -664,12 +665,15 @@ int EngineApplication::run() const
                 fpsLoopNanoseconds += frameLoopNanoseconds;
                 cpuFrameTimes.push_back(frameLoopNanoseconds);
                 const bgfx::Stats *pStats = bgfx::getStats();
+                // GPU results arrive asynchronously. Metal leaves gpuFrameNum at zero, so count each completed
+                // timestamp pair once.
                 if (pStats != nullptr && pStats->gpuTimerFreq > 0 && pStats->gpuTimeEnd > pStats->gpuTimeBegin
-                    && pStats->gpuFrameNum != lastGpuFrameNumber)
+                    && (pStats->gpuTimeBegin != lastGpuTimeBegin || pStats->gpuTimeEnd != lastGpuTimeEnd))
                 {
                     gpuFrameTimes.push_back(uint64_t(double(pStats->gpuTimeEnd - pStats->gpuTimeBegin)
                         / double(pStats->gpuTimerFreq) * 1000000000.0));
-                    lastGpuFrameNumber = pStats->gpuFrameNum;
+                    lastGpuTimeBegin = pStats->gpuTimeBegin;
+                    lastGpuTimeEnd = pStats->gpuTimeEnd;
                 }
             }
 

@@ -101,6 +101,19 @@ function(openyamm_configure_ffmpeg)
             --strip=${CMAKE_STRIP}
             --nm=${CMAKE_NM}
         )
+    elseif (APPLE)
+        # Build for the SDK, architecture and deployment target of the rest of the macOS build.
+        set(openyammFfmpegAppleFlags "-isysroot ${CMAKE_OSX_SYSROOT}")
+        if (NOT CMAKE_OSX_ARCHITECTURES STREQUAL "")
+            string(APPEND openyammFfmpegAppleFlags " -arch ${CMAKE_OSX_ARCHITECTURES}")
+        endif()
+        if (NOT CMAKE_OSX_DEPLOYMENT_TARGET STREQUAL "")
+            string(APPEND openyammFfmpegAppleFlags " -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+        endif()
+        list(APPEND openyammFfmpegConfigureArgs
+            "--extra-cflags=${openyammFfmpegAppleFlags}"
+            "--extra-ldflags=${openyammFfmpegAppleFlags}"
+        )
     endif()
 
     file(MAKE_DIRECTORY "${OPENYAMM_FFMPEG_BUILD_DIR}")

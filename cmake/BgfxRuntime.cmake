@@ -24,7 +24,8 @@ function(openyamm_bgfx_shader_targets outputVariable)
     elseif (WIN32)
         set(shaderTargets "windows|150|glsl")
     elseif (APPLE)
-        set(shaderTargets "osx|150|glsl")
+        openyamm_bgfx_shader_platform(shaderPlatform)
+        set(shaderTargets "${shaderPlatform}|metal|metal")
     else()
         set(shaderTargets "linux|150|glsl")
     endif()
@@ -163,7 +164,7 @@ function(openyamm_configure_bgfx_runtime)
     if (NOT TARGET openyamm_bgfx)
         find_package(Threads REQUIRED)
 
-        if (NOT ANDROID)
+        if (NOT ANDROID AND NOT APPLE)
             find_package(OpenGL REQUIRED)
         endif()
 
@@ -205,7 +206,13 @@ function(openyamm_configure_bgfx_runtime)
             )
         endif()
 
-        if (WIN32 OR OPENYAMM_USE_VULKAN)
+        if (APPLE)
+            set(openyammMetalSource "${OPENYAMM_BGFX_SOURCE_DIR}/src/renderer_mtl.cpp")
+            set_source_files_properties("${openyammMetalSource}" PROPERTIES LANGUAGE OBJCXX)
+            target_sources(openyamm_bgfx PRIVATE "${openyammMetalSource}")
+        endif()
+
+        if (WIN32 OR OPENYAMM_USE_VULKAN OR APPLE)
             target_sources(openyamm_bgfx PRIVATE
                 ${OPENYAMM_BGFX_SOURCE_DIR}/src/shader_dxbc.cpp
             )
@@ -228,7 +235,12 @@ function(openyamm_configure_bgfx_runtime)
         )
 
         target_compile_features(openyamm_bgfx PUBLIC cxx_std_20)
-        if (ANDROID)
+        if (APPLE)
+            target_include_directories(openyamm_bgfx PRIVATE ${OPENYAMM_BX_SOURCE_DIR}/include/compat/osx)
+            set(openyammBgfxOpenGlVersion 0)
+            set(openyammBgfxOpenGlesVersion 0)
+            set(openyammBgfxDebug "$<IF:$<CONFIG:Debug>,1,0>")
+        elseif (ANDROID)
             set(openyammBgfxOpenGlVersion 0)
             set(openyammBgfxOpenGlesVersion 30)
             set(openyammBgfxDebug 0)
@@ -252,7 +264,7 @@ function(openyamm_configure_bgfx_runtime)
             PRIVATE
                 BGFX_CONFIG_RENDERER_DIRECT3D11=0
                 BGFX_CONFIG_RENDERER_DIRECT3D12=0
-                BGFX_CONFIG_RENDERER_METAL=0
+                BGFX_CONFIG_RENDERER_METAL=$<BOOL:${APPLE}>
                 BGFX_CONFIG_RENDERER_VULKAN=$<BOOL:${OPENYAMM_USE_VULKAN}>
                 BGFX_CONFIG_RENDERER_WEBGPU=0
                 BGFX_CONFIG_RENDERER_OPENGL=${openyammBgfxOpenGlVersion}
@@ -271,7 +283,11 @@ function(openyamm_configure_bgfx_runtime)
 
         target_link_libraries(openyamm_bgfx PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
 
-        if (ANDROID)
+        if (APPLE)
+            target_link_libraries(openyamm_bgfx PUBLIC
+                "-framework Foundation" "-framework IOKit" "-framework Metal" "-framework QuartzCore"
+            )
+        elseif (ANDROID)
             target_link_libraries(openyamm_bgfx PUBLIC EGL GLESv3 android log)
         else()
             target_link_libraries(openyamm_bgfx PUBLIC OpenGL::GL)
@@ -375,9 +391,14 @@ function(openyamm_configure_bgfx_runtime)
 
         add_executable(openyamm_shaderc ${openyammShadercSources})
 
-        if (OPENYAMM_USE_VULKAN)
+        if (OPENYAMM_USE_VULKAN OR APPLE)
             include(BgfxSpirv)
             openyamm_configure_spirv_compiler()
+        endif()
+
+        if (APPLE)
+            target_sources(openyamm_shaderc PRIVATE ${OPENYAMM_BGFX_SOURCE_DIR}/tools/shaderc/shaderc_metal.cpp)
+            target_compile_definitions(openyamm_shaderc PRIVATE OPENYAMM_SHADERC_ENABLE_METAL=1)
         endif()
 
         target_include_directories(openyamm_shaderc PRIVATE

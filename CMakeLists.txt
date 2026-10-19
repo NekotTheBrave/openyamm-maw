@@ -6,6 +6,13 @@ if (WIN32)
     enable_language(RC)
 endif()
 
+# SDL's Cocoa/UIKit backends are Objective-C and bgfx's Metal renderer is Objective-C++.
+if (APPLE)
+    enable_language(OBJC OBJCXX)
+    set(CMAKE_OBJCXX_STANDARD 20)
+    set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+endif()
+
 if (CMAKE_VERSION VERSION_GREATER_EQUAL 4.0 AND NOT DEFINED CMAKE_POLICY_VERSION_MINIMUM)
     set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 endif()
