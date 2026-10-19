@@ -1743,6 +1743,35 @@ GameplayInteractionController::updateWorldInteractionFrame(
                 pWorldRuntime != nullptr ? pWorldRuntime->buildHeldItemDropRequest() : std::nullopt;
             dropHeldItemToActiveWorld(runtime, heldItemDropRequest);
         }
+        // MAW port: the use key (E), or the interact key with nothing near to use, with an item in hand puts the item
+        // in the pack, the active member's first and then the others', as picking it up from the ground would. An
+        // item an event put in the hand (a bag opened, MAW's Dimensional Map, which cannot be dropped) went in only by
+        // way of the inventory screen or a portrait.
+        else if ((input.action(KeyboardAction::Use).pressed
+                || (input.action(KeyboardAction::Trigger).pressed && !keyboardInteractionResult.activated))
+            && runtime.heldInventoryItem().active
+            && runtime.party() != nullptr)
+        {
+            Party &party = *runtime.party();
+            const size_t memberCount = party.members().size();
+            bool placed = false;
+
+            for (size_t offset = 0; offset < memberCount && !placed; ++offset)
+            {
+                std::string failureStatus;
+                placed = GameplayHeldItemController::tryAutoPlaceHeldInventoryItemOnPartyMember(
+                    runtime.heldInventoryItem(),
+                    party,
+                    (party.activeMemberIndex() + offset) % memberCount,
+                    failureStatus);
+            }
+
+            if (!placed)
+            {
+                runtime.setStatusBarEvent("Pack is Full!");
+                runtime.playSpeechReaction(party.activeMemberIndex(), SpeechId::InventoryRoom, true);
+            }
+        }
 
         result.heldItemHandled = true;
         return result;

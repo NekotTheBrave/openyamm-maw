@@ -3069,8 +3069,9 @@ bool runPressAction(
         return true;
     }
 
-    // combat: the turn-based mode key (Enter), as the player presses it.
-    if (action == "attack" || action == "cast_ready" || action == "combat")
+    // combat: the turn-based mode key (Enter); interact: the interaction key (Space); use: the use key (E), as the
+    // player presses them.
+    if (action == "attack" || action == "cast_ready" || action == "combat" || action == "interact" || action == "use")
     {
         if (!ensureRuntimeDriver(context, failures))
         {
@@ -3082,7 +3083,11 @@ bool runPressAction(
         if (!context.runtimeDriver->holdGameplayAction(
                 action == "attack"
                     ? KeyboardAction::Attack
-                    : (action == "combat" ? KeyboardAction::Combat : KeyboardAction::CastReady),
+                    : action == "combat"
+                    ? KeyboardAction::Combat
+                    : action == "interact"
+                    ? KeyboardAction::Trigger
+                    : action == "use" ? KeyboardAction::Use : KeyboardAction::CastReady,
                 seconds,
                 failure))
         {

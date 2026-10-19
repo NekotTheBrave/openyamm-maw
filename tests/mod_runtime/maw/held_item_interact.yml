@@ -1,0 +1,56 @@
+id: mod_runtime.maw.held_item_interact
+title: The use key (E) or the interact key puts an item held in the hand into the pack
+world: mm7
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# An event can put an item in the hand (a bag opened, MAW's Dimensional Map, which cannot be dropped). The use key
+# (E), or the interact key (Space) with nothing near to use, puts it in the pack, the active member's first and then
+# the others'; it had been only the inventory screen or a portrait (found in play, 2026-10-18). Run with the MAW
+# mods.yml.
+- new_game_flow:
+    start_map: 7out01.odm
+    party:
+      gold: 200
+      food: 7
+      members:
+      - name: Keeper
+        class: Knight
+        level: 1
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment:
+          main_hand: 11
+# In a dungeon: outdoors the key's target search loads sprite textures, which a run without a window cannot.
+- load_map:
+    map: 7d06.blv
+- mod_lua:
+    code: |
+      local function count(number)
+        local n = 0
+        for k = 1, 138 do
+          local it = Party[0].Items[k]
+          if it and it.Number == number then n = n + 1 end
+        end
+        return n
+      end
+      Count = count
+      Before = count(401)
+      modrt.heldItemSet({Number = 401})
+      return Mouse.Item.Number
+    expect: "401"
+- press_action: use
+- mod_lua:
+    code: |
+      local inPack, hand = Count(401) - Before, Mouse.Item.Number
+      modrt.heldItemSet({Number = 401})
+      return hand, inPack
+    expect: "0\t1"
+- press_action: interact
+- mod_lua:
+    code: return Mouse.Item.Number, Count(401) - Before
+    expect: "0\t2"
