@@ -65,9 +65,7 @@ function MM6.StartNicolaiQuest()
     evt.MoveNPC(MM6.NicolaiNpcId, 0)
     SetQBit(QBit(MM6.NicolaiQuestQBit))
     SetQBit(QBit(MM6.NicolaiFollowerQBit))
-    SetPartyVariable(
-        MM6.NicolaiKidnapDeadlineVariable,
-        CurrentGameMinutes() + math.floor(MM6.NicolaiKidnapInitialDelaySeconds / 60))
+    MM6.SetNicolaiKidnapDeadline()
     evt.SetNPCTopic(MM6.NicolaiNpcId, 0, 1332)
 end
 
@@ -99,30 +97,31 @@ function MM6.RecoverNicolaiAtCircus()
     evt.SetNPCTopic(MM6.NicolaiNpcId, 0, 1335)
 end
 
-function MM6.NormalizeNicolaiState()
+function MM6.SetNicolaiKidnapDeadline()
+    SetPartyVariable(
+        MM6.NicolaiKidnapDeadlineVariable,
+        CurrentGameMinutes() + math.floor(MM6.NicolaiKidnapInitialDelaySeconds / 60))
+end
+
+-- Like MMerge, a map load restarts the one-hour countdown, so travel does not make Nicolai vanish on arrival.
+function MM6.NormalizeNicolaiState(restartKidnapCountdown)
     local hasFollower = HasFollowerNpc(MM6.NicolaiNpcId)
     local legacyFollowerFlag = IsQBitSet(QBit(MM6.NicolaiFollowerQBit))
 
     if IsQBitSet(QBit(MM6.NicolaiQuestQBit)) then
         local deadline = GetPartyVariable(MM6.NicolaiKidnapDeadlineVariable)
-        if deadline > 0 and CurrentGameMinutes() >= deadline then
+        if not restartKidnapCountdown and deadline > 0 and CurrentGameMinutes() >= deadline then
             MM6.KidnapNicolai(false, true)
             return
         end
 
-        if hasFollower then
-            SetQBit(QBit(MM6.NicolaiFollowerQBit))
-            if deadline == 0 then
-                SetPartyVariable(
-                    MM6.NicolaiKidnapDeadlineVariable,
-                    CurrentGameMinutes() + math.floor(MM6.NicolaiKidnapInitialDelaySeconds / 60))
+        if hasFollower or legacyFollowerFlag then
+            if not hasFollower then
+                AddFollowerNpc(MM6.NicolaiNpcId)
             end
-        elseif legacyFollowerFlag then
-            AddFollowerNpc(MM6.NicolaiNpcId)
-            if deadline == 0 then
-                SetPartyVariable(
-                    MM6.NicolaiKidnapDeadlineVariable,
-                    CurrentGameMinutes() + math.floor(MM6.NicolaiKidnapInitialDelaySeconds / 60))
+            SetQBit(QBit(MM6.NicolaiFollowerQBit))
+            if restartKidnapCountdown or deadline == 0 then
+                MM6.SetNicolaiKidnapDeadline()
             end
         else
             MM6.KidnapNicolai(false, true)
@@ -188,7 +187,11 @@ function MM6.RegisterNicolaiKidnapTimer()
         MM6.NicolaiKidnapTimerEventId,
         MM6.NicolaiKidnapTimerIntervalSeconds,
         function()
-            MM6.KidnapNicolai(false)
+            -- The map timer runs from map load; Nicolai leaves only once his own deadline has passed.
+            local deadline = GetPartyVariable(MM6.NicolaiKidnapDeadlineVariable)
+            if deadline > 0 and CurrentGameMinutes() >= deadline then
+                MM6.KidnapNicolai(false)
+            end
         end,
         "Nicolai Kidnap",
         nil,
@@ -197,7 +200,7 @@ end
 
 function MM6.RegisterNicolaiStateOnLoad()
     RegisterMapOnLoadEvent(MM6.NicolaiStateOnLoadEventId, "Nicolai State", function()
-        MM6.NormalizeNicolaiState()
+        MM6.NormalizeNicolaiState(true)
     end)
 end
 

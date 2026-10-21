@@ -1,0 +1,910 @@
+screen: SettingsInterface
+elements:
+- id: SettingsInterfaceRoot
+  anchor: center
+  anchor_space: screen
+  width: 853.3333
+  height: 480
+  z_index: 0
+  scale:
+    min: 0.1
+    max: 8.0
+    reference_width: 853.3333
+    reference_height: 480
+  notes: Native menu canvas fitted uniformly by MenuDesignScreen.
+  children:
+  - id: SettingsInterfaceBackground
+    anchor: top_left
+    offset_x: 0.0
+    offset_y: 0.0
+    width: 853.3333
+    height: 480.0
+    z_index: 0
+    visible: true
+    interactive: false
+    asset:
+      default: hud_x2/menus/omenu_title_backdrop.png
+    notes: Use the live dimmed game view instead when entered from Pause.
+  - id: SettingsInterfacePanel
+    anchor: top_left
+    offset_x: 62.9333
+    offset_y: 48.5333
+    width: 727.4667
+    height: 417.0667
+    z_index: 2
+    visible: true
+    interactive: false
+    asset:
+      default: hud_x2/menus/omenu_frame.png
+  - id: SettingsInterfaceSeal
+    anchor: top_left
+    offset_x: 75.2
+    offset_y: 14.4501
+    width: 24.0
+    height: 24.0
+    z_index: 8
+    visible: true
+    interactive: false
+    asset:
+      default: hud_x2/menus/omenu_seal.png
+  - id: SettingsInterfaceWordmark
+    anchor: top_left
+    offset_x: 108.8
+    offset_y: 13.3333
+    width: 136.1584
+    height: 16.5333
+    z_index: 10
+    visible: true
+    interactive: false
+    text:
+      value: OpenYAMM
+      font: fondamento
+      color: '#e9d4a6'
+      align_x: left
+      align_y: middle
+      scale: 0.51667
+      pad_x: 0.0
+  - id: SettingsInterfaceSubtitle
+    anchor: top_left
+    offset_x: 108.8
+    offset_y: 32.5333
+    width: 136.1584
+    height: 7.0336
+    z_index: 10
+    visible: true
+    interactive: false
+    text:
+      value: Universe of Might and Magic
+      font: menu_arrus
+      color: '#c2b69b'
+      align_x: left
+      align_y: middle
+      scale: 0.37053
+      pad_x: 0.0
+  - id: SettingsInterfaceTitle
+    anchor: top_left
+    offset_x: 91.7333
+    offset_y: 73.0667
+    width: 400.0
+    height: 27.5168
+    z_index: 10
+    visible: true
+    interactive: false
+    text:
+      value: Settings
+      font: fondamento
+      color: '#efe0bc'
+      align_x: left
+      align_y: middle
+      scale: 0.71667
+      pad_x: 0.0
+  - id: SettingsInterfaceHeadRule
+    anchor: top_left
+    offset_x: 91.7333
+    offset_y: 111.2501
+    width: 669.8667
+    height: 0.5333
+    z_index: 10
+    visible: true
+    interactive: false
+    notes: 'Renderer primitive: 1px brass rule, #b5a47755, in the browser reference.'
+  - id: SettingsInterfaceFooterRule
+    anchor: top_left
+    offset_x: 91.7333
+    offset_y: 403.7333
+    width: 669.8667
+    height: 0.5333
+    z_index: 10
+    visible: true
+    interactive: false
+    notes: 'Renderer primitive: 1px brass rule, #b5a47755, in the browser reference.'
+  - id: SettingsInterfaceTabGameplay
+    anchor: top_left
+    offset_x: 91.7333
+    offset_y: 124.5835
+    width: 97.6
+    height: 34.1333
+    z_index: 10
+    visible: true
+    interactive: true
+    asset:
+      default: hud_x2/menus/omenu_tab.png
+      selected: hud_x2/menus/omenu_tab_selected.png
+    text:
+      value: Gameplay
+      font: fondamento
+      color: '#bfc1b2'
+      align_x: left
+      align_y: middle
+      scale: 0.43333
+      pad_x: 8.5333
+    notes: Switch section without losing draft values. Selected state follows current section.
+  - id: SettingsInterfaceTabInterface
+    anchor: top_left
+    offset_x: 91.7333
+    offset_y: 164.0502
+    width: 97.6
+    height: 34.1333
+    z_index: 10
+    visible: true
+    interactive: true
+    asset:
+      default: hud_x2/menus/omenu_tab.png
+      selected: hud_x2/menus/omenu_tab_selected.png
+    text:
+      value: Interface
+      font: fondamento
+      color: '#f5dfae'
+      align_x: left
+      align_y: middle
+      scale: 0.43333
+      pad_x: 8.5333
+    notes: Switch section without losing draft values. Selected state follows current section.
+  - id: SettingsInterfaceTabVideo
+    anchor: top_left
+    offset_x: 91.7333
+    offset_y: 203.5169
+    width: 97.6
+    height: 34.1333
+    z_index: 10
+    visible: true
+    interactive: true
+    asset:
+      default: hud_x2/menus/omenu_tab.png
+      selected: hud_x2/menus/omenu_tab_selected.png
+    text:
+      value: Video
+      font: fondamento
+      color: '#bfc1b2'
+      align_x: left
+      align_y: middle
+      scale: 0.43333
+      pad_x: 8.5333
+    notes: Switch section without losing draft values. Selected state follows current section.
+  - id: SettingsInterfaceTabAudio
+    anchor: top_left
+    offset_x: 91.7333
+    offset_y: 242.9836
+    width: 97.6
+    height: 34.1333
+    z_index: 10
+    visible: true
+    interactive: true
+    asset:
+      default: hud_x2/menus/omenu_tab.png
+      selected: hud_x2/menus/omenu_tab_selected.png
+    text:
+      value: Audio
+      font: fondamento
+      color: '#bfc1b2'
+      align_x: left
+      align_y: middle
+      scale: 0.43333
+      pad_x: 8.5333
+    notes: Switch section without losing draft values. Selected state follows current section.
+  - id: SettingsInterfaceTabControls
+    anchor: top_left
+    offset_x: 91.7333
+    offset_y: 282.4503
+    width: 97.6
+    height: 34.1333
+    z_index: 10
+    visible: true
+    interactive: true
+    asset:
+      default: hud_x2/menus/omenu_tab.png
+      selected: hud_x2/menus/omenu_tab_selected.png
+    text:
+      value: Controls
+      font: fondamento
+      color: '#bfc1b2'
+      align_x: left
+      align_y: middle
+      scale: 0.43333
+      pad_x: 8.5333
+    notes: Switch section without losing draft values. Selected state follows current section.
+  - id: SettingsInterfaceTabKeyboard
+    anchor: top_left
+    offset_x: 91.7333
+    offset_y: 321.917
+    width: 97.6
+    height: 34.1333
+    z_index: 10
+    visible: true
+    interactive: true
+    asset:
+      default: hud_x2/menus/omenu_tab.png
+      selected: hud_x2/menus/omenu_tab_selected.png
+    text:
+      value: Keyboard
+      font: fondamento
+      color: '#bfc1b2'
+      align_x: left
+      align_y: middle
+      scale: 0.43333
+      pad_x: 8.5333
+    notes: Switch section without losing draft values. Selected state follows current section.
+  - id: SettingsInterfaceHeading
+    anchor: top_left
+    offset_x: 220.8
+    offset_y: 124.5835
+    width: 540.8
+    height: 23.4667
+    z_index: 10
+    visible: true
+    interactive: false
+    text:
+      value: Interface
+      font: fondamento
+      color: '#e6d1a8'
+      align_x: left
+      align_y: middle
+      scale: 0.51667
+      pad_x: 0.0
+  - id: SettingsInterfaceDefaultsButton
+    anchor: top_left
+    offset_x: 661.9003
+    offset_y: 76.6917
+    width: 99.7003
+    height: 20.2667
+    z_index: 10
+    visible: true
+    interactive: true
+    asset:
+      default: hud_x2/menus/omenu_button_small_default.png
+      highlighted: hud_x2/menus/omenu_button_small_hover.png
+      pressed: hud_x2/menus/omenu_button_small_pressed.png
+    text:
+      value: Restore Defaults
+      font: fondamento
+      color: '#cbc5af'
+      align_x: center
+      align_y: middle
+      scale: 0.33333
+      pad_x: 11.7333
+    notes: 'Live label; image padding, disabled and focus states: level_generation/ui/menu_study_20260928/runtime_stage/contracts/theme.yml.'
+  - id: SettingsInterfaceBackButton
+    anchor: top_left
+    offset_x: 91.7333
+    offset_y: 414.4
+    width: 54.7669
+    height: 26.1333
+    z_index: 10
+    visible: true
+    interactive: true
+    asset:
+      default: hud_x2/menus/omenu_button_quiet_default.png
+      highlighted: hud_x2/menus/omenu_button_quiet_hover.png
+      pressed: hud_x2/menus/omenu_button_quiet_pressed.png
+    text:
+      value: Back
+      font: fondamento
+      color: '#cbc5af'
+      align_x: center
+      align_y: middle
+      scale: 0.43333
+      pad_x: 12.8
+    notes: 'Live label; image padding, disabled and focus states: level_generation/ui/menu_study_20260928/runtime_stage/contracts/theme.yml.'
+  - id: SettingsInterfaceRevertButton
+    anchor: top_left
+    offset_x: 573.7333
+    offset_y: 414.4
+    width: 65.9248
+    height: 26.1333
+    z_index: 10
+    visible: true
+    interactive: true
+    asset:
+      default: hud_x2/menus/omenu_button_quiet_default.png
+      highlighted: hud_x2/menus/omenu_button_quiet_hover.png
+      pressed: hud_x2/menus/omenu_button_quiet_pressed.png
+    text:
+      value: Revert
+      font: fondamento
+      color: '#8e948b'
+      align_x: center
+      align_y: middle
+      scale: 0.43333
+      pad_x: 12.8
+    notes: 'Live label; image padding, disabled and focus states: level_generation/ui/menu_study_20260928/runtime_stage/contracts/theme.yml.'
+  - id: SettingsInterfaceApplyButton
+    anchor: top_left
+    offset_x: 646.0581
+    offset_y: 414.4
+    width: 115.5419
+    height: 26.1333
+    z_index: 10
+    visible: true
+    interactive: true
+    asset:
+      default: hud_x2/menus/omenu_button_primary_default.png
+      highlighted: hud_x2/menus/omenu_button_primary_hover.png
+      pressed: hud_x2/menus/omenu_button_primary_pressed.png
+    text:
+      value: Apply Changes
+      font: fondamento
+      color: '#8e948b'
+      align_x: center
+      align_y: middle
+      scale: 0.43333
+      pad_x: 12.8
+    notes: 'Live label; image padding, disabled and focus states: level_generation/ui/menu_study_20260928/runtime_stage/contracts/theme.yml.'
+  - id: SettingsInterfaceDirtyStatus
+    anchor: top_left
+    offset_x: 293.0
+    offset_y: 421.7083
+    width: 270
+    height: 11.5168
+    z_index: 10
+    visible: true
+    interactive: false
+    text:
+      value: '{settings_status}'
+      font: menu_lucida
+      color: '#b8b9a8'
+      align_x: left
+      align_y: middle
+      scale: 0.60235
+      pad_x: 0.0
+    notes: Controller supplies live text.
+  - id: SettingsInterfaceScrollViewport
+    anchor: top_left
+    offset_x: 220.8
+    offset_y: 152.4165
+    width: 540.8
+    height: 241.7168
+    z_index: 10
+    visible: true
+    interactive: false
+    notes: Clip all descendant rendering and pointer hits to this viewport. Scroll offset is controller-owned; YAML has
+      no clipping/scroll primitive.
+    children:
+    - id: SettingsInterfaceGroup0
+      anchor: top_left
+      offset_x: 0.0
+      offset_y: 0.0
+      width: 525.3333
+      height: 18.1333
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Combat messages
+        font: fondamento
+        color: '#e0c990'
+        align_x: left
+        align_y: middle
+        scale: 0.4
+        pad_x: 0.0
+    - id: SettingsInterfaceGroup1
+      anchor: top_left
+      offset_x: 0.0
+      offset_y: 107.7173
+      width: 525.3333
+      height: 18.1333
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Enemy health bars
+        font: fondamento
+        color: '#e0c990'
+        align_x: left
+        align_y: middle
+        scale: 0.4
+        pad_x: 0.0
+    - id: SettingsInterfaceGroup2
+      anchor: top_left
+      offset_x: 0.0
+      offset_y: 254.3599
+      width: 525.3333
+      height: 18.1333
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Exploration
+        font: fondamento
+        color: '#e0c990'
+        align_x: left
+        align_y: middle
+        scale: 0.4
+        pad_x: 0.0
+    - id: SettingsInterfaceGroup3
+      anchor: top_left
+      offset_x: 0.0
+      offset_y: 362.0772
+      width: 525.3333
+      height: 18.1333
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Party
+        font: fondamento
+        color: '#e0c990'
+        align_x: left
+        align_y: middle
+        scale: 0.4
+        pad_x: 0.0
+    - id: SettingsInterfaceGroup4
+      anchor: top_left
+      offset_x: 0.0
+      offset_y: 430.8692
+      width: 525.3333
+      height: 18.1333
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Updates
+        font: fondamento
+        color: '#e0c990'
+        align_x: left
+        align_y: middle
+        scale: 0.4
+        pad_x: 0.0
+    - id: SettingsInterfaceCombatTextLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 25.6
+      width: 435.7333
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Floating combat text
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsInterfaceCombatTextDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 41.8085
+      width: 435.7333
+      height: 11.5168
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Show damage numbers and combat messages in the world.
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsInterfaceCombatTextControl
+      anchor: top_left
+      offset_x: 453.3333
+      offset_y: 23.3837
+      width: 70.4
+      height: 32.158
+      z_index: 10
+      visible: true
+      interactive: true
+      asset:
+        default: hud_x2/menus/omenu_toggle_off.png
+        selected: hud_x2/menus/omenu_toggle_on.png
+    - id: SettingsInterfaceShowHitsLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 64.5253
+      width: 435.7333
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Hit messages
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsInterfaceShowHitsDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 80.7338
+      width: 435.7333
+      height: 11.5168
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Describe each attack in the status bar.
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsInterfaceShowHitsControl
+      anchor: top_left
+      offset_x: 453.3333
+      offset_y: 62.309
+      width: 70.4
+      height: 32.158
+      z_index: 10
+      visible: true
+      interactive: true
+      asset:
+        default: hud_x2/menus/omenu_toggle_off.png
+        selected: hud_x2/menus/omenu_toggle_on.png
+    - id: SettingsInterfaceEnemyHealthBarsLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 133.3173
+      width: 395.2
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Show health bars
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsInterfaceEnemyHealthBarsDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 149.5258
+      width: 395.2
+      height: 11.5168
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Over the target, recent combatants, or all nearby visible enemies.
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsInterfaceEnemyHealthBarsControl
+      anchor: top_left
+      offset_x: 412.8
+      offset_y: 135.4466
+      width: 110.9333
+      height: 23.4667
+      z_index: 10
+      visible: true
+      interactive: true
+      asset:
+        default: hud_x2/menus/omenu_text_field.png
+      text:
+        value: '{enemy_health_bars}'
+        font: menu_lucida
+        color: '#e9dcc0'
+        align_x: left
+        align_y: middle
+        scale: 0.71529
+        pad_x: 6.9333
+    - id: SettingsInterfaceEnemyHealthBarValuesLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 172.2426
+      width: 395.2
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Health values
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsInterfaceEnemyHealthBarValuesDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 188.4511
+      width: 395.2
+      height: 11.5168
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Show current and maximum health above the bars.
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsInterfaceEnemyHealthBarValuesControl
+      anchor: top_left
+      offset_x: 412.8
+      offset_y: 174.3719
+      width: 110.9333
+      height: 23.4667
+      z_index: 10
+      visible: true
+      interactive: true
+      asset:
+        default: hud_x2/menus/omenu_text_field.png
+      text:
+        value: '{enemy_health_bar_values}'
+        font: menu_lucida
+        color: '#e9dcc0'
+        align_x: left
+        align_y: middle
+        scale: 0.71529
+        pad_x: 6.9333
+    - id: SettingsInterfaceEnemyHealthBarDamageTrailLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 211.1679
+      width: 435.7333
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Damage trail
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsInterfaceEnemyHealthBarDamageTrailDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 227.3764
+      width: 435.7333
+      height: 11.5168
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Briefly show recently lost health behind the current fill.
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsInterfaceEnemyHealthBarDamageTrailControl
+      anchor: top_left
+      offset_x: 453.3333
+      offset_y: 208.9515
+      width: 70.4
+      height: 32.158
+      z_index: 10
+      visible: true
+      interactive: true
+      asset:
+        default: hud_x2/menus/omenu_toggle_off.png
+        selected: hud_x2/menus/omenu_toggle_on.png
+    - id: SettingsInterfaceQuestMarkersLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 279.9599
+      width: 435.7333
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Quest markers
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsInterfaceQuestMarkersDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 296.1684
+      width: 435.7333
+      height: 11.5168
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Mark characters with quests to offer or complete, where the world has them.
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsInterfaceQuestMarkersControl
+      anchor: top_left
+      offset_x: 453.3333
+      offset_y: 277.7435
+      width: 70.4
+      height: 32.158
+      z_index: 10
+      visible: true
+      interactive: true
+      asset:
+        default: hud_x2/menus/omenu_toggle_off.png
+        selected: hud_x2/menus/omenu_toggle_on.png
+    - id: SettingsInterfaceContextActionPopupLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 318.8852
+      width: 435.7333
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Context action menu
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsInterfaceContextActionPopupDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 335.0937
+      width: 435.7333
+      height: 11.5168
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Offer actions for the object under the pointer.
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsInterfaceContextActionPopupControl
+      anchor: top_left
+      offset_x: 453.3333
+      offset_y: 316.6688
+      width: 70.4
+      height: 32.158
+      z_index: 10
+      visible: true
+      interactive: true
+      asset:
+        default: hud_x2/menus/omenu_toggle_off.png
+        selected: hud_x2/menus/omenu_toggle_on.png
+    - id: SettingsInterfacePartyFrameLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 387.6772
+      width: 435.7333
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Portrait frame
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsInterfacePartyFrameDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 403.8857
+      width: 435.7333
+      height: 11.5168
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Draw the frame behind the party portraits during play. Other screens always keep it.
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsInterfacePartyFrameControl
+      anchor: top_left
+      offset_x: 453.3333
+      offset_y: 385.4608
+      width: 70.4
+      height: 32.158
+      z_index: 10
+      visible: true
+      interactive: true
+      asset:
+        default: hud_x2/menus/omenu_toggle_off.png
+        selected: hud_x2/menus/omenu_toggle_on.png
+    - id: SettingsInterfaceCheckForUpdatesLabel
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 456.4692
+      width: 395.2
+      height: 14.0752
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Check for updates
+        font: menu_arrus
+        color: '#eadfc6'
+        align_x: left
+        align_y: middle
+        scale: 0.74105
+        pad_x: 0.0
+    - id: SettingsInterfaceCheckForUpdatesDescription
+      anchor: top_left
+      offset_x: 1.6
+      offset_y: 472.6777
+      width: 395.2
+      height: 23.0336
+      z_index: 10
+      visible: true
+      interactive: false
+      text:
+        value: Look for a new version on jasicek.net when OpenYAMM starts. Nothing downloads without asking.
+        font: menu_lucida
+        color: '#aeb5a5'
+        align_x: left
+        align_y: middle
+        scale: 0.60235
+        pad_x: 0.0
+    - id: SettingsInterfaceCheckForUpdatesControl
+      anchor: top_left
+      offset_x: 412.8
+      offset_y: 464.3569
+      width: 110.9333
+      height: 23.4667
+      z_index: 10
+      visible: true
+      interactive: true
+      asset:
+        default: hud_x2/menus/omenu_text_field.png
+      text:
+        value: '{check_for_updates}'
+        font: menu_lucida
+        color: '#e9dcc0'
+        align_x: left
+        align_y: middle
+        scale: 0.71529
+        pad_x: 6.9333
+  - id: SettingsInterfaceNavigationRule
+    anchor: top_left
+    offset_x: 201.6
+    offset_y: 112.0
+    width: 0.8
+    height: 291.7333
+    z_index: 10
+    visible: true
+    interactive: false

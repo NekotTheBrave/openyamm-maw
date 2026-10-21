@@ -1,110 +1,122 @@
+# Settings menu: sections (tabs), their settings in display order and the keyboard bindings.
+# Rows appear in catalog order; a new `group` value starts a new heading. After editing, regenerate the tab layouts
+# with `python3 tools/generate_settings_layouts.py`. An empty `desc` gives a compact row, used for the intensity
+# sliders that follow their own toggle; `depends` rows are indented under the setting they depend on.
 sections:
 - id: gameplay
   name: Gameplay
-  title: Gameplay
-  subtitle: Information, feedback, and exploration
+- id: interface
+  name: Interface
 - id: video
   name: Video
-  title: Video
-  subtitle: Display and appearance
 - id: audio
   name: Audio
-  title: Audio
-  subtitle: Volume 0–9 · Zero mutes a channel
 - id: controls
-  name: Mouse & Controls
-  title: Mouse & Controls
-  subtitle: Choose how you explore
+  name: Controls
 - id: keyboard
   name: Keyboard
-  title: Keyboard
-  subtitle: Find an action. Choose a key.
 settings:
 - id: bolster_monsters
   section: gameplay
-  group: Challenge
+  group: Difficulty
   name: Monster scaling
   type: toggle
-  desc: Scale monsters with the party. Apply when entering an area.
-- id: quest_markers
+  desc: Monsters keep pace with the party's level. Takes effect on entering an area.
+- id: melee_hit_feedback
   section: gameplay
-  group: Exploration
-  name: Quest markers
+  group: Combat
+  name: Melee impact feedback
   type: toggle
-  desc: Show quest markers where the game provides them.
-- id: combat_text
+  desc: Impact sounds by what was struck, and a brief pause of the struck creature.
+- id: melee_camera_kick
   section: gameplay
-  group: Combat feedback
-  name: Floating combat text
+  group: Combat
+  name: Camera kick
   type: toggle
-  desc: Show damage and combat messages in the world.
-- id: enemy_health_bars
-  section: gameplay
-  group: Combat feedback
-  name: Enemy health bars
-  type: select
-  options:
-  - ['off', 'Off']
-  - [target, Target only]
-  - [combat, Combat]
-  - [nearby, Nearby]
-  desc: Show the target, recent combatants, or nearby visible enemies.
-- id: enemy_health_bar_values
-  section: gameplay
-  group: Combat feedback
-  name: Enemy HP values
-  type: select
-  options:
-  - ['off', 'Off']
-  - [target, Target only]
-  - [all, All bars]
-  desc: Show current and maximum health above enemy bars.
-- id: enemy_health_bar_damage_trail
-  section: gameplay
-  group: Combat feedback
-  name: Enemy damage trail
-  type: toggle
-  desc: Briefly show recently lost health behind the current fill.
-- id: show_hits
-  section: gameplay
-  group: Combat feedback
-  name: Hit messages
-  type: toggle
-  desc: Report attacks in the status text.
-- id: context_action_popup
-  section: gameplay
-  group: Interaction
-  name: Context action menu
-  type: toggle
-  desc: Offer contextual actions for the object under the pointer.
+  desc: Nudge the view along the blow on critical hits and kills.
 - id: skip_event_cutscenes
   section: gameplay
   group: Story
   name: Skip event cutscenes
   type: toggle
   desc: Skip event movies. Leave off for a first adventure.
-- id: graphics_quality
-  section: video
-  group: Display
-  name: Graphics quality
-  type: steps
+- id: combat_text
+  section: interface
+  group: Combat messages
+  name: Floating combat text
+  type: toggle
+  desc: Show damage numbers and combat messages in the world.
+- id: show_hits
+  section: interface
+  group: Combat messages
+  name: Hit messages
+  type: toggle
+  desc: Describe each attack in the status bar.
+- id: enemy_health_bars
+  section: interface
+  group: Enemy health bars
+  name: Show health bars
+  type: select
   options:
-  - [low, Low]
-  - [medium, Medium]
-  - [high, High]
-  desc: Set the detail options below at once; changing one of them shows Custom.
+  - ['off', 'Off']
+  - [target, Target only]
+  - [combat, Combat]
+  - [nearby, Nearby]
+  desc: Over the target, recent combatants, or all nearby visible enemies.
+- id: enemy_health_bar_values
+  section: interface
+  group: Enemy health bars
+  name: Health values
+  type: select
+  options:
+  - ['off', 'Off']
+  - [target, Target only]
+  - [all, All bars]
+  desc: Show current and maximum health above the bars.
+- id: enemy_health_bar_damage_trail
+  section: interface
+  group: Enemy health bars
+  name: Damage trail
+  type: toggle
+  desc: Briefly show recently lost health behind the current fill.
+- id: quest_markers
+  section: interface
+  group: Exploration
+  name: Quest markers
+  type: toggle
+  desc: Mark characters with quests to offer or complete, where the world has them.
+- id: context_action_popup
+  section: interface
+  group: Exploration
+  name: Context action menu
+  type: toggle
+  desc: Offer actions for the object under the pointer.
+- id: party_frame
+  section: interface
+  group: Party
+  name: Portrait frame
+  type: toggle
+  desc: Draw the frame behind the party portraits during play. Other screens always keep it.
+- id: check_for_updates
+  section: interface
+  group: Updates
+  name: Check for updates
+  type: select
+  updater_only: true
+  options:
+  - [auto, At start]
+  - ['off', Never]
+  - [ask, Ask me]
+  desc: Look for a new version on jasicek.net when OpenYAMM starts. Nothing downloads without asking.
 - id: window_mode
   section: video
   group: Display
   name: Display mode
   type: select
   options:
-  - - windowed
-    - Windowed
-  - - windowed_fullscreen
-    - Borderless
-  - - fullscreen
-    - Fullscreen
+  - [windowed, Windowed]
+  - [windowed_fullscreen, Borderless]
+  - [fullscreen, Fullscreen]
   desc: Changes must be confirmed within 15 seconds.
 - id: resolution
   section: video
@@ -117,10 +129,20 @@ settings:
   group: Display
   name: Vertical sync
   type: toggle
-  desc: Reduce screen tearing by syncing frames to the display.
+  desc: Prevent screen tearing by matching frames to the display.
+- id: graphics_quality
+  section: video
+  group: Quality
+  name: Graphics quality
+  type: steps
+  options:
+  - [low, Low]
+  - [medium, Medium]
+  - [high, High]
+  desc: Sets most options below at once; changing one of them shows Custom.
 - id: antialiasing
   section: video
-  group: Display
+  group: Quality
   name: Anti-aliasing
   type: select
   options:
@@ -132,112 +154,126 @@ settings:
   desktop_only: true
 - id: view_distance
   section: video
-  group: World detail
+  group: Quality
   name: View distance
   type: select
   options:
-  - - default
-    - World default
-  - - '32768'
-    - Extended
-  - - unlimited
-    - Unlimited
+  - [default, World default]
+  - ['32768', Extended]
+  - [unlimited, Unlimited]
   desc: Longer distances can reduce performance outdoors.
+- id: model_lods
+  section: video
+  group: Quality
+  name: Distant creature detail
+  type: toggle
+  desc: Draw simpler creature shapes far away; nearby creatures keep full detail.
 - id: texture_filtering
   section: video
-  group: World detail
+  group: Textures
   name: Smooth textures
   type: toggle
-  desc: Filter texture pixels instead of showing sharp texel edges.
+  desc: Off keeps the sharp, pixelated texels of the original.
 - id: terrain_anisotropy
   section: video
-  group: World detail
+  group: Textures
   name: Ground texture clarity
   type: select
   options:
-  - - 'off'
-    - 'Off'
-  - - 2x
-    - 2×
-  - - 4x
-    - 4×
-  - - 8x
-    - 8×
-  - - 16x
-    - 16×
-  desc: Keep distant ground textures sharper. Uses anisotropic terrain filtering.
+  - ['off', 'Off']
+  - [2x, 2×]
+  - [4x, 4×]
+  - [8x, 8×]
+  - [16x, 16×]
+  desc: Keep distant ground textures sharp (anisotropic filtering).
   depends: texture_filtering
-- id: model_lods
-  section: video
-  group: World detail
-  name: Scale distant creature detail
-  type: toggle
-  desc: Use simpler creature shapes at a distance while retaining full detail nearby.
 - id: model_shadow_quality
   section: video
-  group: World detail
+  group: Lighting & shadows
   name: Creature shadows
   type: select
   options:
-  - - '0'
-    - Off
-  - - '1'
-    - Low
-  - - '2'
-    - Medium
-  - - '3'
-    - High
-  desc: Animated shadows on creatures and their surroundings. Higher quality improves detail and range.
-- id: terrain_decorations
-  section: video
-  group: World detail
-  name: Terrain details
-  type: toggle
-  desc: Draw extra terrain decorations where available.
-- id: weather_quality
-  section: video
-  group: World detail
-  name: Weather
-  type: select
-  options:
-  - - high
-    - High
-  - - medium
-    - Medium
-  - - low
-    - Low
-  - - 'off'
-    - 'Off'
-  desc: Density of falling rain and snow; Off hides them while the weather itself goes on.
+  - ['0', 'Off']
+  - ['1', Low]
+  - ['2', Medium]
+  - ['3', High]
+  desc: Animated shadows of creatures; higher quality adds detail and range.
 - id: light_grid
   section: video
-  group: World detail
+  group: Lighting & shadows
   name: Light detail
   type: select
   options:
-  - - high
-    - High
-  - - low
-    - Low
-  desc: How finely torches, spells and other lights are sorted across the view; Low is lighter on phones.
+  - [high, High]
+  - [low, Low]
+  desc: How finely torches, spells and other lights are sorted; Low suits phones.
+- id: colored_lights
+  section: video
+  group: Lighting & shadows
+  name: Coloured lighting
+  type: toggle
+  desc: Lights tint their surroundings with their own colour.
+- id: warm_torch_light
+  section: video
+  group: Lighting & shadows
+  name: Warm torch light
+  type: toggle
+  desc: Torch Light glows firelight orange instead of the original white.
+- id: ambient_occlusion
+  section: video
+  group: Lighting & shadows
+  name: Ambient occlusion
+  type: toggle
+  desc: Add soft shading where solid surfaces meet.
+  # Android renders without ambient occlusion (game/render/CinematicGrading.cpp).
+  desktop_only: true
+- id: ambient_occlusion_strength
+  section: video
+  group: Lighting & shadows
+  name: Intensity
+  type: range
+  min: 0
+  max: 100
+  unit: '%'
+  depends: ambient_occlusion
+  desc: ''
+  # Android renders without ambient occlusion (game/render/CinematicGrading.cpp).
+  desktop_only: true
+- id: terrain_decorations
+  section: video
+  group: Environment
+  name: Terrain details
+  type: toggle
+  desc: Draw extra ground decorations where available.
+- id: weather_quality
+  section: video
+  group: Environment
+  name: Weather
+  type: select
+  options:
+  - [high, High]
+  - [medium, Medium]
+  - [low, Low]
+  - ['off', 'Off']
+  desc: Density of falling rain and snow; Off hides them but the weather goes on.
 - id: wet_surfaces
   section: video
-  group: World detail
+  group: Environment
   name: Wet surfaces
   type: toggle
-  desc: Rain darkens the ground and buildings, which dry slowly after it stops.
+  desc: Rain darkens the ground and buildings, which dry slowly afterwards.
 - id: terrain_specular
   section: video
-  group: World detail
+  group: Environment
   name: Ground highlights
   type: toggle
-  desc: Smooth rock and rain-wet ground catch the sun and nearby lights.
+  desc: Smooth rock and wet ground catch the sun and nearby lights.
 - id: water_reflections
   section: video
   group: Water
-  name: Scenery reflections
+  name: Reflections
   type: toggle
-  desc: Reflect the sky, ground and buildings in visible water. Requires extra rendering.
+  desc: Reflect the sky, ground and buildings in water. Costs extra rendering.
 - id: water_reflection_size
   section: video
   group: Water
@@ -245,24 +281,19 @@ settings:
   type: select
   depends: water_reflections
   options:
-  - - '128'
-    - Very low
-  - - '256'
-    - Low
-  - - '512'
-    - Medium
-  - - '1024'
-    - High
-  - - '2048'
-    - Very high
-  desc: Higher detail makes scenery reflections sharper and costs more rendering time.
+  - ['128', Very low]
+  - ['256', Low]
+  - ['512', Medium]
+  - ['1024', High]
+  - ['2048', Very high]
+  desc: Higher detail gives sharper reflections at a higher cost.
 - id: water_sprite_reflections
   section: video
   group: Water
   name: Reflect nearby objects
   type: toggle
   depends: water_reflections
-  desc: Include nearby creatures, trees and decorations in water reflections.
+  desc: Include nearby creatures, trees and decorations.
 - id: water_movement_ripples
   section: video
   group: Water
@@ -275,115 +306,71 @@ settings:
   name: Rain ripples
   type: toggle
   desc: Raindrop rings on still water while it rains.
-- id: ambient_occlusion
-  section: video
-  group: Colour & effects
-  name: Ambient occlusion
-  type: toggle
-  desc: Add soft shading where solid surfaces meet.
-  # Android renders without ambient occlusion (game/render/CinematicGrading.cpp).
-  desktop_only: true
-- id: ambient_occlusion_strength
-  section: video
-  group: Colour & effects
-  name: Occlusion intensity
-  type: range
-  min: 0
-  max: 100
-  unit: '%'
-  depends: ambient_occlusion
-  desc: Adjust the strength of contact shading.
-  # Android renders without ambient occlusion (game/render/CinematicGrading.cpp).
-  desktop_only: true
 - id: bloom
   section: video
-  group: Colour & effects
+  group: Post-processing
   name: Glow
   type: toggle
   desc: Flames, glowing crystals and spell light bloom softly into their surroundings.
 - id: bloom_strength
   section: video
-  group: Colour & effects
-  name: Glow intensity
+  group: Post-processing
+  name: Intensity
   type: range
   min: 0
   max: 100
   unit: '%'
   depends: bloom
-  desc: Adjust how far and how brightly the glow spreads.
+  desc: ''
 - id: cinematic_grading
   section: video
-  group: Colour & effects
+  group: Post-processing
   name: Cinematic colour
   type: toggle
-  desc: Apply the cinematic colour treatment.
+  desc: Bring out shadow detail and soften over-saturated earth tones.
 - id: cinematic_strength
   section: video
-  group: Colour & effects
-  name: Colour intensity
+  group: Post-processing
+  name: Intensity
   type: range
   min: 0
   max: 100
   unit: '%'
   depends: cinematic_grading
-  desc: Adjust the strength of cinematic colour.
+  desc: ''
 - id: sharpening
   section: video
-  group: Colour & effects
+  group: Post-processing
   name: Sharpening
   type: range
   min: 0
   max: 100
   unit: '%'
   desc: Sharpen the 3D view; the interface is unaffected. Zero turns it off.
-- id: colored_lights
-  section: video
-  group: Colour & effects
-  name: Coloured lighting
-  type: toggle
-  desc: Use the colours of nearby light sources.
-- id: tinting
-  section: video
-  group: Colour & effects
-  name: Colour tinting
-  type: toggle
-  desc: Retain the original tinting option.
-- id: blood_splats
-  section: video
-  group: Colour & effects
-  name: Blood splats
-  type: toggle
-  desc: Show blood splat effects.
-- id: melee_hit_blood_effects
-  section: video
-  group: Colour & effects
-  name: Melee blood effects
-  type: toggle
-  desc: Add blood effects when melee attacks connect.
 - id: melee_hit_effects
   section: video
-  group: Colour & effects
+  group: Combat effects
   name: Melee hit effects
   type: toggle
   desc: Show a slash, thrust or crush where melee attacks connect.
-- id: melee_hit_feedback
-  section: video
-  group: Colour & effects
-  name: Melee impact feedback
-  type: toggle
-  desc: Play impact sounds by what was struck and briefly hold the struck creature.
 - id: melee_hit_flash
   section: video
-  group: Colour & effects
+  group: Combat effects
   name: Melee hit flash
   type: toggle
   desc: Briefly brighten a creature struck in melee.
-- id: melee_camera_kick
+- id: melee_hit_blood_effects
   section: video
-  group: Colour & effects
-  name: Melee camera kick
+  group: Combat effects
+  name: Melee blood
   type: toggle
-  desc: Nudge the view along the blow on critical hits and kills.
+  desc: Add blood effects when melee attacks connect.
+- id: blood_splats
+  section: video
+  group: Combat effects
+  name: Blood splats
+  type: toggle
+  desc: Leave a pool of blood beneath slain creatures.
 - id: sound_volume
   section: audio
   group: Volume
@@ -392,7 +379,7 @@ settings:
   min: 0
   max: 9
   unit: / 9
-  desc: Weapons, spells, interface sounds, and the world.
+  desc: Weapons, spells, the interface and the world. Zero mutes.
 - id: music_volume
   section: audio
   group: Volume
@@ -401,7 +388,7 @@ settings:
   min: 0
   max: 9
   unit: / 9
-  desc: Music in menus, towns, and dungeons.
+  desc: Music in menus, towns and dungeons. Zero mutes.
 - id: voice_volume
   section: audio
   group: Volume
@@ -410,64 +397,53 @@ settings:
   min: 0
   max: 9
   unit: / 9
-  desc: Spoken character reactions and dialogue.
+  desc: Spoken character reactions and dialogue. Zero mutes.
 - id: walksound
   section: audio
-  group: World sounds
+  group: Sounds
   name: Footsteps
   type: toggle
   desc: Play walking and running sounds.
 - id: control_scheme
   section: controls
-  group: Input style
+  group: Preset
   name: Control preset
   type: select
   options:
-  - - modern
-    - Modern
-  - - classic
-    - Classic
+  - [modern, Modern]
+  - [classic, Classic]
   desc: 'Modern: WASD, left-click attack, E to use. Classic: arrow keys, A to attack, left-click to use.'
 - id: mouse_sensitivity
   section: controls
-  group: Look & movement
+  group: Mouse
   name: Mouse sensitivity
   type: range
   min: 0
   max: 100
   unit: '%'
-  desc: The response of mouse movement. Zero disables mouse look movement.
-- id: invert_mouse_y
-  section: controls
-  group: Look & movement
-  name: Invert mouse Y
-  type: toggle
-  desc: Move the mouse up to look down, and down to look up.
+  desc: How fast the view follows the mouse. Zero turns mouse look off.
 - id: turn_rate
   section: controls
-  group: Look & movement
+  group: Mouse
   name: Turn rate
   type: select
   options:
-  - - 16x
-    - 16×
-  - - 32x
-    - 32×
-  - - smooth
-    - Smooth
-  desc: Preserve the original turning-speed choices.
+  - [16x, 16×]
+  - [32x, 32×]
+  - [smooth, Smooth]
+  desc: Base turning speed, from the original 16× and 32× to the faster Smooth.
+- id: invert_mouse_y
+  section: controls
+  group: Mouse
+  name: Invert mouse Y
+  type: toggle
+  desc: Move the mouse up to look down, and down to look up.
 - id: always_run
   section: controls
-  group: Look & movement
+  group: Movement
   name: Always run
   type: toggle
-  desc: Use running movement by default.
-- id: flip_on_exit
-  section: controls
-  group: Look & movement
-  name: Face away on exit
-  type: toggle
-  desc: Turn the party away from the doorway when leaving a house.
+  desc: Run by default instead of walking.
 bindings:
 - id: forward
   name: Forward
@@ -484,26 +460,62 @@ bindings:
 - id: jump
   name: Jump
   group: Movement
-- id: cast_ready
-  name: Cast quick spell
-  group: Combat
+- id: always_run_toggle
+  name: Toggle always run
+  group: Movement
+- id: fly_up
+  name: Fly up
+  group: Movement
+- id: fly_down
+  name: Fly down
+  group: Movement
+- id: land
+  name: Land
+  group: Movement
+- id: look_up
+  name: Look up
+  group: Camera
+- id: look_down
+  name: Look down
+  group: Camera
+- id: center_view
+  name: Centre view
+  group: Camera
+- id: zoom_in
+  name: Zoom in
+  group: Camera
+- id: zoom_out
+  name: Zoom out
+  group: Camera
 - id: attack
   name: Attack
   group: Combat
-- id: trigger
-  name: Interact ahead
-  group: Interaction
+- id: cast_ready
+  name: Cast quick spell
+  group: Combat
 - id: cast
   name: Open spellbook
   group: Combat
 - id: pass
   name: Pass turn (turn-based)
   group: Combat
+- id: use
+  name: Use / interact
+  group: Interaction
+- id: trigger
+  name: Interact ahead
+  group: Interaction
 - id: char_cycle
   name: Next character
   group: Party & books
 - id: quest
   name: Quest book
+  group: Party & books
+- id: map_book
+  name: Map book
+  group: Party & books
+- id: history
+  name: History
   group: Party & books
 - id: quick_ref
   name: Quick reference
@@ -511,42 +523,6 @@ bindings:
 - id: rest
   name: Rest
   group: Party & books
-- id: history
-  name: History
-  group: Party & books
-- id: use
-  name: Use / interact
-  group: Interaction
-- id: map_book
-  name: Map book
-  group: Party & books
-- id: always_run_toggle
-  name: Toggle always run
-  group: Movement
-- id: look_up
-  name: Look Up
-  group: Camera
-- id: look_down
-  name: Look Down
-  group: Camera
-- id: center_view
-  name: Centre view
-  group: Camera
-- id: zoom_in
-  name: Zoom In
-  group: Camera
-- id: zoom_out
-  name: Zoom Out
-  group: Camera
-- id: fly_up
-  name: Fly Up
-  group: Movement
-- id: fly_down
-  name: Fly Down
-  group: Movement
-- id: land
-  name: Land
-  group: Movement
 - id: double_speed
   name: Toggle double speed
   group: System
