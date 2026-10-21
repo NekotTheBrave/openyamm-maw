@@ -20,6 +20,51 @@ inline float advanceActorModelGait(float phase, float distance, float cycleDista
     return std::fmod(phase + distance / cycleDistance, 1.0f);
 }
 
+// The distance a gait advances by this frame: what the body travelled, kept between what the clip covers at minRate
+// and at maxRate (0: no cap) times its authored rate. By default the clip follows the distance exactly, so feet never
+// slide: a clip that scurries or crawls at the game's speed is fixed in the clip (stride), not by capping its rate.
+// actors.yml `animation.gait_rate: [min, max]` sets the range for bodies without foot contact: fliers and swimmers
+// keep beating at a minimum rate when they drift slowly.
+inline float actorModelGaitDistance(float distance, float cycleDistance, float deltaSeconds, float clipSeconds,
+    float minRate = 0.0f, float maxRate = 0.0f)
+{
+    if (!(clipSeconds > 0.0f))
+    {
+        return distance;
+    }
+    const float authoredDistance = cycleDistance * std::max(deltaSeconds, 0.0f) / clipSeconds;
+    const float atMost = maxRate > 0.0f ? std::min(distance, authoredDistance * maxRate) : distance;
+    return std::max(atMost, authoredDistance * minRate);
+}
+
+// How badly a locomotion clip authored for clipSpeed suits a body moving at speed: the log of the rate it would play at,
+// doubled when that is slower than authored, since a crawling run reads worse than a quick walk.
+inline float actorModelGaitMisfit(float speed, float clipSpeed)
+{
+    const float rate = std::log(speed / clipSpeed);
+    return rate >= 0.0f ? rate : -2.0f * rate;
+}
+
+// Whether a moving 3D actor plays its run clip rather than its walk: the one that suits its speed better
+// (actorModelGaitMisfit), with a small preference from what the AI is doing (hurrying, pursuing or fleeing at its doubled
+// speed: run; wandering: walk). So a chaser whose run would play in slow motion walks, and a small fast wanderer trots
+// instead of scurrying. The clip playing now keeps an 8 % margin, so a speed near the boundary does not flicker. Speeds
+// are in model units per second; authored speed is the clip's stride over its length.
+inline bool actorModelRuns(float speed, float walkSpeed, float runSpeed, bool hurrying, bool running)
+{
+    if (!(speed > 0.0f) || !(walkSpeed > 0.0f) || !(runSpeed > 0.0f))
+    {
+        return hurrying;
+    }
+    const float preference = std::log(1.25f);
+    const float hold = std::log(1.08f);
+    const float walkMisfit = actorModelGaitMisfit(speed, walkSpeed) - (hurrying ? 0.0f : preference)
+        - (running ? 0.0f : hold);
+    const float runMisfit = actorModelGaitMisfit(speed, runSpeed) - (hurrying ? preference : 0.0f)
+        - (running ? hold : 0.0f);
+    return runMisfit < walkMisfit;
+}
+
 // Loot satchel tier (1-6) for a corpse holding this much gold plus item value; 0 (no satchel) for an empty corpse.
 // Rolled MM6-MM8 monster loot: about a fifth of corpses hold nothing, the median holds 25, the 90th percentile 830 and
 // the 99th 5,000, so most satchels are small purses. Tier 5 (8,000+) is a rich hoard with a fine item or an artifact;

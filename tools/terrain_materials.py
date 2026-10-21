@@ -6,10 +6,11 @@
       albedo_height.png (RGB colour with low-frequency lighting flattened, A height) and normal_ao_rough.png
       (RG OpenGL normal XY, B ambient occlusion, A roughness), and record the material in the runtime library.
       An entry's pools (coverage, colour) fill that share of its broad hollows with standing water (swamps).
-  tools/terrain_materials.py cook --profile desktop|android [ids...]
+  tools/terrain_materials.py cook --profile desktop|android [--output ROOT] [ids...]
       Block-compress the packed sources with the model texture cooker: desktop into assets_dev, android into
       assets_cooked/android, both at engine/terrain_materials/<id>/<map>.oytex. The cooker sharpens the mips
-      (terrain_material jobs) so the ground keeps its detail at grazing distances.
+      (terrain_material jobs) so the ground keeps its detail at grazing distances. --output cooks the named
+      materials into another runtime root instead (an isolated stage that owns materials not in the library).
   tools/terrain_materials.py macro
       Write the tileable macro variation texture (engine/terrain_materials/macro_variation.png): RGBA cloudy
       noise at four scales that varies brightness and tint across large fields (UE-style macro variation).
@@ -168,11 +169,16 @@ def prepare(ids):
 COOK_REVISION = 1
 
 
-def cook(profile, ids, force=False):
+def cook(profile, ids, force=False, output=None):
     """Cook the layer textures whose source or settings changed since their receipt (assets_source/.cook-cache)."""
+    if output is not None and not ids:
+        raise SystemExit("cook --output needs the material ids to cook")
+    root = output.resolve() if output is not None else OUTPUT[profile]
     library = load_yaml(LIBRARY)["materials"]
     cooker = (ROOT / "build/game/openyamm_model_texture_cook").resolve(strict=True)
-    receipts_path = ROOT / "assets_source/.cook-cache/terrain_materials" / f"{profile}.json"
+    # Another output root keeps its own receipts, so it never marks the default root's files as cooked.
+    suffix = "" if output is None else "-" + hashlib.sha256(str(root).encode()).hexdigest()[:8]
+    receipts_path = ROOT / "assets_source/.cook-cache/terrain_materials" / f"{profile}{suffix}.json"
     receipts = json.loads(receipts_path.read_text()) if receipts_path.exists() and not force else {}
     jobs, pending = [], {}
     total = 0
@@ -180,11 +186,11 @@ def cook(profile, ids, force=False):
         for name, semantic, linear in (("albedo_height", "srgb", 0), ("normal_ao_rough", "linear", 1)):
             total += 1
             source = SOURCE_ROOT / material_id / f"{name}.png"
-            target = OUTPUT[profile] / "engine/terrain_materials" / material_id / f"{name}.oytex"
+            target = root / "engine/terrain_materials" / material_id / f"{name}.oytex"
             digest = hashlib.sha256(source.read_bytes()).hexdigest()[:16]
             inputs = {"source": digest, "codec": CODEC[profile], "max_size": MAX_SIZE[profile],
                       "revision": COOK_REVISION}
-            key = target.relative_to(OUTPUT[profile]).as_posix()
+            key = target.relative_to(root).as_posix()
             receipt = receipts.get(key)
             if receipt and receipt["inputs"] == inputs and target.exists() \
                     and hashlib.sha256(target.read_bytes()).hexdigest() == receipt["output"]:
@@ -523,6 +529,55 @@ def water_mask(world, names, rules, texels):
     return mask
 
 
+def water_floors(world, map_name, liquids, mask, texels):
+    """The texels under horizontal BModel water faces lying at the level of the terrain water they cover (Smuggler's
+    Cove's mouth over the sea): the same body of water, so the waterline follows their edges and the rendered seabed
+    sinks under them instead of the beach rising through them. Fountains, wells and pools above the ground keep
+    the terrain under them."""
+    floors = np.zeros(mask.shape, dtype=bool)
+    native = parse_odm_file(ROOT / "assets_dev/worlds" / world / "maps" / map_name)["payload"]
+    heights = np.array(native["height_map"], dtype=np.float64).reshape(MAP_CELLS, MAP_CELLS) * 32.0
+    units = 512.0 / texels
+    for bmodel in native["bmodels"]:
+        for face in bmodel["faces"]:
+            name = face["texture_name"].lower()
+            liquid = next((entry for entry in liquids if "face" in entry.get("applies_to", [])
+                           and entry["kind"] == "water"
+                           and (name in (entry.get("match") or {}).get("texture_names", [])
+                                or any(name.startswith(prefix)
+                                       for prefix in (entry.get("match") or {}).get("texture_prefixes", [])))),
+                          None)
+            points = [bmodel["vertices"][index] for index in face["vertex_indices"]]
+            if liquid is None or len(points) < 3 or len({point["z"] for point in points}) != 1:
+                continue
+            xs = np.array([point["x"] for point in points], dtype=np.float64)
+            ys = np.array([point["y"] for point in points], dtype=np.float64)
+            first_x = max(int((xs.min() + 32768.0) // units), 0)
+            last_x = min(int((xs.max() + 32768.0) // units), mask.shape[1] - 1)
+            first_y = max(int((32768.0 - ys.max()) // units), 0)
+            last_y = min(int((32768.0 - ys.min()) // units), mask.shape[0] - 1)
+            # Texel centres inside the face (even-odd rule).
+            px, py = np.meshgrid((np.arange(first_x, last_x + 1) + 0.5) * units - 32768.0,
+                                 32768.0 - (np.arange(first_y, last_y + 1) + 0.5) * units)
+            inside = np.zeros(px.shape, dtype=bool)
+            for a in range(len(points)):
+                b = (a + 1) % len(points)
+                crosses = (ys[a] > py) != (ys[b] > py)
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    edge_x = xs[a] + (py - ys[a]) * (xs[b] - xs[a]) / (ys[b] - ys[a])
+                inside ^= crosses & (px < edge_x)
+            region = mask[first_y:last_y + 1, first_x:last_x + 1]
+            wet = inside & (region > 0.0)
+            if not wet.any():
+                continue
+            # The water level under the face: the lowest native corner of the water and shore cells it covers.
+            cells = {(int((first_y + y) // texels), int((first_x + x) // texels)) for y, x in zip(*np.nonzero(wet))}
+            level = min(heights[cy + dy, cx + dx] for cy, cx in cells for dy in (0, 1) for dx in (0, 1))
+            if -8.0 <= points[0]["z"] - level <= 16.0:
+                floors[first_y:last_y + 1, first_x:last_x + 1] |= inside
+    return floors
+
+
 def shore_distance(mask, texels):
     """Signed distance in world units to the waterline: positive on land, negative under water. The mask is
     smoothed over half a cell first: diagonal coasts drawn with square tiles become lines instead of staircases,
@@ -546,7 +601,8 @@ def weights(world, map_name, texels, preview):
         else:
             raise SystemExit(f"world.yml maps.{map_name} names unknown material {key}")
     library = load_yaml(LIBRARY)["materials"]
-    for name in sorted(liquid_edge_tiles(world, map_name, load_yaml(LIQUIDS)["liquids"])):
+    liquids = load_yaml(LIQUIDS)["liquids"]
+    for name in sorted(liquid_edge_tiles(world, map_name, liquids)):
         write_liquid_edge(world, name)
     names = map_tiles(world, map_name)
     used = sorted({name for row in names for name in row if name})
@@ -559,6 +615,9 @@ def weights(world, map_name, texels, preview):
                     weighted.append(material)
     shore = config.get("shore")
     water = water_mask(world, names, rules, texels) if shore else None
+    floors = water_floors(world, map_name, liquids, water, texels) if shore else None
+    if shore:
+        water[floors] = 1.0
     if water is not None and water.max() < 0.5:
         shore, water = None, None
     if shore and shore["material"] not in weighted:
@@ -620,6 +679,8 @@ def weights(world, map_name, texels, preview):
     if shore:
         # Sand under the water and along the beach, with the waterline exactly where the shore tiles put it.
         distance = shore_distance(water, texels)
+        # The smoothed waterline rounds off the floors' corners; the ground stays under them all the same.
+        distance[floors] = np.minimum(distance[floors], -512.0 / texels)
         sand = 1.0 - np.clip(distance / float(shore["beach_width"]), 0.0, 1.0) ** 0.75
         slot_of_all = weighted.index(shore["material"])
         field *= (1.0 - sand)[..., None]
@@ -710,6 +771,7 @@ def main():
     cook_parser.add_argument("--profile", choices=sorted(OUTPUT), required=True)
     cook_parser.add_argument("ids", nargs="*")
     cook_parser.add_argument("--force", action="store_true", help="ignore the receipts and cook every texture")
+    cook_parser.add_argument("--output", type=Path, help="runtime root to cook into (default assets_dev for desktop)")
     commands.add_parser("macro")
     commands.add_parser("caustics")
     weights_parser = commands.add_parser("weights")
@@ -723,7 +785,7 @@ def main():
     if args.command == "prepare":
         prepare(args.ids)
     elif args.command == "cook":
-        cook(args.profile, args.ids, args.force)
+        cook(args.profile, args.ids, args.force, args.output)
     elif args.command == "macro":
         macro()
     elif args.command == "caustics":

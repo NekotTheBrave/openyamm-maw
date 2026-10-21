@@ -104,8 +104,12 @@ public:
     // A static stand-in replaces the instance's own skinned draws: renderers draw this unskinned asset (same material
     // variants) as a static placement at the instance's root transform. Used for corpses, whose pose is frozen
     // (bakeStaticModelPose). The instance keeps its pose, bounds, attachments and picking. Null restores normal draws.
-    bool setStaticStandIn(ModelInstanceHandle handle, std::shared_ptr<const ModelAsset> asset);
+    // minimumPixels: the stand-in is not drawn where it would be smaller on screen than this (ground items far away);
+    // 0 draws it at every size.
+    bool setStaticStandIn(ModelInstanceHandle handle, std::shared_ptr<const ModelAsset> asset,
+        float minimumPixels = 0.0f);
     const std::shared_ptr<const ModelAsset> &staticStandIn(ModelInstanceHandle handle) const;
+    float staticStandInMinimumPixels(ModelInstanceHandle handle) const;
     // Fraction of the static stand-in's and attachments' pixels drawn (screen-door dissolve, 1 = solid, 0 = hidden);
     // skinned draws ignore it.
     bool setCoverage(ModelInstanceHandle handle, float coverage);
@@ -171,6 +175,7 @@ private:
         std::vector<ModelNodeRotation> nodeRotations;
         mutable std::vector<uint8_t> rotatedNodes;
         std::shared_ptr<const ModelAsset> staticStandIn;
+        float standInMinimumPixels = 0.0f;
         float coverage = 1.0f;
         bool playing = false;
         bool paused = false;

@@ -737,6 +737,44 @@ void appendMonsterSpriteFamilies(
     }
 }
 
+// A tier sized from another tier's standing sprite (actors.yml scale_reference) needs that tier's frames too, even when
+// only it is on the map (the MM7 dragon lair places ADragon B and C): the model scale reads both frame scales.
+void appendScaleReferenceSpriteFamilies(
+    std::unordered_set<std::string> &families,
+    std::unordered_set<std::string> &worldPrefixedSpriteNames,
+    const MonsterTable &monsterTable,
+    const ActorModelManifest *pActorModels)
+{
+    if (pActorModels == nullptr)
+    {
+        return;
+    }
+
+    for (const auto &[descriptor, entry] : pActorModels->entries())
+    {
+        const YAML::Node reference = entry.node["scale_reference"];
+        const MonsterEntry *pMonsterEntry = reference ? monsterTable.findByInternalName(descriptor) : nullptr;
+
+        if (pMonsterEntry == nullptr || pMonsterEntry->spriteNames[0].empty())
+        {
+            continue;
+        }
+
+        const std::string &standing = pMonsterEntry->spriteNames[0];
+        const std::optional<std::string> familyRoot = monsterSpriteFamilyRoot(standing);
+        const bool needed = familyRoot ? families.contains(*familyRoot)
+                                       : worldPrefixedSpriteNames.contains(toLowerCopy(standing));
+
+        if (needed)
+        {
+            appendMonsterSpriteFamilies(
+                families,
+                worldPrefixedSpriteNames,
+                monsterTable.findByInternalName(reference.as<std::string>()));
+        }
+    }
+}
+
 void collectSummonMonsterSpriteFamilies(
     std::unordered_set<std::string> &neededMonsterFamilies,
     std::unordered_set<std::string> &neededWorldPrefixedMonsterSpriteNames,
@@ -2128,12 +2166,6 @@ std::optional<DecorationBillboardSet> buildDecorationBillboardSet(
             continue;
         }
         pumpMapLoadProgress(progressPump);
-        if (std::optional<OutdoorBitmapTexture> restored = loadRestoredDecorationTexture(
-                assetFileSystem, textureRequest.textureName, textureRequest.paletteId))
-        {
-            billboardSet.textures.push_back(std::move(*restored));
-            continue;
-        }
         int textureWidth = 0;
         int textureHeight = 0;
         std::optional<std::vector<uint8_t>> pixels =
@@ -2477,7 +2509,6 @@ std::optional<SpriteObjectBillboardSet> buildSpriteObjectBillboardSet(
     const Engine::AssetFileSystem &assetFileSystem,
     const ObjectTable &objectTable,
     const std::optional<MapDeltaData> &mapDeltaData,
-    bool preloadAllObjectSprites,
     const std::string &worldId,
     BitmapLoadCache &bitmapLoadCache,
     const MapLoadProgressPump &progressPump,
@@ -2496,22 +2527,9 @@ std::optional<SpriteObjectBillboardSet> buildSpriteObjectBillboardSet(
 
     billboardSet.spriteFrameTable = *spriteFrameTable;
 
+    // Only placed objects that draw a sprite need one. Items on the ground are models and spell missiles and impacts
+    // are models and effects, so nothing is preloaded for objects the map might spawn later.
     std::vector<BitmapTextureRequest> textureRequests;
-
-    // OE initializes every object descriptor once at startup, not only objects already placed in the current map.
-    // Do the equivalent for items before gameplay, so a dropped item cannot trigger bitmap decoding and GPU upload on
-    // its first rendered frame. Unpickable objects (spell missiles, impacts) never draw their sprite: models and
-    // effects present them.
-    if (preloadAllObjectSprites)
-    {
-        for (const ObjectEntry &objectEntry : objectTable.entries())
-        {
-            if ((objectEntry.flags & ObjectDescUnpickable) == 0)
-            {
-                appendSpriteFrameTextures(textureRequests, billboardSet.spriteFrameTable, objectEntry.spriteId);
-            }
-        }
-    }
 
     if (mapDeltaData)
     {
@@ -3219,6 +3237,12 @@ std::optional<ActorPreviewBillboardSet> buildActorPreviewBillboardSet(
         }
     }
 
+    appendScaleReferenceSpriteFamilies(
+        neededMonsterFamilies,
+        neededWorldPrefixedMonsterSpriteNames,
+        monsterTable,
+        billboardSet.actorModels.get());
+
     const std::optional<SpriteFrameTable> spriteFrameTable =
         loadSpriteFrameTable(
             assetFileSystem,
@@ -3243,7 +3267,10 @@ std::optional<ActorPreviewBillboardSet> buildActorPreviewBillboardSet(
     appendSpawnActors(billboardSet, textureRequests, map, monsterTable, spawns, pOutdoorMapData);
     appendSummonableMonsters(textureRequests, billboardSet, map, monsterTable);
 
-    if (billboardSet.billboards.empty() && textureRequests.empty() && !map.arena)
+    // A map without placed actors keeps the set while its encounter monsters (models now, no sprites) can be summoned:
+    // their models build with the map and their tier scales read its sprite-frame table.
+    if (billboardSet.billboards.empty() && textureRequests.empty() && billboardSet.modelDescriptors.empty()
+        && !map.arena)
     {
         return std::nullopt;
     }
@@ -3793,7 +3820,8 @@ bool ensureMonsterSpriteFramesLoaded(
     const Engine::AssetFileSystem &assetFileSystem,
     const MonsterTable &monsterTable,
     int16_t monsterId,
-    SpriteFrameTable &spriteFrameTable)
+    SpriteFrameTable &spriteFrameTable,
+    const ActorModelManifest *pActorModels)
 {
     const MonsterEntry *pMonsterEntry = monsterTable.findById(monsterId);
 
@@ -3813,6 +3841,7 @@ bool ensureMonsterSpriteFramesLoaded(
     std::unordered_set<std::string> monsterFamilies;
     std::unordered_set<std::string> worldPrefixedMonsterSpriteNames;
     appendMonsterSpriteFamilies(monsterFamilies, worldPrefixedMonsterSpriteNames, pMonsterEntry);
+    appendScaleReferenceSpriteFamilies(monsterFamilies, worldPrefixedMonsterSpriteNames, monsterTable, pActorModels);
 
     if (monsterFamilies.empty() && worldPrefixedMonsterSpriteNames.empty())
     {
@@ -4542,7 +4571,6 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
                         assetFileSystem,
                         objectTable,
                         assetInfo.outdoorMapDeltaData,
-                        purpose == MapLoadPurpose::FullGameplay,
                         map.worldId,
                         bitmapLoadCache,
                         progressPump,
@@ -4738,7 +4766,6 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
                         assetFileSystem,
                         objectTable,
                         assetInfo.indoorMapDeltaData,
-                        purpose == MapLoadPurpose::FullGameplay,
                         map.worldId,
                         bitmapLoadCache,
                         progressPump,

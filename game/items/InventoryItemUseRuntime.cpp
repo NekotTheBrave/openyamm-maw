@@ -23,6 +23,7 @@ constexpr uint32_t ChargedConnectorStoneItemId = 624;
 constexpr uint32_t DischargedConnectorStoneItemId = 625;
 constexpr uint32_t DeckOfFateItemId = 2067;
 constexpr uint32_t ExtraPotionPlayerBitBase = 200000;
+constexpr float PotionBuffSecondsPerPower = 30.0f * 60.0f;
 
 std::string lowerAscii(std::string value)
 {
@@ -207,61 +208,61 @@ bool markExtraPotionUsed(Character &member, uint32_t itemId)
     return true;
 }
 
-void applyTemporaryStatPotion(Character &member, int CharacterStatBonuses::*field, int power)
+// Each point of potion power lasts 30 minutes. MM8 keeps a buff that would outlast the potion's.
+void applyPotionBuff(Party &party, size_t memberIndex, CharacterBuffId buffId, int potionPower, int buffPower)
 {
-    member.magicalBonuses.*field += std::max(1, power);
+    const float durationSeconds = PotionBuffSecondsPerPower * static_cast<float>(potionPower);
+    const CharacterBuffState *pActiveBuff = party.characterBuff(memberIndex, buffId);
+
+    if (pActiveBuff != nullptr && pActiveBuff->remainingSeconds >= durationSeconds)
+    {
+        return;
+    }
+
+    party.applyCharacterBuff(
+        memberIndex,
+        buffId,
+        durationSeconds,
+        buffPower,
+        0,
+        0,
+        SkillMastery::Master,
+        static_cast<uint32_t>(memberIndex));
 }
 
-void applyTemporaryResistancePotion(Character &member, int CharacterResistanceSet::*field, int power)
-{
-    member.magicalBonuses.resistances.*field += std::max(1, power);
-}
-
-bool applyBoostPotion(Character &member, uint32_t potionId, int power)
+// Stat and resistance boosts: three times the potion power.
+std::optional<CharacterBuffId> boostPotionBuff(uint32_t potionId)
 {
     switch (potionId)
     {
         case 20:
-            applyTemporaryStatPotion(member, &CharacterStatBonuses::might, power);
-            return true;
+            return CharacterBuffId::TempMight;
         case 21:
-            applyTemporaryStatPotion(member, &CharacterStatBonuses::intellect, power);
-            return true;
+            return CharacterBuffId::TempIntellect;
         case 22:
-            applyTemporaryStatPotion(member, &CharacterStatBonuses::personality, power);
-            return true;
+            return CharacterBuffId::TempPersonality;
         case 23:
-            applyTemporaryStatPotion(member, &CharacterStatBonuses::endurance, power);
-            return true;
+            return CharacterBuffId::TempEndurance;
         case 24:
-            applyTemporaryStatPotion(member, &CharacterStatBonuses::speed, power);
-            return true;
+            return CharacterBuffId::TempSpeed;
         case 25:
-            applyTemporaryStatPotion(member, &CharacterStatBonuses::accuracy, power);
-            return true;
+            return CharacterBuffId::TempAccuracy;
         case 35:
-            applyTemporaryStatPotion(member, &CharacterStatBonuses::luck, power);
-            return true;
+            return CharacterBuffId::TempLuck;
         case 36:
-            applyTemporaryResistancePotion(member, &CharacterResistanceSet::fire, power);
-            return true;
+            return CharacterBuffId::FireResistance;
         case 37:
-            applyTemporaryResistancePotion(member, &CharacterResistanceSet::air, power);
-            return true;
+            return CharacterBuffId::AirResistance;
         case 38:
-            applyTemporaryResistancePotion(member, &CharacterResistanceSet::water, power);
-            return true;
+            return CharacterBuffId::WaterResistance;
         case 39:
-            applyTemporaryResistancePotion(member, &CharacterResistanceSet::earth, power);
-            return true;
+            return CharacterBuffId::EarthResistance;
         case 40:
-            applyTemporaryResistancePotion(member, &CharacterResistanceSet::mind, power);
-            return true;
+            return CharacterBuffId::MindResistance;
         case 41:
-            applyTemporaryResistancePotion(member, &CharacterResistanceSet::body, power);
-            return true;
+            return CharacterBuffId::BodyResistance;
         default:
-            return false;
+            return std::nullopt;
     }
 }
 
@@ -287,7 +288,15 @@ bool applyExtraPotionEffect(Party &party, size_t targetMemberIndex, Character &m
     switch (potionId)
     {
         case 51:
-            member.ageModifier -= std::max(1, static_cast<int>(std::ceil(static_cast<double>(power) / 10.0)));
+            // Rejuvenation undoes magical ageing first; once there is none, it makes the drinker younger.
+            if (member.ageModifier > 0)
+            {
+                member.ageModifier = 0;
+            }
+            else
+            {
+                member.ageModifier -= std::max(1, static_cast<int>(std::ceil(static_cast<double>(power) / 10.0)));
+            }
             return true;
         case 52:
             return applyEssencePotion(member, itemId, &Character::might, &Character::intellect);
@@ -331,21 +340,29 @@ bool applyExtraPotionEffect(Party &party, size_t targetMemberIndex, Character &m
             member.ageModifier += 5;
             return true;
         case 60:
-            member.magicalBonuses.might += power * 3;
-            member.magicalBonuses.intellect += power * 3;
-            member.magicalBonuses.personality += power * 3;
-            member.magicalBonuses.endurance += power * 3;
-            member.magicalBonuses.accuracy += power * 3;
-            member.magicalBonuses.speed += power * 3;
-            member.magicalBonuses.luck += power * 3;
+            for (CharacterBuffId buffId : {
+                     CharacterBuffId::TempMight,
+                     CharacterBuffId::TempIntellect,
+                     CharacterBuffId::TempPersonality,
+                     CharacterBuffId::TempEndurance,
+                     CharacterBuffId::TempSpeed,
+                     CharacterBuffId::TempAccuracy,
+                     CharacterBuffId::TempLuck})
+            {
+                applyPotionBuff(party, targetMemberIndex, buffId, power, power * 3);
+            }
             return true;
         case 61:
-            member.magicalBonuses.resistances.fire += power * 3;
-            member.magicalBonuses.resistances.air += power * 3;
-            member.magicalBonuses.resistances.water += power * 3;
-            member.magicalBonuses.resistances.earth += power * 3;
-            member.magicalBonuses.resistances.mind += power * 3;
-            member.magicalBonuses.resistances.body += power * 3;
+            for (CharacterBuffId buffId : {
+                     CharacterBuffId::FireResistance,
+                     CharacterBuffId::AirResistance,
+                     CharacterBuffId::WaterResistance,
+                     CharacterBuffId::EarthResistance,
+                     CharacterBuffId::MindResistance,
+                     CharacterBuffId::BodyResistance})
+            {
+                applyPotionBuff(party, targetMemberIndex, buffId, power, power * 3);
+            }
             return true;
         case 62:
             member.levelModifier += 20;
@@ -391,7 +408,7 @@ bool applyExtraPotionEffect(Party &party, size_t targetMemberIndex, Character &m
         case 70:
             party.applyPartyBuff(
                 PartyBuffId::ProtectionFromMagic,
-                30.0f * 60.0f * static_cast<float>(std::max(1, power)),
+                PotionBuffSecondsPerPower * static_cast<float>(std::max(1, power)),
                 3,
                 0,
                 10,
@@ -1104,8 +1121,9 @@ InventoryItemUseResult InventoryItemUseRuntime::useItemOnMember(
                 return makeFailure(result.action, itemCannotBeUsedStatusText(*pItemDefinition), SpeechId::PotionFail);
             }
 
-            if (applyBoostPotion(*pTargetMember, potionId, potionPower))
+            if (const std::optional<CharacterBuffId> boostBuffId = boostPotionBuff(potionId))
             {
+                applyPotionBuff(party, targetMemberIndex, *boostBuffId, potionPower, potionPower * 3);
                 result.handled = true;
                 result.consumed = true;
                 return result;
@@ -1137,45 +1155,48 @@ InventoryItemUseResult InventoryItemUseRuntime::useItemOnMember(
                     result.handled = true;
                     result.consumed = true;
                     return result;
+                // Haste, Heroism, Bless, Stoneskin and Water Breathing have a fixed strength of 5; only their
+                // duration grows with the potion power. A weak character is not hastened.
                 case 8:
-                    party.applyPartyBuff(PartyBuffId::Haste, 30.0f * 60.0f * potionPower, potionPower, 0, potionPower,
-                        SkillMastery::Expert, static_cast<uint32_t>(targetMemberIndex));
+                    if (!pTargetMember->conditions.test(static_cast<size_t>(CharacterCondition::Weak)))
+                    {
+                        applyPotionBuff(party, targetMemberIndex, CharacterBuffId::Haste, potionPower, 5);
+                    }
                     result.handled = true;
                     result.consumed = true;
                     return result;
                 case 9:
-                    party.applyPartyBuff(PartyBuffId::Heroism, 30.0f * 60.0f * potionPower, potionPower, 0, potionPower,
-                        SkillMastery::Expert, static_cast<uint32_t>(targetMemberIndex));
+                    applyPotionBuff(party, targetMemberIndex, CharacterBuffId::Heroism, potionPower, 5);
                     result.handled = true;
                     result.consumed = true;
                     return result;
                 case 10:
-                    party.applyCharacterBuff(targetMemberIndex, CharacterBuffId::Bless, 30.0f * 60.0f * potionPower,
-                        potionPower, 0, potionPower, SkillMastery::Expert, static_cast<uint32_t>(targetMemberIndex));
+                    applyPotionBuff(party, targetMemberIndex, CharacterBuffId::Bless, potionPower, 5);
                     result.handled = true;
                     result.consumed = true;
                     return result;
                 case 11:
-                    party.applyCharacterBuff(targetMemberIndex, CharacterBuffId::Preservation, 30.0f * 60.0f * potionPower,
-                        potionPower, 0, potionPower, SkillMastery::Expert, static_cast<uint32_t>(targetMemberIndex));
+                    applyPotionBuff(
+                        party,
+                        targetMemberIndex,
+                        CharacterBuffId::Preservation,
+                        potionPower,
+                        potionPower * 3);
                     result.handled = true;
                     result.consumed = true;
                     return result;
                 case 12:
-                    party.applyPartyBuff(PartyBuffId::Shield, 30.0f * 60.0f * potionPower, potionPower, 0, potionPower,
-                        SkillMastery::Expert, static_cast<uint32_t>(targetMemberIndex));
+                    applyPotionBuff(party, targetMemberIndex, CharacterBuffId::Shield, potionPower, potionPower * 3);
                     result.handled = true;
                     result.consumed = true;
                     return result;
                 case 14:
-                    party.applyPartyBuff(PartyBuffId::Stoneskin, 30.0f * 60.0f * potionPower, potionPower, 0, potionPower,
-                        SkillMastery::Expert, static_cast<uint32_t>(targetMemberIndex));
+                    applyPotionBuff(party, targetMemberIndex, CharacterBuffId::Stoneskin, potionPower, 5);
                     result.handled = true;
                     result.consumed = true;
                     return result;
                 case 15:
-                    party.applyPartyBuff(PartyBuffId::WaterWalk, 30.0f * 60.0f * potionPower, potionPower, 0, potionPower,
-                        SkillMastery::Expert, static_cast<uint32_t>(targetMemberIndex));
+                    applyPotionBuff(party, targetMemberIndex, CharacterBuffId::WaterBreathing, potionPower, 5);
                     result.handled = true;
                     result.consumed = true;
                     return result;
@@ -1205,7 +1226,7 @@ InventoryItemUseResult InventoryItemUseRuntime::useItemOnMember(
 
             if (item.objectDescriptionId == 222)
             {
-                party.healMember(targetMemberIndex, 10);
+                party.healMember(targetMemberIndex, potionPower + 10);
                 result.handled = true;
                 result.consumed = true;
                 return result;
@@ -1213,7 +1234,7 @@ InventoryItemUseResult InventoryItemUseRuntime::useItemOnMember(
 
             if (item.objectDescriptionId == 223)
             {
-                restoreSpellPoints(*pTargetMember, 10);
+                restoreSpellPoints(*pTargetMember, potionPower + 10);
                 result.handled = true;
                 result.consumed = true;
                 return result;
@@ -1229,7 +1250,7 @@ InventoryItemUseResult InventoryItemUseRuntime::useItemOnMember(
 
             if (item.objectDescriptionId == 253)
             {
-                party.healMember(targetMemberIndex, 50);
+                party.healMember(targetMemberIndex, potionPower * 5);
                 result.handled = true;
                 result.consumed = true;
                 return result;
@@ -1237,7 +1258,7 @@ InventoryItemUseResult InventoryItemUseRuntime::useItemOnMember(
 
             if (item.objectDescriptionId == 254)
             {
-                restoreSpellPoints(*pTargetMember, 50);
+                restoreSpellPoints(*pTargetMember, potionPower * 5);
                 result.handled = true;
                 result.consumed = true;
                 return result;

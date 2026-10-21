@@ -199,6 +199,7 @@ public:
     void reopenMenuScreen();
     bool requestQuickSave();
     bool requestTravelAutosave();
+    bool savePreviewCapturePending() const;
     void setSettingsSnapshot(const GameSettings &settings);
     bool executeEventHooks(EventRuntimeHookKind kind);
     bool ensureMonsterVisualResources(int16_t monsterId);
@@ -889,15 +890,6 @@ private:
         uint64_t combinedDepthSlices = 0;
         uint64_t combinedDepthSliceTextureGroups = 0;
         uint64_t combinedDepthSliceItems = 0;
-        uint64_t worldItemItems = 0;
-        uint64_t worldItemBatchSubmits = 0;
-        uint64_t worldItemBatchedItems = 0;
-        uint64_t worldItemSubmits = 0;
-        uint64_t worldItemOutlineSubmits = 0;
-        uint64_t worldItemTextureSwitches = 0;
-        uint64_t worldItemDepthSlices = 0;
-        uint64_t worldItemDepthSliceTextureGroups = 0;
-        uint64_t worldItemDepthSliceItems = 0;
         uint64_t runtimeProjectileItems = 0;
         uint64_t runtimeProjectileBatchSubmits = 0;
         uint64_t runtimeProjectileBatchedItems = 0;

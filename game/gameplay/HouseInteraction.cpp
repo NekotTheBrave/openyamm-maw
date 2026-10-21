@@ -2191,6 +2191,7 @@ HouseActionResult performHouseAction(
             const float afterGameMinutes = pWorldRuntime->gameMinutes();
 
             EventRuntimeState::PendingMapMove pendingMapMove = {};
+            pendingMapMove.travelTimeApplied = true;
             pendingMapMove.mapName = route.mapFileName;
             pendingMapMove.x = route.x;
             pendingMapMove.y = route.y;

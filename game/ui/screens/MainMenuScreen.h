@@ -10,6 +10,7 @@ namespace OpenYAMM::Game
 {
 class GameAudioSystem;
 class GameDataRepository;
+class GameUpdater;
 
 class MainMenuScreen : public MenuDesignScreen
 {
@@ -22,8 +23,8 @@ class MainMenuScreen : public MenuDesignScreen
         std::function<bool(const GameSettings &, bool, std::string &)> applySettings;
     };
     MainMenuScreen(const Engine::AssetFileSystem &assets, const GameDataRepository &gameData, GameAudioSystem *pAudio,
-                   const GameSettings &settings, Actions actions, bool paused = false, std::string location = {},
-                   std::string date = {});
+                   const GameSettings &settings, Actions actions, std::string &settingsSection, bool paused = false,
+                   std::string location = {}, std::string date = {}, GameUpdater *pUpdater = nullptr);
     AppMode mode() const override;
     void prepareForFirstFrame();
     void onExit() override;
@@ -65,6 +66,12 @@ class MainMenuScreen : public MenuDesignScreen
     void captureBinding(KeyboardAction action);
     void acceptBinding(InputBinding binding);
     void revertDisplay();
+    // The main menu's update notice, question and progress (packaging/UPDATER_PLAN.md 10).
+    void drawUpdates();
+    void askAboutUpdates();
+    void setUpdateCheck(const std::string &mode);
+    void offerUpdate();
+    void followUpdate();
     Actions m_actions;
     const GameDataRepository &m_gameData;
     GameSettings m_committed;
@@ -77,7 +84,8 @@ class MainMenuScreen : public MenuDesignScreen
     std::string m_latestSaveLocation;
     std::optional<KeyboardAction> m_capture;
     Page m_page = Page::Home;
-    std::string m_section = "gameplay";
+    // Owned by the application so that reopening the menu returns to the last Settings section this session.
+    std::string &m_section;
     std::string m_location, m_date, m_status, m_search;
     std::string m_bindingGroup = "All actions";
     bool m_paused = false;
@@ -87,5 +95,9 @@ class MainMenuScreen : public MenuDesignScreen
     bool m_suppressEscape = false;
     float m_displaySeconds = 0;
     float m_scroll = 0;
+    GameUpdater *m_pUpdater = nullptr;
+    bool m_updatesStarted = false;
+    bool m_followingUpdate = false;
+    std::string m_updateRelease;
 };
 } // namespace OpenYAMM::Game

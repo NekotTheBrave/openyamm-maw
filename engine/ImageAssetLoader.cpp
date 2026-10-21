@@ -1,5 +1,8 @@
 #include "engine/ImageAssetLoader.h"
 
+#include "engine/AssetScaleTier.h"
+#include "engine/render/CookedTexture.h"
+
 #include <SDL3/SDL.h>
 #include <bimg/bimg.h>
 #include <bimg/decode.h>
@@ -541,6 +544,46 @@ std::optional<std::string> findCookedOrImageAssetPath(
         stem + ".oytex", stem + ".png", stem + ".bmp", stem + ".pcx"};
     return findTieredAssetPath(assetFileSystem, directoryPath, stem, candidateFileNames,
         directoryPath + "|cooked-image|" + toLowerCopy(textureName), directoryAssetPathsByPath, assetPathByKey);
+}
+
+std::optional<std::array<int, 2>> findSurfaceTextureLogicalSize(
+    const AssetFileSystem &assetFileSystem,
+    const std::string &textureName,
+    DirectoryAssetPathCache &directoryAssetPathsByPath,
+    AssetPathLookupCache &assetPathByKey
+)
+{
+    const std::optional<std::string> path =
+        findCookedOrImageAssetPath(assetFileSystem, "Data/bitmaps", textureName, directoryAssetPathsByPath,
+            assetPathByKey);
+    if (!path)
+    {
+        return std::nullopt;
+    }
+    const std::optional<std::vector<uint8_t>> bytes = assetFileSystem.readBinaryFile(*path);
+    if (!bytes || bytes->empty())
+    {
+        return std::nullopt;
+    }
+    int width = 0;
+    int height = 0;
+    if (hasCookedTextureSignature(*bytes))
+    {
+        const CookedTexture cooked = decodeCookedTexture(*bytes);
+        width = cooked.width;
+        height = cooked.height;
+    }
+    else if (const std::optional<ImagePixelsBgra> image = decodeImagePixelsBgra(*bytes, *path))
+    {
+        width = image->width;
+        height = image->height;
+    }
+    if (width <= 0 || height <= 0)
+    {
+        return std::nullopt;
+    }
+    const AssetScaleTier tier = assetScaleTierFromResolvedPath(*path);
+    return std::array<int, 2>{scalePhysicalPixelsToLogical(width, tier), scalePhysicalPixelsToLogical(height, tier)};
 }
 
 std::optional<ImageDimensions> readImageDimensions(std::span<const uint8_t> header)

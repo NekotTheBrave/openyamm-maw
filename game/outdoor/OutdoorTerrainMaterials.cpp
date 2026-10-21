@@ -941,6 +941,7 @@ bool OutdoorTerrainMaterials::createMesh(const OutdoorMapData &map,
             }
         }
     }
+    capRenderedTerrainUnderBModels(map, heights, side, steps);
     const auto height = [&](int i, int j)
     {
         return heights[size_t(std::clamp(j, 0, side - 1)) * side + size_t(std::clamp(i, 0, side - 1))];

@@ -304,8 +304,8 @@ public:
 
     bool applyPreset(const YAML::Node &node, SkyPreset &preset, const std::string &where)
     {
-        if (!checkKeys(node, {"inherits", "keys", "sun_disc_degrees", "moon_disc_degrees", "below_horizon",
-                "fog_tint_sky_mix", "horizon_ring", "stars", "clouds", "storm", "draw_sky"}, where))
+        if (!checkKeys(node, {"inherits", "keys", "sun_disc_degrees", "moon_disc_degrees", "moon_texture",
+                "moon_phase_offset", "below_horizon", "fog_tint_sky_mix", "horizon_ring", "stars", "clouds", "storm", "draw_sky"}, where))
         {
             return false;
         }
@@ -317,7 +317,9 @@ public:
 
         if (!readOptionalFloat(node, "sun_disc_degrees", preset.sunDiscDegrees, 0.0f, 20.0f, where)
             || !readOptionalFloat(node, "moon_disc_degrees", preset.moonDiscDegrees, 0.0f, 20.0f, where)
-            || !readOptionalFloat(node, "fog_tint_sky_mix", preset.fogTintSkyMix, 0.0f, 1.0f, where))
+            || !readOptionalFloat(node, "fog_tint_sky_mix", preset.fogTintSkyMix, 0.0f, 1.0f, where)
+            || !readOptionalString(node, "moon_texture", preset.moonTexture, where)
+            || !readOptionalFloat(node, "moon_phase_offset", preset.moonPhaseOffset, 0.0f, 1.0f, where))
         {
             return false;
         }
@@ -803,6 +805,8 @@ std::vector<std::string> SkyPresetLibrary::textureNames() const
         {
             names.insert(preset.stars.texture);
         }
+
+        names.insert(preset.moonTexture);
     }
 
     return {names.begin(), names.end()};

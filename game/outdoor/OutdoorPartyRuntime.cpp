@@ -203,6 +203,11 @@ void OutdoorPartyRuntime::toggleFlying()
     m_movementDriver.toggleFlying();
 }
 
+void OutdoorPartyRuntime::requestLanding()
+{
+    m_movementDriver.requestLanding();
+}
+
 void OutdoorPartyRuntime::toggleWaterWalk()
 {
     m_movementDriver.toggleWaterWalk();

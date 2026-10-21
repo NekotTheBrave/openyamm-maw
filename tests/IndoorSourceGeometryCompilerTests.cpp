@@ -193,6 +193,53 @@ TEST_CASE("indoor moving surfaces retain secret flags and event binding")
     CHECK(OpenYAMM::Game::hasFaceAttribute(face.attributes, OpenYAMM::Game::FaceAttribute::TextureMoveByDoor));
 }
 
+TEST_CASE("indoor flag-only surfaces keep their cog number, lose the click and keep lava")
+{
+    SourceFixture fixture;
+    fixture.useGltfNodes(R"([{"name":"ROOM_entry","mesh":0},{"name":"TRIGGER_water","mesh":0}])");
+    EditorIndoorGeometrySurfaceMetadata surface;
+    surface.id = "water";
+    surface.sourceNodeName = "TRIGGER_water";
+    surface.flags = {"lava"};
+    surface.cogNumber = 201;
+    fixture.metadata.surfaces.push_back(surface);
+    std::string error;
+    const std::optional<EditorIndoorGeometryMetadata> metadata = loadIndoorGeometryMetadataFromText(
+        serializeIndoorGeometryMetadata(fixture.metadata), error);
+    REQUIRE_MESSAGE(metadata.has_value(), error);
+    CHECK(metadata->surfaces.front().cogNumber == 201);
+    IndoorSourceGeometryCompileResult result;
+    REQUIRE_MESSAGE(compileIndoorSourceGeometry(fixture.source, *metadata, result, error), error);
+    bool found = false;
+    for (const OpenYAMM::Game::IndoorFace &face : result.indoorGeometry.faces)
+    {
+        if (face.cogNumber == 201)
+        {
+            found = true;
+            CHECK(OpenYAMM::Game::hasFaceAttribute(face.attributes, OpenYAMM::Game::FaceAttribute::Lava));
+            CHECK_FALSE(OpenYAMM::Game::hasFaceAttribute(face.attributes, OpenYAMM::Game::FaceAttribute::Clickable));
+        }
+    }
+    CHECK(found);
+}
+
+TEST_CASE("indoor light metadata group round-trips")
+{
+    EditorIndoorGeometryMetadata source;
+    EditorIndoorGeometryLightMetadata light;
+    light.id = "L1";
+    light.sourceNodeName = "LIGHT_L1";
+    light.radius = 512;
+    light.brightness = 31;
+    light.group = 3;
+    source.lights.push_back(light);
+    std::string error;
+    const std::optional<EditorIndoorGeometryMetadata> loaded =
+        loadIndoorGeometryMetadataFromText(serializeIndoorGeometryMetadata(source), error);
+    REQUIRE_MESSAGE(loaded.has_value(), error);
+    CHECK(loaded->lights.front().group == 3);
+}
+
 TEST_CASE("indoor authored closed lift retains its floor and opens upward through native motion")
 {
     SourceFixture fixture;

@@ -28,6 +28,7 @@ public:
         bool mobileJumpGestureEnabled = true,
         bool mobileFlightControlsEnabled = false,
         bool mobileInspectControlEnabled = true,
+        bool mobileLongPressInspectEnabled = false,
         std::span<const GameplayTouchControl> touchControls = {});
 
     const GameplayInputFrame &frame() const;
@@ -46,6 +47,7 @@ private:
         FlyDown,
         InspectModifier,
         InspectTarget,
+        LongPressInspect,
         Hud,
         DebugConsoleGesture
     };
@@ -57,12 +59,14 @@ private:
         MobileTouchRole role = MobileTouchRole::None;
         float startX = 0.0f;
         float startY = 0.0f;
+        uint64_t startTimestampNanoseconds = 0;
         float x = 0.0f;
         float y = 0.0f;
         float deltaX = 0.0f;
         float deltaY = 0.0f;
         bool dragThresholdExceeded = false;
         bool dragStartDelivered = false;
+        bool longPressCandidate = false;
         bool debugConsoleGestureCandidate = false;
         bool debugConsoleGestureTriggered = false;
     };

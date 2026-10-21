@@ -301,6 +301,7 @@ const SkyFrameState &SkyStateModel::update(const SkyInputs &inputs, float realDe
     const SkyPreset &dominant = blend >= 0.5f ? *pTo : *pFrom;
     frame.belowHorizon = dominant.belowHorizon;
     frame.drawSky = dominant.drawSky;
+    frame.moonTexture = dominant.moonTexture;
     frame.stars = dominant.stars;
     frame.stars.brightness = lerp(pFrom->stars.brightness, pTo->stars.brightness, blend);
     frame.horizonRing = dominant.horizonRing;
@@ -310,7 +311,7 @@ const SkyFrameState &SkyStateModel::update(const SkyInputs &inputs, float realDe
         blend);
     frame.sunDirection = skySunDirection(inputs.gameMinutes);
     frame.moonDirection = skyMoonDirection(inputs.gameMinutes);
-    frame.moonPhase = skyMoonPhase(inputs.gameMinutes);
+    frame.moonPhase = std::fmod(skyMoonPhase(inputs.gameMinutes) + dominant.moonPhaseOffset, 1.0f);
     frame.starRotationRadians = 2.0f * Pi * minute / static_cast<float>(SkyMinutesPerDay);
 
     // At night clouds are lit only by the moon: dark shapes over the stars on moonless nights, grey under a bright

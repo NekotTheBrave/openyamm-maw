@@ -25,6 +25,7 @@
 #include "game/items/ItemRuntime.h"
 #include "game/items/PriceCalculator.h"
 #include "game/maps/IndoorSceneYml.h"
+#include "game/maps/SaveGame.h"
 #include "game/maps/OutdoorSceneYml.h"
 #include "game/outdoor/OutdoorMapData.h"
 #include "game/maps/TerrainTileData.h"
@@ -854,6 +855,50 @@ TEST_CASE("outdoor mouse wheel flight right after a landing keeps flying and sta
     CHECK(highestFootZ <= groundFootZ + 64.0f + 1.0f);
     CHECK(highestFootZ <= driver.tuning().maxFlightHeight);
     CHECK_EQ(driver.pendingEffects().maxFallDamageDistance, 0.0f);
+}
+
+TEST_CASE("outdoor land request descends at fly speed and touches down without fall damage")
+{
+    using namespace OpenYAMM::Game;
+    const SyntheticOutdoorWaterBoundaryScenario boundary = createSyntheticOutdoorWaterBoundaryScenario();
+
+    for (const bool buffEndsDuringDescent : {false, true})
+    {
+        OutdoorMovementDriver driver(boundary.mapData, std::nullopt, std::nullopt, std::nullopt, std::nullopt);
+        driver.initialize(boundary.landX, boundary.landY, 0.0f);
+        const float groundFootZ = driver.state().footZ;
+        OutdoorMoveState state = driver.state();
+        state.footZ = groundFootZ + 2048.0f;
+        state.airborne = true;
+        state.fallStartZ = state.footZ;
+        driver.restoreState(state, OutdoorPartyMovementState{});
+        driver.setFlyingAvailable(true);
+        driver.setFlying(true);
+        REQUIRE(driver.partyMovementState().flying);
+
+        driver.requestLanding();
+        driver.update(OutdoorMovementInput{}, 0.1f);
+        CHECK(driver.partyMovementState().flying);
+        CHECK(driver.state().footZ < state.footZ - 100.0f);
+
+        if (buffEndsDuringDescent)
+        {
+            driver.setFlyingAvailable(false);
+        }
+
+        bool landed = false;
+
+        for (int frame = 0; frame < 120 && !landed; ++frame)
+        {
+            driver.update(OutdoorMovementInput{}, 1.0f / 30.0f);
+            landed = driver.lastEvents().landed;
+        }
+
+        CHECK(landed);
+        CHECK_FALSE(driver.partyMovementState().flying);
+        CHECK(driver.state().footZ == doctest::Approx(groundFootZ).epsilon(0.01));
+        CHECK_EQ(driver.pendingEffects().maxFallDamageDistance, 0.0f);
+    }
 }
 
 TEST_CASE("modern outdoor flying keeps camera pitch for forward movement")
@@ -2897,6 +2942,52 @@ TEST_CASE("party melee status text reports applied damage")
         "Ariel inflicts 48 points killing Goblin");
 }
 
+TEST_CASE("party hit fully resisted by a monster reports no damage status")
+{
+    using OpenYAMM::Game::GameplayCombatController;
+
+    CHECK(GameplayCombatController::partyHitLands(1, false));
+    CHECK_FALSE(GameplayCombatController::partyHitLands(0, false));
+    CHECK(GameplayCombatController::partyHitLands(0, true));
+
+    OpenYAMM::Game::CharacterAttackResult attack = {};
+    attack.mode = OpenYAMM::Game::CharacterAttackMode::Melee;
+    attack.canAttack = true;
+    attack.hit = true;
+    attack.damage = 48;
+
+    CHECK(GameplayCombatController::formatPartyAttackStatusText("Ariel", "Dragon", attack, false, 0).empty());
+
+    attack.damage = 0;
+    CHECK(GameplayCombatController::formatPartyAttackStatusText("Ariel", "Dragon", attack, false).empty());
+
+    // A stunning blow still lands without damage, as in the original game.
+    attack.stunTarget = true;
+    CHECK_EQ(
+        GameplayCombatController::formatPartyAttackStatusText("Ariel", "Dragon", attack, false, 0),
+        "Ariel stuns Dragon");
+
+    GameplayCombatController::CombatEvent event = {};
+    event.type = GameplayCombatController::CombatEventType::PartyProjectileActorImpact;
+    event.hit = true;
+    event.damage = 0;
+    CHECK(GameplayCombatController::formatPartyProjectileActorImpactStatusText("Ariel", "Dragon", event).empty());
+
+    event.damage = 7;
+    CHECK_EQ(
+        GameplayCombatController::formatPartyProjectileActorImpactStatusText("Ariel", "Dragon", event),
+        "Ariel shoots Dragon for 7 points");
+
+    event.killed = true;
+    CHECK_EQ(
+        GameplayCombatController::formatPartyProjectileActorImpactStatusText("Ariel", "Dragon", event),
+        "Ariel inflicts 7 points killing Dragon");
+
+    event.hit = false;
+    event.killed = false;
+    CHECK(GameplayCombatController::formatPartyProjectileActorImpactStatusText("Ariel", "Dragon", event).empty());
+}
+
 TEST_CASE("zero monster resistance does not reduce incoming melee damage")
 {
     REQUIRE(OpenYAMM::Tests::regressionGameDataLoaded());
@@ -3493,6 +3584,63 @@ TEST_CASE("monster break item uses regular inventory plus equipment candidates")
     REQUIRE(pPotionItem != nullptr);
     CHECK_FALSE(pPotionItem->broken);
     CHECK(pMember->equipmentRuntime.mainHand.broken);
+}
+
+TEST_CASE("monster break item leaves hardened equipment intact")
+{
+    constexpr uint32_t ActorId = 83;
+    constexpr uint32_t RegularWeaponId = 31;
+
+    const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
+
+    OpenYAMM::Game::Party party = makeMonsterSpecialAttackTestParty();
+    party.setItemTable(&gameData.itemTable);
+    party.setItemEnchantTables(
+        &gameData.standardItemEnchantTable,
+        &gameData.specialItemEnchantTable);
+
+    OpenYAMM::Game::Character *pMember = party.member(0);
+    REQUIRE(pMember != nullptr);
+    pMember->inventory.clear();
+    pMember->equipment.mainHand = RegularWeaponId;
+    pMember->equipmentRuntime.mainHand.hardened = true;
+
+    MonsterSpecialAttackTestWorldRuntime world = {};
+    world.actorInfo = OpenYAMM::Game::GameplayCombatActorInfo{
+        .actorId = ActorId,
+        .monsterLevel = 100,
+        .attackBonus = 1000,
+        .specialAttackKind = OpenYAMM::Game::MonsterSpecialAttackKind::BreakAny,
+        .specialAttackLevel = 1,
+        .displayName = "Item Breaker",
+    };
+
+    OpenYAMM::Game::GameplayCombatController controller = {};
+    controller.recordMonsterMeleeImpact(
+        ActorId,
+        0,
+        1000,
+        OpenYAMM::Game::CombatDamageType::Physical,
+        OpenYAMM::Game::GameplayActorAttackAbility::Attack2);
+
+    OpenYAMM::Game::GameplayCombatController::PendingCombatEventContext context{party, &world, nullptr};
+    controller.handleAndClearPendingCombatEvents(context);
+
+    CHECK_FALSE(pMember->equipmentRuntime.mainHand.broken);
+}
+
+TEST_CASE("artifacts count as hardened")
+{
+    const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
+    const OpenYAMM::Game::ItemDefinition *pArtifact = gameData.itemTable.get(500);
+    const OpenYAMM::Game::ItemDefinition *pRegularWeapon = gameData.itemTable.get(1);
+    REQUIRE(pArtifact != nullptr);
+    REQUIRE(pRegularWeapon != nullptr);
+    REQUIRE(OpenYAMM::Game::ItemRuntime::isArtifact(*pArtifact));
+
+    CHECK(OpenYAMM::Game::ItemRuntime::isHardened(false, *pArtifact));
+    CHECK_FALSE(OpenYAMM::Game::ItemRuntime::isHardened(false, *pRegularWeapon));
+    CHECK(OpenYAMM::Game::ItemRuntime::isHardened(true, *pRegularWeapon));
 }
 
 TEST_CASE("dispel magic clears party and character buffs through shared party helper")
@@ -4189,6 +4337,210 @@ TEST_CASE("inventory mixing invalid potion combination consumes both items")
     CHECK(pMember->inventoryItemAt(0, 0) == nullptr);
 }
 
+namespace
+{
+OpenYAMM::Game::InventoryItemMixResult applyHeldPotion(
+    const OpenYAMM::Tests::RegressionGameData &gameData,
+    OpenYAMM::Game::Party &party,
+    OpenYAMM::Game::InventoryItem &heldPotion)
+{
+    return OpenYAMM::Game::InventoryItemMixingRuntime::tryApplyHeldItemToInventoryItem(
+        party,
+        0,
+        heldPotion,
+        0,
+        0,
+        gameData.itemTable,
+        gameData.potionMixingTable,
+        gameData.mergedPotionSettingTable,
+        gameData.mergedReagentSettingTable);
+}
+}
+
+TEST_CASE("harden item potion hardens a weapon once")
+{
+    constexpr uint32_t HardenItemPotionId = 236;
+    const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
+    OpenYAMM::Game::PartySeed seed = {};
+    seed.members.push_back(makeRegressionPartyMember("Ariel", "Knight", "PC01-01", 1));
+
+    OpenYAMM::Game::Party party = {};
+    party.setItemTable(&gameData.itemTable);
+    party.seed(seed);
+
+    OpenYAMM::Game::Character *pMember = party.member(0);
+    REQUIRE(pMember != nullptr);
+    pMember->inventory.clear();
+    REQUIRE(pMember->addInventoryItemAt(makeTestInventoryItem(1), 0, 0));
+
+    OpenYAMM::Game::InventoryItem heldPotion = makeTestInventoryItem(HardenItemPotionId);
+    const OpenYAMM::Game::InventoryItemMixResult result = applyHeldPotion(gameData, party, heldPotion);
+
+    REQUIRE(result.handled);
+    CHECK(result.success);
+    CHECK(result.heldItemConsumed);
+    CHECK_EQ(result.action, OpenYAMM::Game::InventoryItemMixAction::HardenPotion);
+
+    const OpenYAMM::Game::InventoryItem *pWeapon = pMember->inventoryItemAt(0, 0);
+    REQUIRE(pWeapon != nullptr);
+    CHECK(pWeapon->hardened);
+
+    const OpenYAMM::Game::InventoryItemMixResult repeatResult = applyHeldPotion(gameData, party, heldPotion);
+    REQUIRE(repeatResult.handled);
+    CHECK_FALSE(repeatResult.success);
+    CHECK_FALSE(repeatResult.heldItemConsumed);
+}
+
+TEST_CASE("harden item potion refuses artifacts, broken items and reagents")
+{
+    constexpr uint32_t HardenItemPotionId = 236;
+    const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
+    OpenYAMM::Game::PartySeed seed = {};
+    seed.members.push_back(makeRegressionPartyMember("Ariel", "Knight", "PC01-01", 1));
+
+    OpenYAMM::Game::Party party = {};
+    party.setItemTable(&gameData.itemTable);
+    party.seed(seed);
+
+    OpenYAMM::Game::Character *pMember = party.member(0);
+    REQUIRE(pMember != nullptr);
+
+    {
+        pMember->inventory.clear();
+        REQUIRE(pMember->addInventoryItemAt(makeTestInventoryItem(500), 0, 0));
+        OpenYAMM::Game::InventoryItem heldPotion = makeTestInventoryItem(HardenItemPotionId);
+        const OpenYAMM::Game::InventoryItemMixResult result = applyHeldPotion(gameData, party, heldPotion);
+        CHECK(result.handled);
+        CHECK_FALSE(result.success);
+        CHECK_FALSE(result.heldItemConsumed);
+        CHECK_FALSE(pMember->inventoryItemAt(0, 0)->hardened);
+    }
+
+    {
+        pMember->inventory.clear();
+        OpenYAMM::Game::InventoryItem brokenWeapon = makeTestInventoryItem(1);
+        brokenWeapon.broken = true;
+        REQUIRE(pMember->addInventoryItemAt(brokenWeapon, 0, 0));
+        OpenYAMM::Game::InventoryItem heldPotion = makeTestInventoryItem(HardenItemPotionId);
+        const OpenYAMM::Game::InventoryItemMixResult result = applyHeldPotion(gameData, party, heldPotion);
+        CHECK(result.handled);
+        CHECK_FALSE(result.success);
+        CHECK_FALSE(pMember->inventoryItemAt(0, 0)->hardened);
+    }
+
+    {
+        pMember->inventory.clear();
+        REQUIRE(pMember->addInventoryItemAt(makeTestInventoryItem(200), 0, 0));
+        OpenYAMM::Game::InventoryItem heldPotion = makeTestInventoryItem(HardenItemPotionId);
+        const OpenYAMM::Game::InventoryItemMixResult result = applyHeldPotion(gameData, party, heldPotion);
+        CHECK_FALSE(result.handled);
+        CHECK_FALSE(pMember->inventoryItemAt(0, 0)->hardened);
+    }
+}
+
+TEST_CASE("weapon potions add a timed special enchantment to plain weapons only")
+{
+    const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
+    OpenYAMM::Game::PartySeed seed = {};
+    seed.members.push_back(makeRegressionPartyMember("Ariel", "Knight", "PC01-01", 1));
+
+    OpenYAMM::Game::Party party = {};
+    party.setItemTable(&gameData.itemTable);
+    party.setItemEnchantTables(&gameData.standardItemEnchantTable, &gameData.specialItemEnchantTable);
+    party.seed(seed);
+
+    OpenYAMM::Game::Character *pMember = party.member(0);
+    REQUIRE(pMember != nullptr);
+
+    const std::array<std::pair<uint32_t, OpenYAMM::Game::SpecialItemEnchantKind>, 6> potions = {{
+        {246, OpenYAMM::Game::SpecialItemEnchantKind::Flame},
+        {247, OpenYAMM::Game::SpecialItemEnchantKind::Frost},
+        {248, OpenYAMM::Game::SpecialItemEnchantKind::Poison},
+        {249, OpenYAMM::Game::SpecialItemEnchantKind::Sparks},
+        {250, OpenYAMM::Game::SpecialItemEnchantKind::Swift},
+        {263, OpenYAMM::Game::SpecialItemEnchantKind::DragonSlaying},
+    }};
+
+    for (const auto &[potionId, enchantKind] : potions)
+    {
+        CAPTURE(potionId);
+        pMember->inventory.clear();
+        REQUIRE(pMember->addInventoryItemAt(makeTestInventoryItem(1), 0, 0));
+
+        OpenYAMM::Game::InventoryItem heldPotion = makeTestInventoryItem(potionId);
+        heldPotion.standardEnchantPower = 4;
+        const OpenYAMM::Game::InventoryItemMixResult result = applyHeldPotion(gameData, party, heldPotion);
+
+        REQUIRE(result.handled);
+        CHECK(result.success);
+        CHECK(result.heldItemConsumed);
+        CHECK_EQ(result.action, OpenYAMM::Game::InventoryItemMixAction::WeaponEnchantPotion);
+
+        const OpenYAMM::Game::InventoryItem *pWeapon = pMember->inventoryItemAt(0, 0);
+        REQUIRE(pWeapon != nullptr);
+        CHECK_EQ(pWeapon->specialEnchantId, gameData.specialItemEnchantTable.findId(enchantKind));
+        CHECK_NE(pWeapon->specialEnchantId, 0);
+        CHECK_EQ(pWeapon->temporaryBonusRemainingSeconds, doctest::Approx(4.0f * 30.0f * 60.0f));
+
+        // A second potion on the now enchanted weapon is refused and kept.
+        OpenYAMM::Game::InventoryItem secondPotion = makeTestInventoryItem(potionId);
+        const OpenYAMM::Game::InventoryItemMixResult repeatResult = applyHeldPotion(gameData, party, secondPotion);
+        REQUIRE(repeatResult.handled);
+        CHECK_FALSE(repeatResult.success);
+        CHECK_FALSE(repeatResult.heldItemConsumed);
+    }
+
+    for (const uint32_t refusedTargetId : {109u, 500u})
+    {
+        CAPTURE(refusedTargetId);
+        pMember->inventory.clear();
+        REQUIRE(pMember->addInventoryItemAt(makeTestInventoryItem(refusedTargetId), 0, 0));
+
+        OpenYAMM::Game::InventoryItem heldPotion = makeTestInventoryItem(246);
+        heldPotion.standardEnchantPower = 4;
+        const OpenYAMM::Game::InventoryItemMixResult result = applyHeldPotion(gameData, party, heldPotion);
+
+        REQUIRE(result.handled);
+        CHECK_FALSE(result.success);
+        CHECK_FALSE(result.heldItemConsumed);
+        CHECK_EQ(pMember->inventoryItemAt(0, 0)->temporaryBonusRemainingSeconds, 0.0f);
+    }
+}
+
+TEST_CASE("hardened item flag survives save round trip")
+{
+    OpenYAMM::Game::Party party = {};
+    party.seed(createRegressionPartySeed());
+
+    OpenYAMM::Game::Character *pMember = party.member(0);
+    REQUIRE(pMember != nullptr);
+    pMember->inventory.clear();
+    OpenYAMM::Game::InventoryItem hardenedItem = makeTestInventoryItem(1);
+    hardenedItem.hardened = true;
+    REQUIRE(pMember->addInventoryItemAt(hardenedItem, 0, 0));
+    pMember->equipment.mainHand = 31;
+    pMember->equipmentRuntime.mainHand.hardened = true;
+
+    OpenYAMM::Game::GameSaveData saveData = {};
+    saveData.mapFileName = "hardened_items.odm";
+    saveData.party = party.snapshot();
+
+    const std::filesystem::path savePath =
+        std::filesystem::temp_directory_path() / "openyamm_hardened_items_roundtrip.oysav";
+    std::string error;
+    REQUIRE(OpenYAMM::Game::saveGameDataToPath(savePath, saveData, error));
+
+    const std::optional<OpenYAMM::Game::GameSaveData> loaded =
+        OpenYAMM::Game::loadGameDataFromPath(savePath, error);
+    std::filesystem::remove(savePath);
+
+    REQUIRE(loaded.has_value());
+    REQUIRE_FALSE(loaded->party.members.empty());
+    REQUIRE_FALSE(loaded->party.members[0].inventory.empty());
+    CHECK(loaded->party.members[0].inventory[0].hardened);
+    CHECK(loaded->party.members[0].equipmentRuntime.mainHand.hardened);
+}
+
 TEST_CASE("potion mixing table uses merged potion matrix columns")
 {
     const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
@@ -4252,6 +4604,31 @@ TEST_CASE("potion explosion level two damages the member and breaks one regular 
     const OpenYAMM::Game::InventoryItem *pPotionItem = pMember->inventoryItemAt(1, 0);
     REQUIRE(pPotionItem != nullptr);
     CHECK_FALSE(pPotionItem->broken);
+}
+
+TEST_CASE("potion explosion does not break hardened items")
+{
+    OpenYAMM::Game::PartySeed seed = {};
+    seed.members.push_back(makeRegressionPartyMember("Ariel", "Knight", "PC01-01", 1));
+
+    OpenYAMM::Game::Party party = {};
+    party.seed(seed);
+
+    OpenYAMM::Game::Character *pMember = party.member(0);
+    REQUIRE(pMember != nullptr);
+    pMember->health = 500;
+    pMember->maxHealth = 500;
+
+    OpenYAMM::Game::InventoryItem hardenedItem = {};
+    hardenedItem.objectDescriptionId = 109;
+    hardenedItem.hardened = true;
+    REQUIRE(pMember->addInventoryItemAt(hardenedItem, 0, 0));
+
+    REQUIRE(party.applyPotionExplosionToMember(0, 3));
+
+    const OpenYAMM::Game::InventoryItem *pHardenedItem = pMember->inventoryItemAt(0, 0);
+    REQUIRE(pHardenedItem != nullptr);
+    CHECK_FALSE(pHardenedItem->broken);
 }
 
 TEST_CASE("potion explosion level four eradicates the member and breaks all regular inventory items")
@@ -5478,6 +5855,136 @@ TEST_CASE("indoor steep floor probe against adjacent cave wall recovers as wall 
     CHECK(std::sqrt(deltaX * deltaX + deltaY * deltaY) > 3.5f);
     CHECK(resolved.y <= 0.0f);
     CHECK_EQ(resolved.supportFaceIndex, 0u);
+}
+
+TEST_CASE("indoor movement does not hang airborne under steep cave wall corner")
+{
+    // d23 Druid Circle: walking into the corner where three steep cave-wall facets meet the floor lifted the party
+    // onto a slope it could not climb, and every later step, falling included, was rejected.
+    const std::filesystem::path mapPath =
+        std::filesystem::path(OPENYAMM_SOURCE_DIR) / "assets_dev" / "worlds" / "mm8" / "maps" / "d23.blv";
+    std::ifstream input(mapPath, std::ios::binary);
+    const std::vector<uint8_t> mapBytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    std::optional<OpenYAMM::Game::IndoorMapData> mapData = OpenYAMM::Game::IndoorMapDataLoader().loadFromBytes(mapBytes);
+    REQUIRE(mapData.has_value());
+
+    std::optional<OpenYAMM::Game::MapDeltaData> mapDeltaData = OpenYAMM::Game::MapDeltaData{};
+    std::optional<OpenYAMM::Game::EventRuntimeState> eventRuntimeState = OpenYAMM::Game::EventRuntimeState{};
+    OpenYAMM::Game::IndoorMovementController movementController(*mapData, &mapDeltaData, &eventRuntimeState);
+    const OpenYAMM::Game::IndoorBodyDimensions body = {};
+    OpenYAMM::Game::IndoorMoveState state =
+        movementController.initializeStateFromEyePosition(4240.21f, 4624.08f, body.height, body);
+    REQUIRE(state.grounded);
+
+    int frozenAirborneSteps = 0;
+    int longestFrozenAirborneSteps = 0;
+
+    for (int step = 0; step < 128; ++step)
+    {
+        const OpenYAMM::Game::IndoorMoveState previous = state;
+        state = movementController.resolveMove(
+            state,
+            body,
+            226.6f,
+            -733.8f,
+            false,
+            1.0f / 128.0f,
+            nullptr,
+            std::nullopt,
+            true,
+            nullptr,
+            false,
+            false,
+            480.0f,
+            0.0f,
+            false,
+            false,
+            false,
+            false,
+            false,
+            1280.0f);
+        const bool frozen = state.x == previous.x && state.y == previous.y && state.footZ == previous.footZ;
+        frozenAirborneSteps = !state.grounded && frozen ? frozenAirborneSteps + 1 : 0;
+        longestFrozenAirborneSteps = std::max(longestFrozenAirborneSteps, frozenAirborneSteps);
+    }
+
+    CHECK(longestFrozenAirborneSteps < 32);
+}
+
+TEST_CASE("indoor movement does not pass through near-vertical in-between wall from overlap")
+{
+    // d07 Smuggler's Cove face 1573: a cave wall whose top vertex is one unit back gets a tiny upward normal.
+    OpenYAMM::Game::IndoorMapData mapData = {};
+    mapData.vertices = {
+        {-512, -512, 0},
+        {512, -512, 0},
+        {512, 0, 0},
+        {-512, 0, 0},
+        {-512, 0, 0},
+        {512, 0, 0},
+        {512, 1, 256},
+        {-512, 1, 256},
+    };
+
+    OpenYAMM::Game::IndoorFace floor = {};
+    floor.vertexIndices = {0, 1, 2, 3};
+    floor.facetType = 3;
+    floor.roomNumber = 1;
+
+    OpenYAMM::Game::IndoorFace nearVerticalWall = {};
+    nearVerticalWall.vertexIndices = {4, 5, 6, 7};
+    nearVerticalWall.facetType = 4;
+    nearVerticalWall.roomNumber = 1;
+
+    mapData.faces = {floor, nearVerticalWall};
+
+    OpenYAMM::Game::IndoorSector dummySector = {};
+    OpenYAMM::Game::IndoorSector sector = {};
+    sector.floorCount = 1;
+    sector.wallCount = 1;
+    sector.faceCount = 2;
+    sector.nonBspFaceCount = 2;
+    sector.minX = -512;
+    sector.maxX = 512;
+    sector.minY = -512;
+    sector.maxY = 1;
+    sector.minZ = 0;
+    sector.maxZ = 256;
+    sector.floorFaceIds = {0};
+    sector.wallFaceIds = {1};
+    sector.faceIds = {0, 1};
+    sector.nonBspFaceIds = {0, 1};
+    mapData.sectors = {dummySector, sector};
+
+    std::optional<OpenYAMM::Game::MapDeltaData> mapDeltaData = OpenYAMM::Game::MapDeltaData{};
+    std::optional<OpenYAMM::Game::EventRuntimeState> eventRuntimeState = OpenYAMM::Game::EventRuntimeState{};
+    OpenYAMM::Game::IndoorMovementController movementController(mapData, &mapDeltaData, &eventRuntimeState);
+    const OpenYAMM::Game::IndoorBodyDimensions body{37.0f, 160.0f};
+    OpenYAMM::Game::IndoorMoveState state =
+        movementController.initializeStateFromEyePosition(0.0f, -20.0f, 160.0f, body);
+    REQUIRE(state.grounded);
+    REQUIRE_EQ(state.supportFaceIndex, 0u);
+
+    float maximumY = state.y;
+
+    for (int step = 0; step < 128; ++step)
+    {
+        state = movementController.resolveMove(
+            state,
+            body,
+            -580.0f,
+            580.0f,
+            false,
+            1.0f / 128.0f,
+            nullptr,
+            std::nullopt,
+            true);
+        maximumY = std::max(maximumY, state.y);
+    }
+
+    CHECK(maximumY < 0.0f);
+    CHECK(state.grounded);
+    CHECK_EQ(state.supportFaceIndex, 0u);
 }
 
 TEST_CASE("indoor lava support applies recurring burning damage")
@@ -7025,6 +7532,19 @@ TEST_CASE("event runtime queues qbit portrait fx only for visible quest entries"
     CHECK_FALSE(party.hasQuestBit(5));
     CHECK(runtimeState.portraitFxRequests.empty());
     CHECK(runtimeState.pendingSounds.empty());
+}
+
+TEST_CASE("event runtime QBit selectors keep ids above 65535")
+{
+    using namespace OpenYAMM::Game;
+    for (const uint64_t qbit : {uint64_t{611}, uint64_t{65535}, uint64_t{100002}})
+    {
+        CAPTURE(qbit);
+        const EventRuntime::VariableRef variable =
+            EventRuntime::decodeVariable(qbit * 65536 + static_cast<uint64_t>(EvtVariable::QBits));
+        CHECK(variable.kind == EventRuntime::VariableKind::QBits);
+        CHECK_EQ(variable.rawId, qbit);
+    }
 }
 
 TEST_CASE("event runtime MonthIs uses zero-based legacy months at both month boundaries")
@@ -10094,6 +10614,17 @@ TEST_CASE("merchant pricing uses effective reputation")
     OpenYAMM::Game::Character grandmaster = {};
     grandmaster.skills["Merchant"] = {"Merchant", 1, OpenYAMM::Game::SkillMastery::Grandmaster};
     CHECK_EQ(OpenYAMM::Game::PriceCalculator::playerMerchant(&grandmaster, 50), 100);
+
+    // A hired Merchant (+6) helps a character without the skill as a Normal-mastery level 6 trader.
+    OpenYAMM::Game::Character unskilled = {};
+    CHECK_EQ(OpenYAMM::Game::PriceCalculator::playerMerchant(&unskilled, 0), 0);
+    CHECK_EQ(OpenYAMM::Game::PriceCalculator::playerMerchant(&unskilled, 5), -5);
+    unskilled.hiredNpcSkillBonuses["Merchant"] = 6;
+    CHECK_EQ(OpenYAMM::Game::PriceCalculator::playerMerchant(&unskilled, 0), 13);
+    CHECK_EQ(OpenYAMM::Game::PriceCalculator::playerMerchant(&unskilled, 6), 7);
+
+    merchant.hiredNpcSkillBonuses["Merchant"] = 6;
+    CHECK_EQ(OpenYAMM::Game::PriceCalculator::playerMerchant(&merchant, 0), 17);
 }
 
 TEST_CASE("house identify and repair service prices match OE formulas")
@@ -10304,4 +10835,15 @@ TEST_CASE("party yellow alert counts only detected hostile actors within the ori
     actor.isDead = false;
     actor.hostileToParty = false;
     CHECK_FALSE(OpenYAMM::Game::actorRaisesPartyYellowAlert(actor, 0.0f, 0.0f, 0.0f));
+}
+
+TEST_CASE("found item messages use the generic name of an item")
+{
+    OpenYAMM::Game::ItemDefinition scroll = {};
+    scroll.name = "Spirit Lash";
+    scroll.unidentifiedName = "Scroll";
+    CHECK(OpenYAMM::Game::ItemRuntime::foundItemName(scroll) == "Scroll");
+
+    scroll.unidentifiedName = "N / A";
+    CHECK(OpenYAMM::Game::ItemRuntime::foundItemName(scroll) == "Spirit Lash");
 }

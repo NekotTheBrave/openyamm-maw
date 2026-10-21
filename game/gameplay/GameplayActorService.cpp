@@ -326,6 +326,22 @@ GameplayActorService::SharedSpellEffectResult GameplayActorService::tryApplyShar
     const std::string &spellName = pSpellEntry->normalizedName;
     const CombatDamageType damageType = GameMechanics::parseCombatDamageType(pSpellEntry->schoolName);
 
+    // Fate cast on a monster is a buff for it, so its resistances do not apply.
+    if (spellName == "fate")
+    {
+        const int powerPerLevel = skillMastery == SkillMastery::Grandmaster
+            ? 6
+            : skillMastery == SkillMastery::Master
+            ? 4
+            : skillMastery == SkillMastery::Expert
+            ? 2
+            : 1;
+        state.fateRemainingSeconds = minutesToSeconds(5.0f);
+        state.fatePower = powerPerLevel * static_cast<int>(skillLevel);
+        result.disposition = SharedSpellDisposition::Applied;
+        return result;
+    }
+
     if (damageType != CombatDamageType::Irresistible && spellResistance >= 200)
     {
         result.disposition = SharedSpellDisposition::Rejected;

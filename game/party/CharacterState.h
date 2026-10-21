@@ -130,6 +130,7 @@ struct EquippedItemRuntimeState
     bool identified = true;
     bool broken = false;
     bool stolen = false;
+    bool hardened = false;
     uint16_t standardEnchantId = 0;
     uint16_t standardEnchantPower = 0;
     uint16_t specialEnchantId = 0;

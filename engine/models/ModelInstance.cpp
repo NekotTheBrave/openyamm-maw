@@ -62,7 +62,10 @@ ModelInstanceHandle ModelInstanceSystem::create(
     slot.materialVariant = 0;
     slot.nodeMarkersVisible = false;
     slot.attachments.clear();
+    // A recycled slot may have held a larger model; its rotations would index past this model's nodes.
+    slot.nodeRotations.clear();
     slot.staticStandIn.reset();
+    slot.standInMinimumPixels = 0.0f;
     slot.coverage = 1.0f;
     slot.playing = false;
     slot.paused = false;
@@ -76,6 +79,7 @@ ModelInstanceHandle ModelInstanceSystem::create(
     slot.transitionElapsed = 0.0f;
     slot.transitionDuration = 0.0f;
     slot.transitionShown = 0.0f;
+    slot.pickingBoundsRevision = UINT64_MAX;
     slot.rootTransform = rootTransform;
     slot.asset = std::move(asset);
     slot.deformationBounds.reset();
@@ -107,6 +111,7 @@ bool ModelInstanceSystem::destroy(ModelInstanceHandle handle)
     pSlot->active = false;
     pSlot->asset.reset();
     pSlot->attachments.clear();
+    pSlot->nodeRotations.clear();
     pSlot->staticStandIn.reset();
     pSlot->deformationBounds.reset();
     pSlot->pose = {};
@@ -312,18 +317,20 @@ const std::vector<ModelAttachment> &ModelInstanceSystem::attachments(ModelInstan
     return pSlot != nullptr ? pSlot->attachments : None;
 }
 
-bool ModelInstanceSystem::setStaticStandIn(ModelInstanceHandle handle, std::shared_ptr<const ModelAsset> asset)
+bool ModelInstanceSystem::setStaticStandIn(ModelInstanceHandle handle, std::shared_ptr<const ModelAsset> asset,
+    float minimumPixels)
 {
     Slot *pSlot = find(handle);
     if (pSlot == nullptr)
     {
         return false;
     }
-    if (pSlot->staticStandIn != asset)
+    if (pSlot->staticStandIn != asset || pSlot->standInMinimumPixels != minimumPixels)
     {
         // Counts the stand-in that goes as well as the one that comes.
         standInChanged(*pSlot);
         pSlot->staticStandIn = std::move(asset);
+        pSlot->standInMinimumPixels = minimumPixels;
         standInChanged(*pSlot);
     }
     return true;
@@ -334,6 +341,12 @@ const std::shared_ptr<const ModelAsset> &ModelInstanceSystem::staticStandIn(Mode
     static const std::shared_ptr<const ModelAsset> None;
     const Slot *pSlot = find(handle);
     return pSlot != nullptr ? pSlot->staticStandIn : None;
+}
+
+float ModelInstanceSystem::staticStandInMinimumPixels(ModelInstanceHandle handle) const
+{
+    const Slot *pSlot = find(handle);
+    return pSlot != nullptr ? pSlot->standInMinimumPixels : 0.0f;
 }
 
 bool ModelInstanceSystem::setCoverage(ModelInstanceHandle handle, float coverage)

@@ -2,6 +2,7 @@
 #include "engine/ImageAssetLoader.h"
 #include "game/party/SkillData.h"
 #include "game/party/CharacterState.h"
+#include "game/tables/MergedBaseTables.h"
 #include <charconv>
 #include "game/StringUtils.h"
 
@@ -536,6 +537,11 @@ bool ItemDefinition::availableInWorld(const std::string &worldId) const
     return worldIds.empty() || std::find(worldIds.begin(), worldIds.end(), toLowerCopy(worldId)) != worldIds.end();
 }
 
+bool ItemDefinition::isGold() const
+{
+    return toLowerCopy(equipStat) == "gold";
+}
+
 bool ItemTable::loadVisualRows(const std::vector<std::vector<std::string>> &rows, std::string &errorMessage)
 {
     // Validate a complete import before replacing any existing visual metadata.
@@ -763,6 +769,61 @@ bool ItemTable::loadItemSetRows(
 const std::vector<ItemSetBonusDefinition> &ItemTable::setBonuses() const
 {
     return m_setBonuses;
+}
+
+void ItemTable::applyPotionSettings(const MergedPotionSettingTable &potionSettingTable)
+{
+    for (ItemDefinition &entry : m_entries)
+    {
+        entry.hasPotionPower = false;
+    }
+
+    for (const MergedPotionSettingEntry &setting : potionSettingTable.entries())
+    {
+        if (setting.potionId != 0 && setting.itemId < m_entries.size())
+        {
+            m_entries[setting.itemId].hasPotionPower = true;
+        }
+    }
+}
+
+void ItemTable::setGroundModels(const ItemModelBindings &bindings)
+{
+    m_groundModels.clear();
+    m_groundModelIndexByItemId.assign(m_entries.size(), -1);
+    std::unordered_map<std::string, int32_t> indexByIcon;
+
+    for (size_t itemId = 0; itemId < m_entries.size(); ++itemId)
+    {
+        const std::string icon = toLowerCopy(m_entries[itemId].iconName);
+        const auto binding = bindings.find(icon);
+
+        if (binding == bindings.end())
+        {
+            continue;
+        }
+
+        const auto [index, inserted] = indexByIcon.try_emplace(icon, int32_t(m_groundModels.size()));
+
+        if (inserted)
+        {
+            m_groundModels.push_back(binding->second);
+        }
+
+        m_groundModelIndexByItemId[itemId] = index->second;
+    }
+}
+
+const ItemModelBinding &ItemTable::groundModel(uint32_t itemId) const
+{
+    return hasGroundModel(itemId)
+        ? m_groundModels[size_t(m_groundModelIndexByItemId[itemId])]
+        : missingItemModelBinding();
+}
+
+bool ItemTable::hasGroundModel(uint32_t itemId) const
+{
+    return itemId < m_groundModelIndexByItemId.size() && m_groundModelIndexByItemId[itemId] >= 0;
 }
 
 bool ItemTable::loadSourceAliasRows(

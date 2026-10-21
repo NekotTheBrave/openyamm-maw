@@ -50,7 +50,14 @@ struct GameSaveData
 
 void migrateLegacyConsumedCorpseMarkers(GameSaveData &data, uint32_t sourceSaveVersion);
 void migrateLegacyNpcRosters(GameSaveData &data);
+void migrateLegacyMapAutonotes(GameSaveData &data, uint32_t sourceSaveVersion);
+void migrateLegacyMapHistory(GameSaveData &data, uint32_t sourceSaveVersion);
+void migrateLegacyMapJournalNotes(GameSaveData &data, uint32_t sourceSaveVersion);
 bool saveGameDataToPath(const std::filesystem::path &path, const GameSaveData &data, std::string &error);
+
+// The load error for a save written by a newer build; the Load screen counts such saves instead of listing them.
+inline constexpr const char *SaveFromNewerVersionError = "written by a newer version of OpenYAMM";
+
 std::optional<GameSaveData> loadGameDataFromPath(const std::filesystem::path &path, std::string &error);
 std::unordered_map<std::string, uint32_t> collectRequiredContentPackages(
     const GameSaveData &data,

@@ -156,6 +156,8 @@ public:
     bool load(const std::vector<std::vector<std::string>> &rows);
     const std::vector<SpecialItemEnchantEntry> &entries() const;
     const SpecialItemEnchantEntry *get(uint16_t enchantId) const;
+    // The id of the first enchantment of this kind, or 0 when the table has none.
+    uint16_t findId(SpecialItemEnchantKind kind) const;
 
 private:
     std::vector<SpecialItemEnchantEntry> m_entries;

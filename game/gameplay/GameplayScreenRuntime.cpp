@@ -1142,44 +1142,8 @@ const AwardTable *GameplayScreenRuntime::awardTable() const
 
 bool GameplayScreenRuntime::isAutonoteUnlocked(uint32_t autonoteId) const
 {
-    constexpr uint32_t AutonoteVariableTag = 0x00E1u;
-    const uint32_t variable = (autonoteId << 16) | AutonoteVariableTag;
-    const auto stateHasAutonote = [variable](const EventRuntimeState *pEventRuntimeState)
-    {
-        if (pEventRuntimeState == nullptr)
-        {
-            return false;
-        }
-
-        const std::unordered_map<uint32_t, int32_t>::const_iterator iterator =
-            pEventRuntimeState->variables.find(variable);
-        return iterator != pEventRuntimeState->variables.end() && iterator->second != 0;
-    };
-
-    if (stateHasAutonote(worldRuntime() != nullptr ? worldRuntime()->eventRuntimeState() : nullptr))
-    {
-        return true;
-    }
-
-    for (const auto &[mapName, snapshot] : m_session.outdoorWorldStates())
-    {
-        (void)mapName;
-        if (snapshot.eventRuntimeState && stateHasAutonote(&*snapshot.eventRuntimeState))
-        {
-            return true;
-        }
-    }
-
-    for (const auto &[mapName, snapshot] : m_session.indoorSceneStates())
-    {
-        (void)mapName;
-        if (snapshot.eventRuntimeState && stateHasAutonote(&*snapshot.eventRuntimeState))
-        {
-            return true;
-        }
-    }
-
-    return false;
+    const Party *pParty = partyReadOnly();
+    return pParty != nullptr && pParty->hasAutonote(autonoteId);
 }
 
 const JournalQuestTable *GameplayScreenRuntime::journalQuestTable() const
@@ -1190,6 +1154,12 @@ const JournalQuestTable *GameplayScreenRuntime::journalQuestTable() const
 const JournalHistoryTable *GameplayScreenRuntime::journalHistoryTable() const
 {
     return &m_session.data().journalHistoryTable();
+}
+
+std::string GameplayScreenRuntime::mapDisplayName(const std::string &mapFileName) const
+{
+    const MapStatsEntry *pMap = m_session.data().mapStats().findByFileName(mapFileName);
+    return pMap != nullptr && !pMap->name.empty() ? pMap->name : mapFileName;
 }
 
 uint32_t GameplayScreenRuntime::activeHistoryContinentId() const
@@ -1493,8 +1463,8 @@ void GameplayScreenRuntime::beginRestAction(
         return;
     }
 
-    if ((mode == GameplayUiController::RestMode::Heal && restScreen.mode != GameplayUiController::RestMode::None)
-        || (mode == GameplayUiController::RestMode::Wait && restScreen.mode == GameplayUiController::RestMode::Heal))
+    // A new action during a running one would restart the full duration on top of the minutes already passed.
+    if (restScreen.mode != GameplayUiController::RestMode::None)
     {
         setStatusBarEvent("You are already resting.");
         return;
@@ -1526,6 +1496,12 @@ void GameplayScreenRuntime::beginRestAction(
         }
 
         currentParty.addFood(-foodRequired);
+    }
+
+    // The party sleeps from the start of a heal, so dawns passed during it do not count as days without rest.
+    if (mode == GameplayUiController::RestMode::Heal)
+    {
+        party()->clearDaysWithoutRest();
     }
 
     restScreen.mode = mode;
@@ -2177,6 +2153,7 @@ void GameplayScreenRuntime::closeJournalOverlay()
     GameplayUiController::JournalScreenState &journalScreen = uiController().journalScreen();
     const bool wasActive = journalScreen.active;
     journalScreen.active = false;
+    journalScreen.notesSearchActive = false;
     journalScreen.hoverAnimationElapsedSeconds = 0.0f;
     journalScreen.mapDragActive = false;
     journalScreen.mapDragStartMouseX = 0.0f;
@@ -2542,7 +2519,9 @@ void GameplayScreenRuntime::resetDialogueOverlayInteractionState()
     interactionState().eventDialogSelectDownLatch = false;
     interactionState().eventDialogAcceptLatch = false;
     interactionState().eventDialogPartySelectLatches.fill(false);
-    interactionState().dialogueClickLatch = false;
+    // Armed while no dialogue is open, like the loot latches: the press that opens a house or NPC dialogue must not
+    // select the topic under the cursor when it is released.
+    interactionState().dialogueClickLatch = true;
     interactionState().dialoguePressedTarget = {};
 }
 
@@ -3139,9 +3118,13 @@ void GameplayScreenRuntime::resetInventoryNestedOverlayInteractionState()
 
 void GameplayScreenRuntime::resetLootOverlayInteractionState()
 {
-    interactionState().closeOverlayLatch = false;
-    interactionState().chestClickLatch = false;
-    interactionState().chestItemClickLatch = false;
+    // closeOverlayLatch is shared by every overlay's Escape handling; clearing it here every frame without a loot
+    // view would let the dialogue overlay handle the same Escape press twice and skip a menu level.
+    // The click and loot latches stay armed while no loot view is open: the press that opens a chest (mouse-bound
+    // Use, Telekinesis, a touch tap) is still held on its first frame and must not grab or loot the item under the
+    // cursor. Each latch clears once its button is up, so the loot view only reacts to a fresh press.
+    interactionState().chestClickLatch = true;
+    interactionState().chestItemClickLatch = true;
     interactionState().chestPressedTarget = {};
 
     if (inventoryNestedOverlay().active
@@ -3151,7 +3134,7 @@ void GameplayScreenRuntime::resetLootOverlayInteractionState()
         resetInventoryNestedOverlayInteractionState();
     }
 
-    interactionState().lootChestItemLatch = false;
+    interactionState().lootChestItemLatch = true;
     interactionState().chestSelectUpLatch = false;
     interactionState().chestSelectDownLatch = false;
     interactionState().chestSelectionIndex = 0;

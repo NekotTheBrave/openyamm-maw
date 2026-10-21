@@ -57,7 +57,7 @@ std::optional<std::string> skillNameForEvtVariable(EvtVariable variableId);
 SkillMastery normalizeCheckSkillMastery(uint32_t rawMastery);
 bool evaluateCompareValue(
     const EventRuntimeState &runtimeState,
-    uint32_t rawVariableId,
+    uint64_t rawVariableId,
     int32_t compareValue,
     const Party *pParty,
     const std::vector<size_t> &targetMemberIndices,
@@ -120,6 +120,21 @@ void synchronizeLegacyHistoryMirror(EventRuntimeState &runtimeState)
     runtimeState.historyEventTimes = found != runtimeState.historyEventTimesByContinent.end()
         ? found->second
         : std::unordered_map<uint32_t, int32_t>{};
+}
+
+bool partyHasHistoryEntry(const Party &party, const EventRuntimeState &runtimeState, uint32_t historyId)
+{
+    const uint32_t continentId = normalizedHistoryContinent(runtimeState.activeHistoryContinentId);
+    return party.historyEventTimes(continentId).contains(historyId)
+        || forwardHistoryEntryTime(continentId, historyId).has_value();
+}
+
+void recordPartyHistoryEntry(Party &party, const EventRuntimeState &runtimeState, uint32_t historyId)
+{
+    party.recordHistoryEvent(
+        normalizedHistoryContinent(runtimeState.activeHistoryContinentId),
+        historyId,
+        std::max(1, currentGameMinutesFromRuntimeState(runtimeState)));
 }
 
 std::string traceQuoted(const std::string &value)
@@ -216,14 +231,12 @@ void seedForwardHistoryEntries(EventRuntimeState &runtimeState)
     std::unordered_map<uint32_t, int32_t> &historyTimes = mutableHistoryEventTimesForActiveContinent(runtimeState);
     const uint32_t continentId = normalizedHistoryContinent(runtimeState.activeHistoryContinentId);
 
-    if (continentId == DefaultHistoryContinentId)
+    for (uint32_t historyId : {1u, 2u})
     {
-        historyTimes[1] = 1;
-    }
-    else if (continentId == Mm7HistoryContinentId)
-    {
-        historyTimes[1] = 1;
-        historyTimes[2] = 2;
+        if (const std::optional<int32_t> gameMinutes = forwardHistoryEntryTime(continentId, historyId))
+        {
+            historyTimes[historyId] = *gameMinutes;
+        }
     }
 
     synchronizeLegacyHistoryMirror(runtimeState);
@@ -761,7 +774,7 @@ std::optional<SpeechId> speechIdForLegacyFaceAnimationId(uint32_t faceAnimationI
         case 33:
             return SpeechId::Dying;
         case 36:
-            return SpeechId::PotionSuccess;
+            return SpeechId::DrinkPotion;
         case 38:
             return SpeechId::NotEnoughGold;
         case 39:
@@ -769,13 +782,13 @@ std::optional<SpeechId> speechIdForLegacyFaceAnimationId(uint32_t faceAnimationI
         case 44:
             return SpeechId::DamagedParty;
         case 45:
-            return SpeechId::Hungry;
+            return SpeechId::Tired;
         case 46:
             return SpeechId::EnterDungeon;
         case 47:
             return SpeechId::LeaveDungeon;
         case 48:
-            return SpeechId::Dying;
+            return SpeechId::DamageMajor;
         case 49:
             return SpeechId::CastSpell;
         case 50:
@@ -1938,12 +1951,12 @@ void syncTimeVariablesFromSceneContext(EventRuntimeState &runtimeState, const IS
 }
 }
 
-EventRuntime::VariableRef EventRuntime::decodeVariable(uint32_t rawId)
+EventRuntime::VariableRef EventRuntime::decodeVariable(uint64_t rawId)
 {
     VariableRef variable = {};
-    variable.rawId = rawId;
+    variable.rawId = static_cast<uint32_t>(rawId);
     variable.tag = static_cast<uint16_t>(rawId & 0xFFFF);
-    variable.index = rawId >> 16;
+    variable.index = static_cast<uint32_t>(rawId >> 16);
 
     if (variable.tag == 0x013Cu)
     {
@@ -2327,12 +2340,22 @@ int32_t EventRuntime::getVariableValue(
 
     if (variable.kind == VariableKind::AutoNote)
     {
+        if (pParty != nullptr && variable.index != 0)
+        {
+            return pParty->hasAutonote(variable.index) ? 1 : 0;
+        }
+
         const std::unordered_map<uint32_t, int32_t>::const_iterator iterator = runtimeState.variables.find(variable.rawId);
         return iterator != runtimeState.variables.end() ? iterator->second : 0;
     }
 
     if (variable.kind == VariableKind::History)
     {
+        if (pParty != nullptr)
+        {
+            return partyHasHistoryEntry(*pParty, runtimeState, variable.index) ? 1 : 0;
+        }
+
         const std::unordered_map<uint32_t, int32_t> &historyTimes =
             historyEventTimesForContinent(runtimeState, runtimeState.activeHistoryContinentId);
         return historyTimes.find(variable.index) != historyTimes.end() ? 1 : 0;
@@ -2879,7 +2902,15 @@ void EventRuntime::setVariableValue(
     if (variable.kind == VariableKind::AutoNote)
     {
         const int32_t normalizedValue = value != 0 ? value : 0;
-        runtimeState.variables[variable.rawId] = normalizedValue;
+
+        if (pParty != nullptr && variable.index != 0)
+        {
+            pParty->setAutonote(variable.index, normalizedValue != 0);
+        }
+        else
+        {
+            runtimeState.variables[variable.rawId] = normalizedValue;
+        }
 
         if (normalizedValue != 0 && previousValue == 0)
         {
@@ -2892,6 +2923,22 @@ void EventRuntime::setVariableValue(
     if (variable.kind == VariableKind::History)
     {
         const int32_t normalizedValue = value != 0 ? 1 : 0;
+
+        if (pParty != nullptr)
+        {
+            if (normalizedValue != 0 && previousValue == 0)
+            {
+                recordPartyHistoryEntry(*pParty, runtimeState, variable.index);
+            }
+            else if (normalizedValue == 0)
+            {
+                pParty->clearHistoryEvent(
+                    normalizedHistoryContinent(runtimeState.activeHistoryContinentId), variable.index);
+            }
+
+            return;
+        }
+
         runtimeState.variables[variable.rawId] = normalizedValue;
         std::unordered_map<uint32_t, int32_t> &historyTimes =
             mutableHistoryEventTimesForActiveContinent(runtimeState);
@@ -3486,6 +3533,22 @@ void EventRuntime::setVariableValue(
     if (variable.kind == VariableKind::History)
     {
         const int32_t normalizedValue = value != 0 ? 1 : 0;
+
+        if (pParty != nullptr)
+        {
+            if (normalizedValue != 0 && previousValue == 0)
+            {
+                recordPartyHistoryEntry(*pParty, runtimeState, variable.index);
+            }
+            else if (normalizedValue == 0)
+            {
+                pParty->clearHistoryEvent(
+                    normalizedHistoryContinent(runtimeState.activeHistoryContinentId), variable.index);
+            }
+
+            return;
+        }
+
         runtimeState.variables[variable.rawId] = normalizedValue;
         std::unordered_map<uint32_t, int32_t> &historyTimes =
             mutableHistoryEventTimesForActiveContinent(runtimeState);
@@ -3658,7 +3721,15 @@ void EventRuntime::addVariableValue(
     if (variable.kind == VariableKind::AutoNote)
     {
         const int32_t updatedValue = previousValue != 0 ? previousValue : value;
-        runtimeState.variables[variable.rawId] = updatedValue;
+
+        if (pParty != nullptr && variable.index != 0)
+        {
+            pParty->setAutonote(variable.index, updatedValue != 0);
+        }
+        else
+        {
+            runtimeState.variables[variable.rawId] = updatedValue;
+        }
 
         if (updatedValue != 0 && previousValue == 0)
         {
@@ -3671,6 +3742,16 @@ void EventRuntime::addVariableValue(
     if (variable.kind == VariableKind::History)
     {
         // Legacy History Add records a milestone regardless of its argument (usually zero).
+        if (pParty != nullptr)
+        {
+            if (previousValue == 0)
+            {
+                recordPartyHistoryEntry(*pParty, runtimeState, variable.index);
+            }
+
+            return;
+        }
+
         runtimeState.variables[variable.rawId] = 1;
         std::unordered_map<uint32_t, int32_t> &historyTimes =
             mutableHistoryEventTimesForActiveContinent(runtimeState);
@@ -4117,7 +4198,14 @@ void EventRuntime::subtractVariableValue(
     {
         if (value > 0)
         {
-            runtimeState.variables[variable.rawId] = 0;
+            if (pParty != nullptr && variable.index != 0)
+            {
+                pParty->setAutonote(variable.index, false);
+            }
+            else
+            {
+                runtimeState.variables[variable.rawId] = 0;
+            }
         }
 
         return;
@@ -4125,7 +4213,11 @@ void EventRuntime::subtractVariableValue(
 
     if (variable.kind == VariableKind::History)
     {
-        if (value > 0)
+        if (value > 0 && pParty != nullptr)
+        {
+            pParty->clearHistoryEvent(normalizedHistoryContinent(runtimeState.activeHistoryContinentId), variable.index);
+        }
+        else if (value > 0)
         {
             runtimeState.variables[variable.rawId] = 0;
             std::unordered_map<uint32_t, int32_t> &historyTimes =
@@ -4864,7 +4956,7 @@ int luaForPlayer(lua_State *pLuaState)
 int luaCompare(lua_State *pLuaState)
 {
     const LuaExecutionContext *pExecutionContext = executionContextFromLua(pLuaState);
-    const uint32_t rawVariableId = static_cast<uint32_t>(luaL_checkinteger(pLuaState, 1));
+    const uint64_t rawVariableId = static_cast<uint64_t>(luaL_checkinteger(pLuaState, 1));
     const int32_t compareValue = static_cast<int32_t>(luaL_checkinteger(pLuaState, 2));
     lua_pushboolean(
         pLuaState,
@@ -7547,7 +7639,7 @@ int luaAdd(lua_State *pLuaState)
     const LuaExecutionContext *pExecutionContext = executionContextFromLua(pLuaState);
     EventRuntime::addVariableValue(
         *pRuntimeState,
-        EventRuntime::decodeVariable(static_cast<uint32_t>(luaL_checkinteger(pLuaState, 1))),
+        EventRuntime::decodeVariable(static_cast<uint64_t>(luaL_checkinteger(pLuaState, 1))),
         static_cast<int32_t>(luaL_checkinteger(pLuaState, 2)),
         writableParty(pLuaState),
         selectedTargetMemberIndices(pLuaState),
@@ -7559,7 +7651,7 @@ int luaSubtract(lua_State *pLuaState)
 {
     EventRuntimeState *pRuntimeState = writableRuntimeState(pLuaState);
     const EventRuntime::VariableRef variable =
-        EventRuntime::decodeVariable(static_cast<uint32_t>(luaL_checkinteger(pLuaState, 1)));
+        EventRuntime::decodeVariable(static_cast<uint64_t>(luaL_checkinteger(pLuaState, 1)));
     EventRuntime::subtractVariableValue(
         *pRuntimeState,
         variable,
@@ -7574,7 +7666,7 @@ int luaSet(lua_State *pLuaState)
     EventRuntimeState *pRuntimeState = writableRuntimeState(pLuaState);
     const LuaExecutionContext *pExecutionContext = executionContextFromLua(pLuaState);
     const EventRuntime::VariableRef variable =
-        EventRuntime::decodeVariable(static_cast<uint32_t>(luaL_checkinteger(pLuaState, 1)));
+        EventRuntime::decodeVariable(static_cast<uint64_t>(luaL_checkinteger(pLuaState, 1)));
     EventRuntime::setVariableValue(
         *pRuntimeState,
         variable,
@@ -8859,6 +8951,22 @@ std::vector<EventRuntimeState::OpenedChestRequest> consumeOpenedChestRequests(Ev
     return requests;
 }
 
+std::optional<int32_t> forwardHistoryEntryTime(uint32_t continentId, uint32_t historyId)
+{
+    // The opening history entries are known from the start of the game.
+    if (historyId == 1 && (continentId == DefaultHistoryContinentId || continentId == Mm7HistoryContinentId))
+    {
+        return 1;
+    }
+
+    if (historyId == 2 && continentId == Mm7HistoryContinentId)
+    {
+        return 2;
+    }
+
+    return std::nullopt;
+}
+
 uint32_t normalizedHistoryContinentId(uint32_t continentId)
 {
     return normalizedHistoryContinent(continentId);
@@ -9802,7 +9910,7 @@ namespace
 {
 bool evaluateCompareValue(
     const EventRuntimeState &runtimeState,
-    uint32_t rawVariableId,
+    uint64_t rawVariableId,
     int32_t compareValue,
     const Party *pParty,
     const std::vector<size_t> &targetMemberIndices,

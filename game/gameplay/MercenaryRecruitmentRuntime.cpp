@@ -716,6 +716,7 @@ void copyInventoryItemToEquipmentRuntime(const InventoryItem &item, EquippedItem
     runtimeState.identified = item.identified;
     runtimeState.broken = item.broken;
     runtimeState.stolen = item.stolen;
+    runtimeState.hardened = item.hardened;
     runtimeState.standardEnchantId = item.standardEnchantId;
     runtimeState.standardEnchantPower = item.standardEnchantPower;
     runtimeState.specialEnchantId = item.specialEnchantId;

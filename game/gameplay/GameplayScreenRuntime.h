@@ -168,6 +168,8 @@ public:
     const JournalQuestTable *journalQuestTable() const;
     const JournalHistoryTable *journalHistoryTable() const;
     uint32_t activeHistoryContinentId() const;
+    // The map's display name, or its file name when the map has no stats entry.
+    std::string mapDisplayName(const std::string &mapFileName) const;
     const JournalAutonoteTable *journalAutonoteTable() const;
     const std::string &currentMapFileName() const;
     float gameplayCameraYawRadians() const;

@@ -165,19 +165,7 @@ std::string corpseLootItemName(const GameplayChestItemState &item, const ItemTab
     const ItemDefinition *pItemDefinition =
         pItemTable != nullptr ? pItemTable->get(item.itemId) : nullptr;
 
-    if (pItemDefinition == nullptr)
-    {
-        return "item";
-    }
-
-    if (!pItemDefinition->unidentifiedName.empty()
-        && pItemDefinition->unidentifiedName != "0"
-        && pItemDefinition->unidentifiedName != "N / A")
-    {
-        return pItemDefinition->unidentifiedName;
-    }
-
-    return !pItemDefinition->name.empty() ? pItemDefinition->name : "item";
+    return pItemDefinition != nullptr ? ItemRuntime::foundItemName(*pItemDefinition) : "item";
 }
 
 InventoryItem normalizedCorpseInventoryItem(const GameplayChestItemState &item)
@@ -265,26 +253,17 @@ void setHeldInventoryItem(
 }
 }
 
-GameplayCorpseViewState buildMonsterCorpseView(
+GameplayCorpseViewState rollMonsterCarriedLoot(
     const std::string &title,
     const MonsterTable::LootPrototype &loot,
     const ItemTable *pItemTable,
     Party *pParty,
-    const std::string &worldId,
-    const std::vector<uint32_t> &guaranteedItemIds)
+    const std::string &worldId)
 {
     GameplayCorpseViewState view = {};
     view.title = title;
 
     static thread_local std::mt19937 rng(std::random_device{}());
-    const bool hasGuaranteedItems =
-        std::any_of(
-            guaranteedItemIds.begin(),
-            guaranteedItemIds.end(),
-            [](uint32_t itemId)
-            {
-                return itemId != 0;
-            });
 
     if (loot.goldDiceRolls > 0 && loot.goldDiceSides > 0)
     {
@@ -313,7 +292,6 @@ GameplayCorpseViewState buildMonsterCorpseView(
 
     if (loot.itemChance > 0
         && loot.itemLevel > 0
-        && !hasGuaranteedItems
         && std::uniform_int_distribution<int>(0, 99)(rng) < loot.itemChance)
     {
         const std::optional<InventoryItem> generatedItem =
@@ -345,32 +323,97 @@ GameplayCorpseViewState buildMonsterCorpseView(
         }
     }
 
-    if (pItemTable != nullptr)
+    return view;
+}
+
+void addGuaranteedCorpseItems(
+    GameplayCorpseViewState &view,
+    const ItemTable *pItemTable,
+    const std::vector<uint32_t> &guaranteedItemIds)
+{
+    const bool hasGuaranteedItems =
+        std::any_of(
+            guaranteedItemIds.begin(),
+            guaranteedItemIds.end(),
+            [](uint32_t itemId)
+            {
+                return itemId != 0;
+            });
+
+    if (!hasGuaranteedItems || pItemTable == nullptr)
     {
-        for (uint32_t guaranteedItemId : guaranteedItemIds)
+        return;
+    }
+
+    std::erase_if(
+        view.items,
+        [](const GameplayChestItemState &item)
         {
-            if (guaranteedItemId == 0)
-            {
-                continue;
-            }
+            return !item.isGold;
+        });
 
-            InventoryItem inventoryItem =
-                ItemGenerator::makeInventoryItem(guaranteedItemId, *pItemTable, ItemGenerationMode::MonsterLoot);
+    static thread_local std::mt19937 rng(std::random_device{}());
 
-            if (inventoryItem.objectDescriptionId != 0)
-            {
-                GameplayChestItemState item = {};
-                item.item = inventoryItem;
-                item.itemId = inventoryItem.objectDescriptionId;
-                item.quantity = inventoryItem.quantity;
-                item.width = inventoryItem.width;
-                item.height = inventoryItem.height;
-                view.items.push_back(item);
-            }
+    for (uint32_t guaranteedItemId : guaranteedItemIds)
+    {
+        if (guaranteedItemId == 0)
+        {
+            continue;
+        }
+
+        InventoryItem inventoryItem =
+            ItemGenerator::makeInventoryItem(guaranteedItemId, *pItemTable, ItemGenerationMode::MonsterLoot);
+        ItemGenerator::assignMonsterPotionPower(inventoryItem, *pItemTable, rng);
+
+        if (inventoryItem.objectDescriptionId != 0)
+        {
+            GameplayChestItemState item = {};
+            item.item = inventoryItem;
+            item.itemId = inventoryItem.objectDescriptionId;
+            item.quantity = inventoryItem.quantity;
+            item.width = inventoryItem.width;
+            item.height = inventoryItem.height;
+            view.items.push_back(item);
+        }
+    }
+}
+
+GameplayCorpseViewState buildMonsterCorpseView(
+    const std::string &title,
+    const MonsterTable::LootPrototype &loot,
+    const ItemTable *pItemTable,
+    Party *pParty,
+    const std::string &worldId,
+    const std::vector<uint32_t> &guaranteedItemIds)
+{
+    GameplayCorpseViewState view = rollMonsterCarriedLoot(title, loot, pItemTable, pParty, worldId);
+    addGuaranteedCorpseItems(view, pItemTable, guaranteedItemIds);
+    return view;
+}
+
+std::string telepathyLootStatusText(const GameplayCorpseViewState &loot, const ItemTable *pItemTable)
+{
+    uint32_t goldAmount = 0;
+    std::string itemName;
+
+    for (const GameplayChestItemState &item : loot.items)
+    {
+        if (item.isGold)
+        {
+            goldAmount += item.goldAmount;
+        }
+        else if (itemName.empty())
+        {
+            itemName = corpseLootItemName(item, pItemTable);
         }
     }
 
-    return view;
+    if (itemName.empty())
+    {
+        return goldAmount > 0 ? std::to_string(goldAmount) + " gold" : "Nothing here";
+    }
+
+    return goldAmount > 0 ? "(" + itemName + "), and " + std::to_string(goldAmount) + " gold" : "(" + itemName + ")";
 }
 
 bool isConsumedCorpseView(const std::optional<GameplayCorpseViewState> &corpseView)

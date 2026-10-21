@@ -29,8 +29,8 @@ constexpr float ActorMeleeRange = 307.2f;
 constexpr float HostilityLongRange = GameplayActorService::MaximumPartyEngagementRange;
 constexpr float IdleStandSeconds = 1.5f;
 constexpr float IdleBoredSeconds = 2.0f;
-constexpr float PursueMoveSpeedMultiplier = 1.5f;
-constexpr float FleeMoveSpeedMultiplier = 1.0f;
+// The original doubles monster speed while pursuing or fleeing.
+constexpr float PursueFleeMoveSpeedMultiplier = 2.0f;
 // 16 of the original 2048 angle units.
 constexpr float RangedOrbitStepRadians = Pi / 64.0f;
 constexpr float MaxActorMoveSpeed = 1000.0f;
@@ -85,13 +85,9 @@ float movementSpeedForMotion(float effectiveMoveSpeed, ActorAiMotionState motion
 {
     float moveSpeed = std::max(0.0f, effectiveMoveSpeed);
 
-    if (motionState == ActorAiMotionState::Pursuing)
+    if (motionState == ActorAiMotionState::Pursuing || motionState == ActorAiMotionState::Fleeing)
     {
-        moveSpeed *= PursueMoveSpeedMultiplier;
-    }
-    else if (motionState == ActorAiMotionState::Fleeing)
-    {
-        moveSpeed *= FleeMoveSpeedMultiplier;
+        moveSpeed *= PursueFleeMoveSpeedMultiplier;
     }
 
     return std::min(moveSpeed, MaxActorMoveSpeed);

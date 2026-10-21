@@ -11,7 +11,6 @@
 #include "game/gameplay/InteractiveDecorationRules.h"
 #include "game/maps/ActorModelManifest.h"
 #include "game/maps/MapIdentity.h"
-#include "game/maps/MapDecorationTextures.h"
 #include "game/StringUtils.h"
 
 #include <algorithm>
@@ -1227,18 +1226,6 @@ void appendDecorationScriptBillboardTextures(
             if (alreadyPresent)
             {
                 continue;
-            }
-
-            const SpriteFrameEntry *pFrame = billboardSet->spriteFrameTable.getFrame(spriteId, 0);
-            if (pFrame != nullptr)
-            {
-                std::optional<OutdoorBitmapTexture> restored = loadRestoredDecorationTexture(
-                    assetFileSystem, textureName, pFrame->paletteId);
-                if (restored)
-                {
-                    billboardSet->textures.push_back(std::move(*restored));
-                    continue;
-                }
             }
 
             int textureWidth = 0;
@@ -3852,6 +3839,7 @@ bool GameDataLoader::applyMergedRuntimeTables()
     }
 
     m_houseTable.applyMapWorlds(m_mapStats);
+    m_itemTable.applyPotionSettings(m_mergedPotionSettingTable);
 
     if (!m_mapStats.applyMergedOutdoorTravels(m_mergedOutdoorTravelTable))
     {
@@ -4334,6 +4322,16 @@ bool GameDataLoader::loadItemTable(const Engine::AssetFileSystem &assetFileSyste
         return false;
     }
 
+    ItemModelBindings groundModels;
+    std::string groundModelError;
+
+    if (!loadItemModelBindings(assetFileSystem, "engine/world_items/items.yml", groundModels, groundModelError))
+    {
+        std::cerr << "Failed to load ground item models: " << groundModelError << '\n';
+        return false;
+    }
+
+    m_itemTable.setGroundModels(groundModels);
     return true;
 }
 

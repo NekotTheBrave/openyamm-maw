@@ -21,7 +21,7 @@ namespace OpenYAMM::Game
 {
 namespace
 {
-constexpr uint32_t SaveVersion = 88;
+constexpr uint32_t SaveVersion = 93;
 constexpr uint32_t SaveVersionAttackSpell = 19;
 constexpr uint32_t SaveVersionIndoorCorpseViews = 21;
 constexpr uint32_t SaveVersionIndoorChestViews = 22;
@@ -94,6 +94,15 @@ constexpr uint32_t SaveVersionWeatherModel = 85;
 constexpr uint32_t SaveVersionActorBehaviors = 86;
 constexpr uint32_t SaveVersionActorBehaviorWardVisuals = 87;
 constexpr uint32_t SaveVersionPartyExplosiveMixes = 88;
+// Autonotes and history entries moved from each map's event state to the party.
+constexpr uint32_t SaveVersionPartyAutonotes = 89;
+constexpr uint32_t SaveVersionPartyHistory = 89;
+constexpr uint32_t SaveVersionPartyJournalMapNotes = 89;
+constexpr uint32_t SaveVersionBoundaryTravelDialogue = 89;
+constexpr uint32_t SaveVersionPartyDaysWithoutRest = 90;
+constexpr uint32_t SaveVersionActorRevealedLoot = 91;
+constexpr uint32_t SaveVersionHardenedItems = 92;
+constexpr uint32_t SaveVersionPotionCharacterBuffs = 93;
 constexpr char SaveMagic[8] = {'O', 'Y', 'S', 'A', 'V', 'E', '1', '\0'};
 
 std::string toLowerCopy(const std::string &value)
@@ -542,6 +551,7 @@ void writeValue(BinaryWriter &writer, const InventoryItem &value)
     writeValue(writer, value.currentCharges);
     writeValue(writer, value.maxCharges);
     writeValue(writer, value.temporaryBonusRemainingSeconds);
+    writeValue(writer, value.hardened);
 }
 
 bool readValue(BinaryReader &reader, InventoryItem &value)
@@ -562,7 +572,8 @@ bool readValue(BinaryReader &reader, InventoryItem &value)
         && readValue(reader, value.rarity)
         && (reader.version() < SaveVersionWandCharges || readValue(reader, value.currentCharges))
         && (reader.version() < SaveVersionWandCharges || readValue(reader, value.maxCharges))
-        && readValue(reader, value.temporaryBonusRemainingSeconds);
+        && readValue(reader, value.temporaryBonusRemainingSeconds)
+        && (reader.version() < SaveVersionHardenedItems || readValue(reader, value.hardened));
 }
 
 void writeValue(BinaryWriter &writer, const LloydBeacon &value)
@@ -728,6 +739,7 @@ void writeValue(BinaryWriter &writer, const EquippedItemRuntimeState &value)
     writeValue(writer, value.currentCharges);
     writeValue(writer, value.maxCharges);
     writeValue(writer, value.temporaryBonusRemainingSeconds);
+    writeValue(writer, value.hardened);
 }
 
 bool readValue(BinaryReader &reader, EquippedItemRuntimeState &value)
@@ -742,7 +754,8 @@ bool readValue(BinaryReader &reader, EquippedItemRuntimeState &value)
         && readValue(reader, value.rarity)
         && (reader.version() < SaveVersionWandCharges || readValue(reader, value.currentCharges))
         && (reader.version() < SaveVersionWandCharges || readValue(reader, value.maxCharges))
-        && readValue(reader, value.temporaryBonusRemainingSeconds);
+        && readValue(reader, value.temporaryBonusRemainingSeconds)
+        && (reader.version() < SaveVersionHardenedItems || readValue(reader, value.hardened));
 }
 
 void writeValue(BinaryWriter &writer, const CharacterEquipmentRuntimeState &value)
@@ -1003,6 +1016,48 @@ bool readValue(BinaryReader &reader, AdventurersInnMember &value)
         && readValue(reader, value.portraitPictureId);
 }
 
+void writeValue(BinaryWriter &writer, const JournalMapNote &value)
+{
+    writeValue(writer, value.id);
+    writeValue(writer, value.x);
+    writeValue(writer, value.y);
+    writeValue(writer, value.mapFileName);
+    writeValue(writer, value.text);
+    writeValue(writer, value.listedWithTrainerNotes);
+}
+
+bool readValue(BinaryReader &reader, JournalMapNote &value)
+{
+    return readValue(reader, value.id)
+        && readValue(reader, value.x)
+        && readValue(reader, value.y)
+        && readValue(reader, value.mapFileName)
+        && readValue(reader, value.text)
+        && readValue(reader, value.listedWithTrainerNotes);
+}
+
+// Older saves store only the character buffs that existed before the potion buffs.
+bool readCharacterBuffs(
+    BinaryReader &reader,
+    std::array<std::array<CharacterBuffState, CharacterBuffCount>, 5> &characterBuffs)
+{
+    const size_t storedCount =
+        reader.version() < SaveVersionPotionCharacterBuffs ? LegacyCharacterBuffCount : CharacterBuffCount;
+
+    for (std::array<CharacterBuffState, CharacterBuffCount> &memberBuffs : characterBuffs)
+    {
+        for (size_t buffIndex = 0; buffIndex < storedCount; ++buffIndex)
+        {
+            if (!readValue(reader, memberBuffs[buffIndex]))
+            {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
 void writeValue(BinaryWriter &writer, const Party::Snapshot &value)
 {
     writeValue(writer, value.members);
@@ -1032,6 +1087,9 @@ void writeValue(BinaryWriter &writer, const Party::Snapshot &value)
     writeValue(writer, value.everOwnedItemIds);
     writeValue(writer, value.continentReputations);
     writeValue(writer, value.questBits);
+    writeValue(writer, value.autonotes);
+    writeValue(writer, value.historyEventTimesByContinent);
+    writeValue(writer, value.journalMapNotes);
     writeValue(writer, value.eventVariables);
     writeValue(writer, value.npcTopicOverrides);
     writeValue(writer, value.npcGroupNews);
@@ -1042,6 +1100,8 @@ void writeValue(BinaryWriter &writer, const Party::Snapshot &value)
     writeValue(writer, value.unavailableNpcIds);
     writeValue(writer, value.hiredNpcFollowers);
     writeValue(writer, value.explosiveMixes);
+    writeValue(writer, value.daysWithoutRest);
+    writeValue(writer, value.awakeDayIndex);
 }
 
 bool readValue(BinaryReader &reader, Party::Snapshot &value)
@@ -1050,7 +1110,7 @@ bool readValue(BinaryReader &reader, Party::Snapshot &value)
         && readValue(reader, value.adventurersInnMembers)
         && readValue(reader, value.activeMemberIndex)
         && readValue(reader, value.partyBuffs)
-        && readValue(reader, value.characterBuffs)
+        && readCharacterBuffs(reader, value.characterBuffs)
         && readValue(reader, value.gold)
         && readValue(reader, value.bankGold)
         && readValue(reader, value.food)
@@ -1076,6 +1136,9 @@ bool readValue(BinaryReader &reader, Party::Snapshot &value)
         && (reader.version() < SaveVersionPartyContinentReputations
             || readValue(reader, value.continentReputations))
         && readValue(reader, value.questBits)
+        && (reader.version() < SaveVersionPartyAutonotes || readValue(reader, value.autonotes))
+        && (reader.version() < SaveVersionPartyHistory || readValue(reader, value.historyEventTimesByContinent))
+        && (reader.version() < SaveVersionPartyJournalMapNotes || readValue(reader, value.journalMapNotes))
         && readValue(reader, value.eventVariables)
         && (reader.version() < SaveVersionGlobalNpcState || readValue(reader, value.npcTopicOverrides))
         && (reader.version() < SaveVersionGlobalNpcState || readValue(reader, value.npcGroupNews))
@@ -1085,7 +1148,9 @@ bool readValue(BinaryReader &reader, Party::Snapshot &value)
         && (reader.version() < SaveVersionGlobalNpcState || readValue(reader, value.npcItemOverrides))
         && (reader.version() < SaveVersionGlobalNpcState || readValue(reader, value.unavailableNpcIds))
         && (reader.version() < SaveVersionPartyHiredNpcFollowers || readValue(reader, value.hiredNpcFollowers))
-        && (reader.version() < SaveVersionPartyExplosiveMixes || readValue(reader, value.explosiveMixes));
+        && (reader.version() < SaveVersionPartyExplosiveMixes || readValue(reader, value.explosiveMixes))
+        && (reader.version() < SaveVersionPartyDaysWithoutRest || readValue(reader, value.daysWithoutRest))
+        && (reader.version() < SaveVersionPartyDaysWithoutRest || readValue(reader, value.awakeDayIndex));
 }
 
 void writeValue(BinaryWriter &writer, const OutdoorMoveState &value)
@@ -1617,6 +1682,7 @@ void writeValue(BinaryWriter &writer, const IndoorWorldRuntime::Snapshot &value)
     writeValue(writer, value.projectileState);
     writeValue(writer, value.searchedLootPropSourceIds);
     writeValue(writer, value.actorBehaviors);
+    writeValue(writer, value.mapActorRevealedLoot);
 }
 
 bool readValue(BinaryReader &reader, IndoorWorldRuntime::Snapshot &value)
@@ -1639,7 +1705,8 @@ bool readValue(BinaryReader &reader, IndoorWorldRuntime::Snapshot &value)
         && (reader.version() < SaveVersionFullProjectileState || readValue(reader, value.projectileState))
         && (reader.version() < SaveVersionMm9ItemSourceState
             || readValue(reader, value.searchedLootPropSourceIds))
-        && (reader.version() < SaveVersionActorBehaviors || readValue(reader, value.actorBehaviors));
+        && (reader.version() < SaveVersionActorBehaviors || readValue(reader, value.actorBehaviors))
+        && (reader.version() < SaveVersionActorRevealedLoot || readValue(reader, value.mapActorRevealedLoot));
 }
 
 void writeValue(BinaryWriter &writer, const OutdoorPartyRuntime::Snapshot &value)
@@ -1745,6 +1812,7 @@ void writeValue(BinaryWriter &writer, const EventRuntimeState::PendingDialogueCo
     writeValue(writer, value.transitionMapMove);
     writeValue(writer, value.transitionTextId);
     writeValue(writer, value.transitionImageId);
+    writeValue(writer, value.boundaryTravel);
 }
 
 bool readValue(BinaryReader &reader, EventRuntimeState::PendingDialogueContext &value)
@@ -1759,7 +1827,8 @@ bool readValue(BinaryReader &reader, EventRuntimeState::PendingDialogueContext &
         && readValue(reader, value.titleOverride)
         && (reader.version() < SaveVersionDungeonTransitionDialogue || readValue(reader, value.transitionMapMove))
         && (reader.version() < SaveVersionDungeonTransitionDialogue || readValue(reader, value.transitionTextId))
-        && (reader.version() < SaveVersionDungeonTransitionDialogue || readValue(reader, value.transitionImageId));
+        && (reader.version() < SaveVersionDungeonTransitionDialogue || readValue(reader, value.transitionImageId))
+        && (reader.version() < SaveVersionBoundaryTravelDialogue || readValue(reader, value.boundaryTravel));
 }
 
 void writeValue(BinaryWriter &writer, const EventRuntimeState::PendingMovie &value)
@@ -3659,6 +3728,7 @@ void writeValue(BinaryWriter &writer, const OutdoorWorldRuntime::Snapshot &value
     writeValue(writer, value.faceAttributes);
     writeValue(writer, value.searchedLootPropSourceIds);
     writeValue(writer, value.actorBehaviors);
+    writeValue(writer, value.mapActorRevealedLoot);
 }
 
 bool readValue(BinaryReader &reader, OutdoorWorldRuntime::Snapshot &value)
@@ -3704,7 +3774,8 @@ bool readValue(BinaryReader &reader, OutdoorWorldRuntime::Snapshot &value)
             || readValue(reader, value.faceAttributes))
         && (reader.version() < SaveVersionMm9ItemSourceState
             || readValue(reader, value.searchedLootPropSourceIds))
-        && (reader.version() < SaveVersionActorBehaviors || readValue(reader, value.actorBehaviors));
+        && (reader.version() < SaveVersionActorBehaviors || readValue(reader, value.actorBehaviors))
+        && (reader.version() < SaveVersionActorRevealedLoot || readValue(reader, value.mapActorRevealedLoot));
 
     if (loaded && reader.version() >= SaveVersionOutdoorRuntimeSaveParity)
     {
@@ -4056,6 +4127,147 @@ void migrateLegacyNpcRosters(GameSaveData &data)
     }
 }
 
+void migrateLegacyMapAutonotes(GameSaveData &data, uint32_t sourceSaveVersion)
+{
+    if (sourceSaveVersion >= SaveVersionPartyAutonotes)
+    {
+        return;
+    }
+
+    constexpr uint32_t AutoNotesVariableTag = 0x00DFu;
+    constexpr uint32_t AutoNoteVariableTag = 0x00E1u;
+    std::unordered_set<uint32_t> &autonotes = data.party.autonotes;
+    const auto migrate = [&autonotes](std::optional<EventRuntimeState> &state)
+    {
+        if (!state)
+        {
+            return;
+        }
+
+        for (auto iterator = state->variables.begin(); iterator != state->variables.end();)
+        {
+            const uint32_t tag = iterator->first & 0xFFFFu;
+            const uint32_t autonoteId = iterator->first >> 16;
+
+            if (autonoteId == 0 || (tag != AutoNoteVariableTag && tag != AutoNotesVariableTag))
+            {
+                ++iterator;
+                continue;
+            }
+
+            if (iterator->second != 0)
+            {
+                autonotes.insert(autonoteId);
+            }
+
+            iterator = state->variables.erase(iterator);
+        }
+    };
+    migrate(data.outdoorWorld.eventRuntimeState);
+    migrate(data.indoorScene.eventRuntimeState);
+    for (auto &[mapFileName, snapshot] : data.outdoorWorldStates)
+    {
+        migrate(snapshot.eventRuntimeState);
+    }
+    for (auto &[mapFileName, snapshot] : data.indoorSceneStates)
+    {
+        migrate(snapshot.eventRuntimeState);
+    }
+}
+
+void migrateLegacyMapHistory(GameSaveData &data, uint32_t sourceSaveVersion)
+{
+    if (sourceSaveVersion >= SaveVersionPartyHistory)
+    {
+        return;
+    }
+
+    std::unordered_map<uint32_t, std::unordered_map<uint32_t, int32_t>> &partyHistory =
+        data.party.historyEventTimesByContinent;
+    const auto migrate = [&partyHistory](std::optional<EventRuntimeState> &state)
+    {
+        if (!state)
+        {
+            return;
+        }
+
+        // Keep the earliest time an entry was recorded on any map.
+        for (const auto &[continentId, historyTimes] : state->historyEventTimesByContinent)
+        {
+            for (const auto &[historyId, gameMinutes] : historyTimes)
+            {
+                const auto [iterator, inserted] = partyHistory[continentId].try_emplace(historyId, gameMinutes);
+
+                if (!inserted)
+                {
+                    iterator->second = std::min(iterator->second, gameMinutes);
+                }
+            }
+        }
+
+        state->historyEventTimesByContinent.clear();
+        state->historyEventTimes.clear();
+    };
+    migrate(data.outdoorWorld.eventRuntimeState);
+    migrate(data.indoorScene.eventRuntimeState);
+    for (auto &[mapFileName, snapshot] : data.outdoorWorldStates)
+    {
+        migrate(snapshot.eventRuntimeState);
+    }
+    for (auto &[mapFileName, snapshot] : data.indoorSceneStates)
+    {
+        migrate(snapshot.eventRuntimeState);
+    }
+}
+
+void migrateLegacyMapJournalNotes(GameSaveData &data, uint32_t sourceSaveVersion)
+{
+    if (sourceSaveVersion >= SaveVersionPartyJournalMapNotes)
+    {
+        return;
+    }
+
+    std::vector<JournalMapNote> &partyNotes = data.party.journalMapNotes;
+    const auto migrate = [&partyNotes](std::optional<EventRuntimeState> &state)
+    {
+        if (!state)
+        {
+            return;
+        }
+
+        for (const auto &[noteId, legacyNote] : state->runtimeMapNotes)
+        {
+            const std::string mapFileName = toLowerCopy(legacyNote.mapFileName);
+            const bool alreadyMigrated = std::any_of(
+                partyNotes.begin(),
+                partyNotes.end(),
+                [&](const JournalMapNote &note) { return note.id == legacyNote.id && note.mapFileName == mapFileName; });
+
+            // Notes without a map were never drawn, and the active map's state repeats the stored one.
+            if (!legacyNote.active || mapFileName.empty() || alreadyMigrated)
+            {
+                continue;
+            }
+
+            // Old saves did not record which teacher pins had an autonote; revisiting the teacher corrects it.
+            partyNotes.push_back(JournalMapNote{
+                legacyNote.id, legacyNote.x, legacyNote.y, mapFileName, legacyNote.text, true});
+        }
+
+        state->runtimeMapNotes.clear();
+    };
+    migrate(data.outdoorWorld.eventRuntimeState);
+    migrate(data.indoorScene.eventRuntimeState);
+    for (auto &[mapFileName, snapshot] : data.outdoorWorldStates)
+    {
+        migrate(snapshot.eventRuntimeState);
+    }
+    for (auto &[mapFileName, snapshot] : data.indoorSceneStates)
+    {
+        migrate(snapshot.eventRuntimeState);
+    }
+}
+
 void migrateLegacyConsumedCorpseMarkers(GameSaveData &data, uint32_t sourceSaveVersion)
 {
     if (sourceSaveVersion >= SaveVersionConsumedCorpseMarkers)
@@ -4265,7 +4477,7 @@ std::optional<GameSaveData> loadGameDataFromPath(const std::filesystem::path &pa
 
     if (version > SaveVersion)
     {
-        error = "unsupported save version";
+        error = SaveFromNewerVersionError;
         return std::nullopt;
     }
 
@@ -4292,6 +4504,9 @@ std::optional<GameSaveData> loadGameDataFromPath(const std::filesystem::path &pa
 
     migrateLegacyConsumedCorpseMarkers(data, version);
     migrateLegacyNpcRosters(data);
+    migrateLegacyMapAutonotes(data, version);
+    migrateLegacyMapHistory(data, version);
+    migrateLegacyMapJournalNotes(data, version);
 
     return data;
 }

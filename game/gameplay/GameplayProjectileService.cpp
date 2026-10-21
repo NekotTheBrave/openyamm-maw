@@ -29,8 +29,9 @@ constexpr float Pi = 3.14159265358979323846f;
 constexpr uint32_t DeathBlossomFalloutShardCount = 8;
 constexpr float DeathBlossomFalloutSourceHeightOffset = 16.0f;
 constexpr float DeathBlossomFalloutYawJitter = 0.22f;
-constexpr float DeathBlossomFalloutMinDistance = 220.0f;
-constexpr float DeathBlossomFalloutMaxDistance = 620.0f;
+// The original launches each shard level, at a random 5-500 units per second, and lets it fall.
+constexpr float DeathBlossomFalloutMinSpeed = 5.0f;
+constexpr float DeathBlossomFalloutMaxSpeed = 500.0f;
 constexpr float MeteorShowerSpawnBaseHeight = 2500.0f;
 constexpr float MeteorShowerSpawnHeightVariance = 1000.0f;
 constexpr float MeteorShowerTargetSpread = 512.0f;
@@ -1004,15 +1005,14 @@ GameplayProjectileService::buildDeathBlossomFalloutSpawnRequests(
     std::uniform_real_distribution<float> yawJitter(
         -DeathBlossomFalloutYawJitter,
         DeathBlossomFalloutYawJitter);
-    std::uniform_real_distribution<float> distanceScale(
-        DeathBlossomFalloutMinDistance,
-        DeathBlossomFalloutMaxDistance);
+    std::uniform_real_distribution<float> launchSpeed(DeathBlossomFalloutMinSpeed, DeathBlossomFalloutMaxSpeed);
     const float angleStep = (2.0f * Pi) / static_cast<float>(DeathBlossomFalloutShardCount);
 
     for (uint32_t shardIndex = 0; shardIndex < DeathBlossomFalloutShardCount; ++shardIndex)
     {
         const float yaw = angleStep * static_cast<float>(shardIndex) + yawJitter(rng);
-        const float distance = distanceScale(rng);
+        // Only the direction of the target matters: the shard flies level at its own speed.
+        const float distance = SpellImpactAoeRadius;
 
         ProjectileSpawnRequest request = {};
         request.sourceKind = projectile.sourceKind;
@@ -1022,6 +1022,7 @@ GameplayProjectileService::buildDeathBlossomFalloutSpawnRequests(
         request.fromSummonedMonster = projectile.fromSummonedMonster;
         request.ability = projectile.ability;
         request.definition = definition;
+        request.definition.speed = launchSpeed(rng);
         request.skillLevel = projectile.skillLevel;
         request.skillMastery = projectile.skillMastery;
         request.damage = projectile.damage;
@@ -1032,7 +1033,7 @@ GameplayProjectileService::buildDeathBlossomFalloutSpawnRequests(
         request.sourceZ = z + DeathBlossomFalloutSourceHeightOffset;
         request.targetX = x + std::cos(yaw) * distance;
         request.targetY = y + std::sin(yaw) * distance;
-        request.targetZ = z;
+        request.targetZ = request.sourceZ;
         request.sectorId = projectile.sectorId;
         request.allowInstantImpact = true;
         requests.push_back(std::move(request));

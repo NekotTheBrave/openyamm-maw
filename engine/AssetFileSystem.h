@@ -1,9 +1,11 @@
 #pragma once
 
+#include "engine/AssetPackIndex.h"
 #include "engine/AssetScaleTier.h"
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -104,6 +106,8 @@ private:
     {
         std::filesystem::path root;
         std::string mountPoint;
+        // The package root a content pack belongs to ("engine", "worlds/mm6"); the mount point otherwise.
+        std::string packageMountPoint;
         bool archive = false;
     };
 
@@ -116,12 +120,19 @@ private:
     bool mountPackagedAssetRoot(const std::filesystem::path &assetRoot, const std::string &activeWorldId);
     bool mountAndroidApkAssetRoot(const std::string &activeWorldId);
     bool mountPackageArchiveIfPresent(const std::filesystem::path &archivePath, bool appendToPath);
+    // Mounts the content packs of an index: the active world's in front, then the engine's and the other worlds'.
+    bool mountContentPacks(
+        const AssetPackIndex &index,
+        const std::string &activeWorldId,
+        const std::function<bool(const AssetPackRecord &, bool appendToPath)> &mountPack);
     bool mountSearchRoot(const std::filesystem::path &assetRoot, bool appendToPath);
     bool mountSearchRootAt(
         const std::filesystem::path &assetRoot,
         const std::string &mountPoint,
-        bool appendToPath
+        bool appendToPath,
+        const std::string &packageMountPoint = {}
     );
+    void recordSearchMount(SearchMount searchMount, bool appendToPath);
     bool validateMergedIconRoots(const std::filesystem::path &assetRoot) const;
     bool validateMergedAudioRoots(const std::filesystem::path &assetRoot) const;
     bool validateMergedMusicRoots(const std::filesystem::path &assetRoot) const;
@@ -149,7 +160,6 @@ private:
     bool loadIconPackagePolicy();
     std::string resolveVirtualPath(const std::string &virtualPath) const;
     std::vector<std::string> resolveVirtualPathCandidates(const std::string &virtualPath) const;
-    std::vector<std::string> expandAndroidApkAssetCandidates(const std::string &virtualPath) const;
     static std::string normalizeVirtualPath(const std::string &virtualPath);
     static std::string normalizePackageId(const std::string &packageId, const std::string &defaultPackageId);
     static std::vector<std::string> expandPackageAliasCandidates(const std::string &virtualPath);

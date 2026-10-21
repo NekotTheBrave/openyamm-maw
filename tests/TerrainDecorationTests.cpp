@@ -985,3 +985,53 @@ TEST_CASE("Smoothed terrain passes through native vertices and stays near the na
         == doctest::Approx(sampleOutdoorRenderedTerrainHeight(map, outdoorGridCornerWorldX(40) + 0.3f * 512.0f,
             outdoorGridCornerWorldY(50) - 0.6f * 512.0f)).epsilon(0.001));
 }
+
+TEST_CASE("Rendered terrain stays under a pool cut into a hillside terrace")
+{
+    // Every row climbs west to east onto a flat terrace (grid columns 64-65) that the smoothed surface bulges over.
+    OutdoorMapData map = flatMap();
+    for (int y = 0; y < 128; ++y)
+    {
+        for (int x = 0; x < 128; ++x)
+        {
+            map.heightMap[size_t(y * 128 + x)] = uint8_t(x <= 63 ? 10 : x <= 65 ? 21 : 22);
+        }
+    }
+    OutdoorBModel pool;
+    pool.vertices = {{26, -486, 684}, {486, -486, 684}, {486, -26, 684}, {26, -26, 684}};
+    OutdoorBModelFace water;
+    water.planeNormalZ = 65536;
+    water.vertexIndices = {0, 1, 2, 3};
+    pool.faces.push_back(water);
+    map.bmodels.push_back(pool);
+
+    constexpr int Steps = 4;
+    constexpr int Side = 127 * Steps + 1;
+    std::vector<float> heights(size_t(Side) * Side);
+    for (int j = 0; j < Side; ++j)
+    {
+        for (int i = 0; i < Side; ++i)
+        {
+            heights[size_t(j) * Side + i] =
+                outdoorSmoothedTerrainHeight(map, float(i) / Steps, float(j) / Steps, 1.0f);
+        }
+    }
+    const std::vector<float> smoothed = heights;
+    capRenderedTerrainUnderBModels(map, heights, Side, Steps);
+
+    float highestSmoothed = 0.0f;
+    for (int j = 64 * Steps + 1; j < 65 * Steps; ++j)
+    {
+        for (int i = 64 * Steps + 1; i < 65 * Steps; ++i)
+        {
+            const float native = outdoorNativeTerrainHeight(map, float(i) / Steps, float(j) / Steps);
+            highestSmoothed = std::max(highestSmoothed, smoothed[size_t(j) * Side + i]);
+            CHECK(heights[size_t(j) * Side + i] <= 680.0f);
+            CHECK(heights[size_t(j) * Side + i] >= native);
+        }
+    }
+    CHECK(highestSmoothed > 684.0f);
+    // Away from the face the smoothed surface is untouched.
+    CHECK(heights[size_t(64 * Steps) * Side + 70 * Steps + 1] == smoothed[size_t(64 * Steps) * Side + 70 * Steps + 1]);
+    CHECK(heights[size_t(70 * Steps) * Side + 64 * Steps + 2] == smoothed[size_t(70 * Steps) * Side + 64 * Steps + 2]);
+}

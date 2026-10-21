@@ -32,6 +32,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 
 import numpy as np
 import yaml
@@ -239,9 +240,12 @@ def decide(rules, relative, sidecar, image_name, role, uses_alpha, profile, size
     override = sidecar.get("images", {}).get(image_name, {})
     if role == "normal":
         # Normal maps carry fine relief, not colour: by default they cook at half the source's (power-of-two) size.
-        scale = sidecar.get("normal_scale", entry.get("normal_scale", rules.data.get("normal_scale", 1)))
+        scale = per_profile(sidecar.get("normal_scale", entry.get("normal_scale", rules.data.get("normal_scale", 1))),
+                            profile)
         largest = 1 << (max(size).bit_length() - 1)
         max_size = min(max_size, max(1, int(largest * scale)))
+    if role in entry.get("role_max_size", {}):
+        max_size = min(max_size, per_profile(entry["role_max_size"][role], profile))
     if hints is not None and entry.get("reduce"):
         max_size = min(max_size, reduced_max_size(rules.data.get("reductions", {}), role, size, hints))
     max_size = per_profile(override.get("max_size", max_size), profile)
@@ -251,7 +255,34 @@ def decide(rules, relative, sidecar, image_name, role, uses_alpha, profile, size
     else:
         key = role
     codec = per_profile(override["codec"], profile) if "codec" in override else codecs[key]
-    return codec, int(max_size)
+    # Unsharp mask on the colour mips below the first (cook_model_textures_main.cpp sharpenMips); 0 = plain filtering.
+    sharpening = float(per_profile(sidecar.get("colour_mip_sharpening", entry.get("colour_mip_sharpening", 0)),
+                                   profile)) if role == "colour" else 0.0
+    # Never below one 4x4 block: bgfx counts a compressed texture's mips from its size rounded up to whole blocks, so
+    # a smaller mipped texture is read past its end (a 4x4 normal map at normal_scale 0.5 crashed SwiftShader).
+    return codec, max(int(max_size), 4), sharpening
+
+
+def normal_relief(png):
+    """90th percentile of a normal map's tangent-plane tilt |xy| over its relief texels: flat padding (|xy| <= 0.01)
+    and invalid texels (|xy| >= 0.9) are left out."""
+    texels = np.asarray(Image.open(io.BytesIO(png)).convert("RGB"), dtype=np.float32)[..., :2] / 127.5 - 1.0
+    tilt = np.hypot(texels[..., 0], texels[..., 1])
+    relief = tilt[(tilt > 0.01) & (tilt < 0.9)]
+    return float(np.percentile(relief, 90)) if relief.size else 0.0
+
+
+def normal_strength(rules, relative, sidecar, png):
+    """Multiplier of a material's glTF normalTexture.scale in the cooked model. A sidecar's `normal_strength` fixes it;
+    a class's `normal_relief` ({target, max}) lifts weak maps toward the target relief (normal_relief) and never weakens
+    one; otherwise 1 (as authored)."""
+    if "normal_strength" in sidecar:
+        return float(sidecar["normal_strength"])
+    lift = rules.model_class(relative).get("normal_relief")
+    if not lift:
+        return 1.0
+    relief = normal_relief(png)
+    return round(min(float(lift["max"]), max(1.0, float(lift["target"]) / relief)) if relief > 0 else 1.0, 3)
 
 
 def alpha_in_use(png, threshold):
@@ -281,6 +312,14 @@ def plan_model(rules, source_root, path, profiles, cooker=None):
     textures, images, new_textures = {}, [], []
     image_by_key, texture_by_pair = {}, {}
     uses = texture_uses(document)
+    # Measured on the source images, before the texture slots are remapped to the cooked ones.
+    normal_strengths, by_image = {}, {}
+    for index, material in enumerate(document.get("materials", [])):
+        if "normalTexture" in material:
+            source = document["textures"][material["normalTexture"]["index"]]["source"]
+            if source not in by_image:
+                by_image[source] = normal_strength(rules, relative, sidecar, image_bytes(document, binary, source))
+            normal_strengths[index] = by_image[source]
     lods_by_material = material_lods(document)
     image_lods = {}  # by image content: identical bytes in two image slots share one cooked texture
     for material_index, _, texture_index, _, _, _ in uses:
@@ -321,6 +360,10 @@ def plan_model(rules, source_root, path, profiles, cooker=None):
         for part in slot:
             target = target[part]
         target["index"] = texture_by_pair[pair]
+    for material, strength in normal_strengths.items():
+        if strength != 1:
+            target = document["materials"][material]["normalTexture"]
+            target["scale"] = round(target.get("scale", 1.0) * strength, 6)
     # Drop the embedded image buffer views and compact the binary chunk.
     image_views = {image["bufferView"] for image in document.get("images", []) if "bufferView" in image}
     remap, views, compacted = {}, [], bytearray()
@@ -369,14 +412,14 @@ def reconcile(rules, models, profiles):
     for model in models:
         for texture in model["textures"]:
             for profile in profiles:
-                codec, max_size = texture["decisions"][profile]
+                decision = tuple(texture["decisions"][profile])
                 best = chosen.get((texture["key"], profile))
                 if best is None:
-                    chosen[(texture["key"], profile)] = (codec, max_size)
-                elif best != (codec, max_size):
+                    chosen[(texture["key"], profile)] = decision
+                elif best != decision:
                     unified.add(texture["key"])
-                    chosen[(texture["key"], profile)] = (max(best[0], codec, key=lambda name: rates[name]),
-                                                         max(best[1], max_size))
+                    chosen[(texture["key"], profile)] = (max(best[0], decision[0], key=lambda name: rates[name]),
+                                                         max(best[1], decision[1]), max(best[2], decision[2]))
     for model in models:
         for texture in model["textures"]:
             for profile in profiles:
@@ -397,7 +440,7 @@ def print_plan(rules, models, profiles):
             line = f"  {texture['role']:<18} {texture['size'][0]}x{texture['size'][1]} {'alpha ' if texture['alpha'] else ''}" \
                    f"{texture['name'][:28]:<28}"
             for profile in profiles:
-                codec, max_size = texture["decisions"][profile]
+                codec, max_size, _ = texture["decisions"][profile]
                 scale = 1.0
                 while max(width, height) * scale > max_size:
                     scale /= 2
@@ -418,8 +461,9 @@ def print_plan(rules, models, profiles):
 
 
 def texture_fingerprint(recipe, texture, profile):
-    codec, max_size = texture["decisions"][profile]
-    return dict(recipe, png=texture["png_sha256"], codec=codec, max_size=max_size, semantic=texture["semantic"],
+    codec, max_size, sharpening = texture["decisions"][profile]
+    return dict(recipe, png=texture["png_sha256"], codec=codec, max_size=max_size, sharpening=sharpening,
+                semantic=texture["semantic"],
                 cutoff=texture["cutoff"], mips=texture["mips"])
 
 
@@ -451,6 +495,40 @@ def intact(cache, output_root, relative, receipt, texture_recipe, profile):
                 or sha256(target.read_bytes()) != entry["output"]:
             return False
     return True
+
+
+class Progress:
+    """Cooked/total textures with rate and remaining time: a rewritten line on a terminal, otherwise a line every
+    30 seconds (build logs)."""
+
+    def __init__(self, profile, total):
+        self.profile = profile
+        self.total = total
+        self.started = time.monotonic()
+        self.shown = 0.0
+        self.terminal = sys.stdout.isatty()
+
+    def update(self, done):
+        now = time.monotonic()
+        if done < self.total and now - self.shown < (1 if self.terminal else 30):
+            return
+        self.shown = now
+        elapsed = now - self.started
+        line = f"Model cook ({self.profile}): {done}/{self.total} textures ({100 * done // self.total}%)"
+        if done and elapsed > 1:
+            rate = done / elapsed
+            line += f", {rate * 60:.0f}/min"
+            if done < self.total:
+                line += f", about {max(1, round((self.total - done) / rate / 60))} min left"
+        print(("\r" + line + " " * 8) if self.terminal else line, end="\n" if not self.terminal or done == self.total
+              else "", flush=True)
+
+
+def save_cache(path, cache):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(cache, indent=1, sort_keys=True) + "\n")
+    os.replace(temporary, path)
 
 
 def cook(args, rules, paths):
@@ -502,7 +580,7 @@ def cook(args, rules, paths):
                 continue
             directory = output_root / Path(model["relative"]).parent
             for texture in model["textures"]:
-                codec, max_size = texture["decisions"][profile]
+                codec, max_size, sharpening = texture["decisions"][profile]
                 fingerprint = texture_fingerprint(texture_recipe, texture, profile)
                 target = directory / "textures" / f"{texture['key']}.oytex"
                 receipt = cache.get(str(target.relative_to(output_root)))
@@ -515,7 +593,7 @@ def cook(args, rules, paths):
                 png_path.write_bytes(texture["png"])
                 linear = texture["role"] in ("metallic_roughness", "region_mask", "burn_map")
                 jobs.append((png_path, target, codec, texture["semantic"], texture["cutoff"], texture["mips"],
-                             max_size, linear, texture["png_sha256"][:16], fingerprint))
+                             max_size, linear, texture["png_sha256"][:16], fingerprint, sharpening))
             if profile == "desktop":
                 glb = write_glb(model["document"], model["binary"])
                 target = output_root / model["relative"]
@@ -532,17 +610,33 @@ def cook(args, rules, paths):
         if jobs:
             job_file = scratch / "jobs.tsv"
             job_file.write_text("".join(
-                f"{job[0]}\t{job[1]}\t{job[2]}\t{job[3]}\t{job[4]}\t{int(job[5])}\t{job[6]}\t{int(job[7])}\t{job[8]}\n"
+                f"{job[0]}\t{job[1]}\t{job[2]}\t{job[3]}\t{job[4]}\t{int(job[5])}\t{job[6]}\t{int(job[7])}\t{job[8]}"
+                + (f"\tmodel\t{job[10]:g}" if job[10] > 0 else "") + "\n"
                 for job in jobs))
-            result = subprocess.run([str(cooker), str(job_file)], text=True, capture_output=True)
-            sys.stderr.write(result.stderr)
-            done = {Path(line.split("\t")[1]) for line in result.stdout.splitlines() if line.startswith("cooked\t")}
-            for job in jobs:
-                if job[1] in done:
-                    cache[str(job[1].relative_to(output_root))] = {"inputs": job[9],
-                                                                   "output": sha256(job[1].read_bytes())}
-                else:
-                    failed.add(job[1])
+            # The cooker reports each finished texture on stdout; its errors go straight to stderr. Each texture's
+            # receipt is kept as it finishes and saved every 30 seconds and on an interruption, so a stopped cook
+            # resumes where it stopped.
+            done = set()
+            fingerprints = {job[1]: job[9] for job in jobs}
+            progress = Progress(profile, len(jobs))
+            saved = time.monotonic()
+            try:
+                with subprocess.Popen([str(cooker), str(job_file)], text=True, stdout=subprocess.PIPE) as process:
+                    for line in process.stdout:
+                        if line.startswith("cooked\t"):
+                            target = Path(line.split("\t")[1])
+                            done.add(target)
+                            cache[str(target.relative_to(output_root))] = {"inputs": fingerprints[target],
+                                                                           "output": sha256(target.read_bytes())}
+                            progress.update(len(done))
+                            if time.monotonic() - saved > 30:
+                                save_cache(cache_path, cache)
+                                saved = time.monotonic()
+            finally:
+                save_cache(cache_path, cache)
+            if progress.terminal and len(done) < len(jobs):
+                print(flush=True)
+            failed = {job[1] for job in jobs if job[1] not in done}
         # Model receipts, only for models whose every texture is in place.
         for model in models:
             if "receipt" in model:
@@ -574,10 +668,7 @@ def cook(args, rules, paths):
                     removed_models += 1
         for key in [key for key in cache if key.startswith("model:") and key[len("model:"):] not in current]:
             del cache[key]
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = cache_path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(cache, indent=1, sort_keys=True) + "\n")
-    os.replace(temporary, cache_path)
+    save_cache(cache_path, cache)
     print(f"Model cook ({profile}): {len(models)} models ({skipped} unchanged and skipped, {written} GLBs "
           f"written, {retained} rewritten identically), {len(jobs)} textures cooked, {pruned} unreferenced textures "
           f"and {removed_models} models without a source removed, into {output_root}")
@@ -585,10 +676,8 @@ def cook(args, rules, paths):
         raise SystemExit(f"{len(failed)} of {len(jobs)} textures failed to cook")
 
 
-def cooked_models(dev_root):
-    for path in sorted(dev_root.rglob("*.glb")):
-        if path.parent.name != "models":
-            continue
+def cooked_models(dev_root, only=None):
+    for path in source_models(dev_root, only):
         document, _ = read_glb(path.read_bytes())
         if COOKED_EXTRAS in document.get("asset", {}).get("extras", {}):
             yield path, document
@@ -601,7 +690,7 @@ def verify(args):
     cooker = args.cooker.resolve(strict=True)
     problems, expected, referenced = [], {}, set()
     count = 0
-    for path, document in cooked_models(dev_root):
+    for path, document in cooked_models(dev_root, args.only):
         count += 1
         for _, _, texture_index, semantic, cutoff, _ in texture_uses(document):
             texture = document["textures"][texture_index]
@@ -623,7 +712,8 @@ def verify(args):
                 want = expected[Path(name).relative_to(root)]
                 if (semantic, int(cutoff), int(levels) > 1) != want:
                     problems.append(f"{name} was cooked as {semantic}/{cutoff}/{levels} levels, used as {want}")
-        for textures in sorted({(root / relative).parent for relative in expected}):
+        # A selected model does not own every texture in its shared directory.
+        for textures in sorted({(root / relative).parent for relative in expected}) if not args.only else []:
             for path in sorted(textures.glob("*.oytex")):
                 if path.relative_to(root) not in referenced:
                     problems.append(f"unreferenced {path}")
@@ -640,8 +730,8 @@ def migrate(args):
     dev_root = (args.dev or ROOT / DEFAULT_OUTPUT["desktop"]).resolve()
     source_root = args.source.resolve()
     moves, copies = [], 0
-    for path in sorted(dev_root.rglob("*.glb")):
-        if path.parent.name != "models" or "fixtures" in path.parts:
+    for path in source_models(dev_root, args.only):
+        if "fixtures" in path.parts:
             continue
         document, _ = read_glb(path.read_bytes())
         if COOKED_EXTRAS in document.get("asset", {}).get("extras", {}):
@@ -673,7 +763,7 @@ def main():
     parser.add_argument("--rules", type=Path, default=ROOT / "tools/cook/model_textures.yml")
     parser.add_argument("--cooker", type=Path, default=ROOT / ("build/game/openyamm_model_texture_cook"
                                                                + (".exe" if os.name == "nt" else "")))
-    parser.add_argument("--only", help="Only source models whose path (relative to the source root) matches")
+    parser.add_argument("--only", help="Only models whose relative path matches (also selects WIP ground items)")
     parser.add_argument("--plan", action="store_true", help="Print decisions and projected sizes; write nothing")
     parser.add_argument("--verify", action="store_true", help="Validate cooked runtime files without sources")
     parser.add_argument("--force", action="store_true", help="Ignore receipts and re-cook every model and texture")

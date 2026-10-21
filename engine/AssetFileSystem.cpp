@@ -101,7 +101,6 @@ constexpr const char *SpritesDirectoryName = "sprites";
 constexpr const char *SkyTextureDirectoryName = "sky_textures";
 constexpr const char *LegacyDirectoryName = "_legacy";
 constexpr const char *SingleAssetPackageName = "assets.zip";
-constexpr const char *EngineAssetPackageName = "engine.zip";
 constexpr std::array<const char *, 3> KnownWorldPackageIds = {"mm6", "mm7", "mm8"};
 
 struct TieredAssetDirectory
@@ -321,36 +320,6 @@ bool packageDirectoryExistsForTier(
 bool isZipArchivePath(const std::filesystem::path &path)
 {
     return std::filesystem::is_regular_file(path) && toLowerAscii(path.extension().string()) == ".zip";
-}
-
-std::vector<std::filesystem::path> collectExistingWorldPackageArchives(
-    const std::filesystem::path &assetRoot)
-{
-    std::vector<std::filesystem::path> packageArchives;
-    const std::filesystem::path worldsRoot = assetRoot / WorldsDevelopmentRootName;
-
-    if (!std::filesystem::is_directory(worldsRoot))
-    {
-        return packageArchives;
-    }
-
-    for (const std::filesystem::directory_entry &entry : std::filesystem::directory_iterator(worldsRoot))
-    {
-        if (isZipArchivePath(entry.path()))
-        {
-            packageArchives.push_back(entry.path());
-        }
-    }
-
-    std::sort(
-        packageArchives.begin(),
-        packageArchives.end(),
-        [](const std::filesystem::path &left, const std::filesystem::path &right)
-        {
-            return left.generic_string() < right.generic_string();
-        });
-
-    return packageArchives;
 }
 
 bool legacyDirectoryExistsForTier(
@@ -790,8 +759,7 @@ bool AssetFileSystem::isPackagedAssetRoot(const std::filesystem::path &assetRoot
     }
 
     return isZipArchivePath(assetRoot / SingleAssetPackageName)
-        || isZipArchivePath(assetRoot / EngineAssetPackageName)
-        || !collectExistingWorldPackageArchives(assetRoot).empty();
+        || std::filesystem::is_regular_file(assetRoot / AssetPackIndexFileName);
 }
 
 bool AssetFileSystem::isAndroidApkAssetRoot(const std::filesystem::path &assetRoot) const
@@ -827,6 +795,7 @@ bool AssetFileSystem::mountAndroidApkAssetRoot(const std::string &activeWorldId)
         return false;
     }
 
+    // The APK itself stays mounted for its own files (licenses); content comes from the packs stored inside it.
     if (!PHYSFS_mount(pApkPath, "/", 1))
     {
         std::cerr << "PHYSFS_mount failed for Android APK " << pApkPath << ": "
@@ -843,7 +812,66 @@ bool AssetFileSystem::mountAndroidApkAssetRoot(const std::string &activeWorldId)
     m_activeWorldId = normalizePackageId(activeWorldId, DefaultActiveWorldId);
     m_androidApkAssetRoot = true;
 
-    std::cout << "Mounted Android APK asset root: " << pApkPath << '\n';
+    const std::string apkAssets = "assets/";
+    std::string error;
+    std::optional<AssetPackIndex> index;
+
+    if (PHYSFS_File *pIndexFile = PHYSFS_openRead((apkAssets + AssetPackIndexFileName).c_str()))
+    {
+        std::string text(size_t(std::max<PHYSFS_sint64>(PHYSFS_fileLength(pIndexFile), 0)), '\0');
+        const bool complete = PHYSFS_readBytes(pIndexFile, text.data(), text.size()) == PHYSFS_sint64(text.size());
+        PHYSFS_close(pIndexFile);
+        index = complete ? parseAssetPackIndex(text, error) : std::nullopt;
+    }
+
+    if (!index)
+    {
+        std::cerr << "The APK carries no usable content index: " << error << '\n';
+        return false;
+    }
+
+    const std::string storeRoot = apkAssets + index->store + "/";
+    const bool mounted = mountContentPacks(
+        *index,
+        m_activeWorldId,
+        [this, &storeRoot, pApkPath](const AssetPackRecord &pack, bool appendToPath)
+        {
+            // Packs are stored uncompressed in the APK (noCompress "zip"), so PhysicsFS reads them in place.
+            const std::string path = storeRoot + pack.file;
+            PHYSFS_File *pPackFile = PHYSFS_openRead(path.c_str());
+
+            if (pPackFile == nullptr || PHYSFS_fileLength(pPackFile) != PHYSFS_sint64(pack.size))
+            {
+                std::cerr << "Missing or damaged content pack in the APK: " << path << '\n';
+                PHYSFS_close(pPackFile);
+                return false;
+            }
+
+            const std::string mountName = std::string(pApkPath) + "/" + path;
+
+            if (!PHYSFS_mountHandle(pPackFile, mountName.c_str(), pack.mount.c_str(), appendToPath ? 1 : 0))
+            {
+                std::cerr << "PHYSFS_mountHandle failed for " << path << ": "
+                          << PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()) << '\n';
+                PHYSFS_close(pPackFile);
+                return false;
+            }
+
+            SearchMount packMount;
+            packMount.root = mountName;
+            packMount.mountPoint = normalizeVirtualPath(pack.mount);
+            packMount.packageMountPoint = pack.package == "engine" ? "engine" : "worlds/" + pack.package;
+            packMount.archive = true;
+            recordSearchMount(std::move(packMount), appendToPath);
+            return true;
+        });
+
+    if (!mounted)
+    {
+        return false;
+    }
+
+    std::cout << "Mounted " << index->packs.size() << " content packs from the Android APK: " << pApkPath << '\n';
     return true;
 #else
     (void)activeWorldId;
@@ -855,8 +883,6 @@ bool AssetFileSystem::mountPackagedAssetRoot(
     const std::filesystem::path &assetRoot,
     const std::string &activeWorldId)
 {
-    const std::string normalizedWorldId = normalizePackageId(activeWorldId, DefaultActiveWorldId);
-
     if (isZipArchivePath(assetRoot))
     {
         return mountSearchRoot(assetRoot, true);
@@ -868,41 +894,56 @@ bool AssetFileSystem::mountPackagedAssetRoot(
         return false;
     }
 
-    if (!mountPackageArchiveIfPresent(assetRoot / SingleAssetPackageName, true))
+    if (std::filesystem::exists(assetRoot / SingleAssetPackageName))
     {
+        return mountPackageArchiveIfPresent(assetRoot / SingleAssetPackageName, true);
+    }
+
+    std::string error;
+    const std::optional<AssetPackIndex> index = loadAssetPackIndex(assetRoot / AssetPackIndexFileName, error);
+    const std::filesystem::path storeRoot = assetRoot / (index ? index->store : std::string());
+
+    if (!index || !validateAssetPackFiles(*index, storeRoot, error))
+    {
+        std::cerr << "Installed content is unusable (" << error << "); reinstall or verify the game files.\n";
         return false;
     }
 
-    const std::filesystem::path engineArchive = assetRoot / EngineAssetPackageName;
-    if (std::filesystem::exists(engineArchive) && !mountSearchRootAt(engineArchive, "/engine", true))
-    {
-        return false;
-    }
-
-    const std::filesystem::path activeWorldArchive =
-        assetRoot / WorldsDevelopmentRootName / (normalizedWorldId + ".zip");
-
-    if (std::filesystem::exists(activeWorldArchive)
-        && !mountSearchRootAt(activeWorldArchive, "/worlds/" + normalizedWorldId, false))
-    {
-        return false;
-    }
-
-    const std::vector<std::filesystem::path> worldArchives = collectExistingWorldPackageArchives(assetRoot);
-
-    // PhysicsFS mounts a physical archive only once. Mount each world at its canonical namespace;
-    // unqualified legacy requests expand through these mounts in the same precedence order.
-    for (const std::filesystem::path &worldArchive : worldArchives)
-    {
-        if (worldArchive == activeWorldArchive)
+    return mountContentPacks(
+        *index,
+        activeWorldId,
+        [this, &storeRoot](const AssetPackRecord &pack, bool appendToPath)
         {
-            continue;
-        }
-        const std::string worldPackageId = normalizePackageId(worldArchive.stem().string(), {});
-        if (worldPackageId.empty()
-            || !mountSearchRootAt(worldArchive, "/worlds/" + worldPackageId, true))
+            const std::string packageMount = pack.package == "engine" ? "/engine" : "/worlds/" + pack.package;
+            return mountSearchRootAt(storeRoot / pack.file, pack.mount, appendToPath, packageMount);
+        });
+}
+
+bool AssetFileSystem::mountContentPacks(
+    const AssetPackIndex &index,
+    const std::string &activeWorldId,
+    const std::function<bool(const AssetPackRecord &, bool appendToPath)> &mountPack)
+{
+    const std::string normalizedWorldId = normalizePackageId(activeWorldId, DefaultActiveWorldId);
+
+    // Packs of one package never overlap, so only the order between packages matters: the active world first (as a
+    // single world archive was), then the engine, then the other worlds for unqualified legacy requests.
+    for (const AssetPackRecord &pack : index.packs)
+    {
+        if (pack.package == normalizedWorldId && !mountPack(pack, false))
         {
             return false;
+        }
+    }
+
+    for (const bool engine : {true, false})
+    {
+        for (const AssetPackRecord &pack : index.packs)
+        {
+            if ((pack.package == "engine") == engine && pack.package != normalizedWorldId && !mountPack(pack, true))
+            {
+                return false;
+            }
         }
     }
 
@@ -935,7 +976,8 @@ bool AssetFileSystem::mountSearchRoot(const std::filesystem::path &assetRoot, bo
 bool AssetFileSystem::mountSearchRootAt(
     const std::filesystem::path &assetRoot,
     const std::string &mountPoint,
-    bool appendToPath)
+    bool appendToPath,
+    const std::string &packageMountPoint)
 {
     if (!isInitialized())
     {
@@ -958,19 +1000,25 @@ bool AssetFileSystem::mountSearchRootAt(
     SearchMount searchMount;
     searchMount.root = assetRoot;
     searchMount.mountPoint = normalizeVirtualPath(mountPoint);
+    searchMount.packageMountPoint =
+        packageMountPoint.empty() ? searchMount.mountPoint : normalizeVirtualPath(packageMountPoint);
     searchMount.archive = isZipArchivePath(assetRoot);
+    recordSearchMount(std::move(searchMount), appendToPath);
+    return true;
+}
 
+void AssetFileSystem::recordSearchMount(SearchMount searchMount, bool appendToPath)
+{
     if (appendToPath)
     {
-        m_searchMounts.push_back(searchMount);
+        m_searchMounts.push_back(std::move(searchMount));
     }
     else
     {
-        m_searchMounts.insert(m_searchMounts.begin(), searchMount);
+        m_searchMounts.insert(m_searchMounts.begin(), std::move(searchMount));
     }
 
     refreshLookupCache();
-    return true;
 }
 
 bool AssetFileSystem::validateMergedPackageRoots(
@@ -1683,12 +1731,7 @@ std::vector<std::string> AssetFileSystem::resolveVirtualPathCandidates(const std
                 {
                     continue;
                 }
-                const std::string candidate = root + "/icons" + assetScaleTierDirectorySuffix(tier) + suffix;
-                if (m_androidApkAssetRoot)
-                {
-                    resolvedPaths.push_back("assets/" + candidate);
-                }
-                resolvedPaths.push_back(candidate);
+                resolvedPaths.push_back(root + "/icons" + assetScaleTierDirectorySuffix(tier) + suffix);
             }
             // No native or other-package fallback for a qualified icon request.
             return resolvedPaths;
@@ -1704,34 +1747,29 @@ std::vector<std::string> AssetFileSystem::resolveVirtualPathCandidates(const std
         }
     };
 
-    const auto appendCandidateWithAndroidApkPrefixes =
+    const auto appendPackageCandidates =
         [this, &appendCandidate, packageQualified](const std::string &candidate)
     {
         if (!packageQualified)
         {
+            // Once per package, in mount precedence; a package's content packs share its root.
             for (const SearchMount &mount : m_searchMounts)
             {
                 if (mount.archive)
                 {
-                    appendCandidate(mount.mountPoint.empty() ? candidate : mount.mountPoint + "/" + candidate);
+                    appendCandidate(
+                        mount.packageMountPoint.empty() ? candidate : mount.packageMountPoint + "/" + candidate);
                 }
             }
         }
         appendCandidate(candidate);
-
-        const std::vector<std::string> androidCandidates = expandAndroidApkAssetCandidates(candidate);
-
-        for (const std::string &androidCandidate : androidCandidates)
-        {
-            appendCandidate(androidCandidate);
-        }
     };
 
     const auto appendPathWithTierFallbacks =
-        [this, &appendCandidateWithAndroidApkPrefixes](const std::string &candidate)
+        [this, &appendPackageCandidates](const std::string &candidate)
     {
-        appendCandidateWithAndroidApkPrefixes(remapTieredVirtualPath(candidate, m_assetScaleProfile));
-        appendCandidateWithAndroidApkPrefixes(baseTieredVirtualPath(candidate));
+        appendPackageCandidates(remapTieredVirtualPath(candidate, m_assetScaleProfile));
+        appendPackageCandidates(baseTieredVirtualPath(candidate));
     };
 
     if (packageQualified)
@@ -1750,54 +1788,6 @@ std::vector<std::string> AssetFileSystem::resolveVirtualPathCandidates(const std
     }
 
     return resolvedPaths;
-}
-
-std::vector<std::string> AssetFileSystem::expandAndroidApkAssetCandidates(const std::string &virtualPath) const
-{
-    std::vector<std::string> candidates;
-
-    if (!m_androidApkAssetRoot || virtualPath.empty())
-    {
-        return candidates;
-    }
-
-    if (virtualPath == "." || virtualPath == "/")
-    {
-        candidates.emplace_back("assets/worlds/" + m_activeWorldId);
-        candidates.emplace_back("assets/engine");
-        candidates.emplace_back("assets");
-        return candidates;
-    }
-
-    const auto appendCandidate = [&candidates](const std::string &candidate)
-    {
-        if (std::find(candidates.begin(), candidates.end(), candidate) == candidates.end())
-        {
-            candidates.push_back(candidate);
-        }
-    };
-
-    appendCandidate("assets/worlds/" + m_activeWorldId + "/" + virtualPath);
-    appendCandidate("assets/engine/" + virtualPath);
-
-    for (const char *pWorldId : KnownWorldPackageIds)
-    {
-        if (m_activeWorldId != pWorldId)
-        {
-            appendCandidate(std::string("assets/worlds/") + pWorldId + "/" + virtualPath);
-        }
-    }
-
-    if (virtualPath.starts_with("assets/"))
-    {
-        appendCandidate(virtualPath);
-    }
-    else
-    {
-        appendCandidate("assets/" + virtualPath);
-    }
-
-    return candidates;
 }
 
 std::string AssetFileSystem::normalizeVirtualPath(const std::string &virtualPath)

@@ -258,7 +258,21 @@ void sampleTerrainLayer(float layer, vec3 tint, vec3 world, vec3 geometric, floa
     // foot of an abrupt cliff the smooth normals, taken across the step, tilt the flat strip below it.
     vec2 sideUvX = vec2(world.y, -world.z) * params.x;
     vec2 sideUvY = vec2(world.x, -world.z) * params.x;
-    float bank = slope ? 0.0 : 1.0 - smoothstep(0.72, 0.92, max(geometric.z, faceUp));
+    float upward = smoothstep(0.72, 0.92, max(geometric.z, faceUp));
+    // The slope layer follows the broadly smoothed terrain, so it also covers the flat strip at a cliff's foot, where
+    // its vertical projections would smear into streaks: there it projects from above like the ground layers.
+    if (slope && upward > 0.0)
+    {
+        vec4 colorTop = texture2DArray(s_terrainAlbedoHeight, vec3(planar, layer));
+        vec4 detailTop = texture2DArray(s_terrainNormalAoRough, vec3(planar, layer));
+        vec3 tangentTop = detailTangent(detailTop, params.z);
+        colorTop.rgb *= tint;
+        albedoHeight = mix(albedoHeight, colorTop, upward);
+        normal = normalize(mix(normal, normalize(vec3(tangentTop.xy + geometric.xy, tangentTop.z * geometric.z)),
+            upward));
+        occlusionRoughness = mix(occlusionRoughness, detailTop.zw, upward);
+    }
+    float bank = slope ? 0.0 : 1.0 - upward;
     if (bank > 0.0)
     {
         // The plane the bank faces. Without anti-tiling it is the only one, switching at the diagonal like the slope

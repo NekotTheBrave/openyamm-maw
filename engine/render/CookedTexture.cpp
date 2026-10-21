@@ -129,6 +129,7 @@ std::vector<uint8_t> encodeCookedTexture(const CookedTexture &texture)
     if (texture.width == 0 || texture.height == 0 || texture.width > CookedTextureSizeLimit
         || texture.height > CookedTextureSizeLimit
         || (texture.levels != 1 && texture.levels != cookedTextureFullChainLevels(texture.width, texture.height))
+        || (texture.levels != 1 && (texture.width < 4 || texture.height < 4))
         || texture.blocks.size() != cookedTextureBlockBytes(texture.codec, texture.width, texture.height,
             texture.levels))
     {
@@ -199,6 +200,12 @@ CookedTexture decodeCookedTexture(std::span<const uint8_t> bytes)
     if (fields[7] != 1 && fields[7] != cookedTextureFullChainLevels(texture.width, texture.height))
     {
         throw std::runtime_error("cooked texture mip chain is incomplete");
+    }
+    // bgfx counts a block-compressed texture's mips from its size rounded up to whole 4x4 blocks, so a smaller
+    // mipped texture would be read past its end; the cooker never writes one.
+    if (fields[7] != 1 && (texture.width < 4 || texture.height < 4))
+    {
+        throw std::runtime_error("cooked texture is mipped but smaller than one 4x4 block; cook it again");
     }
     texture.levels = uint8_t(fields[7]);
     texture.sourceHash = fields[8];

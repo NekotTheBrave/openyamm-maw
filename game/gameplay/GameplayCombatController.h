@@ -63,12 +63,20 @@ public:
         bool targetStrongEnemy = false;
     };
 
+    // A party hit that deals no damage after resistances counts as a miss unless it stuns the target.
+    static bool partyHitLands(int appliedDamage, bool stunsTarget);
+
     static std::string formatPartyAttackStatusText(
         const std::string &attackerName,
         const std::string &targetName,
         const CharacterAttackResult &attack,
         bool killed,
         std::optional<int> appliedDamage = std::nullopt);
+
+    static std::string formatPartyProjectileActorImpactStatusText(
+        const std::string &sourceName,
+        const std::string &targetName,
+        const CombatEvent &event);
 
     static void handlePartyAttackPresentation(
         GameplayScreenRuntime *pRuntime,

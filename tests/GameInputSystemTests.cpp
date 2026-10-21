@@ -103,7 +103,8 @@ TEST_CASE("Android item drags preserve pickup, drop, pointer and inspection")
         };
         const auto update = [&](GameInputSystem &input)
         {
-            input.updateFromEngineInput(width, height, 0, GameSettings{}, false, false, false, false, true, controls);
+            input.updateFromEngineInput(
+                width, height, 0, GameSettings{}, false, false, false, false, true, false, controls);
         };
         const auto pointerAt = [&](const GameInputSystem &input, float x, float y)
         {
@@ -158,14 +159,99 @@ TEST_CASE("Android item drags preserve pickup, drop, pointer and inspection")
         }
     }
 }
+
+TEST_CASE("Android overlay taps click on release and long presses inspect")
+{
+    const int width = 1600;
+    const int height = 900;
+    const auto event = [&](GameInputSystem &input, uint32_t type, float x, float y)
+    {
+        SDL_Event touch = {};
+        touch.type = type;
+        touch.tfinger.timestamp = SDL_GetTicksNS();
+        touch.tfinger.fingerID = 1;
+        touch.tfinger.x = x / width;
+        touch.tfinger.y = y / height;
+        input.handleSdlEvent(touch);
+    };
+    const auto update = [&](GameInputSystem &input, bool longPressInspect = true)
+    {
+        input.updateFromEngineInput(
+            width, height, 0, GameSettings{}, false, false, false, false, true, longPressInspect);
+    };
+    const auto pointerAt = [&](const GameInputSystem &input, float x, float y)
+    {
+        return std::abs(input.frame().pointerX - x) < 0.01f && std::abs(input.frame().pointerY - y) < 0.01f;
+    };
+
+    GameInputSystem tap;
+    event(tap, SDL_EVENT_FINGER_DOWN, 400, 300);
+    update(tap);
+    CHECK_FALSE(tap.frame().leftMouseButton.held);
+    CHECK_FALSE(tap.frame().rightMouseButton.held);
+    CHECK(pointerAt(tap, 400, 300));
+    event(tap, SDL_EVENT_FINGER_UP, 400, 300);
+    update(tap);
+    CHECK(tap.frame().leftMouseButton.pressed);
+    CHECK(pointerAt(tap, 400, 300));
+    update(tap);
+    CHECK(tap.frame().leftMouseButton.released);
+
+    GameInputSystem hold;
+    event(hold, SDL_EVENT_FINGER_DOWN, 400, 300);
+    update(hold);
+    SDL_Delay(420);
+    update(hold);
+    CHECK(hold.frame().rightMouseButton.pressed);
+    CHECK_FALSE(hold.frame().leftMouseButton.held);
+    event(hold, SDL_EVENT_FINGER_MOTION, 700, 500);
+    update(hold);
+    CHECK(hold.frame().rightMouseButton.held);
+    CHECK_FALSE(hold.frame().mobileTouchDragStarted);
+    CHECK(pointerAt(hold, 700, 500));
+    event(hold, SDL_EVENT_FINGER_UP, 700, 500);
+    update(hold);
+    CHECK(hold.frame().rightMouseButton.released);
+    CHECK_FALSE(hold.frame().leftMouseButton.held);
+    update(hold);
+    CHECK_FALSE(hold.frame().leftMouseButton.held);
+
+    GameInputSystem drag;
+    event(drag, SDL_EVENT_FINGER_DOWN, 400, 300);
+    update(drag);
+    CHECK_FALSE(drag.frame().leftMouseButton.held);
+    event(drag, SDL_EVENT_FINGER_MOTION, 700, 500);
+    update(drag);
+    CHECK(drag.frame().leftMouseButton.pressed);
+    CHECK(drag.frame().mobileTouchDragStarted);
+    CHECK(pointerAt(drag, 400, 300));
+    update(drag);
+    CHECK(pointerAt(drag, 700, 500));
+    event(drag, SDL_EVENT_FINGER_UP, 700, 500);
+    update(drag);
+    CHECK(drag.frame().mobileTouchDragReleased);
+    CHECK_FALSE(drag.frame().rightMouseButton.held);
+
+    // The finger that opened the overlay keeps its press instead of turning into a tap or an inspection.
+    GameInputSystem carried;
+    event(carried, SDL_EVENT_FINGER_DOWN, 400, 300);
+    update(carried, false);
+    CHECK(carried.frame().leftMouseButton.pressed);
+    SDL_Delay(420);
+    update(carried);
+    CHECK(carried.frame().leftMouseButton.held);
+    CHECK_FALSE(carried.frame().rightMouseButton.held);
+    event(carried, SDL_EVENT_FINGER_UP, 400, 300);
+    update(carried);
+    CHECK(carried.frame().leftMouseButton.released);
+    update(carried);
+    CHECK_FALSE(carried.frame().leftMouseButton.held);
+}
 #endif
 
-TEST_CASE("release settings disable Ctrl turbo movement without suppressing modifier keys")
+TEST_CASE("default settings disable Ctrl turbo movement without suppressing modifier keys")
 {
-    std::string error;
-    const std::optional<GameSettings> settings = loadGameSettings(
-        std::filesystem::path(OPENYAMM_SOURCE_DIR) / "settings_release.ini", error);
-    REQUIRE_MESSAGE(settings.has_value(), error.c_str());
+    const std::optional<GameSettings> settings = GameSettings::createDefault();
     CHECK_FALSE(settings->turboMovementEnabled);
 
     GameInputSystem inputSystem;
@@ -183,7 +269,9 @@ TEST_CASE("release settings disable Ctrl turbo movement without suppressing modi
         input.keyboardHeld[ctrl] = false;
     }
 
-    inputSystem.updateFromEngineInput(640, 480, 0.0f, GameSettings::createDefault());
+    GameSettings turboSettings = GameSettings::createDefault();
+    turboSettings.turboMovementEnabled = true;
+    inputSystem.updateFromEngineInput(640, 480, 0.0f, turboSettings);
     for (const SDL_Scancode ctrl : {SDL_SCANCODE_LCTRL, SDL_SCANCODE_RCTRL})
     {
         input.keyboardHeld[ctrl] = true;

@@ -4,7 +4,6 @@
 #include "game/items/ItemEnchantRuntime.h"
 #include "game/items/ItemGenerator.h"
 #include "game/party/Party.h"
-#include "game/StringUtils.h"
 #include "game/tables/ChestTable.h"
 #include "game/tables/ItemTable.h"
 
@@ -330,11 +329,6 @@ bool readChestItemRecordInt32(
     return true;
 }
 
-bool itemDefinitionIsGold(const ItemDefinition &itemDefinition)
-{
-    return toLowerCopy(itemDefinition.equipStat) == "gold";
-}
-
 std::optional<int> legacyGoldHeapFallbackTreasureLevel(uint32_t itemId, int normalizedMapTreasureLevel)
 {
     switch (itemId)
@@ -459,10 +453,12 @@ GameplayChestViewState buildMaterializedChestView(
                     uint32_t(rawItemId),
                     *pItemTable,
                     ItemGenerationMode::ChestLoot);
+                std::mt19937 potionRng(makeChestSeed(sessionChestSeed, mapId, chestId, uint32_t(recordIndex)));
+                ItemGenerator::assignPlacedPotionPower(item.item, *pItemTable, potionRng);
                 item.itemId = item.item.objectDescriptionId;
                 item.quantity = item.item.quantity;
 
-                if (itemDefinitionIsGold(*pItemDefinition))
+                if (pItemDefinition->isGold())
                 {
                     int32_t rawGoldAmount = 0;
                     uint32_t goldAmount = 0;

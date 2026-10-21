@@ -75,6 +75,29 @@ function(openyamm_configure_sdl3)
     FetchContent_MakeAvailable(sdl3)
 endfunction()
 
+# Monocypher (BSD-2-Clause or CC0): Ed25519 checks of the updater's signed release manifests.
+function(openyamm_configure_monocypher)
+    if (TARGET openyamm_monocypher)
+        return()
+    endif()
+
+    FetchContent_Declare(
+        monocypher
+        URL https://codeload.github.com/LoupVaillant/Monocypher/tar.gz/refs/tags/4.0.2
+        URL_HASH SHA256=bc1ca30b1b2654e4e7daf2492c0d204200e55137f23fda6b7142fd7d523bd6b4
+    )
+    openyamm_populate_dependency(monocypher monocypherSourceDir)
+    add_library(openyamm_monocypher STATIC
+        ${monocypherSourceDir}/src/monocypher.c
+        ${monocypherSourceDir}/src/optional/monocypher-ed25519.c
+    )
+    target_include_directories(openyamm_monocypher
+        PUBLIC
+            ${monocypherSourceDir}/src
+            ${monocypherSourceDir}/src/optional
+    )
+endfunction()
+
 function(openyamm_configure_lua)
     FetchContent_Declare(
         lua

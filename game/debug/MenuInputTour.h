@@ -2,7 +2,9 @@
 
 #include "game/gameplay/GameplayInputFrame.h"
 
+#include <array>
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -15,8 +17,12 @@ class ScreenshotCaptureService;
 class MenuInputTour
 {
   public:
+    using ConsoleLineRunner = std::function<void(const std::string &line)>;
+
+    // Held keys also hold the gameplay actions bound to them in bindings; console steps go through runConsoleLine.
     void update(const std::string &path, GameplayInputFrame &input, IScreen *pScreen,
-                ScreenshotCaptureService &captures);
+                ScreenshotCaptureService &captures, const std::array<InputBinding, KeyboardActionCount> &bindings,
+                const ConsoleLineRunner &runConsoleLine);
 
   private:
     struct Step

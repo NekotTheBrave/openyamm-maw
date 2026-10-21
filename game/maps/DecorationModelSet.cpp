@@ -141,6 +141,8 @@ void DecorationModelSet::clear()
     m_wallFinder = {};
     m_unmountedBillboards.clear();
     m_swingingGroups.clear();
+    m_turningBillboards.clear();
+    m_settled = false;
 }
 
 bool DecorationModelSet::raycast(size_t billboardIndex, const std::array<float, 3> &origin,
@@ -382,11 +384,19 @@ void DecorationModelSet::update(const std::vector<DecorationBillboard> &billboar
             const int32_t target = binding != m_bindingBySprite.end() ? int32_t(binding->second) : -1;
             if (target != slot.binding)
             {
+                const bool wasPlaced = slot.binding >= 0;
                 unplace(index);
+                slot.turning = false;
                 if (target >= 0)
                 {
                     place(index, billboards[index], uint32_t(target));
                     placeOverlay(index);
+                    if (wasPlaced && m_settled && m_bindings[size_t(target)].turnSeconds > 0.0f)
+                    {
+                        slot.turning = true;
+                        slot.turnStart = -1.0f;
+                        m_turningBillboards.push_back(index);
+                    }
                 }
             }
         }
@@ -405,10 +415,40 @@ void DecorationModelSet::update(const std::vector<DecorationBillboard> &billboar
             m_groups[size_t(slot.overlayGroup)].placements[slot.overlayIndex].visible = !hidden;
         }
     }
+    m_settled = true;
 }
 
 void DecorationModelSet::animate(float timeSeconds)
 {
+    for (size_t entry = 0; entry < m_turningBillboards.size();)
+    {
+        Slot &slot = m_slots[m_turningBillboards[entry]];
+        if (!slot.turning || slot.group < 0)
+        {
+            slot.turning = false;
+            m_turningBillboards[entry] = m_turningBillboards.back();
+            m_turningBillboards.pop_back();
+            continue;
+        }
+        if (slot.turnStart < 0.0f)
+        {
+            slot.turnStart = timeSeconds;
+        }
+        const Binding &binding = m_bindings[size_t(slot.binding)];
+        Engine::ModelStaticGroup &placements = m_groups[size_t(slot.group)];
+        const Engine::ModelBounds &bounds = binding.asset->staticBounds;
+        const std::array<float, 3> pivot = {(bounds.min[0] + bounds.max[0]) * 0.5f,
+            (bounds.min[1] + bounds.max[1]) * 0.5f, 0.0f};
+        const float angle = turnRemaining(binding.turnRadians, binding.turnSeconds, timeSeconds - slot.turnStart);
+        const Engine::ModelMatrix &rest = m_restMatrices[size_t(slot.group)][slot.index];
+        placements.placements[slot.index].matrix = angle == 0.0f ? rest : turnedPlacement(rest, pivot, angle);
+        placements.bounds[slot.index] = placements.placementBounds(placements.placements[slot.index]);
+        if (angle == 0.0f)
+        {
+            slot.turning = false;
+        }
+        ++entry;
+    }
     for (const uint32_t group : m_swingingGroups)
     {
         const Binding &binding = m_bindings[group];
@@ -561,6 +601,18 @@ bool DecorationModelSet::load(const Engine::AssetFileSystem &assets, const std::
                 return false;
             }
             binding.mountWall = mount == "wall";
+            if (entry["turn_in"])
+            {
+                const std::vector<float> turn = entry["turn_in"].as<std::vector<float>>();
+                if (turn.size() != 2 || !(std::abs(turn[0]) > 0.0f && std::abs(turn[0]) <= 720.0f)
+                    || !(turn[1] > 0.0f && turn[1] <= 10.0f))
+                {
+                    error = "decoration model turn_in needs [angle -720..720 degrees, 0..10 seconds]: " + name;
+                    return false;
+                }
+                binding.turnRadians = turn[0] * std::numbers::pi_v<float> / 180.0f;
+                binding.turnSeconds = turn[1];
+            }
             if (entry["swing"])
             {
                 const std::vector<float> swing = entry["swing"].as<std::vector<float>>();

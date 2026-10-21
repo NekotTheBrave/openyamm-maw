@@ -38,6 +38,8 @@ void OutdoorGameplayInputController::updateCameraFromInput(
         deltaSeconds = std::min(deltaSeconds, 0.05f);
     }
 
+    const float cameraDeltaSeconds = std::min(input.cameraDeltaSeconds.value_or(deltaSeconds), 0.05f);
+
     const bool *pKeyboardState = input.keyboardState();
 
     GameplayScreenState &gameplayScreenState = view.m_gameSession.gameplayScreenState();
@@ -139,12 +141,12 @@ void OutdoorGameplayInputController::updateCameraFromInput(
     {
         if (leftPressed)
         {
-            view.m_cameraYawRadians += keyboardYawSpeed * deltaSeconds;
+            view.m_cameraYawRadians += keyboardYawSpeed * cameraDeltaSeconds;
         }
 
         if (rightPressed)
         {
-            view.m_cameraYawRadians -= keyboardYawSpeed * deltaSeconds;
+            view.m_cameraYawRadians -= keyboardYawSpeed * cameraDeltaSeconds;
         }
     }
 
@@ -259,26 +261,27 @@ void OutdoorGameplayInputController::updateCameraFromInput(
 
     const float keyboardPitchSpeed = 1.25f;
 
+    // Positive pitch looks up.
     if (!gameplayMouseLookState.cursorModeActive && lookUpPressed)
     {
-        view.m_cameraPitchRadians -= keyboardPitchSpeed * deltaSeconds;
+        view.m_cameraPitchRadians += keyboardPitchSpeed * cameraDeltaSeconds;
     }
 
     if (!gameplayMouseLookState.cursorModeActive && lookDownPressed)
     {
-        view.m_cameraPitchRadians += keyboardPitchSpeed * deltaSeconds;
+        view.m_cameraPitchRadians -= keyboardPitchSpeed * cameraDeltaSeconds;
     }
 
     if (!gameplayMouseLookState.cursorModeActive && centerViewPressed)
     {
-        view.m_cameraPitchRadians *= std::max(0.0f, 1.0f - deltaSeconds * 8.0f);
+        view.m_cameraPitchRadians *= std::max(0.0f, 1.0f - cameraDeltaSeconds * 8.0f);
     }
 
     if (view.m_pOutdoorPartyRuntime)
     {
         if (input.action(KeyboardAction::Land).pressed && view.m_pOutdoorPartyRuntime->partyMovementState().flying)
         {
-            view.m_pOutdoorPartyRuntime->toggleFlying();
+            view.m_pOutdoorPartyRuntime->requestLanding();
         }
     }
 

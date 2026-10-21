@@ -52,6 +52,7 @@ public:
 
     void toggleRunning();
     void toggleFlying();
+    void requestLanding();
     void toggleWaterWalk();
     void toggleFeatherFall();
     void setRunning(bool active);

@@ -2,7 +2,9 @@
 
 #include "engine/BgfxContext.h"
 #include "engine/render/ModelRenderer.h"
+#include "game/fx/ParticleRenderer.h"
 #include "game/fx/WorldFxSystem.h"
+#include "game/render/RuntimeShader.h"
 #include "game/render/WaterMath.h"
 
 #include <bx/math.h>
@@ -63,7 +65,7 @@ void ActorModelPreview::bindScene(WorldFxSystem *pWorldFx, Engine::ModelRenderer
 }
 
 bgfx::TextureHandle ActorModelPreview::render(const IGameplayWorldRuntime &world, size_t actorIndex, float pixelSize,
-    uint32_t animationTicks)
+    uint32_t animationTicks, const Engine::AssetFileSystem &assets)
 {
     if (m_pWorldFx == nullptr || m_pModelRenderer == nullptr || m_failed || pixelSize <= 0.0f
         || bgfx::getRendererType() == bgfx::RendererType::Noop)
@@ -101,6 +103,16 @@ bgfx::TextureHandle ActorModelPreview::render(const IGameplayWorldRuntime &world
     bgfx::setUniform(m_worldClipPlaneUniform, noClip);
     m_pModelRenderer->renderPortrait(m_pWorldFx->models(), pPortrait->handle, ActorPortraitView, m_eye,
         portraitLighting());
+    if (pPortrait->effects)
+    {
+        if (!bgfx::isValid(m_effectResources.particleParamsUniformHandle()))
+        {
+            m_effectResources.setParticleProgramHandle(loadRuntimeProgram("vs_particle", "fs_particle"));
+            ParticleRenderer::initializeResources(m_effectResources);
+        }
+        m_effectRenderer.render(m_effectResources, *pPortrait->effects, m_pWorldFx->namedEffectResources(), assets,
+            ActorPortraitView, m_view.data(), {m_eye[0], m_eye[1], m_eye[2]});
+    }
     return m_colorTexture;
 }
 
@@ -219,6 +231,8 @@ void ActorModelPreview::destroyTarget()
 
 void ActorModelPreview::shutdown()
 {
+    m_effectRenderer.shutdown(Engine::BgfxContext::isBgfxInitialized());
+    m_effectResources.shutdown();
     m_pWorldFx = nullptr;
     m_pModelRenderer = nullptr;
     m_failed = false;

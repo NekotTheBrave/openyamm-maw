@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstring>
 #include <iostream>
 
@@ -16,56 +15,10 @@ namespace OpenYAMM::Game
 namespace
 {
 constexpr bgfx::ViewId GradingView = WorldGradingView;
-constexpr uint16_t LutSize = 32;
 struct ScreenVertex
 {
     float x, y, z, u, v;
 };
-
-std::array<uint8_t, LutSize * LutSize * LutSize * 4> makeLut()
-{
-    std::array<uint8_t, LutSize * LutSize * LutSize * 4> pixels = {};
-    for (uint16_t b = 0; b < LutSize; ++b)
-    {
-        for (uint16_t g = 0; g < LutSize; ++g)
-        {
-            for (uint16_t r = 0; r < LutSize; ++r)
-            {
-                std::array<float, 3> color = {float(r) / (LutSize - 1), float(g) / (LutSize - 1),
-                    float(b) / (LutSize - 1)};
-                // The existing world target is display-referred SDR, not scene-linear HDR.
-                // Lift shadow/midtone detail while keeping black and white anchored. Work on
-                // luminance so neutral stone stays neutral instead of gaining a split-tone tint.
-                const float luminance = color[0] * 0.2126f + color[1] * 0.7152f + color[2] * 0.0722f;
-                const float remaining = 1.0f - luminance;
-                const float tone = luminance + 0.16f * luminance * remaining * remaining
-                    - 0.06f * luminance * luminance * remaining;
-                const float chroma = std::max({color[0], color[1], color[2]})
-                    - std::min({color[0], color[1], color[2]});
-                const float inverseChroma = 1.0f / std::max(chroma, 0.0001f);
-                // Smooth hue weights mute orange roofs/earth more than red foliage. Greens and
-                // blues receive smaller reductions; near-neutral colors fade out of the masks.
-                const float orange = 4.0f * std::max(0.0f, color[0] - color[1])
-                    * std::max(0.0f, color[1] - color[2]) * inverseChroma * inverseChroma;
-                const float green = std::max(0.0f, color[1] - std::max(color[0], color[2])) * inverseChroma;
-                const float blue = std::max(0.0f, color[2] - std::max(color[0], color[1])) * inverseChroma;
-                const float hueWeight = std::min(chroma / 0.08f, 1.0f);
-                const float saturation = 0.92f - hueWeight * (0.25f * orange + 0.10f * green + 0.08f * blue);
-                for (float &channel : color)
-                {
-                    channel = tone + (channel - luminance) * saturation;
-                }
-                const size_t index = ((size_t(b) * LutSize + g) * LutSize + r) * 4;
-                for (size_t c = 0; c < 3; ++c)
-                {
-                    pixels[index + c] = uint8_t(std::lround(std::clamp(color[c], 0.0f, 1.0f) * 255.0f));
-                }
-                pixels[index + 3] = 255;
-            }
-        }
-    }
-    return pixels;
-}
 
 // The sample count when the colour and depth targets can both be multisampled, else 0.
 uint8_t supportedSamples(uint8_t samples, bgfx::TextureFormat::Enum depthFormat)
@@ -85,23 +38,18 @@ bool CinematicGrading::initialize()
     }
     m_program = loadRuntimeProgram("vs_cinematic_grading", "fs_cinematic_grading");
     m_sceneSampler = bgfx::createUniform("s_gradeScene", bgfx::UniformType::Sampler);
-    m_lutSampler = bgfx::createUniform("s_gradeLut", bgfx::UniformType::Sampler);
     m_params = bgfx::createUniform("u_gradeParams", bgfx::UniformType::Vec4);
     m_gradeBloomSampler = bgfx::createUniform("s_gradeBloom", bgfx::UniformType::Sampler);
     m_gradeBloom = bgfx::createUniform("u_gradeBloom", bgfx::UniformType::Vec4);
     const uint32_t black = 0;
     m_noBloom = bgfx::createTexture2D(1, 1, false, 1, bgfx::TextureFormat::RGBA8,
         BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP, bgfx::copy(&black, sizeof(black)));
-    const std::array<uint8_t, LutSize * LutSize * LutSize * 4> pixels = makeLut();
-    m_lut = bgfx::createTexture3D(LutSize, LutSize, LutSize, false, bgfx::TextureFormat::RGBA8,
-        BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_W_CLAMP,
-        bgfx::copy(pixels.data(), uint32_t(pixels.size())));
     m_vertexLayout.begin()
         .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
         .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
         .end();
-    return bgfx::isValid(m_program) && bgfx::isValid(m_lut) && bgfx::isValid(m_sceneSampler)
-        && bgfx::isValid(m_lutSampler) && bgfx::isValid(m_params) && bgfx::isValid(m_gradeBloomSampler)
+    return bgfx::isValid(m_program) && bgfx::isValid(m_sceneSampler) && bgfx::isValid(m_params)
+        && bgfx::isValid(m_gradeBloomSampler)
         && bgfx::isValid(m_gradeBloom) && bgfx::isValid(m_noBloom);
 }
 
@@ -571,10 +519,9 @@ void CinematicGrading::submit(bgfx::FrameBufferHandle target)
     bgfx::setViewFrameBuffer(GradingView, target);
     bgfx::setViewRect(GradingView, 0, 0, m_width, m_height);
     bgfx::setViewClear(GradingView, BGFX_CLEAR_NONE);
-    const float params[4] = {m_strength, float(LutSize - 1) / LutSize, 0.5f / LutSize, m_sharpening};
+    const float params[4] = {m_strength, 0.0f, 0.0f, m_sharpening};
     bgfx::setUniform(m_params, params);
     bgfx::setTexture(0, m_sceneSampler, bgfx::getTexture(m_frameBuffer));
-    bgfx::setTexture(1, m_lutSampler, m_lut);
     const float bloomValues[4] = {bloom ? m_bloomStrength : 0.0f, 0.0f, 0.0f, 0.0f};
     bgfx::setUniform(m_gradeBloom, bloomValues);
     bgfx::setTexture(2, m_gradeBloomSampler, bloom ? bgfx::getTexture(m_bloomFrameBuffers[0]) : m_noBloom);
@@ -646,17 +593,9 @@ void CinematicGrading::shutdown()
     {
         bgfx::destroy(m_program);
     }
-    if (bgfx::isValid(m_lut))
-    {
-        bgfx::destroy(m_lut);
-    }
     if (bgfx::isValid(m_sceneSampler))
     {
         bgfx::destroy(m_sceneSampler);
-    }
-    if (bgfx::isValid(m_lutSampler))
-    {
-        bgfx::destroy(m_lutSampler);
     }
     if (bgfx::isValid(m_params))
     {
@@ -664,9 +603,7 @@ void CinematicGrading::shutdown()
     }
     m_frameBuffer = BGFX_INVALID_HANDLE;
     m_program = BGFX_INVALID_HANDLE;
-    m_lut = BGFX_INVALID_HANDLE;
     m_sceneSampler = BGFX_INVALID_HANDLE;
-    m_lutSampler = BGFX_INVALID_HANDLE;
     m_params = BGFX_INVALID_HANDLE;
     m_width = 0;
     m_height = 0;

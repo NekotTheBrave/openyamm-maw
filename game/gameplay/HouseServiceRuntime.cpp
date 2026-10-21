@@ -546,6 +546,7 @@ std::vector<InventoryItem> generateStockItems(
                 });
 
         results[slotIndex] = generatedItem.value_or(ItemGenerator::makeInventoryItem(itemId, itemTable, ItemGenerationMode::Shop));
+        ItemGenerator::assignTreasurePotionPower(results[slotIndex], itemTable, treasureLevel, rng);
 
         if (!allowDuplicates)
         {

@@ -3,6 +3,7 @@
 #include "game/events/EventRuntime.h"
 #include "game/gameplay/GameMechanics.h"
 #include "game/gameplay/GameplayWorldInteraction.h"
+#include "game/items/WorldItemShape.h"
 #include "game/party/Party.h"
 #include "game/party/SkillData.h"
 #include "game/tables/MonsterTable.h"
@@ -139,6 +140,8 @@ struct GameplayRuntimeActorState
     float actionSeconds = 0.0f;
     float velocityX = 0.0f;
     float velocityY = 0.0f;
+    // Pursuing or fleeing (moving at twice the wander speed): a 3D model prefers its run clip.
+    bool hurrying = false;
     bool castingSpell = false;
     bool secondaryAttack = false;
     uint32_t castingSpellId = 0;
@@ -383,6 +386,13 @@ struct GameplayWorldItemPresentationState
     float y = 0.0f;
     float z = 0.0f;
     int16_t sectorId = -1;
+    // In flight or sliding: drawn flat at its simulated height; at rest it is fitted to the ground under it.
+    bool moving = false;
+    // Floats where it was placed (NoGravity objects): never fitted to the ground.
+    bool floating = false;
+    // A treasure bag holding loot rather than an item: it draws lootBagModelBinding().
+    bool lootBag = false;
+    WorldItemSparkle sparkle = WorldItemSparkle::None;
 };
 
 // A projectile that ended (hit something or ran out of lifetime) and where it stopped, so its flight effect can
@@ -721,6 +731,13 @@ public:
     }
     // Gold plus item value left in a dead actor's corpse (its loot is rolled at death); nullopt without corpse loot.
     virtual std::optional<uint32_t> corpseLootValue(size_t actorIndex) const
+    {
+        (void)actorIndex;
+        return std::nullopt;
+    }
+    // Telepathy: what a living actor will leave when it dies. Its gold and random item are rolled now and kept for
+    // its corpse, so the reveal holds; nullopt when the actor is dead, invisible or unknown.
+    virtual std::optional<GameplayCorpseViewState> revealActorLoot(size_t actorIndex)
     {
         (void)actorIndex;
         return std::nullopt;

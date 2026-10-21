@@ -67,6 +67,7 @@ struct SkyFrameState
     float sunDiscDegrees = 1.6f;
     std::array<float, 3> moonDirection = {0.0f, 0.0f, -1.0f};
     float moonDiscDegrees = 2.2f;
+    std::string moonTexture = "moon";
     // 0 = new moon, 0.5 = full moon.
     float moonPhase = 0.5f;
     float starRotationRadians = 0.0f;

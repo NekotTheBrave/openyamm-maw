@@ -1,5 +1,8 @@
 #include "game/items/InventoryItemMixingRuntime.h"
 
+#include "game/items/ItemEnchantRuntime.h"
+#include "game/items/ItemEnchantTables.h"
+#include "game/items/ItemRuntime.h"
 #include "game/tables/ItemTable.h"
 #include "game/tables/MergedBaseTables.h"
 #include "game/tables/PotionMixingTable.h"
@@ -14,6 +17,14 @@ namespace OpenYAMM::Game
 namespace
 {
 constexpr uint32_t RechargePotionItemId = 233;
+constexpr uint32_t HardenItemPotionItemId = 236;
+constexpr uint32_t FlamingPotionItemId = 246;
+constexpr uint32_t FreezingPotionItemId = 247;
+constexpr uint32_t NoxiousPotionItemId = 248;
+constexpr uint32_t ShockingPotionItemId = 249;
+constexpr uint32_t SwiftPotionItemId = 250;
+constexpr uint32_t SlayingPotionItemId = 263;
+constexpr float WeaponEnchantPotionSecondsPerPower = 30.0f * 60.0f;
 
 bool parsePositiveInteger(const std::string &value, uint32_t &result)
 {
@@ -71,6 +82,110 @@ uint8_t requiredFailureDamageLevel(
     return static_cast<uint32_t>(mastery) < *pSetting->requiredMastery
         ? static_cast<uint8_t>(std::min<uint32_t>(*pSetting->requiredMastery, 255))
         : 0;
+}
+
+std::optional<SpecialItemEnchantKind> weaponPotionEnchantKind(uint32_t potionItemId)
+{
+    switch (potionItemId)
+    {
+        case FlamingPotionItemId:
+            return SpecialItemEnchantKind::Flame;
+        case FreezingPotionItemId:
+            return SpecialItemEnchantKind::Frost;
+        case NoxiousPotionItemId:
+            return SpecialItemEnchantKind::Poison;
+        case ShockingPotionItemId:
+            return SpecialItemEnchantKind::Sparks;
+        case SwiftPotionItemId:
+            return SpecialItemEnchantKind::Swift;
+        case SlayingPotionItemId:
+            return SpecialItemEnchantKind::DragonSlaying;
+        default:
+            return std::nullopt;
+    }
+}
+
+bool isWeaponItem(const ItemDefinition &itemDefinition)
+{
+    const ItemEnchantCategory category = ItemEnchantRuntime::categoryForItem(itemDefinition);
+    return category == ItemEnchantCategory::OneHandedWeapon
+        || category == ItemEnchantCategory::TwoHandedWeapon
+        || category == ItemEnchantCategory::Missile;
+}
+
+// Potions poured onto a weapon or piece of equipment: Harden Item, and the weapon potions that add a temporary
+// special enchantment. Refused targets keep the potion, as in the original game.
+InventoryItemMixResult applyEquipmentPotion(
+    const InventoryItem &heldItem,
+    InventoryItem &targetItem,
+    const ItemDefinition &targetDefinition,
+    const SpecialItemEnchantTable *pSpecialEnchantTable)
+{
+    const bool isEquipment = ItemEnchantRuntime::categoryForItem(targetDefinition) != ItemEnchantCategory::None
+        || InventoryItemMixingRuntime::isWandItem(targetDefinition);
+
+    if (!isEquipment)
+    {
+        return {};
+    }
+
+    InventoryItemMixResult result = {};
+    result.handled = true;
+
+    if (heldItem.objectDescriptionId == HardenItemPotionItemId)
+    {
+        result.action = InventoryItemMixAction::HardenPotion;
+
+        if (targetItem.broken || ItemRuntime::isArtifact(targetDefinition))
+        {
+            return result;
+        }
+
+        if (targetItem.hardened)
+        {
+            result.statusText = "Item already hardened!";
+            return result;
+        }
+
+        targetItem.hardened = true;
+        result.success = true;
+        result.heldItemConsumed = true;
+        result.targetItemChanged = true;
+        return result;
+    }
+
+    const std::optional<SpecialItemEnchantKind> enchantKind = weaponPotionEnchantKind(heldItem.objectDescriptionId);
+
+    if (!enchantKind.has_value())
+    {
+        return {};
+    }
+
+    result.action = InventoryItemMixAction::WeaponEnchantPotion;
+    const uint16_t enchantId = pSpecialEnchantTable != nullptr ? pSpecialEnchantTable->findId(*enchantKind) : 0;
+
+    // Only plain weapons take the enchantment; blasters, artifacts and enchanted weapons refuse it.
+    if (enchantId == 0
+        || !isWeaponItem(targetDefinition)
+        || targetDefinition.skillGroup == "Blaster"
+        || targetItem.broken
+        || ItemRuntime::isArtifact(targetDefinition)
+        || targetItem.rarity != ItemRarity::Common
+        || targetItem.artifactId != 0
+        || targetItem.standardEnchantId != 0
+        || targetItem.specialEnchantId != 0)
+    {
+        return result;
+    }
+
+    // A zero duration would make the enchantment permanent, so a powerless potion still lasts 30 minutes.
+    const uint16_t power = std::max<uint16_t>(1, itemPower(heldItem));
+    targetItem.specialEnchantId = enchantId;
+    targetItem.temporaryBonusRemainingSeconds = static_cast<float>(power) * WeaponEnchantPotionSecondsPerPower;
+    result.success = true;
+    result.heldItemConsumed = true;
+    result.targetItemChanged = true;
+    return result;
 }
 
 void attachBottleResult(
@@ -339,16 +454,24 @@ InventoryItemMixResult InventoryItemMixingRuntime::tryApplyHeldItemToInventoryIt
     const Character &alchemyMember = pAlchemyMember != nullptr ? *pAlchemyMember : *pMember;
     const uint32_t targetItemId = pTargetItem->objectDescriptionId;
     const uint32_t heldItemId = heldItem.objectDescriptionId;
-    InventoryItemMixResult result = mixItems(
-        heldItem,
-        *pTargetItem,
-        alchemyMastery(alchemyMember),
-        alchemyLevel(alchemyMember),
-        itemTable,
-        potionMixingTable,
-        potionSettingTable,
-        reagentSettingTable,
-        pPotionNoteTable);
+    const ItemDefinition *pTargetDefinition = itemTable.get(targetItemId);
+    InventoryItemMixResult result = pTargetDefinition != nullptr
+        ? applyEquipmentPotion(heldItem, *pTargetItem, *pTargetDefinition, party.specialItemEnchantTable())
+        : InventoryItemMixResult {};
+
+    if (!result.handled)
+    {
+        result = mixItems(
+            heldItem,
+            *pTargetItem,
+            alchemyMastery(alchemyMember),
+            alchemyLevel(alchemyMember),
+            itemTable,
+            potionMixingTable,
+            potionSettingTable,
+            reagentSettingTable,
+            pPotionNoteTable);
+    }
 
     if (result.targetItemRemoved)
     {

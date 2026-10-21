@@ -2680,7 +2680,7 @@ bool OutdoorGameView::initialize(
         return false;
     }
     if (!m_worldFxSystem.loadProjectileModels(assetFileSystem, effectLibraryError)
-        || !m_worldFxSystem.loadItemModels(assetFileSystem, settings.itemModels, effectLibraryError))
+        || !m_worldFxSystem.loadItemModels(assetFileSystem, effectLibraryError))
     {
         std::cerr << "Failed to load projectile or item models: " << effectLibraryError << '\n';
         return false;
@@ -2697,27 +2697,30 @@ bool OutdoorGameView::initialize(
     m_outdoorMapDeltaData = outdoorMapDeltaData;
     m_pGameAudioSystem = pGameAudioSystem;
     m_worldFxSystem.bindNamedEffectAudio(m_pGameAudioSystem);
-    // Item models lie on the drawn ground: the materials terrain's smoothed surface, not the native triangles items
-    // rest on, wherever the item lies on the terrain (within a few units of it) rather than on a building or a table.
+    // A resting item model lies on the drawn ground: on the terrain, the materials terrain's smoothed surface rather
+    // than the native triangles the item rests on; elsewhere the BModel floor (a building, a table). A footprint point
+    // whose ground is far from the item's height (past a ledge) does not support it.
     m_worldFxSystem.setItemGroundSampler(
-        [this](float x, float y, float z) -> std::optional<WorldFxSystem::ItemGround>
+        [this](float x, float y, float z) -> std::optional<float>
         {
-            if (m_pOutdoorMapData == nullptr
-                || std::abs(z - sampleOutdoorTerrainHeight(*m_pOutdoorMapData, x, y)) > 16.0f)
+            constexpr float SupportBand = 24.0f;
+            if (m_pOutdoorMapData == nullptr || m_pOutdoorWorldRuntime == nullptr)
             {
                 return std::nullopt;
             }
-            const auto height = [&](float sampleX, float sampleY)
+            const float nativeTerrain = sampleOutdoorTerrainHeight(*m_pOutdoorMapData, x, y);
+            float ground = m_pOutdoorWorldRuntime->sampleSupportFloorHeight(x, y, z, SupportBand, 0.0f);
+            if (std::abs(ground - nativeTerrain) <= 0.01f)
             {
-                return m_terrainMaterials.ready() ? m_terrainMaterials.renderedHeight(sampleX, sampleY)
-                    : outdoorNativeTerrainHeight(*m_pOutdoorMapData, outdoorWorldToGridXFloat(sampleX),
-                        outdoorWorldToGridYFloat(sampleY));
-            };
-            constexpr float Step = 24.0f;
-            const float slopeX = (height(x + Step, y) - height(x - Step, y)) / (2.0f * Step);
-            const float slopeY = (height(x, y + Step) - height(x, y - Step)) / (2.0f * Step);
-            const float length = std::sqrt(slopeX * slopeX + slopeY * slopeY + 1.0f);
-            return WorldFxSystem::ItemGround{height(x, y), {-slopeX / length, -slopeY / length, 1.0f / length}};
+                ground = m_terrainMaterials.ready() ? m_terrainMaterials.renderedHeight(x, y)
+                    : outdoorNativeTerrainHeight(*m_pOutdoorMapData, outdoorWorldToGridXFloat(x),
+                        outdoorWorldToGridYFloat(y));
+            }
+            if (std::abs(ground - z) > SupportBand)
+            {
+                return std::nullopt;
+            }
+            return ground;
         });
     m_pOutdoorSceneRuntime = &sceneRuntime;
     m_pOutdoorPartyRuntime = &sceneRuntime.partyRuntime();
@@ -3361,7 +3364,8 @@ bool OutdoorGameView::ensureMonsterVisualResources(int16_t monsterId)
         *m_pAssetFileSystem,
         monsterTable,
         monsterId,
-        m_outdoorActorPreviewBillboardSet->spriteFrameTable);
+        m_outdoorActorPreviewBillboardSet->spriteFrameTable,
+        m_outdoorActorPreviewBillboardSet->actorModels.get());
 }
 
 const SpriteFrameTable *OutdoorGameView::actorSpriteFrameTable() const
@@ -4224,11 +4228,7 @@ void OutdoorGameView::updateHouseVideoPlayback(float deltaSeconds)
     }
 
     m_gameSession.gameplayScreenRuntime().playHouseVideo(pHostHouseEntry->videoName);
-
-    if (!houseShopOverlay().active)
-    {
-        m_gameSession.gameplayScreenRuntime().updateHouseVideoPlayback(deltaSeconds);
-    }
+    m_gameSession.gameplayScreenRuntime().updateHouseVideoPlayback(deltaSeconds);
 }
 
 bool OutdoorGameView::hasActiveEventDialog() const
@@ -4381,6 +4381,11 @@ bool OutdoorGameView::requestQuickSave()
 bool OutdoorGameView::requestTravelAutosave()
 {
     return beginSaveWithPreview(m_autosavePath, "", false);
+}
+
+bool OutdoorGameView::savePreviewCapturePending() const
+{
+    return m_pendingSavePreviewCapture.active;
 }
 
 bool OutdoorGameView::beginSaveWithPreview(
@@ -4569,7 +4574,7 @@ bool OutdoorGameView::tryCastSpellRequest(const PartySpellCastRequest &request, 
         m_worldFxSystem.triggerPartySpellFx(resolution.castResult);
         m_gameSession.gameplaySpellService().clearPendingTargetSelection(
             screenRuntime,
-            isSpellId(resolvedRequest.spellId, SpellId::Telekinesis) ? std::string() : "Cast " + spellName);
+            GameplaySpellService::successStatusText(spellName, resolution.castResult));
         return true;
     }
 

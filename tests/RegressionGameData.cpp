@@ -225,6 +225,8 @@ bool loadRegressionGameData(RegressionGameData &data, std::string &failure)
         return false;
     }
 
+    data.itemTable.applyPotionSettings(data.mergedPotionSettingTable);
+
     std::vector<std::vector<std::string>> reagentSettingRows;
 
     if (!loadTextTableRows(assetFileSystem, engineDataTablePath("reagent_settings.txt"), reagentSettingRows, failure))

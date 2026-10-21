@@ -39,6 +39,7 @@ add_executable(openyamm-editor
     ${CMAKE_SOURCE_DIR}/tools/legacy_events/EvtProgram.cpp
     ${CMAKE_SOURCE_DIR}/game/tables/ChestTable.cpp
     ${CMAKE_SOURCE_DIR}/game/tables/HouseTable.cpp
+    ${CMAKE_SOURCE_DIR}/game/tables/ItemModelBindings.cpp
     ${CMAKE_SOURCE_DIR}/game/tables/ItemTable.cpp
     ${CMAKE_SOURCE_DIR}/game/tables/MapStats.cpp
     ${CMAKE_SOURCE_DIR}/game/tables/MonsterTable.cpp

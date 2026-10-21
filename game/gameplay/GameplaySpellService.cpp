@@ -865,10 +865,27 @@ void GameplaySpellService::applySuccessFeedback(
         }
     }
 
-    if (!spellName.empty() && result.effectKind != PartySpellCastEffectKind::Telekinesis)
+    const std::string statusText = successStatusText(spellName, result);
+
+    if (!statusText.empty())
     {
-        runtime.setStatusBarEvent("Cast " + spellName);
+        runtime.setStatusBarEvent(statusText);
     }
+}
+
+std::string GameplaySpellService::successStatusText(const std::string &spellName, const PartySpellCastResult &result)
+{
+    if (!result.statusText.empty())
+    {
+        return result.statusText;
+    }
+
+    if (spellName.empty() || result.effectKind == PartySpellCastEffectKind::Telekinesis)
+    {
+        return {};
+    }
+
+    return "Cast " + spellName;
 }
 
 void GameplaySpellService::applyFailureFeedback(

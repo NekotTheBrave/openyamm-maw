@@ -176,6 +176,11 @@ public:
         return m_actors.size() - 1;
     }
 
+    void setActorLoot(size_t actorIndex, const Game::GameplayCorpseViewState &loot)
+    {
+        m_actorLoot[actorIndex] = loot;
+    }
+
     void setPartyPosition(float x, float y, float footZ)
     {
         m_partyX = x;
@@ -643,6 +648,17 @@ public:
 
         state = m_actors[actorIndex];
         return true;
+    }
+
+    std::optional<Game::GameplayCorpseViewState> revealActorLoot(size_t actorIndex) override
+    {
+        if (actorIndex >= m_actors.size() || m_actors[actorIndex].isDead || m_actors[actorIndex].isInvisible)
+        {
+            return std::nullopt;
+        }
+
+        const auto lootIterator = m_actorLoot.find(actorIndex);
+        return lootIterator != m_actorLoot.end() ? lootIterator->second : Game::GameplayCorpseViewState {};
     }
 
     Game::GameplayActorHitFeedback &actorHitFeedback() override
@@ -1167,5 +1183,6 @@ private:
     std::vector<size_t> m_turnBasedActorActionGrants;
     int m_turnBasedActorRecoveryTicks = 100;
     std::map<size_t, float> m_actorAttackCooldownSeconds;
+    std::map<size_t, Game::GameplayCorpseViewState> m_actorLoot;
 };
 }

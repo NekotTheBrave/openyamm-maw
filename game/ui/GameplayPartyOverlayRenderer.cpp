@@ -491,72 +491,126 @@ void submitJournalTextureClipped(
 }
 
 bool runtimeMapNoteMatchesMap(
-    const EventRuntimeState::RuntimeMapNote &note,
+    const JournalMapNote &note,
     const std::string &normalizedCurrentMapFileName)
 {
-    return note.active
-        && !note.mapFileName.empty()
+    return !note.mapFileName.empty()
         && gameplayJournalNormalizeMapFileName(note.mapFileName) == normalizedCurrentMapFileName;
 }
 
-const EventRuntimeState::RuntimeMapNote *findVisibleRuntimeMapNote(
-    const EventRuntimeState *pEventRuntimeState,
+const JournalMapNote *findVisibleRuntimeMapNote(
+    const Party *pParty,
     const std::string &normalizedCurrentMapFileName,
     uint32_t noteId)
 {
-    if (pEventRuntimeState == nullptr || noteId == 0)
+    if (pParty == nullptr || noteId == 0)
     {
         return nullptr;
     }
 
-    const auto noteIt = pEventRuntimeState->runtimeMapNotes.find(noteId);
-
-    if (noteIt == pEventRuntimeState->runtimeMapNotes.end()
-        || !runtimeMapNoteMatchesMap(noteIt->second, normalizedCurrentMapFileName))
+    for (const JournalMapNote &note : pParty->journalMapNotes())
     {
-        return nullptr;
+        if (note.id == noteId && runtimeMapNoteMatchesMap(note, normalizedCurrentMapFileName))
+        {
+            return &note;
+        }
     }
 
-    return &noteIt->second;
+    return nullptr;
 }
 
-const EventRuntimeState::RuntimeMapNote *activeJournalMapNote(
-    const EventRuntimeState *pEventRuntimeState,
+const JournalMapNote *activeJournalMapNote(
+    const Party *pParty,
     const std::string &normalizedCurrentMapFileName,
     const GameplayUiController::JournalScreenState &journalScreen)
 {
-    const EventRuntimeState::RuntimeMapNote *pHoveredNote =
-        findVisibleRuntimeMapNote(pEventRuntimeState, normalizedCurrentMapFileName, journalScreen.hoveredMapNoteId);
+    const JournalMapNote *pHoveredNote =
+        findVisibleRuntimeMapNote(pParty, normalizedCurrentMapFileName, journalScreen.hoveredMapNoteId);
 
     if (pHoveredNote != nullptr)
     {
         return pHoveredNote;
     }
 
-    return findVisibleRuntimeMapNote(pEventRuntimeState, normalizedCurrentMapFileName, journalScreen.selectedMapNoteId);
+    return findVisibleRuntimeMapNote(pParty, normalizedCurrentMapFileName, journalScreen.selectedMapNoteId);
+}
+
+void renderJournalNotesSearch(
+    GameplayScreenRuntime &context,
+    const GameplayScreenRuntime::HudLayoutElement &style,
+    const GameplayScreenRuntime::ResolvedHudLayoutElement &area,
+    const GameplayUiController::JournalScreenState &journalScreen)
+{
+    constexpr uint32_t SearchFillColor = 0x60000000u;
+    constexpr uint32_t SearchHoverColor = 0x18ffffffu;
+    constexpr uint32_t SearchBorderColor = 0xff3a5a6bu;
+    constexpr uint32_t SearchActiveBorderColor = 0xff5aa3c9u;
+    constexpr uint32_t SearchPlaceholderColor = 0xff70818au;
+    const auto fill =
+        [&context](float x, float y, float rectWidth, float rectHeight, uint32_t colorAbgr)
+        {
+            const std::optional<GameplayScreenRuntime::HudTextureHandle> texture =
+                context.gameplayUiRuntime().ensureSolidHudTextureLoaded(
+                    "__journal_search_" + std::to_string(colorAbgr) + "__",
+                    colorAbgr);
+
+            if (texture && rectWidth > 0.0f && rectHeight > 0.0f)
+            {
+                context.submitHudTexturedQuad(*texture, x, y, rectWidth, rectHeight);
+            }
+        };
+    const GameplayInputFrame *pInput = context.currentGameplayInputFrame();
+    const bool hovered = pInput != nullptr
+        && GameplayHudCommon::isPointerInsideResolvedElement(area, pInput->pointerX, pInput->pointerY);
+    const uint32_t borderColor = journalScreen.notesSearchActive ? SearchActiveBorderColor : SearchBorderColor;
+    const float line = std::max(1.0f, std::round(area.scale * 0.75f));
+
+    fill(area.x, area.y, area.width, area.height, SearchFillColor);
+
+    if (hovered && !journalScreen.notesSearchActive)
+    {
+        fill(area.x, area.y, area.width, area.height, SearchHoverColor);
+    }
+
+    fill(area.x, area.y, area.width, line, borderColor);
+    fill(area.x, area.y + area.height - line, area.width, line, borderColor);
+    fill(area.x, area.y + line, line, area.height - 2.0f * line, borderColor);
+    fill(area.x + area.width - line, area.y + line, line, area.height - 2.0f * line, borderColor);
+
+    GameplayScreenRuntime::HudLayoutElement textStyle = style;
+
+    if (journalScreen.notesSearch.empty() && !journalScreen.notesSearchActive)
+    {
+        textStyle.textColorAbgr = SearchPlaceholderColor;
+        context.renderLayoutLabel(textStyle, area, "Search notes", false);
+    }
+    else
+    {
+        // A steady caret, as in the alchemy bench search.
+        context.renderLayoutLabel(
+            textStyle, area, journalScreen.notesSearch + (journalScreen.notesSearchActive ? "_" : ""), false);
+    }
 }
 
 void renderRuntimeMapNotes(
     GameplayScreenRuntime &context,
     const GameplayScreenRuntime::ResolvedHudLayoutElement &mapResolved,
     const GameplayUiController::JournalScreenState &journalScreen,
-    const EventRuntimeState *pEventRuntimeState,
+    const Party *pParty,
     const std::string &normalizedCurrentMapFileName,
     const GameplayMinimapState *pMinimapState = nullptr)
 {
-    if (pEventRuntimeState == nullptr)
+    if (pParty == nullptr)
     {
         return;
     }
 
     const uint32_t highlightedNoteId =
         journalScreen.hoveredMapNoteId != 0 ? journalScreen.hoveredMapNoteId : journalScreen.selectedMapNoteId;
-    std::vector<const EventRuntimeState::RuntimeMapNote *> notes;
+    std::vector<const JournalMapNote *> notes;
 
-    for (const auto &[noteId, note] : pEventRuntimeState->runtimeMapNotes)
+    for (const JournalMapNote &note : pParty->journalMapNotes())
     {
-        (void) noteId;
-
         if (runtimeMapNoteMatchesMap(note, normalizedCurrentMapFileName))
         {
             notes.push_back(&note);
@@ -566,14 +620,14 @@ void renderRuntimeMapNotes(
     std::sort(
         notes.begin(),
         notes.end(),
-        [](const EventRuntimeState::RuntimeMapNote *pLeft, const EventRuntimeState::RuntimeMapNote *pRight)
+        [](const JournalMapNote *pLeft, const JournalMapNote *pRight)
         {
             return pLeft->id < pRight->id;
         });
 
     const auto renderNote =
         [&context, &mapResolved, &journalScreen, pMinimapState](
-            const EventRuntimeState::RuntimeMapNote &note,
+            const JournalMapNote &note,
             bool highlighted)
         {
             const std::optional<GameplayScreenRuntime::HudTextureHandle> pinTexture =
@@ -606,7 +660,7 @@ void renderRuntimeMapNotes(
                 mapResolved);
         };
 
-    for (const EventRuntimeState::RuntimeMapNote *pNote : notes)
+    for (const JournalMapNote *pNote : notes)
     {
         if (pNote->id != highlightedNoteId)
         {
@@ -614,7 +668,7 @@ void renderRuntimeMapNotes(
         }
     }
 
-    for (const EventRuntimeState::RuntimeMapNote *pNote : notes)
+    for (const JournalMapNote *pNote : notes)
     {
         if (pNote->id == highlightedNoteId)
         {
@@ -626,7 +680,7 @@ void renderRuntimeMapNotes(
 std::string journalMapCoordinatesText(
     const GameplayScreenRuntime &context,
     const GameplayUiController::JournalScreenState &journalScreen,
-    const EventRuntimeState::RuntimeMapNote *pActiveNote)
+    const JournalMapNote *pActiveNote)
 {
     if (pActiveNote != nullptr)
     {
@@ -648,7 +702,7 @@ void renderJournalMapTextFields(
     const GameplayUiController::JournalScreenState &journalScreen,
     int width,
     int height,
-    const EventRuntimeState::RuntimeMapNote *pActiveNote)
+    const JournalMapNote *pActiveNote)
 {
     const GameplayScreenRuntime::HudLayoutElement *pNoteLayout =
         context.findHudLayoutElement("JournalMapNoteText");
@@ -784,14 +838,13 @@ void renderJournalVectorMap(
         return;
     }
 
-    const EventRuntimeState *pEventRuntimeState = context.worldRuntime()->eventRuntimeState();
     const std::string normalizedCurrentMapFileName =
         gameplayJournalNormalizeMapFileName(context.currentMapFileName());
     renderRuntimeMapNotes(
         context,
         mapResolved,
         journalScreen,
-        pEventRuntimeState,
+        context.partyReadOnly(),
         normalizedCurrentMapFileName,
         &minimapState);
 
@@ -995,19 +1048,22 @@ std::vector<JournalStoryPage> buildJournalStoryPages(
         static_cast<size_t>(std::floor(pageHeightPixels / std::max(1.0f, static_cast<float>(font.fontHeight) * fontScale))));
     const uint32_t historyContinentId = context.activeHistoryContinentId();
     const std::unordered_map<uint32_t, int32_t> &historyEventTimes =
-        historyEventTimesForActiveContinent(*pEventRuntimeState);
+        pParty->historyEventTimes(normalizedHistoryContinentId(historyContinentId));
 
     for (const JournalHistoryEntry &entry : historyTable.entriesForContinent(historyContinentId))
     {
         const auto historyTimeIt = historyEventTimes.find(entry.id);
+        const std::optional<int32_t> gameMinutes = historyTimeIt != historyEventTimes.end()
+            ? std::optional<int32_t>(historyTimeIt->second)
+            : forwardHistoryEntryTime(normalizedHistoryContinentId(historyContinentId), entry.id);
 
-        if (historyTimeIt == historyEventTimes.end())
+        if (!gameMinutes)
         {
             continue;
         }
 
         const JournalStackedPageEntry wrapped = wrapJournalParagraphs(context, font,
-            StoryTextFormatter::format(entry.text, *pParty, historyTimeIt->second), wrapWidth);
+            StoryTextFormatter::format(entry.text, *pParty, *gameMinutes), wrapWidth);
         const std::vector<std::string> &wrappedLines = wrapped.lines;
 
         for (size_t lineIndex = 0; lineIndex < wrappedLines.size(); lineIndex += linesPerPage)
@@ -4314,8 +4370,8 @@ void GameplayPartyOverlayRenderer::renderJournalOverlay(GameplayScreenRuntime &c
             pWorldRuntime != nullptr ? pWorldRuntime->eventRuntimeState() : nullptr;
         const std::string normalizedCurrentMapFileName =
             gameplayJournalNormalizeMapFileName(context.currentMapFileName());
-        const EventRuntimeState::RuntimeMapNote *pActiveMapNote =
-            activeJournalMapNote(pEventRuntimeState, normalizedCurrentMapFileName, journalScreen);
+        const JournalMapNote *pActiveMapNote =
+            activeJournalMapNote(context.partyReadOnly(), normalizedCurrentMapFileName, journalScreen);
 
         if (pMapTitleLayout != nullptr && mapTitleResolved && pWorldRuntime != nullptr)
         {
@@ -4498,7 +4554,7 @@ void GameplayPartyOverlayRenderer::renderJournalOverlay(GameplayScreenRuntime &c
                         context,
                         *mapResolved,
                         journalScreen,
-                        pEventRuntimeState,
+                        context.partyReadOnly(),
                         normalizedCurrentMapFileName,
                         hasMinimapState ? &minimapState : nullptr);
 
@@ -4645,16 +4701,25 @@ void GameplayPartyOverlayRenderer::renderJournalOverlay(GameplayScreenRuntime &c
             renderInteractiveTextureLayout("JournalNotesMiscButton");
             renderInteractiveTextureLayout("JournalNotesTrainerButton");
 
+            const GameplayScreenRuntime::HudLayoutElement *pSearchLayout =
+                context.findHudLayoutElement("JournalNotesSearch");
+            const std::optional<GameplayScreenRuntime::ResolvedHudLayoutElement> searchResolved =
+                resolveLayout("JournalNotesSearch");
+
+            if (pSearchLayout != nullptr && searchResolved)
+            {
+                renderJournalNotesSearch(context, *pSearchLayout, *searchResolved, journalScreen);
+            }
+
+            const std::string search = toLowerCopy(journalScreen.notesSearch);
             std::vector<std::string> noteTexts;
             const JournalAutonoteTable *pJournalAutonoteTable = context.journalAutonoteTable();
 
-            if (pJournalAutonoteTable != nullptr && pEventRuntimeState != nullptr)
+            if (pJournalAutonoteTable != nullptr && pParty != nullptr)
             {
                 for (const JournalAutonoteEntry &entry : pJournalAutonoteTable->entries())
                 {
-                    const auto variableIt = pEventRuntimeState->variables.find(entry.noteBit);
-
-                    if (variableIt == pEventRuntimeState->variables.end() || variableIt->second == 0)
+                    if (!pParty->hasAutonote(entry.id))
                     {
                         continue;
                     }
@@ -4673,11 +4738,51 @@ void GameplayPartyOverlayRenderer::renderJournalOverlay(GameplayScreenRuntime &c
                         || (entry.category == JournalAutonoteCategory::Trainer
                             && journalScreen.notesCategory == GameplayUiController::JournalNotesCategory::Trainer);
 
-                    if (categoryMatches)
+                    if (categoryMatches && (search.empty() || toLowerCopy(entry.text).find(search) != std::string::npos))
                     {
                         noteTexts.push_back(entry.text);
                     }
                 }
+            }
+
+            // Teachers without an autonote (MM6's, for instance) are known only by their map pin.
+            if (pParty != nullptr && journalScreen.notesCategory == GameplayUiController::JournalNotesCategory::Trainer)
+            {
+                std::vector<const JournalMapNote *> teacherPins;
+
+                for (const JournalMapNote &note : pParty->journalMapNotes())
+                {
+                    if (note.listedWithTrainerNotes)
+                    {
+                        teacherPins.push_back(&note);
+                    }
+                }
+
+                // Teacher pin ids are continent * 1000 + mastery rank * 100 + skill id: group by skill, then rank.
+                std::sort(
+                    teacherPins.begin(),
+                    teacherPins.end(),
+                    [](const JournalMapNote *pLeft, const JournalMapNote *pRight)
+                    {
+                        return std::tuple(pLeft->id % 100, pLeft->id / 100 % 10, pLeft->id / 1000, pLeft->mapFileName)
+                            < std::tuple(pRight->id % 100, pRight->id / 100 % 10, pRight->id / 1000, pRight->mapFileName);
+                    });
+
+                for (const JournalMapNote *pNote : teacherPins)
+                {
+                    const std::string text = pNote->text + " (" + context.mapDisplayName(pNote->mapFileName) + ")";
+
+                    if (search.empty() || toLowerCopy(text).find(search) != std::string::npos)
+                    {
+                        noteTexts.push_back(text);
+                    }
+                }
+            }
+
+            if (noteTexts.empty() && !search.empty())
+            {
+                bodyLines = {"No notes match \"" + journalScreen.notesSearch + "\"."};
+                bodyParagraphEnds = {1};
             }
 
             const std::vector<JournalStackedPage> pages = buildJournalStackedPages(
@@ -5949,6 +6054,12 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
         !showStatusOnly
         && pItemState != nullptr
         && pItemState->stolen;
+    // The red tag beside the value reads Stolen, or else Hardened.
+    const bool showHardened =
+        !showStatusOnly
+        && !showStolen
+        && pItemState != nullptr
+        && pItemState->hardened;
     const std::string durationText =
         showDuration ? formatItemInspectDuration(pItemState->temporaryBonusRemainingSeconds) : std::string {};
     const int resolvedItemValue =
@@ -6089,10 +6200,23 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
         + durationHeight
         + pValueLayout->height * popupScale
         + ItemInspectBottomPadding * popupScale;
+    // A broken or unidentified item shows only a red status line, in the band beside the icon below the title.
+    GameplayScreenRuntime::HudLayoutElement statusLayout = *pTypeLayout;
+    statusLayout.id = "ItemInspectStatus";
+    statusLayout.fontName = "Arrus";
+    statusLayout.textColorAbgr = 0xff0000ffu;
+    statusLayout.textAlignX = UiLayoutManager::TextAlignX::Center;
+    statusLayout.textAlignY = UiLayoutManager::TextAlignY::Middle;
+    const std::optional<GameplayScreenRuntime::HudFontHandle> statusFont = context.findHudFont(statusLayout.fontName);
+    const float statusHeight =
+        statusFont
+            ? static_cast<float>(statusFont->fontHeight) * resolvedLayoutFontScale(statusLayout, popupScale)
+            : pTypeLayout->height * popupScale;
+    const float statusContentHeight = typeRectForSizing.y + statusHeight + ItemInspectBottomPadding * popupScale;
     const float rootWidth = provisionalRoot.width;
-    const float rootHeight = std::min(uiViewport.height - 8 * popupScale, showStatusOnly
-        ? previewContentHeight
-        : std::max(previewContentHeight, textContentHeight));
+    const float rootHeight = std::min(uiViewport.height - 8 * popupScale, std::max(
+        previewContentHeight,
+        showStatusOnly ? statusContentHeight : textContentHeight));
     const float popupGap = 12.0f * popupScale;
     float rootX = overlay.sourceX + overlay.sourceWidth + popupGap;
 
@@ -6239,6 +6363,7 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
             || pLayout->primaryAsset.starts_with("obsidian_frame_")
             || toLowerCopy(pLayout->id) == "iteminspectroot"
             || toLowerCopy(pLayout->id) == "iteminspectpreviewimage"
+            || (showStatusOnly && toLowerCopy(pLayout->id) == "iteminspectvaluedivider")
             || !isItemInspectRootDescendant(*pLayout))
         {
             continue;
@@ -6288,24 +6413,21 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
 
     if (showStatusOnly)
     {
-        GameplayScreenRuntime::HudLayoutElement statusLayout = *pTypeLayout;
-        statusLayout.id = "ItemInspectStatus";
-        statusLayout.fontName = "Arrus";
-        statusLayout.textColorAbgr = 0xff0000ffu;
-        statusLayout.textAlignX = UiLayoutManager::TextAlignX::Center;
-        statusLayout.textAlignY = UiLayoutManager::TextAlignY::Middle;
+        // Centred under the title, in the same vertical band as the icon.
+        const std::optional<GameplayScreenRuntime::ResolvedHudLayoutElement> nameRect =
+            resolveItemInspectLayout("ItemInspectName");
 
-        const std::optional<GameplayScreenRuntime::HudFontHandle> statusFont =
-            context.findHudFont(statusLayout.fontName);
-        const float statusFontScale = resolvedLayoutFontScale(statusLayout, popupScale);
-        const float statusHeight =
-            statusFont
-                ? static_cast<float>(statusFont->fontHeight) * statusFontScale
-                : pTypeLayout->height * popupScale;
+        if (!nameRect)
+        {
+            return;
+        }
+
+        const float statusTop = rootRect.y + typeRectForSizing.y;
+        const float statusBottom = rootRect.y + rootRect.height - ItemInspectBottomPadding * popupScale;
         const GameplayScreenRuntime::ResolvedHudLayoutElement statusRect = {
-            rootRect.x + 100.0f * popupScale,
-            rootRect.y + (rootRect.height - statusHeight) * 0.5f,
-            rootRect.width - 112.0f * popupScale,
+            nameRect->x,
+            std::round(statusTop + (statusBottom - statusTop - statusHeight) * 0.5f),
+            nameRect->width,
             statusHeight,
             popupScale
         };
@@ -6471,17 +6593,23 @@ void GameplayPartyOverlayRenderer::renderItemInspectOverlay(GameplayScreenRuntim
         const std::string valueText = "Value: " + itemValue;
         context.renderLayoutLabel(*pValueLayout, valueRect, valueText);
 
-        if (showStolen && valueFont)
+        if ((showStolen || showHardened) && valueFont)
         {
             const float valueTextWidth =
                 context.measureHudTextWidth(pValueLayout->fontName, valueText) * valueFontScale;
-            const float stolenX =
+            const float tagX =
                 std::round(valueRect.x + pValueLayout->textPadX * popupScale + valueTextWidth + 32.0f * popupScale);
-            const float stolenY = std::round(
+            const float tagY = std::round(
                 valueRect.y
                 + (valueRect.height - static_cast<float>(valueFont->fontHeight) * valueFontScale) * 0.5f
                 + pValueLayout->textPadY * popupScale);
-            context.renderHudTextLine(pValueLayout->fontName, 0xff0000ffu, "Stolen", stolenX, stolenY, valueFontScale);
+            context.renderHudTextLine(
+                pValueLayout->fontName,
+                0xff0000ffu,
+                showStolen ? "Stolen" : "Hardened",
+                tagX,
+                tagY,
+                valueFontScale);
         }
     }
 }
@@ -7379,8 +7507,8 @@ void GameplayPartyOverlayRenderer::renderReadableScrollOverlay(GameplayScreenRun
     }
 
     const GameplayScreenRuntime::HudLayoutElement *pRootLayout = context.findHudLayoutElement("SpellInspectRoot");
-    const GameplayScreenRuntime::HudLayoutElement *pTitleLayout = context.findHudLayoutElement("SpellInspectTitle");
-    const GameplayScreenRuntime::HudLayoutElement *pBodyLayout = context.findHudLayoutElement("SpellInspectBody");
+    const GameplayScreenRuntime::HudLayoutElement *pTitleLayout = context.findHudLayoutElement("ReadableScrollTitle");
+    const GameplayScreenRuntime::HudLayoutElement *pBodyLayout = context.findHudLayoutElement("ReadableScrollBody");
 
     if (pRootLayout == nullptr || pTitleLayout == nullptr || pBodyLayout == nullptr)
     {
@@ -7397,10 +7525,8 @@ void GameplayPartyOverlayRenderer::renderReadableScrollOverlay(GameplayScreenRun
         pRootLayout->height * popupScale,
         popupScale
     };
-    const std::optional<GameplayScreenRuntime::HudFontHandle> bodyFont = context.findHudFont("SMALLNUM");
+    const std::optional<GameplayScreenRuntime::HudFontHandle> bodyFont = context.findHudFont(pBodyLayout->fontName);
     const GameplayScreenRuntime::HudFontHandle *pBodyFont = bodyFont ? &*bodyFont : nullptr;
-    const float bodyLineHeight =
-        pBodyFont != nullptr ? static_cast<float>(pBodyFont->fontHeight) * popupScale : 12.0f * popupScale;
     const GameplayScreenRuntime::ResolvedHudLayoutElement bodyRectForSizing = GameplayHudCommon::resolveAttachedHudLayoutRect(
         pBodyLayout->attachTo,
         provisionalRoot,
@@ -7411,17 +7537,40 @@ void GameplayPartyOverlayRenderer::renderReadableScrollOverlay(GameplayScreenRun
         popupScale);
     const float bodyWidthScaled =
         std::max(0.0f, bodyRectForSizing.width - std::abs(pBodyLayout->textPadX * popupScale) * 2.0f);
-    const float bodyWidth = std::max(0.0f, bodyWidthScaled / std::max(1.0f, popupScale));
-    const std::vector<std::string> bodyLines =
-        pBodyFont != nullptr
-            ? context.wrapHudTextToWidth(*pBodyFont, overlay.body, bodyWidth)
-            : std::vector<std::string>{overlay.body};
-    const float bodyHeight = bodyLines.empty() ? bodyLineHeight : bodyLineHeight * static_cast<float>(bodyLines.size());
     static constexpr float ReadableScrollBottomPadding = 15.0f;
+    static constexpr float ReadableScrollMinimumFontScaleFactor = 0.6f;
+    const float maxRootHeight = uiViewport.height - 8.0f * popupScale;
+    float bodyFontScale = resolvedLayoutFontScale(*pBodyLayout, popupScale);
+    float bodyLineHeight = 0.0f;
+    std::vector<std::string> bodyLines;
+
+    // Long letters shrink their text until the popup fits on screen, down to a readable minimum.
+    while (true)
+    {
+        bodyLineHeight = pBodyFont != nullptr
+            ? static_cast<float>(pBodyFont->fontHeight) * bodyFontScale
+            : 12.0f * bodyFontScale;
+        bodyLines = pBodyFont != nullptr
+            ? context.wrapHudTextToWidth(*pBodyFont, overlay.body, bodyWidthScaled / std::max(0.1f, bodyFontScale))
+            : std::vector<std::string>{overlay.body};
+        const float contentHeight = bodyRectForSizing.y
+            + bodyLineHeight * static_cast<float>(std::max<size_t>(1, bodyLines.size()))
+            + ReadableScrollBottomPadding * popupScale;
+        const float shrunkFontScale = bodyFontScale * 0.9f;
+
+        if (contentHeight <= maxRootHeight
+            || shrunkFontScale < ReadableScrollMinimumFontScaleFactor * popupScale)
+        {
+            break;
+        }
+
+        bodyFontScale = shrunkFontScale;
+    }
+
+    const float bodyHeight = bodyLineHeight * static_cast<float>(std::max<size_t>(1, bodyLines.size()));
     const float rootWidth = provisionalRoot.width;
-    const float rootHeight = std::max(
-        provisionalRoot.height,
-        bodyRectForSizing.y + bodyHeight + ReadableScrollBottomPadding * popupScale);
+    const float rootHeight =
+        std::min(maxRootHeight, bodyRectForSizing.y + bodyHeight + ReadableScrollBottomPadding * popupScale);
     const float rootX = std::round(uiViewport.x + (uiViewport.width - rootWidth) * 0.5f);
     const float rootY = std::round(uiViewport.y + (uiViewport.height - rootHeight) * 0.5f);
     const GameplayScreenRuntime::ResolvedHudLayoutElement rootRect = {rootX, rootY, rootWidth, rootHeight, popupScale};
@@ -7533,7 +7682,7 @@ void GameplayPartyOverlayRenderer::renderReadableScrollOverlay(GameplayScreenRun
         context.submitHudTexturedQuad(*texture, resolved->x, resolved->y, resolved->width, resolved->height);
     }
 
-    const std::optional<GameplayScreenRuntime::ResolvedHudLayoutElement> titleRect = resolveLayout("SpellInspectTitle");
+    const std::optional<GameplayScreenRuntime::ResolvedHudLayoutElement> titleRect = resolveLayout("ReadableScrollTitle");
 
     if (titleRect)
     {
@@ -7545,7 +7694,7 @@ void GameplayPartyOverlayRenderer::renderReadableScrollOverlay(GameplayScreenRun
         return;
     }
 
-    const std::optional<GameplayScreenRuntime::ResolvedHudLayoutElement> bodyBaseRect = resolveLayout("SpellInspectBody");
+    const std::optional<GameplayScreenRuntime::ResolvedHudLayoutElement> bodyBaseRect = resolveLayout("ReadableScrollBody");
 
     if (!bodyBaseRect)
     {
@@ -7555,14 +7704,19 @@ void GameplayPartyOverlayRenderer::renderReadableScrollOverlay(GameplayScreenRun
     const GameplayHudFontLayer coloredMainLayer =
         context.hudFontMainLayer(*pBodyFont, pBodyLayout->textColorAbgr);
 
-
-    float textX = std::round(bodyBaseRect->x + pBodyLayout->textPadX * popupScale);
+    const float textX = std::round(bodyBaseRect->x + pBodyLayout->textPadX * popupScale);
     float textY = std::round(bodyBaseRect->y + pBodyLayout->textPadY * popupScale);
+    const float textBottom = rootRect.y + rootRect.height - ReadableScrollBottomPadding * popupScale;
 
     for (const std::string &line : bodyLines)
     {
-        context.renderHudFontLayer(*pBodyFont, pBodyFont->shadowTextureHandle, line, textX, textY, popupScale);
-        context.renderHudFontLayer(*pBodyFont, coloredMainLayer, line, textX, textY, popupScale);
+        if (textY + bodyLineHeight > textBottom + 0.5f * bodyLineHeight)
+        {
+            break;
+        }
+
+        context.renderHudFontLayer(*pBodyFont, pBodyFont->shadowTextureHandle, line, textX, textY, bodyFontScale);
+        context.renderHudFontLayer(*pBodyFont, coloredMainLayer, line, textX, textY, bodyFontScale);
         textY += bodyLineHeight;
     }
 }
@@ -10180,29 +10334,49 @@ void GameplayPartyOverlayRenderer::renderActorInspectOverlay(GameplayScreenRunti
         return;
     }
 
-    const std::vector<std::string> attackRows = {
-        pStats->attack1Type,
-        (actorState.attack2Chance > 0 || !pStats->attack2Type.empty()) ? pStats->attack2Type : std::string()};
-    const std::vector<std::string> damageRows = {
-        formatMonsterDamageText(actorState.attack1Damage),
-        (actorState.attack2Chance > 0 || actorState.attack2Damage.diceRolls > 0)
-            ? formatMonsterDamageText(actorState.attack2Damage)
-            : std::string()};
-    const std::vector<std::string> spellRows = {
-        actorState.hasSpell1
-            ? formatMonsterInspectSpellText(
-                actorState.spell1Name,
-                actorState.spell1SkillLevel,
-                actorState.spell1SkillMastery,
-                pSpellTable)
-            : std::string(),
-        actorState.hasSpell2
-            ? formatMonsterInspectSpellText(
-                actorState.spell2Name,
-                actorState.spell2SkillLevel,
-                actorState.spell2SkillMastery,
-                pSpellTable)
-            : std::string()};
+    // Identify Monster is a party-wide utility skill: the best conscious member decides what is known, the same
+    // member who comments on the monster when the inspection starts.
+    const Party *pParty = context.partyReadOnly();
+    const Character *pIdentifier =
+        pParty != nullptr ? pParty->bestPartyWideUtilitySkillMember("IdentifyMonster") : nullptr;
+    const IdentifyMonsterReveal reveal = pIdentifier != nullptr
+        ? GameMechanics::resolveIdentifyMonsterReveal(*pIdentifier, pStats->level)
+        : IdentifyMonsterReveal {};
+    const std::string unknownValueText = "?";
+    std::vector<std::string> attackRows = {unknownValueText};
+    std::vector<std::string> damageRows = {unknownValueText};
+    std::vector<std::string> spellRows = {unknownValueText};
+
+    if (reveal.attackAndDamage)
+    {
+        attackRows = {
+            pStats->attack1Type,
+            (actorState.attack2Chance > 0 || !pStats->attack2Type.empty()) ? pStats->attack2Type : std::string()};
+        damageRows = {
+            formatMonsterDamageText(actorState.attack1Damage),
+            (actorState.attack2Chance > 0 || actorState.attack2Damage.diceRolls > 0)
+                ? formatMonsterDamageText(actorState.attack2Damage)
+                : std::string()};
+    }
+
+    if (reveal.spellsAndEffects)
+    {
+        spellRows = {
+            actorState.hasSpell1
+                ? formatMonsterInspectSpellText(
+                    actorState.spell1Name,
+                    actorState.spell1SkillLevel,
+                    actorState.spell1SkillMastery,
+                    pSpellTable)
+                : std::string(),
+            actorState.hasSpell2
+                ? formatMonsterInspectSpellText(
+                    actorState.spell2Name,
+                    actorState.spell2SkillLevel,
+                    actorState.spell2SkillMastery,
+                    pSpellTable)
+                : std::string()};
+    }
     const GameplayScreenRuntime::HudLayoutElement *pRootLayout =
         context.findHudLayoutElement("ActorInspectRoot");
     const GameplayScreenRuntime::HudLayoutElement *pPreviewLayout =
@@ -10788,10 +10962,22 @@ void GameplayPartyOverlayRenderer::renderActorInspectOverlay(GameplayScreenRunti
         ? actorInspect.displayNameOverride
         : actorState.displayName;
     renderTextForLayout("ActorInspectTitle", actorInspectTitle);
+    const std::string currentHpText = std::to_string(std::max(0, actorState.currentHp));
+    std::string hitPointsText = unknownValueText;
+
+    if (reveal.hitPointsAndArmorClass)
+    {
+        hitPointsText = currentHpText + " / " + std::to_string(std::max(0, actorState.maxHp));
+    }
+    else if (pParty != nullptr && pParty->hasPartyBuff(PartyBuffId::DetectLife))
+    {
+        hitPointsText = currentHpText + " / " + unknownValueText;
+    }
+
+    renderTextForLayout("ActorInspectHitPointsValue", hitPointsText);
     renderTextForLayout(
-        "ActorInspectHitPointsValue",
-        std::to_string(std::max(0, actorState.currentHp)) + " / " + std::to_string(std::max(0, actorState.maxHp)));
-    renderTextForLayout("ActorInspectArmorClassValue", std::to_string(actorState.armorClass));
+        "ActorInspectArmorClassValue",
+        reveal.hitPointsAndArmorClass ? std::to_string(actorState.armorClass) : unknownValueText);
     if (const GameplayScreenRuntime::HudLayoutElement *pAttackLabel =
             context.findHudLayoutElement("ActorInspectAttackLabel"))
     {
@@ -10818,7 +11004,13 @@ void GameplayPartyOverlayRenderer::renderActorInspectOverlay(GameplayScreenRunti
 
     const float spellHeight = renderMultilineTextForLayout("ActorInspectSpellValue", spellRows, spellOffset);
     const float resistanceOffset = spellOffset + std::max(0.0f, spellHeight - dynamicStatLineAdvance);
-    renderTextForLayout("ActorInspectEffectsBody", effectsText);
+    renderTextForLayout("ActorInspectEffectsBody", reveal.spellsAndEffects ? effectsText : unknownValueText);
+
+    const auto resistanceText =
+        [&reveal, &unknownValueText](int value)
+        {
+            return reveal.resistances ? formatMonsterResistanceText(value) : unknownValueText;
+        };
 
     for (const char *pLabelId : {
              "ActorInspectResistancesHeader",
@@ -10844,43 +11036,43 @@ void GameplayPartyOverlayRenderer::renderActorInspectOverlay(GameplayScreenRunti
 
     renderTextForLayout(
         "ActorInspectResistanceFireValue",
-        formatMonsterResistanceText(pStats->fireResistance),
+        resistanceText(pStats->fireResistance),
         resistanceOffset);
     renderTextForLayout(
         "ActorInspectResistanceAirValue",
-        formatMonsterResistanceText(pStats->airResistance),
+        resistanceText(pStats->airResistance),
         resistanceOffset);
     renderTextForLayout(
         "ActorInspectResistanceWaterValue",
-        formatMonsterResistanceText(pStats->waterResistance),
+        resistanceText(pStats->waterResistance),
         resistanceOffset);
     renderTextForLayout(
         "ActorInspectResistanceEarthValue",
-        formatMonsterResistanceText(pStats->earthResistance),
+        resistanceText(pStats->earthResistance),
         resistanceOffset);
     renderTextForLayout(
         "ActorInspectResistanceMindValue",
-        formatMonsterResistanceText(pStats->mindResistance),
+        resistanceText(pStats->mindResistance),
         resistanceOffset);
     renderTextForLayout(
         "ActorInspectResistanceSpiritValue",
-        formatMonsterResistanceText(pStats->spiritResistance),
+        resistanceText(pStats->spiritResistance),
         resistanceOffset);
     renderTextForLayout(
         "ActorInspectResistanceBodyValue",
-        formatMonsterResistanceText(pStats->bodyResistance),
+        resistanceText(pStats->bodyResistance),
         resistanceOffset);
     renderTextForLayout(
         "ActorInspectResistanceLightValue",
-        formatMonsterResistanceText(pStats->lightResistance),
+        resistanceText(pStats->lightResistance),
         resistanceOffset);
     renderTextForLayout(
         "ActorInspectResistanceDarkValue",
-        formatMonsterResistanceText(pStats->darkResistance),
+        resistanceText(pStats->darkResistance),
         resistanceOffset);
     renderTextForLayout(
         "ActorInspectResistancePhysicalValue",
-        formatMonsterResistanceText(pStats->physicalResistance),
+        resistanceText(pStats->physicalResistance),
         resistanceOffset);
 }
 } // namespace OpenYAMM::Game

@@ -98,6 +98,10 @@ struct SkyPreset
     std::array<SkyTrack, SkyValueCount> tracks;
     float sunDiscDegrees = 1.6f;
     float moonDiscDegrees = 2.2f;
+    // The moon disc's texture (engine/rendering/sky/<name>.oytex): a world's preset may draw its own moon.
+    std::string moonTexture = "moon";
+    // Added to the calendar's moon phase (0 = new, 0.5 = full): where in its cycle a world's moon starts.
+    float moonPhaseOffset = 0.0f;
     SkyBelowHorizon belowHorizon = SkyBelowHorizon::Fog;
     // Sky share of world fog colour when the map authors a fog colour or tint.
     float fogTintSkyMix = 0.25f;

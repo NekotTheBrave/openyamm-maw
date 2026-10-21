@@ -126,7 +126,9 @@ vec3 moonDisc(vec3 direction, out float coverage, out float lit)
     lit = smoothstep(-0.04, 0.12, dot(normal, light));
     vec4 surface = texture2D(s_skyMoon, local * 0.5 + 0.5);
     coverage = (1.0 - smoothstep(0.85, 1.0, radial)) * surface.a;
-    return vec3(0.92, 0.94, 1.0) * surface.rgb * lit;
+    // Where a moon's texture is transparent inside the disc (a broken moon), the halo continues as outside it.
+    vec3 halo = vec3_splat(pow(max(facing, 0.0), 600.0) * 0.06) * (1.0 - surface.a);
+    return vec3(0.92, 0.94, 1.0) * surface.rgb * lit + halo;
 }
 
 // The world's fog colour at the horizon below this direction (fog mode), or the flat fog colour (flat mode).

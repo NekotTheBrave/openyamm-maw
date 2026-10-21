@@ -233,6 +233,38 @@ bool commitSaveGameEditAndSave(
     return view.trySaveToSelectedGameSlot();
 }
 
+void editJournalNotesSearch(GameplayUiController::JournalScreenState &journalScreen, const GameplayInputFrame &input)
+{
+    constexpr size_t MaxSearchLength = 32;
+    const std::string before = journalScreen.notesSearch;
+
+    for (const char character : input.textInput)
+    {
+        if (character >= 32 && character < 127 && journalScreen.notesSearch.size() < MaxSearchLength)
+        {
+            journalScreen.notesSearch.push_back(character);
+        }
+    }
+
+    for (uint16_t count = input.scancodePressCount(SDL_SCANCODE_BACKSPACE); count > 0; --count)
+    {
+        if (!journalScreen.notesSearch.empty())
+        {
+            journalScreen.notesSearch.pop_back();
+        }
+    }
+
+    if (input.scancodePressCount(SDL_SCANCODE_RETURN) > 0 || input.scancodePressCount(SDL_SCANCODE_KP_ENTER) > 0)
+    {
+        journalScreen.notesSearchActive = false;
+    }
+
+    if (journalScreen.notesSearch != before)
+    {
+        journalScreen.notesPage = 0;
+    }
+}
+
 void appendDigitTextInput(std::string &buffer, const std::string &textInput, size_t maximumLength)
 {
     for (const char character : textInput)
@@ -257,16 +289,15 @@ struct HudPointerState
 };
 
 bool runtimeMapNoteMatchesCurrentMap(
-    const EventRuntimeState::RuntimeMapNote &note,
+    const JournalMapNote &note,
     const std::string &normalizedCurrentMapFileName)
 {
-    return note.active
-        && !note.mapFileName.empty()
+    return !note.mapFileName.empty()
         && gameplayJournalNormalizeMapFileName(note.mapFileName) == normalizedCurrentMapFileName;
 }
 
 uint32_t findJournalMapNoteAtPointer(
-    const EventRuntimeState *pEventRuntimeState,
+    const Party *pParty,
     const std::string &normalizedCurrentMapFileName,
     const GameplayUiController::JournalScreenState &journalScreen,
     const GameplayScreenRuntime::ResolvedHudLayoutElement &mapViewport,
@@ -274,7 +305,7 @@ uint32_t findJournalMapNoteAtPointer(
     float pointerY,
     const GameplayMinimapState *pMinimapState = nullptr)
 {
-    if (pEventRuntimeState == nullptr)
+    if (pParty == nullptr)
     {
         return 0;
     }
@@ -284,10 +315,8 @@ uint32_t findJournalMapNoteAtPointer(
     uint32_t bestNoteId = 0;
     float bestDistanceSquared = hitRadiusSquared;
 
-    for (const auto &[noteId, note] : pEventRuntimeState->runtimeMapNotes)
+    for (const JournalMapNote &note : pParty->journalMapNotes())
     {
-        (void) noteId;
-
         if (!runtimeMapNoteMatchesCurrentMap(note, normalizedCurrentMapFileName))
         {
             continue;
@@ -2264,8 +2293,17 @@ bool GameplayOverlayInputController::handleJournalOverlayInput(
     {
         if (!view.interactionState().closeOverlayLatch)
         {
-            view.closeJournalOverlay();
-            latchGameplayMenuEscape(view);
+            // Escape first leaves the search field, then closes the journal.
+            if (GameplayUiController::journalSearchActive(journalScreen))
+            {
+                journalScreen.notesSearchActive = false;
+            }
+            else
+            {
+                view.closeJournalOverlay();
+                latchGameplayMenuEscape(view);
+            }
+
             view.interactionState().closeOverlayLatch = true;
         }
     }
@@ -2279,6 +2317,11 @@ bool GameplayOverlayInputController::handleJournalOverlayInput(
         return true;
     }
 
+    if (GameplayUiController::journalSearchActive(journalScreen))
+    {
+        editJournalNotesSearch(journalScreen, input);
+    }
+
     if (screenWidth <= 0 || screenHeight <= 0)
     {
         view.interactionState().journalClickLatch = false;
@@ -2288,8 +2331,7 @@ bool GameplayOverlayInputController::handleJournalOverlayInput(
 
     const HudPointerState journalPointerState = pointerStateFromInput(input);
     const GameplayJournalPointerTarget noneJournalTarget = {};
-    const EventRuntimeState *pJournalEventRuntimeState =
-        view.worldRuntime() != nullptr ? view.worldRuntime()->eventRuntimeState() : nullptr;
+    const Party *pJournalParty = view.partyReadOnly();
     const std::string normalizedCurrentMapFileName =
         gameplayJournalNormalizeMapFileName(view.currentMapFileName());
 
@@ -2330,7 +2372,7 @@ bool GameplayOverlayInputController::handleJournalOverlayInput(
             &resolveJournalTarget,
             screenWidth,
             screenHeight,
-            pJournalEventRuntimeState,
+            pJournalParty,
             &normalizedCurrentMapFileName,
             pJournalMinimapState
         ](float pointerX, float pointerY) -> GameplayJournalPointerTarget
@@ -2357,6 +2399,7 @@ bool GameplayOverlayInputController::handleJournalOverlayInput(
                 {"JournalNotesSeerButton", GameplayJournalPointerTargetType::NotesSeerButton},
                 {"JournalNotesMiscButton", GameplayJournalPointerTargetType::NotesMiscButton},
                 {"JournalNotesTrainerButton", GameplayJournalPointerTargetType::NotesTrainerButton},
+                {"JournalNotesSearch", GameplayJournalPointerTargetType::NotesSearchField},
             };
 
             for (const auto &[layoutId, targetType] : CommonTargets)
@@ -2388,7 +2431,7 @@ bool GameplayOverlayInputController::handleJournalOverlayInput(
                     if (mapViewport && view.isPointerInsideResolvedElement(*mapViewport, pointerX, pointerY))
                     {
                         const uint32_t noteId = findJournalMapNoteAtPointer(
-                            pJournalEventRuntimeState,
+                            pJournalParty,
                             normalizedCurrentMapFileName,
                             journalScreen,
                             *mapViewport,
@@ -2484,7 +2527,7 @@ bool GameplayOverlayInputController::handleJournalOverlayInput(
             journalScreen.mapCursorWorldY = cursorWorld.y;
             journalScreen.mapCursorWorldValid = true;
             journalScreen.hoveredMapNoteId = findJournalMapNoteAtPointer(
-                pJournalEventRuntimeState,
+                pJournalParty,
                 normalizedCurrentMapFileName,
                 journalScreen,
                 *mapViewport,
@@ -2572,6 +2615,10 @@ bool GameplayOverlayInputController::handleJournalOverlayInput(
                 journalScreen.notesPage = 0;
                 break;
 
+            case GameplayJournalPointerTargetType::NotesSearchField:
+                journalScreen.notesSearchActive = true;
+                break;
+
             case GameplayJournalPointerTargetType::MapZoomInButton:
                 journalScreen.view = GameplayUiController::JournalView::Map;
                 journalScreen.mapZoomStep =
@@ -2638,6 +2685,7 @@ bool GameplayOverlayInputController::handleJournalOverlayInput(
             case GameplayJournalPointerTargetType::NotesSeerButton:
             case GameplayJournalPointerTargetType::NotesMiscButton:
             case GameplayJournalPointerTargetType::NotesTrainerButton:
+            case GameplayJournalPointerTargetType::NotesSearchField:
             case GameplayJournalPointerTargetType::MapNote:
             case GameplayJournalPointerTargetType::CloseButton:
                 return false;
@@ -2706,6 +2754,11 @@ bool GameplayOverlayInputController::handleJournalOverlayInput(
     {
         const GameplayJournalPointerTarget pressedTarget =
             findJournalPointerTarget(journalPointerState.x, journalPointerState.y);
+
+        if (pressedTarget.type != GameplayJournalPointerTargetType::NotesSearchField)
+        {
+            journalScreen.notesSearchActive = false;
+        }
 
         if (isImmediateJournalMapTarget(pressedTarget))
         {

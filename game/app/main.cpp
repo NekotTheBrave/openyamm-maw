@@ -1,8 +1,12 @@
 #include "engine/ApplicationConfig.h"
 #include "engine/AssetFileSystem.h"
 #include "engine/AssetScaleTier.h"
+#include "engine/LogFile.h"
+#include "engine/UserDataPaths.h"
+#include "game/app/ContentSetup.h"
 #include "game/app/GameApplication.h"
 #include "game/app/GameSettings.h"
+#include "game/app/GameUpdater.h"
 #include "game/app/ProfilingControl.h"
 #include "game/app/OpenYammMain.h"
 #include "game/outdoor/HeadlessOutdoorDiagnostics.h"
@@ -23,14 +27,19 @@ extern "C"
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 namespace OpenYAMM::Game
 {
 namespace
 {
+// Written to the user data folder, next to settings.ini and the saves.
+constexpr const char *LogFileName = "openyamm.log";
+
 void setEnvironmentVariable(const char *pName, const char *pValue)
 {
 #if defined(_WIN32)
@@ -46,7 +55,9 @@ bool parseCommonArguments(
     OpenYAMM::Engine::ApplicationConfig &config,
     std::vector<std::string> &arguments,
     bool &worldArgumentProvided,
-    bool &assetScaleArgumentProvided)
+    bool &assetScaleArgumentProvided,
+    bool &assetRootArgumentProvided,
+    std::optional<std::filesystem::path> &userDataRoot)
 {
     bool hasAssetScaleArgument = false;
     bool hasMapOverrideArgument = false;
@@ -54,6 +65,8 @@ bool parseCommonArguments(
     bool hasLoadUniqueActorArgument = false;
     worldArgumentProvided = false;
     assetScaleArgumentProvided = false;
+    assetRootArgumentProvided = false;
+    userDataRoot.reset();
 
     for (int argumentIndex = 1; argumentIndex < argc; ++argumentIndex)
     {
@@ -76,6 +89,33 @@ bool parseCommonArguments(
         if (argument == "--gameplay-trace-append")
         {
             setEnvironmentVariable("OPENYAMM_GAMEPLAY_TRACE_APPEND", "1");
+            continue;
+        }
+
+        if (argument == "--user-data")
+        {
+            if (userDataRoot || argumentIndex + 1 >= argc)
+            {
+                std::cerr << "Usage: --user-data <directory>\n";
+                return false;
+            }
+
+            userDataRoot = std::filesystem::path(argv[argumentIndex + 1]);
+            ++argumentIndex;
+            continue;
+        }
+
+        if (argument == "--asset-root")
+        {
+            if (assetRootArgumentProvided || argumentIndex + 1 >= argc)
+            {
+                std::cerr << "Usage: --asset-root <directory>\n";
+                return false;
+            }
+
+            config.assetRoot = argv[argumentIndex + 1];
+            assetRootArgumentProvided = true;
+            ++argumentIndex;
             continue;
         }
 
@@ -189,34 +229,82 @@ bool parseCommonArguments(
     return true;
 }
 
+std::filesystem::path executableDirectory()
+{
+    const char *pBasePath = SDL_GetBasePath();
+    std::error_code error;
+    return pBasePath != nullptr ? std::filesystem::path(pBasePath) : std::filesystem::current_path(error);
+}
+
+// Makes the user data folder the working directory: a release installation keeps saves, settings.ini and screenshots
+// in its own folder. Android's entry point chooses the folder before the game starts.
+bool enterUserDataDirectory(
+    const std::optional<std::filesystem::path> &userDataRoot,
+    const std::filesystem::path &installRoot)
+{
+#if defined(__ANDROID__)
+    if (!userDataRoot)
+    {
+        return true;
+    }
+#endif
+
+    std::error_code error;
+    const std::filesystem::path root =
+        OpenYAMM::Engine::resolveUserDataRoot(userDataRoot, installRoot, std::filesystem::current_path(error));
+
+    std::filesystem::create_directories(root, error);
+
+    if (error)
+    {
+        std::cerr << "Failed to create the user data folder " << root.string() << ": " << error.message() << '\n';
+        return false;
+    }
+
+    std::filesystem::current_path(root, error);
+
+    if (error)
+    {
+        std::cerr << "Failed to enter the user data folder " << root.string() << ": " << error.message() << '\n';
+        return false;
+    }
+
+    std::cout << "User data folder: " << root.string() << '\n';
+    return true;
+}
+
 void applySettingsConfigOverridesIfConfigured(
     OpenYAMM::Engine::ApplicationConfig &config,
     bool worldArgumentProvided,
-    bool assetScaleArgumentProvided)
+    bool assetScaleArgumentProvided,
+    bool assetRootArgumentProvided)
 {
     const std::filesystem::path settingsPath = "settings.ini";
+    // Without a file, the defaults apply; release packages ship none.
+    std::optional<OpenYAMM::Game::GameSettings> settings = OpenYAMM::Game::GameSettings::createDefault();
 
-    if (!std::filesystem::exists(settingsPath))
+    if (std::filesystem::exists(settingsPath))
     {
-        return;
+        std::string error;
+        settings = OpenYAMM::Game::loadGameSettings(settingsPath, error);
+
+        if (!settings)
+        {
+            std::cerr << "Failed to read settings from " << settingsPath.string() << ": " << error << '\n';
+            return;
+        }
     }
 
-    std::string error;
-    const std::optional<OpenYAMM::Game::GameSettings> settings =
-        OpenYAMM::Game::loadGameSettings(settingsPath, error);
-
-    if (!settings)
-    {
-        std::cerr << "Failed to read settings from " << settingsPath.string() << ": " << error << '\n';
-        return;
-    }
+    // GameApplication migrates and saves the file; here the migration only drops the asset roots that older release
+    // packages wrote, before they are used.
+    OpenYAMM::Game::migrateGameSettings(*settings);
 
     if (!worldArgumentProvided && !settings->startWorldId.empty())
     {
         config.activeWorldId = settings->startWorldId;
     }
 
-    if (!settings->assetRoot.empty())
+    if (!assetRootArgumentProvided && !settings->assetRoot.empty())
     {
         config.assetRoot = settings->assetRoot;
     }
@@ -232,9 +320,18 @@ void applySettingsConfigOverridesIfConfigured(
     config.hitchThresholdMilliseconds = settings->hitchThresholdMilliseconds;
     config.verticalSync = settings->verticalSync;
 }
+
+// The update channel of settings.ini in the user data folder (the working directory by then).
+std::string updateChannelUrl()
+{
+    std::string error;
+    const std::optional<OpenYAMM::Game::GameSettings> settings = std::filesystem::exists("settings.ini")
+        ? OpenYAMM::Game::loadGameSettings("settings.ini", error)
+        : std::nullopt;
+    return settings ? settings->updateUrl : OpenYAMM::Game::GameSettings::createDefault().updateUrl;
 }
 
-int runApplication(int argc, char **argv)
+int runGame(int argc, char **argv, OpenYAMM::Engine::LogFile &logFile)
 {
     setGameplayProfilingEnabled(false);
     av_log_set_level(AV_LOG_ERROR);
@@ -243,15 +340,62 @@ int runApplication(int argc, char **argv)
     std::vector<std::string> arguments;
     bool worldArgumentProvided = false;
     bool assetScaleArgumentProvided = false;
+    bool assetRootArgumentProvided = false;
+    std::optional<std::filesystem::path> userDataRoot;
 
-    if (!parseCommonArguments(argc, argv, config, arguments, worldArgumentProvided, assetScaleArgumentProvided))
+    if (!parseCommonArguments(
+            argc,
+            argv,
+            config,
+            arguments,
+            worldArgumentProvided,
+            assetScaleArgumentProvided,
+            assetRootArgumentProvided,
+            userDataRoot))
     {
         return 2;
     }
 
-    applySettingsConfigOverridesIfConfigured(config, worldArgumentProvided, assetScaleArgumentProvided);
+    const std::filesystem::path executableFolder = executableDirectory();
+    const std::filesystem::path installRoot = OpenYAMM::Engine::installationRoot(executableFolder);
 
-    if (!arguments.empty() && arguments[0].rfind("--headless-", 0) == 0)
+    if (assetRootArgumentProvided)
+    {
+        // Relative to the folder the game was started from, not the user data folder entered below.
+        std::error_code error;
+        config.assetRoot = std::filesystem::absolute(config.assetRoot, error).string();
+    }
+#if !defined(__ANDROID__)
+    else if (OpenYAMM::Engine::isReleaseInstallation(installRoot))
+    {
+        config.assetRoot = OpenYAMM::Engine::installedAssetRoot(executableFolder).string();
+    }
+#endif
+
+    if (!enterUserDataDirectory(userDataRoot, installRoot))
+    {
+        return 2;
+    }
+
+    const bool headlessCommand = !arguments.empty() && arguments[0].rfind("--headless-", 0) == 0;
+
+    // Headless commands are development tools that report on the console, and parallel runs would share one file.
+    if (headlessCommand)
+    {
+        logFile.discard();
+    }
+    else if (!logFile.open(LogFileName))
+    {
+        std::cerr << "Failed to create the log file " << LogFileName << '\n';
+    }
+
+    applySettingsConfigOverridesIfConfigured(
+        config,
+        worldArgumentProvided,
+        assetScaleArgumentProvided,
+        assetRootArgumentProvided);
+
+    if (headlessCommand)
     {
         setEnvironmentVariable("OPENYAMM_DISABLE_LOADING_OVERLAY", "1");
     }
@@ -263,7 +407,25 @@ int runApplication(int argc, char **argv)
 
     if (arguments.size() >= 2 && arguments[0] == "--headless-run-scenario")
     {
-        return OpenYAMM::Game::runScenarioHeadlessCommand(argv[0], config, arguments, false);
+        const int result = OpenYAMM::Game::runScenarioHeadlessCommand(argv[0], config, arguments, false);
+
+        // A version that plays scenarios works: the release checks run new versions this way.
+        if (result == 0)
+        {
+            if (std::unique_ptr<OpenYAMM::Game::GameUpdater> updater =
+                    OpenYAMM::Game::GameUpdater::create(updateChannelUrl()))
+            {
+                updater->markHealthy(std::cout);
+            }
+        }
+
+        return result;
+    }
+
+    if ((arguments.size() == 1 || arguments.size() == 2) && arguments[0] == "--headless-update")
+    {
+        return OpenYAMM::Game::runHeadlessUpdate(arguments.size() == 2 ? arguments[1] : updateChannelUrl(),
+                                                 std::cout);
     }
 
     if ((arguments.size() == 3 || arguments.size() == 4) && arguments[0] == "--headless-open-event")
@@ -522,22 +684,43 @@ int runApplication(int argc, char **argv)
             arguments[3]);
     }
 
+#if !defined(__ANDROID__)
+    // A fresh installation from the small download package carries no content yet.
+    if (!assetRootArgumentProvided && OpenYAMM::Engine::isReleaseInstallation(installRoot)
+        && OpenYAMM::Game::installedContentMissing(config.assetRoot))
+    {
+        if (OpenYAMM::Game::runContentSetup(updateChannelUrl()) != OpenYAMM::Game::ContentSetupResult::Ready)
+        {
+            return 0;
+        }
+    }
+#endif
+
     OpenYAMM::Game::GameApplication application(config);
     return application.run();
 }
 }
 
-#ifndef OPENYAMM_NO_DESKTOP_MAIN
-int main(int argc, char **argv)
+int runApplication(int argc, char **argv)
 {
+    // Lives across the whole run, so a fatal error below still reaches the file.
+    OpenYAMM::Engine::LogFile logFile;
+
     try
     {
-        return OpenYAMM::Game::runApplication(argc, argv);
+        return runGame(argc, argv, logFile);
     }
     catch (const std::exception &exception)
     {
         std::cerr << "Fatal error: " << exception.what() << '\n';
         return 1;
     }
+}
+}
+
+#ifndef OPENYAMM_NO_DESKTOP_MAIN
+int main(int argc, char **argv)
+{
+    return OpenYAMM::Game::runApplication(argc, argv);
 }
 #endif

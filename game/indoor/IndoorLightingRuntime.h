@@ -106,6 +106,7 @@ struct IndoorLightingFrameInput
     const std::vector<std::vector<IndoorVisibilityFrustum>> *pVisibleSectorFrustums = nullptr;
     bx::Vec3 cameraPosition = {0.0f, 0.0f, 0.0f};
     bool coloredLights = true;
+    bool warmTorchLight = false;
     // FX lights per sector before nearby ones merge (FxLightClusterThresholdHigh/Low, by the light grid's quality).
     uint32_t fxClusterThreshold = FxLightClusterThresholdHigh;
 };

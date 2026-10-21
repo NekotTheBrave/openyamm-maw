@@ -1819,7 +1819,7 @@ bool IndoorGameView::tryCastSpellRequest(
         worldRuntime()->applyPendingSpellCastWorldEffects(resolution.castResult);
         m_gameSession.gameplaySpellService().clearPendingTargetSelection(
             screenRuntime,
-            isSpellId(resolvedRequest.spellId, SpellId::Telekinesis) ? std::string() : "Cast " + spellName);
+            GameplaySpellService::successStatusText(spellName, resolution.castResult));
         return true;
     }
 
@@ -1864,6 +1864,11 @@ bool IndoorGameView::requestQuickSave()
 bool IndoorGameView::requestTravelAutosave()
 {
     return beginSaveWithPreview(AutosavePath, "", false);
+}
+
+bool IndoorGameView::savePreviewCapturePending() const
+{
+    return m_pendingSavePreviewCapture.active;
 }
 
 bool IndoorGameView::beginSaveWithPreview(

@@ -301,8 +301,7 @@ TEST_CASE("merged outdoor travels add mm6 map boundary transitions")
     CHECK(pNewSorpigal->westTransition->straightTravel);
     REQUIRE(pNewSorpigal->westTransition->straightTravelSide.has_value());
     CHECK_EQ(*pNewSorpigal->westTransition->straightTravelSide, OpenYAMM::Game::MapBoundaryEdge::West);
-    REQUIRE(pNewSorpigal->westTransition->directionDegrees.has_value());
-    CHECK_EQ(*pNewSorpigal->westTransition->directionDegrees, 180);
+    CHECK_FALSE(pNewSorpigal->westTransition->directionDegrees.has_value());
 }
 
 TEST_CASE("merged outdoor travels add Avlee Shoals special transition")

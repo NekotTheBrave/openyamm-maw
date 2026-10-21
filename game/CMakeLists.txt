@@ -48,7 +48,7 @@ add_library(openyamm_game STATIC
     fx/ParticleRecipes.cpp
     fx/ProjectileEffectBindings.cpp
     fx/ProjectileModelBindings.cpp
-    fx/ItemModelBindings.cpp
+    tables/ItemModelBindings.cpp
     fx/SpellAuraEffectBindings.cpp
     fx/EffectSystem.cpp
     fx/EffectRenderer.cpp
@@ -143,6 +143,7 @@ add_library(openyamm_game STATIC
     items/ItemEnchantRuntime.cpp
     items/ItemGenerator.cpp
     items/ItemRuntime.cpp
+    items/WorldItemShape.cpp
     tables/ItemTable.cpp
     indoor/IndoorRenderer.cpp
     indoor/IndoorGameView.cpp
@@ -275,6 +276,8 @@ add_library(openyamm_game STATIC
     app/GameApplication.cpp
     app/KeyboardBindings.cpp
     app/GameSettings.cpp
+    app/ContentSetup.cpp
+    app/GameUpdater.cpp
     ${OPENYAMM_IMGUI_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp
 )
 
@@ -375,52 +378,50 @@ if (OPENYAMM_BUILD_DESKTOP_EXECUTABLE)
             PROPERTIES
                 WIN32_EXECUTABLE "$<OR:$<CONFIG:Release>,$<CONFIG:MinSizeRel>>"
         )
+
+        # OpenYAMM.exe of a versioned installation (packaging/UPDATER_PLAN.md 9.1): standard library and Windows only.
+        add_executable(openyamm_launcher WIN32
+            launcher/WindowsLauncher.cpp
+            ${CMAKE_SOURCE_DIR}/engine/update/AppInstallation.cpp
+            "${CMAKE_CURRENT_BINARY_DIR}/openyamm.rc"
+        )
+        target_include_directories(openyamm_launcher PRIVATE ${CMAKE_SOURCE_DIR})
+        target_compile_features(openyamm_launcher PRIVATE cxx_std_20)
+        if (MINGW)
+            target_link_options(openyamm_launcher PRIVATE -municode)
+        endif()
+        set_target_properties(openyamm_launcher
+            PROPERTIES
+                OUTPUT_NAME OpenYAMM
+                RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/launcher"
+        )
+    elseif (UNIX AND NOT APPLE)
+        # OpenYAMM of a versioned installation (packaging/UPDATER_PLAN.md 9.1): standard library only.
+        add_executable(openyamm_launcher
+            launcher/LinuxLauncher.cpp
+            ${CMAKE_SOURCE_DIR}/engine/update/AppInstallation.cpp
+        )
+        target_include_directories(openyamm_launcher PRIVATE ${CMAKE_SOURCE_DIR})
+        target_compile_features(openyamm_launcher PRIVATE cxx_std_20)
+        set_target_properties(openyamm_launcher
+            PROPERTIES
+                OUTPUT_NAME OpenYAMM
+                RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/launcher"
+        )
     endif()
 
-    if (UNIX AND NOT APPLE)
+    if (UNIX AND NOT APPLE AND NOT OPENYAMM_STATIC_LIBSTDCXX)
         target_link_options(openyamm
             PRIVATE
                 "-Wl,-rpath,$ORIGIN/../_deps/sdl3-build"
         )
     endif()
 
-    install(TARGETS openyamm
-        RUNTIME DESTINATION bin
-    )
-
-    if (UNIX AND NOT APPLE)
-        set(openyammDesktopId "io.github.openyamm.OpenYAMM")
-        set(openyammIconRoot "${CMAKE_SOURCE_DIR}/packaging/icons/hicolor")
-        foreach(openyammIconSize IN ITEMS 16 24 32 48 64 128 256 512)
-            install(FILES
-                "${openyammIconRoot}/${openyammIconSize}x${openyammIconSize}/apps/${openyammDesktopId}.png"
-                DESTINATION "share/icons/hicolor/${openyammIconSize}x${openyammIconSize}/apps"
-                COMPONENT DesktopIntegration
-            )
-        endforeach()
-        install(FILES "${CMAKE_SOURCE_DIR}/packaging/flatpak/${openyammDesktopId}.svg"
-            DESTINATION share/icons/hicolor/scalable/apps
-            COMPONENT DesktopIntegration
-        )
-    endif()
-
-    install(FILES
-        "${CMAKE_SOURCE_DIR}/LICENSE"
-        "${CMAKE_SOURCE_DIR}/COPYRIGHT"
-        DESTINATION "share/licenses/openyamm"
-    )
-
-    install(DIRECTORY "${OPENYAMM_RUNTIME_SHADER_DIR}/"
-        DESTINATION "share/openyamm/runtime/shaders"
-        PATTERN "dxbc" EXCLUDE
-    )
-
-    if (IS_DIRECTORY "${CMAKE_SOURCE_DIR}/assets")
-        install(DIRECTORY "${CMAKE_SOURCE_DIR}/assets/"
-            DESTINATION "share/openyamm/assets"
-            FILES_MATCHING
-                PATTERN "*.zip"
-        )
+    if (OPENYAMM_STATIC_LIBSTDCXX)
+        # Release packages need only the system's C library: libstdc++ of the build's newer compiler is not on older
+        # distributions (packaging/check_linux_binary.sh).
+        target_link_options(openyamm PRIVATE -static-libstdc++ -static-libgcc)
+        target_link_options(openyamm_launcher PRIVATE -static-libstdc++ -static-libgcc)
     endif()
 endif()
 

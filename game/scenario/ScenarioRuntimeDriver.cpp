@@ -648,19 +648,19 @@ bool ScenarioRuntimeDriver::openMapTransitionPrompt(uint32_t sourceId, std::stri
     EventRuntimeState::PendingDialogueContext context = {};
     context.kind = DialogueContextKind::MapTransition;
     context.sourceId = sourceId;
+    context.boundaryTravel = true;
+    std::optional<EventRuntimeState::PendingMapMove> move;
 
     if (pTransition != nullptr && pTransition->has_value())
     {
-        EventRuntimeState::PendingMapMove move = {};
-        move.mapName = (*pTransition)->destinationMapFileName;
-        move.useMapStartPosition = (*pTransition)->useMapStartPosition;
-        move.x = (*pTransition)->arrivalX.value_or(0);
-        move.y = (*pTransition)->arrivalY.value_or(0);
-        move.z = (*pTransition)->arrivalZ.value_or(0);
-        move.directionDegrees = (*pTransition)->directionDegrees;
-        move.traceSourceKind = "map_boundary";
-        move.traceSourceId = sourceId;
-        move.traceDestinationName = (*pTransition)->destinationMapFileName;
+        const IGameplayWorldRuntime *pWorld = worldRuntime();
+        move = buildBoundaryTravelMapMove(
+            **pTransition,
+            edge,
+            pWorld->partyX(),
+            pWorld->partyY(),
+            pWorld->partyFootZ(),
+            pWorld->gameplayCameraYawRadians());
         context.transitionMapMove = move;
     }
 
@@ -687,11 +687,11 @@ bool ScenarioRuntimeDriver::openMapTransitionPrompt(uint32_t sourceId, std::stri
         trace.destinationMap = (*pTransition)->destinationMapFileName;
         trace.destinationName = (*pTransition)->destinationMapFileName;
         trace.travelDays = static_cast<uint32_t>(std::max(0, (*pTransition)->travelDays));
-        trace.useStartPosition = (*pTransition)->useMapStartPosition;
-        trace.x = (*pTransition)->arrivalX.value_or(0);
-        trace.y = (*pTransition)->arrivalY.value_or(0);
-        trace.z = (*pTransition)->arrivalZ.value_or(0);
-        trace.directionDegrees = (*pTransition)->directionDegrees;
+        trace.useStartPosition = move->useMapStartPosition;
+        trace.x = move->x;
+        trace.y = move->y;
+        trace.z = move->z;
+        trace.directionDegrees = move->directionDegrees;
         pEventRuntimeState->lastMapTransitionRequested = std::move(trace);
     }
 

@@ -87,6 +87,8 @@ presets:
   stormy:
     inherits: wet
     storm: true
+    moon_texture: broken_moon
+    moon_phase_offset: 0.5
   hot:
     inherits: day
   deep:
@@ -152,6 +154,10 @@ TEST_CASE("sky presets inherit untouched tracks and replace keyed ones")
     const SkyPreset *pStormy = library.find("stormy");
     REQUIRE(pStormy);
     CHECK(pStormy->storm);
+    CHECK(pStormy->moonTexture == "broken_moon");
+    CHECK(pStormy->moonPhaseOffset == doctest::Approx(0.5f));
+    CHECK(pWet->moonPhaseOffset == doctest::Approx(0.0f));
+    CHECK(pWet->moonTexture == "moon");
     CHECK(pStormy->clouds.size() == 2);
     CHECK_FALSE(library.find("deep")->drawSky);
     CHECK(library.presetForSkyName("SKY05") == "day");
@@ -322,6 +328,10 @@ TEST_CASE("sky state cross-fades weather changes and snaps on clock jumps")
     model.snap();
     inputs.weatherSkyName = "sky05";
     CHECK(model.update(inputs, 0.016f).presetName == "day");
+    CHECK(model.frame().moonTexture == "moon");
+    inputs.weatherSkyName = "stormclds";
+    model.snap();
+    CHECK(model.update(inputs, 0.016f).moonTexture == "broken_moon");
 }
 
 TEST_CASE("sky state hazes toward fog and keeps authored fog colours")

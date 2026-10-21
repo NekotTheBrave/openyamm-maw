@@ -6,6 +6,7 @@
 #include <SDL3/SDL.h>
 
 #include <cmath>
+#include <numbers>
 
 namespace OpenYAMM::Game
 {
@@ -126,34 +127,65 @@ float mmergeStraightTravelCoordinate(float coordinate)
     const float sign = coordinate > 0.0f ? -1.0f : 1.0f;
     return (std::abs(coordinate) - 30.0f) * sign;
 }
+}
 
-void applyMergedStraightTravelArrival(
-    EventRuntimeState::PendingMapMove &move,
+EventRuntimeState::PendingMapMove buildBoundaryTravelMapMove(
     const MapEdgeTransition &transition,
-    const OutdoorMoveState &moveState)
+    MapBoundaryEdge edge,
+    float x,
+    float y,
+    float footZ,
+    float yawRadians)
 {
-    if (!transition.straightTravel || !transition.straightTravelSide.has_value())
+    EventRuntimeState::PendingMapMove move = {};
+    move.mapName = transition.destinationMapFileName;
+    move.directionDegrees = transition.directionDegrees;
+    move.useMapStartPosition = transition.useMapStartPosition;
+    move.traceSourceKind = "map_boundary";
+    move.traceSourceId = static_cast<uint32_t>(edge);
+    move.traceDestinationName = transition.destinationMapFileName;
+
+    if (!transition.useMapStartPosition
+        && transition.arrivalX.has_value()
+        && transition.arrivalY.has_value()
+        && transition.arrivalZ.has_value())
     {
-        return;
+        move.x = *transition.arrivalX;
+        move.y = *transition.arrivalY;
+        move.z = *transition.arrivalZ;
+        return move;
     }
 
+    if (!transition.straightTravel || !transition.straightTravelSide.has_value())
+    {
+        return move;
+    }
+
+    // MMerge mirrors the crossing coordinate 30 units inside the opposite edge and keeps the party's heading.
     move.useMapStartPosition = false;
-    move.x = roundedOutdoorCoordinate(moveState.x);
-    move.y = roundedOutdoorCoordinate(moveState.y);
-    move.z = roundedOutdoorCoordinate(moveState.footZ);
+    move.x = roundedOutdoorCoordinate(x);
+    move.y = roundedOutdoorCoordinate(y);
+    move.z = roundedOutdoorCoordinate(footZ);
 
     switch (*transition.straightTravelSide)
     {
         case MapBoundaryEdge::North:
         case MapBoundaryEdge::South:
-            move.y = roundedOutdoorCoordinate(mmergeStraightTravelCoordinate(moveState.y));
+            move.y = roundedOutdoorCoordinate(mmergeStraightTravelCoordinate(y));
             break;
         case MapBoundaryEdge::East:
         case MapBoundaryEdge::West:
-            move.x = roundedOutdoorCoordinate(mmergeStraightTravelCoordinate(moveState.x));
+            move.x = roundedOutdoorCoordinate(mmergeStraightTravelCoordinate(x));
             break;
     }
-}
+
+    if (!move.directionDegrees.has_value())
+    {
+        const int32_t degrees = static_cast<int32_t>(std::lround(yawRadians * 180.0f / std::numbers::pi_v<float>));
+        move.directionDegrees = ((degrees % 360) + 360) % 360;
+    }
+
+    return move;
 }
 
 OutdoorSceneRuntime::OutdoorSceneRuntime(
@@ -444,13 +476,15 @@ OutdoorSceneRuntime::AdvanceFrameResult OutdoorSceneRuntime::advanceFrame(
         {
             result.shouldOpenEventDialog = result.shouldOpenEventDialog
                 || activation->pTransition->askPlayer;
-            if (!activation->pTransition->askPlayer)
-            {
-                applyTravelDaysSideEffects(
+            if (!activation->pTransition->askPlayer
+                && applyTravelDaysSideEffects(
                     m_pPartyRuntime->party(),
                     m_pWorldRuntime,
                     activation->pTransition->travelDays,
-                    std::max(0, activation->pTransition->travelDays));
+                    std::max(0, activation->pTransition->travelDays))
+                && pEventRuntimeState->pendingMapMove)
+            {
+                pEventRuntimeState->pendingMapMove->travelTimeApplied = true;
             }
         }
     }
@@ -470,30 +504,18 @@ OutdoorSceneRuntime::AdvanceFrameResult OutdoorSceneRuntime::advanceFrame(
             && canOfferMapTransition(*m_pPartyRuntime, moveState, **pTransition)
             && transitionQuestRequirementsMet(m_pPartyRuntime->party(), **pTransition))
         {
+            const MapBoundaryEdge edge = *m_pPartyRuntime->movementEvents().blockedBoundaryEdge;
             EventRuntimeState::PendingDialogueContext context = {};
             context.kind = DialogueContextKind::MapTransition;
-            context.sourceId = static_cast<uint32_t>(*m_pPartyRuntime->movementEvents().blockedBoundaryEdge);
-            EventRuntimeState::PendingMapMove transitionMove = {};
-            transitionMove.mapName = (*pTransition)->destinationMapFileName;
-            transitionMove.directionDegrees = (*pTransition)->directionDegrees;
-            transitionMove.useMapStartPosition = (*pTransition)->useMapStartPosition;
-            transitionMove.traceSourceKind = "map_boundary";
-            transitionMove.traceSourceId = context.sourceId;
-            transitionMove.traceDestinationName = (*pTransition)->destinationMapFileName;
-
-            if (!(*pTransition)->useMapStartPosition
-                && (*pTransition)->arrivalX.has_value()
-                && (*pTransition)->arrivalY.has_value()
-                && (*pTransition)->arrivalZ.has_value())
-            {
-                transitionMove.x = *(*pTransition)->arrivalX;
-                transitionMove.y = *(*pTransition)->arrivalY;
-                transitionMove.z = *(*pTransition)->arrivalZ;
-            }
-            else
-            {
-                applyMergedStraightTravelArrival(transitionMove, **pTransition, moveState);
-            }
+            context.sourceId = static_cast<uint32_t>(edge);
+            context.boundaryTravel = true;
+            const EventRuntimeState::PendingMapMove transitionMove = buildBoundaryTravelMapMove(
+                **pTransition,
+                edge,
+                moveState.x,
+                moveState.y,
+                moveState.footZ,
+                m_pWorldRuntime->gameplayCameraYawRadians());
 
             GAMEPLAY_DEBUG_TRACE(
                 std::string("map_transition_requested source_kind=\"map_boundary\"")

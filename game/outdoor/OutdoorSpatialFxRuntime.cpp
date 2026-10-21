@@ -254,8 +254,10 @@ void OutdoorSpatialFxRuntime::syncPartyTorchLight(OutdoorGameView &view)
     }
 
     const Party &party = view.m_pOutdoorPartyRuntime->party();
+    const OutdoorWorldRuntime::AtmosphereState &atmosphere = view.m_pOutdoorWorldRuntime->atmosphereState();
+    const float darkness = atmosphere.isNight ? 1.0f : atmosphere.fogDensity;
     const std::optional<GameplayTorchLight> torchLight =
-        resolveGameplayTorchLight(party, true, view.m_pOutdoorWorldRuntime->atmosphereState().isNight);
+        resolveGameplayTorchLight(party, true, darkness, view.m_gameSettings.warmTorchLight);
 
     if (!torchLight)
     {

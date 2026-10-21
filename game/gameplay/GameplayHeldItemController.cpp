@@ -31,19 +31,7 @@ std::string eventGrantedItemStatusName(const InventoryItem &item, const ItemTabl
 {
     const ItemDefinition *pItemDefinition = itemTable.get(item.objectDescriptionId);
 
-    if (pItemDefinition == nullptr)
-    {
-        return "item";
-    }
-
-    if (!pItemDefinition->unidentifiedName.empty()
-        && pItemDefinition->unidentifiedName != "0"
-        && pItemDefinition->unidentifiedName != "N / A")
-    {
-        return pItemDefinition->unidentifiedName;
-    }
-
-    return !pItemDefinition->name.empty() ? pItemDefinition->name : "item";
+    return pItemDefinition != nullptr ? ItemRuntime::foundItemName(*pItemDefinition) : "item";
 }
 
 void notifyEventGrantedItemReceived(

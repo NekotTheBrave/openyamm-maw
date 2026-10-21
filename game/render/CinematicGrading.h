@@ -42,9 +42,7 @@ private:
 
     bgfx::FrameBufferHandle m_frameBuffer = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_program = BGFX_INVALID_HANDLE;
-    bgfx::TextureHandle m_lut = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_sceneSampler = BGFX_INVALID_HANDLE;
-    bgfx::UniformHandle m_lutSampler = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_params = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_aoDepthProgram = BGFX_INVALID_HANDLE;
     bgfx::ProgramHandle m_aoProgram = BGFX_INVALID_HANDLE;

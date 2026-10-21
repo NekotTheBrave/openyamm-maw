@@ -538,7 +538,8 @@ void SkyRenderer::render(uint16_t viewId, const float *pView, const float *pProj
     constexpr float HiddenWeight = 0.001f;
     const bgfx::TextureHandle ring = panorama(frame.horizonRing.texture, frame.horizonRing.opacity > HiddenWeight);
     const bgfx::TextureHandle stars = panorama(frame.stars.texture, frame.scalar(SkyValue::Stars) > HiddenWeight);
-    const bgfx::TextureHandle moon = panorama("moon", frame.scalar(SkyValue::MoonVisibility) > HiddenWeight);
+    const bgfx::TextureHandle moon =
+        panorama(frame.moonTexture, frame.scalar(SkyValue::MoonVisibility) > HiddenWeight);
     bgfx::setTexture(RingSampler, m_samplers[RingSampler], bgfx::isValid(ring) ? ring : m_emptyTexture,
         BGFX_SAMPLER_V_CLAMP);
     bgfx::setTexture(StarsSampler, m_samplers[StarsSampler], bgfx::isValid(stars) ? stars : m_emptyTexture,

@@ -30,6 +30,18 @@ struct EventRuntimeState;
 class StandardItemEnchantTable;
 class SpecialItemEnchantTable;
 
+// A pin on the journal map of mapFileName (lowercase); ids are unique within one map.
+struct JournalMapNote
+{
+    uint32_t id = 0;
+    int32_t x = 0;
+    int32_t y = 0;
+    std::string mapFileName;
+    std::string text;
+    // Teacher pins without an autonote of their own also appear in the journal's trainer notes.
+    bool listedWithTrainerNotes = false;
+};
+
 struct InventoryItem
 {
     uint32_t objectDescriptionId = 0;
@@ -41,6 +53,8 @@ struct InventoryItem
     bool identified = true;
     bool broken = false;
     bool stolen = false;
+    // Set by the Harden Item potion: the item can no longer break.
+    bool hardened = false;
     uint16_t standardEnchantId = 0;
     uint16_t standardEnchantPower = 0;
     uint16_t specialEnchantId = 0;
@@ -241,10 +255,31 @@ enum class CharacterBuffId : uint8_t
     VampiricWeapon,
     Mistform,
     Glamour,
+    // Potion buffs on the drinker only, as MM8 keeps them; they add to the party spells of the same kind.
+    Haste,
+    Heroism,
+    Shield,
+    Stoneskin,
+    WaterBreathing,
+    TempMight,
+    TempIntellect,
+    TempPersonality,
+    TempEndurance,
+    TempSpeed,
+    TempAccuracy,
+    TempLuck,
+    FireResistance,
+    AirResistance,
+    WaterResistance,
+    EarthResistance,
+    MindResistance,
+    BodyResistance,
     Count,
 };
 
 static constexpr size_t CharacterBuffCount = static_cast<size_t>(CharacterBuffId::Count);
+// Character buffs stored by saves before the potion buffs were added.
+static constexpr size_t LegacyCharacterBuffCount = static_cast<size_t>(CharacterBuffId::Haste);
 
 struct PartyBuffState
 {
@@ -312,6 +347,8 @@ public:
         float itemEffectElapsedGameSeconds = 0.0f;
         uint32_t itemWeeklyEffectSequence = 0;
         float lastFallDamageDistance = 0.0f;
+        int daysWithoutRest = 0;
+        std::optional<int> awakeDayIndex;
         std::unordered_set<uint32_t> foundArtifactItems;
         std::unordered_set<uint32_t> arcomageWonHouseIds;
         uint32_t arcomageWinCount = 0;
@@ -320,6 +357,10 @@ public:
         std::unordered_set<uint32_t> everOwnedItemIds;
         std::unordered_map<uint32_t, int32_t> continentReputations;
         std::unordered_set<uint32_t> questBits;
+        std::unordered_set<uint32_t> autonotes;
+        // History entry id -> game minute it was recorded, per history continent.
+        std::unordered_map<uint32_t, std::unordered_map<uint32_t, int32_t>> historyEventTimesByContinent;
+        std::vector<JournalMapNote> journalMapNotes;
         std::unordered_map<uint16_t, int32_t> eventVariables;
         std::unordered_map<uint32_t, std::unordered_map<uint32_t, uint32_t>> npcTopicOverrides;
         std::unordered_map<uint32_t, uint32_t> npcGroupNews;
@@ -400,6 +441,15 @@ public:
     void requestSpeech(size_t memberIndex, SpeechId speechId);
     bool hasQuestBit(uint32_t questBitId) const;
     void setQuestBit(uint32_t questBitId, bool value);
+    bool hasAutonote(uint32_t autonoteId) const;
+    void setAutonote(uint32_t autonoteId, bool value);
+    const std::unordered_map<uint32_t, int32_t> &historyEventTimes(uint32_t continentId) const;
+    void recordHistoryEvent(uint32_t continentId, uint32_t historyId, int32_t gameMinutes);
+    void clearHistoryEvent(uint32_t continentId, uint32_t historyId);
+    const std::vector<JournalMapNote> &journalMapNotes() const;
+    const JournalMapNote *findJournalMapNote(const std::string &mapFileName, uint32_t noteId) const;
+    // Adds the note, or replaces the one with the same map and id.
+    void setJournalMapNote(const JournalMapNote &note);
     uint64_t dialogueEligibilityRevision() const;
     void applyGlobalNpcStateTo(EventRuntimeState &runtimeState) const;
     void setNpcTopicOverride(uint32_t npcId, uint32_t topicSlotIndex, uint32_t topicId);
@@ -427,6 +477,12 @@ public:
     bool activeMemberNeedsHealing() const;
     void restoreAll();
     void restAndHealAll();
+    int daysWithoutRest() const;
+    void clearDaysWithoutRest();
+    void addDayWithoutRest();
+    // Counts the 3 AM dawns passed since the last rest; from the second on the party weakens, starves and
+    // eventually goes insane or dies. A rest or heal resynchronises the dawn clock without these effects.
+    void updateDaysWithoutRest(float gameMinutes);
     void reviveAndRestoreAll();
     void restoreActiveMember();
     bool trainLeader(uint32_t maxLevel, uint32_t &newLevel, uint32_t &skillPointsEarned);
@@ -673,6 +729,8 @@ private:
     float m_periodicEffectElapsedGameSeconds = 0.0f;
     uint32_t m_itemWeeklyEffectSequence = 0;
     float m_lastFallDamageDistance = 0.0f;
+    int m_daysWithoutRest = 0;
+    std::optional<int> m_awakeDayIndex;
     std::string m_lastStatus;
     std::unordered_set<uint32_t> m_foundArtifactItems;
     std::unordered_set<uint32_t> m_arcomageWonHouseIds;
@@ -680,6 +738,9 @@ private:
     std::unordered_set<uint64_t> m_explosiveMixes;
     std::unordered_map<uint32_t, int32_t> m_continentReputations;
     std::unordered_set<uint32_t> m_questBits;
+    std::unordered_set<uint32_t> m_autonotes;
+    std::unordered_map<uint32_t, std::unordered_map<uint32_t, int32_t>> m_historyEventTimesByContinent;
+    std::vector<JournalMapNote> m_journalMapNotes;
     uint64_t m_dialogueEligibilityRevision = 1;
     uint32_t m_arcomageWinCount = 0;
     uint32_t m_arcomageLossCount = 0;

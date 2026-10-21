@@ -2240,8 +2240,7 @@ TEST_CASE("mm6 obelisk dialogs reopen after collection and other dialogs")
         OpenYAMM::Game::EventRuntime eventRuntime = {};
         runtimeState.messages = {"Previous dialog"};
         CHECK_FALSE(party.hasQuestBit(obelisk.questBit));
-        const uint32_t autonoteVariable = (obelisk.autonoteId << 16) | 0x00e1u;
-        CHECK(runtimeState.variables.find(autonoteVariable) == runtimeState.variables.end());
+        CHECK_FALSE(party.hasAutonote(obelisk.autonoteId));
 
         for (int visit = 0; visit < 2; ++visit)
         {
@@ -2267,9 +2266,7 @@ TEST_CASE("mm6 obelisk dialogs reopen after collection and other dialogs")
             REQUIRE(eventRuntime.executeEventById(
                 localEventProgram, std::nullopt, obelisk.eventId, runtimeState, &party, nullptr, 2));
             CHECK(party.hasQuestBit(obelisk.questBit));
-            const auto autonoteIt = runtimeState.variables.find(autonoteVariable);
-            REQUIRE(autonoteIt != runtimeState.variables.end());
-            CHECK_EQ(autonoteIt->second, obelisk.autonoteId);
+            CHECK(party.hasAutonote(obelisk.autonoteId));
             if (visit == 0)
             {
                 REQUIRE_EQ(runtimeState.portraitFxRequests.size(), 1u);
@@ -2902,6 +2899,24 @@ TEST_CASE("mm8 mmmerge map overlays compile and expose expected event ids")
                 eventId) != localEventProgram->onLoadEventIds().end());
         }
     }
+}
+
+TEST_CASE("mm6 mire of the damned upper house doors open Terry Ros's house")
+{
+    // Both upper-floor doors use event 68. OUTC3.EVT repeats step 0 with a second EnterHouse that the original
+    // interpreter never reaches, so the event must stay on Terry Ros's house for the Lich Book quest.
+    std::string error;
+    const std::optional<OpenYAMM::Game::ScriptedEventProgram> localEventProgram =
+        loadMm6MapOverlayProgram(OPENYAMM_SOURCE_DIR, "outc3", "outc3_mmmerge", error);
+    REQUIRE_MESSAGE(localEventProgram.has_value(), error.c_str());
+
+    OpenYAMM::Game::EventRuntime eventRuntime = {};
+    OpenYAMM::Game::Party party = makeScriptedRegressionParty();
+    OpenYAMM::Game::EventRuntimeState runtimeState = {};
+    REQUIRE(eventRuntime.executeEventById(localEventProgram, std::nullopt, 68, runtimeState, &party));
+    REQUIRE(runtimeState.pendingDialogueContext.has_value());
+    CHECK_EQ(runtimeState.pendingDialogueContext->kind, OpenYAMM::Game::DialogueContextKind::HouseService);
+    CHECK_EQ(runtimeState.pendingDialogueContext->sourceId, 1436u);
 }
 
 TEST_CASE("outdoor facet overlays reconstruct old saves from durable progress")
@@ -3842,6 +3857,18 @@ TEST_CASE("mm7 emerald island mmmerge tavern topics remove arcomage")
             static_cast<uint32_t>(OpenYAMM::Game::HouseActionId::TavernBuyFood),
             static_cast<uint32_t>(OpenYAMM::Game::HouseActionId::OpenLearnSkillsMenu),
         });
+
+    hookContext.menuId = static_cast<uint32_t>(OpenYAMM::Game::DialogueMenuId::LearnSkills);
+    runtimeState.activeHookContext = hookContext;
+
+    REQUIRE(eventRuntime.executeHooks(
+        localEventProgram,
+        std::nullopt,
+        OpenYAMM::Game::EventRuntimeHookKind::HouseTopicFilter,
+        runtimeState,
+        &party));
+    REQUIRE(runtimeState.activeHookContext.has_value());
+    CHECK(runtimeState.activeHookContext->houseTopicActionIds.empty());
 }
 
 TEST_CASE("mm7 global mmmerge arcomage requires deck")
@@ -5075,8 +5102,8 @@ TEST_CASE("mm7 global mmmerge supplement applies remaining original quest fixups
         sceneContext.setCurrentGameMinutes(360.0f);
         REQUIRE(eventRuntime.executeEventById(
             std::nullopt, globalEventProgram, 783, runtimeState, &party, &sceneContext));
-        CHECK_EQ(runtimeState.historyEventTimesByContinent[2][3], 360);
-        CHECK_EQ(runtimeState.historyEventTimesByContinent[2][4], 360);
+        CHECK_EQ(party.historyEventTimes(2).at(3), 360);
+        CHECK_EQ(party.historyEventTimes(2).at(4), 360);
         CHECK_EQ(sceneContext.currentGameMinutes(), 360.0f + 14 * 24 * 60);
         CHECK_FALSE(party.hasQuestBit(528));
         CHECK_EQ(runtimeState.npcHouseOverrides[340], 215u);
@@ -5512,10 +5539,10 @@ TEST_CASE("mm7 colony zod releases Roland and restores the open pathway")
     freshState.activeHistoryContinentId = 2;
     freshState.variables[static_cast<uint32_t>(OpenYAMM::Game::EvtVariable::Hour)] = 6;
     REQUIRE(eventRuntime.executeEventById(localEventProgram, std::nullopt, 376, freshState, &freshParty));
-    CHECK_EQ(freshState.historyEventTimesByContinent[2][26], 360);
+    CHECK_EQ(freshParty.historyEventTimes(2).at(26), 360);
     freshState.variables[static_cast<uint32_t>(OpenYAMM::Game::EvtVariable::Hour)] = 7;
     REQUIRE(eventRuntime.executeEventById(localEventProgram, std::nullopt, 376, freshState, &freshParty));
-    CHECK_EQ(freshState.historyEventTimesByContinent[2][26], 360);
+    CHECK_EQ(freshParty.historyEventTimes(2).at(26), 360);
     REQUIRE_EQ(freshState.grantedItems.size(), 1u);
     CHECK_EQ(freshState.grantedItems.front().objectDescriptionId, 1463u);
     CHECK(freshParty.hasQuestBit(752));
@@ -8156,144 +8183,53 @@ TEST_CASE("out05 authored special actors preserve relation override and carried 
     CHECK_FALSE(actorService.resolveActorTargetPolicy(naturalDragonslayer, naturalDragon).canTarget);
 }
 
-TEST_CASE("mm7 world prefixed monster sprites resolve on Emerald Island")
+TEST_CASE("mm7 actor previews draw every actor as a model and load no monster sprite")
 {
+    // The MM7 monster billboards were retired (assets_legacy/sprites_mm7_monsters_20261021): every MM7 monster,
+    // the arena rats included, draws its model, so maps with MM7 monsters (also MM7 art on Mount Nighon) request
+    // none of their frames and miss none.
     const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
-    const OpenYAMM::Game::MapAssetInfo *pLoadedMap = loadCachedOutdoorMapWithCompanionOptions(
-        mapLoader.assetFileSystem,
-        mapLoader.gameDataLoader,
-        "7out01.odm",
-        OpenYAMM::Game::MapLoadPurpose::ActorPreviews,
-        OpenYAMM::Game::MapCompanionLoadOptions{
-            .allowSceneYml = true,
-            .allowLegacyCompanion = true,
-        });
-    REQUIRE(pLoadedMap != nullptr);
-    REQUIRE(pLoadedMap->outdoorActorPreviewBillboardSet.has_value());
+    const OpenYAMM::Game::MonsterTable &monsterTable = mapLoader.gameDataLoader.getMonsterTable();
+    std::shared_ptr<OpenYAMM::Game::ActorModelManifest> pActorModels =
+        std::make_shared<OpenYAMM::Game::ActorModelManifest>();
+    std::string error;
+    REQUIRE_MESSAGE(pActorModels->load(mapLoader.assetFileSystem,
+        {"worlds/mm6/models/actors.yml", "worlds/mm7/models/actors.yml", "worlds/mm8/models/actors.yml"}, {},
+        monsterTable, error), error);
 
-    const OpenYAMM::Game::ActorPreviewBillboardSet &billboardSet =
-        *pLoadedMap->outdoorActorPreviewBillboardSet;
-    CHECK(billboardSet.spriteFrameTable.findFrameIndexBySpriteName("7m409s").has_value());
-
-    const auto standingTextureIt = std::find_if(
-        billboardSet.textures.begin(),
-        billboardSet.textures.end(),
-        [](const OpenYAMM::Game::OutdoorBitmapTexture &texture)
-        {
-            return texture.textureName == "m406sa0" && texture.paletteId == 409;
-        });
-    REQUIRE(standingTextureIt != billboardSet.textures.end());
-    REQUIRE_GE(standingTextureIt->physicalWidth, 133);
-    REQUIRE_GE(standingTextureIt->physicalHeight, 94);
-
-    const size_t torsoPixelOffset =
-        (static_cast<size_t>(78) * static_cast<size_t>(standingTextureIt->physicalWidth) + 127u) * 4u;
-    REQUIRE_LT(torsoPixelOffset + 3u, standingTextureIt->pixels.size());
-    CHECK_EQ(standingTextureIt->pixels[torsoPixelOffset + 0u], 68u);
-    CHECK_EQ(standingTextureIt->pixels[torsoPixelOffset + 1u], 73u);
-    CHECK_EQ(standingTextureIt->pixels[torsoPixelOffset + 2u], 82u);
-    CHECK_EQ(standingTextureIt->pixels[torsoPixelOffset + 3u], 255u);
-
-    bool foundAdventurer = false;
-
-    for (const OpenYAMM::Game::ActorPreviewBillboard &billboard : billboardSet.billboards)
+    for (const char *pMapFileName : {"7out01.odm", "7d06.blv", "out10.odm", "7d35.blv", "7d28.blv", "7d11.blv"})
     {
-        if (billboard.monsterId != 405)
+        CAPTURE(pMapFileName);
+        const OpenYAMM::Game::MapStatsEntry *pMapEntry =
+            mapLoader.gameDataLoader.getMapStats().findByFileName(pMapFileName);
+        REQUIRE(pMapEntry != nullptr);
+        const OpenYAMM::Game::MapAssetLoader loader = {};
+        const std::optional<OpenYAMM::Game::MapAssetInfo> loadedMap = loader.load(
+            mapLoader.assetFileSystem,
+            *pMapEntry,
+            monsterTable,
+            mapLoader.gameDataLoader.getObjectTable(),
+            OpenYAMM::Game::MapLoadPurpose::ActorPreviews,
+            OpenYAMM::Game::MapCompanionLoadOptions{
+                .allowSceneYml = true,
+                .allowLegacyCompanion = true,
+            },
+            {},
+            nullptr,
+            pActorModels);
+        REQUIRE(loadedMap.has_value());
+        const std::optional<OpenYAMM::Game::ActorPreviewBillboardSet> &billboards =
+            loadedMap->outdoorActorPreviewBillboardSet ? loadedMap->outdoorActorPreviewBillboardSet
+                                                       : loadedMap->indoorActorPreviewBillboardSet;
+        REQUIRE(billboards.has_value());
+        REQUIRE_FALSE(billboards->billboards.empty());
+        CHECK_EQ(billboards->missingTextureActorCount, 0u);
+        for (const OpenYAMM::Game::ActorPreviewBillboard &billboard : billboards->billboards)
         {
-            continue;
+            CHECK_MESSAGE(billboard.modelled, billboard.monsterId);
         }
-
-        foundAdventurer = true;
-        CHECK_NE(billboard.spriteFrameIndex, 0u);
-        CHECK_NE(
-            billboard.actionSpriteFrameIndices[
-                static_cast<size_t>(OpenYAMM::Game::OutdoorWorldRuntime::ActorAnimation::Standing)],
-            0u);
+        CHECK(billboards->textures.empty());
     }
-
-    CHECK(foundAdventurer);
-}
-
-TEST_CASE("mm7 world prefixed monster sprites load for indoor actor previews")
-{
-    const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
-    const OpenYAMM::Game::MapAssetInfo *pLoadedMap = loadCachedIndoorMapWithCompanionOptions(
-        mapLoader.assetFileSystem,
-        mapLoader.gameDataLoader,
-        "7d06.blv",
-        OpenYAMM::Game::MapLoadPurpose::ActorPreviews,
-        OpenYAMM::Game::MapCompanionLoadOptions{
-            .allowSceneYml = true,
-            .allowLegacyCompanion = true,
-        });
-    REQUIRE(pLoadedMap != nullptr);
-    REQUIRE(pLoadedMap->indoorActorPreviewBillboardSet.has_value());
-
-    const OpenYAMM::Game::ActorPreviewBillboardSet &billboardSet =
-        *pLoadedMap->indoorActorPreviewBillboardSet;
-    const std::optional<uint16_t> swordsmanFrameIndex =
-        billboardSet.spriteFrameTable.findFrameIndexBySpriteName("7m407s");
-    REQUIRE(swordsmanFrameIndex.has_value());
-    const OpenYAMM::Game::SpriteFrameEntry *pSwordsmanFrame =
-        billboardSet.spriteFrameTable.getFrame(*swordsmanFrameIndex, 0);
-    REQUIRE(pSwordsmanFrame != nullptr);
-    const OpenYAMM::Game::ResolvedSpriteTexture swordsmanTexture =
-        OpenYAMM::Game::SpriteFrameTable::resolveTexture(*pSwordsmanFrame, 0);
-    CHECK_EQ(swordsmanTexture.textureName, "m406sa0");
-    CHECK_EQ(pSwordsmanFrame->paletteId, 70);
-    REQUIRE_GT(billboardSet.mapDeltaActorCount, 0u);
-    CHECK_EQ(billboardSet.missingTextureActorCount, 0u);
-    CHECK_EQ(billboardSet.texturedActorCount, billboardSet.billboards.size());
-    CHECK_FALSE(billboardSet.textures.empty());
-}
-
-TEST_CASE("mm7 nighon actor previews load world sprite packages")
-{
-    const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
-
-    const auto textureLoaded =
-        [](const OpenYAMM::Game::ActorPreviewBillboardSet &billboardSet,
-           const std::string &textureName,
-           int16_t paletteId) -> bool
-        {
-            return std::any_of(
-                billboardSet.textures.begin(),
-                billboardSet.textures.end(),
-                [&](const OpenYAMM::Game::OutdoorBitmapTexture &texture)
-                {
-                    return texture.textureName == textureName && texture.paletteId == paletteId;
-                });
-        };
-
-    const OpenYAMM::Game::MapAssetInfo *pMountNighon = loadCachedOutdoorMapWithCompanionOptions(
-        mapLoader.assetFileSystem,
-        mapLoader.gameDataLoader,
-        "out10.odm",
-        OpenYAMM::Game::MapLoadPurpose::ActorPreviews,
-        OpenYAMM::Game::MapCompanionLoadOptions{
-            .allowSceneYml = true,
-            .allowLegacyCompanion = true,
-        });
-    REQUIRE(pMountNighon != nullptr);
-    REQUIRE(pMountNighon->outdoorActorPreviewBillboardSet.has_value());
-    CHECK_EQ(pMountNighon->outdoorActorPreviewBillboardSet->missingTextureActorCount, 0u);
-    CHECK(textureLoaded(*pMountNighon->outdoorActorPreviewBillboardSet, "m390sa0", 553));
-    CHECK(textureLoaded(*pMountNighon->outdoorActorPreviewBillboardSet, "m390sa0", 555));
-
-    const OpenYAMM::Game::MapAssetInfo *pNighonTunnels = loadCachedIndoorMapWithCompanionOptions(
-        mapLoader.assetFileSystem,
-        mapLoader.gameDataLoader,
-        "7d35.blv",
-        OpenYAMM::Game::MapLoadPurpose::ActorPreviews,
-        OpenYAMM::Game::MapCompanionLoadOptions{
-            .allowSceneYml = true,
-            .allowLegacyCompanion = true,
-        });
-    REQUIRE(pNighonTunnels != nullptr);
-    REQUIRE(pNighonTunnels->indoorActorPreviewBillboardSet.has_value());
-    CHECK_EQ(pNighonTunnels->indoorActorPreviewBillboardSet->missingTextureActorCount, 0u);
-    CHECK(textureLoaded(*pNighonTunnels->indoorActorPreviewBillboardSet, "m250sa0", 613));
-    CHECK(textureLoaded(*pNighonTunnels->indoorActorPreviewBillboardSet, "m250sa0", 615));
 }
 
 TEST_CASE("mm6 circus prize games require the 50 gold entry fee")
@@ -8464,7 +8400,7 @@ TEST_CASE("mm7 Mount Nighon local relations keep resident warlocks peaceful to t
     }
 }
 
-TEST_CASE("mm7 walls of mist air elementals resolve actor preview textures")
+TEST_CASE("mm7 walls of mist air elementals resolve their merged sprite frames")
 {
     const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
     const OpenYAMM::Game::MapAssetInfo *pLoadedMap = loadCachedIndoorMapWithCompanionOptions(
@@ -8501,16 +8437,7 @@ TEST_CASE("mm7 walls of mist air elementals resolve actor preview textures")
         OpenYAMM::Game::SpriteFrameTable::resolveTexture(*pAirElementalCFrame, 0);
     CHECK_EQ(airElementalTexture.textureName, "m508sa0");
     CHECK_EQ(pAirElementalCFrame->paletteId, 508);
-
-    const auto textureIt = std::find_if(
-        billboardSet.textures.begin(),
-        billboardSet.textures.end(),
-        [&airElementalTexture, pAirElementalCFrame](const OpenYAMM::Game::OutdoorBitmapTexture &texture)
-        {
-            return texture.textureName == airElementalTexture.textureName
-                && texture.paletteId == pAirElementalCFrame->paletteId;
-        });
-    CHECK(textureIt != billboardSet.textures.end());
+    // The frame is metadata only: the elementals draw models and the image left the runtime on 2026-10-21.
 }
 
 TEST_CASE("mm7 dragon lair loads indoor billboards and lights")
@@ -8548,10 +8475,7 @@ TEST_CASE("mm7 dragon lair loads indoor billboards and lights")
         }));
     REQUIRE(pLoadedMap->indoorActorPreviewBillboardSet.has_value());
     CHECK_GT(pLoadedMap->indoorActorPreviewBillboardSet->billboards.size(), 0u);
-    CHECK_EQ(pLoadedMap->indoorActorPreviewBillboardSet->missingTextureActorCount, 0u);
-    CHECK_EQ(
-        pLoadedMap->indoorActorPreviewBillboardSet->texturedActorCount,
-        pLoadedMap->indoorActorPreviewBillboardSet->billboards.size());
+    // Its dragons draw models (see "mm7 actor previews draw every actor as a model and load no monster sprite").
 }
 
 TEST_CASE("mm7 red dwarf mine statues are models and skip their nonzero-palette sprite textures")
@@ -8718,6 +8642,95 @@ TEST_CASE("mm6 merged indoor maps normalize legacy static lights to visible whit
     }
 }
 
+TEST_CASE("mm8 Ogre peasant bindings resolve all civilian tiers without combat animations or equipment")
+{
+    const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
+    const OpenYAMM::Game::MonsterTable &monsters = mapLoader.gameDataLoader.getMonsterTable();
+    OpenYAMM::Game::ActorModelManifest models;
+    std::string error;
+    REQUIRE_MESSAGE(models.load(mapLoader.assetFileSystem, {"worlds/mm8/models/actors.yml"}, {}, monsters, error),
+        error);
+    for (int16_t id = 28; id <= 30; ++id)
+    {
+        const OpenYAMM::Game::MonsterEntry *pMonster = monsters.findById(id);
+        REQUIRE(pMonster != nullptr);
+        CHECK(models.bindsMonster(id));
+        const OpenYAMM::Game::ActorModelManifest::Entry *pBinding = models.find(pMonster->internalName);
+        REQUIRE(pBinding != nullptr);
+        const YAML::Node &entry = pBinding->node;
+        CHECK_EQ(entry["model"].as<std::string>(), "worlds/mm8/models/mm8_m436.glb");
+        CHECK_EQ(entry["skin"].as<std::string>(), "m436_" + std::string(1, char('a' + id - 28)));
+        CHECK_FALSE(entry["attachments"].IsDefined());
+        CHECK_FALSE(entry["animation"]["cast"].IsDefined());
+        CHECK_FALSE(entry["clips"]["attack_melee"].IsDefined());
+        CHECK_FALSE(entry["clips"]["attack_ranged"].IsDefined());
+        CHECK(entry["scale"].as<float>() == doctest::Approx(133.257758f));
+        CHECK_FALSE(entry["animation"]["events"].IsDefined());
+        const OpenYAMM::Game::MonsterTable::MonsterStatsEntry *pStats =
+            monsters.findStatsByPictureName(pMonster->internalName);
+        REQUIRE(pStats != nullptr);
+        CHECK(pStats->aiType == OpenYAMM::Game::MonsterTable::MonsterAiType::Wimp);
+    }
+}
+
+TEST_CASE("mm8 Ogre actor bindings resolve merged monster ids and the fitted club")
+{
+    const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
+    const OpenYAMM::Game::MonsterTable &monsters = mapLoader.gameDataLoader.getMonsterTable();
+    OpenYAMM::Game::ActorModelManifest models;
+    std::string error;
+    REQUIRE_MESSAGE(models.load(mapLoader.assetFileSystem, {"worlds/mm8/models/actors.yml"}, {}, monsters, error),
+        error);
+    for (int16_t id = 31; id <= 33; ++id)
+    {
+        const OpenYAMM::Game::MonsterEntry *pMonster = monsters.findById(id);
+        REQUIRE(pMonster != nullptr);
+        CHECK(models.bindsMonster(id));
+        const OpenYAMM::Game::ActorModelManifest::Entry *pBinding = models.find(pMonster->internalName);
+        REQUIRE(pBinding != nullptr);
+        const YAML::Node &entry = pBinding->node;
+        CHECK_EQ(entry["model"].as<std::string>(), "worlds/mm8/models/mm8_m440.glb");
+        CHECK_EQ(entry["skin"].as<std::string>(), "m440_" + std::string(1, char('a' + id - 31)));
+        REQUIRE_EQ(entry["attachments"].size(), 1);
+        CHECK_EQ(entry["attachments"][0]["node"].as<std::string>(), "Club");
+        CHECK_EQ(entry["attachments"][0]["model"].as<std::string>(), "worlds/mm8/models/mm8_m440_club.glb");
+        CHECK(entry["scale"].as<float>() == doctest::Approx(154.312274f));
+        CHECK(entry["animation"]["events"]["attack_melee"]["impact"].as<float>() == doctest::Approx(26.0f / 30.0f));
+    }
+}
+
+TEST_CASE("mm8 Vampire actor bindings resolve all tiers and dual palm spell release")
+{
+    const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
+    const OpenYAMM::Game::MonsterTable &monsters = mapLoader.gameDataLoader.getMonsterTable();
+    OpenYAMM::Game::ActorModelManifest models;
+    std::string error;
+    REQUIRE_MESSAGE(models.load(mapLoader.assetFileSystem, {"worlds/mm8/models/actors.yml"}, {}, monsters, error),
+        error);
+    for (int16_t id = 52; id <= 54; ++id)
+    {
+        const OpenYAMM::Game::MonsterEntry *pMonster = monsters.findById(id);
+        REQUIRE(pMonster != nullptr);
+        CHECK(models.bindsMonster(id));
+        const OpenYAMM::Game::ActorModelManifest::Entry *pBinding = models.find(pMonster->internalName);
+        REQUIRE(pBinding != nullptr);
+        const YAML::Node &entry = pBinding->node;
+        CHECK_EQ(entry["model"].as<std::string>(), "worlds/mm8/models/mm8_m468.glb");
+        CHECK_EQ(entry["skin"].as<std::string>(), "m468_" + std::string(1, char('a' + id - 52)));
+        CHECK(entry["scale"].as<float>() == doctest::Approx(114.478790f));
+        const YAML::Node &animation = entry["animation"];
+        CHECK_EQ(animation["cast"].as<std::string>(), "Cast");
+        CHECK_NE(animation["cast"].as<std::string>(), entry["clips"]["attack_ranged"].as<std::string>());
+        CHECK_NE(animation["cast"].as<std::string>(), entry["clips"]["attack_melee"].as<std::string>());
+        CHECK_EQ(animation["sockets"]["palm_left"].as<std::string>(), "Socket_Palm_Left");
+        CHECK_EQ(animation["sockets"]["palm_right"].as<std::string>(), "Socket_Palm_Right");
+        CHECK(animation["events"]["attack_melee"]["impact"].as<float>() == doctest::Approx(77.0f / 60.0f));
+        CHECK(animation["events"]["cast"]["impact"].as<float>() == doctest::Approx(35.0f / 30.0f));
+        CHECK_EQ(animation["events"]["cast"]["glow"].as<std::vector<std::string>>(),
+            std::vector<std::string>{"palm_left", "palm_right"});
+    }
+}
+
 TEST_CASE("mm6 darkmoor actor previews build encounter tiers as models and load their sprites for no monster")
 {
     const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
@@ -8819,10 +8832,10 @@ TEST_CASE("mm6 darkmoor actor previews build encounter tiers as models and load 
     }
 }
 
-TEST_CASE("full gameplay map load preloads unplaced item sprites but no missile sprites")
+TEST_CASE("full gameplay map load preloads no sprites for unplaced items or missiles")
 {
-    // A dropped item must not decode its sprite on its first frame; spell missiles and impacts never draw their sprite
-    // (models and effects present them), so none is preloaded.
+    // Items on the ground are models and spell missiles and impacts are models and effects
+    // (GROUND_ITEMS_3D_BEHAVIOUR.md), so no object the map might spawn later has its sprite preloaded.
     const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
     const OpenYAMM::Game::MapAssetInfo *pLoadedMap = loadCachedIndoorMapWithCompanionOptions(
         mapLoader.assetFileSystem,
@@ -8868,18 +8881,11 @@ TEST_CASE("full gameplay map load preloads unplaced item sprites but no missile 
             });
     };
 
-    // Object 307: a dagger, an item (and a thrown dagger's object). Restored x2 sprites are loaded by the billboard
-    // renderer (loadRestoredDecorationTexture), so they count as available without a native preload.
+    // Object 307: a dagger, an item.
     const OpenYAMM::Game::ObjectEntry *pDagger = unplacedObject(307);
     REQUIRE(pDagger != nullptr);
     REQUIRE((pDagger->flags & OpenYAMM::Game::ObjectDescUnpickable) == 0);
-    const OpenYAMM::Game::SpriteFrameEntry *pDaggerFrame = billboardSet.spriteFrameTable.getFrame(pDagger->spriteId, 0);
-    REQUIRE(pDaggerFrame != nullptr);
-    const std::string daggerTexture =
-        OpenYAMM::Game::SpriteFrameTable::resolveTexture(*pDaggerFrame, 0).textureName;
-    CHECK((preloaded(*pDagger)
-        || mapLoader.assetFileSystem.exists("engine/decorations_x2/" + daggerTexture + "_p"
-            + std::to_string(pDaggerFrame->paletteId) + ".png")));
+    CHECK_FALSE(preloaded(*pDagger));
 
     // Object 10030: the DarkFire Bolt missile.
     const OpenYAMM::Game::ObjectEntry *pMissile = unplacedObject(10030);
@@ -8936,13 +8942,6 @@ TEST_CASE("MM9 quest and miscellaneous items resolve dedicated WorldItem sprites
         const OpenYAMM::Game::ResolvedSpriteTexture resolvedTexture =
             OpenYAMM::Game::SpriteFrameTable::resolveTexture(*pFrame, 0);
         CHECK_EQ(resolvedTexture.textureName, expectedTextureName);
-        CHECK(std::any_of(
-            billboardSet.textures.begin(),
-            billboardSet.textures.end(),
-            [&resolvedTexture](const OpenYAMM::Game::OutdoorBitmapTexture &texture)
-            {
-                return texture.textureName == resolvedTexture.textureName;
-            }));
         ++checkedItemCount;
     }
 
@@ -9474,6 +9473,35 @@ TEST_CASE("outdoor_party_runtime_wait_advances_buff_durations_with_game_clock")
         partyRuntime.party().partyBuff(OpenYAMM::Game::PartyBuffId::FireResistance);
     REQUIRE(pUpdatedBuff != nullptr);
     CHECK(pUpdatedBuff->remainingSeconds == doctest::Approx(35940.0f));
+}
+
+TEST_CASE("mm8 Nightmare slime actor bindings resolve all tiers without ranged spell behaviour")
+{
+    const OpenYAMM::Tests::RegressionMapLoader &mapLoader = requireRegressionMapLoader();
+    const OpenYAMM::Game::MonsterTable &monsters = mapLoader.gameDataLoader.getMonsterTable();
+    OpenYAMM::Game::ActorModelManifest models;
+    std::string error;
+    REQUIRE_MESSAGE(models.load(mapLoader.assetFileSystem, {"worlds/mm8/models/actors.yml"}, {}, monsters, error),
+        error);
+    for (int16_t id = 151; id <= 153; ++id)
+    {
+        const OpenYAMM::Game::MonsterEntry *pMonster = monsters.findById(id);
+        REQUIRE(pMonster != nullptr);
+        CHECK(models.bindsMonster(id));
+        const OpenYAMM::Game::ActorModelManifest::Entry *pBinding = models.find(pMonster->internalName);
+        REQUIRE(pBinding != nullptr);
+        const YAML::Node &entry = pBinding->node;
+        CHECK_EQ(entry["model"].as<std::string>(), "worlds/mm8/models/mm8_m600.glb");
+        CHECK_EQ(entry["skin"].as<std::string>(), "nightmare_" + std::string(1, char('a' + id - 151)));
+        CHECK_FALSE(entry["attachments"].IsDefined());
+        CHECK_FALSE(entry["animation"]["cast"].IsDefined());
+        CHECK_FALSE(entry["animation"]["events"].IsDefined());
+        CHECK_EQ(entry["clips"]["attack_melee"].as<std::string>(), "Attack");
+        CHECK_EQ(entry["clips"]["dying"].as<std::string>(), "Death");
+        CHECK_EQ(entry["clips"]["dead"].as<std::string>(), "Dead");
+        CHECK_GT(entry["scale"].as<float>(), 275.0f);
+        CHECK_LT(entry["scale"].as<float>(), 286.0f);
+    }
 }
 
 TEST_SUITE_END();

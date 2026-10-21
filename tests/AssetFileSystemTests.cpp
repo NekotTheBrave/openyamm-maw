@@ -1,4 +1,5 @@
 #include "engine/AssetFileSystem.h"
+#include "tests/ContentPackTestSupport.h"
 #include "engine/AssetScaleTier.h"
 
 #include <doctest/doctest.h>
@@ -261,31 +262,45 @@ TEST_CASE("AssetFileSystem keeps legacy fallback and enumerates package aliases"
     std::filesystem::remove_all(temporaryRoot);
 }
 
-TEST_CASE("AssetFileSystem mounts generated runtime zip package sets")
+TEST_CASE("AssetFileSystem mounts the content packs of an index")
 {
     const std::filesystem::path temporaryRoot = makeTemporaryRoot();
     const std::filesystem::path assetRoot = temporaryRoot / "assets";
+    struct Pack
+    {
+        const char *pId;
+        const char *pPackage;
+        const char *pMount;
+        std::vector<std::pair<std::string, std::string>> entries;
+    };
+    // Core packs mount at the package root, domain packs at their folder; a domain may span several packs.
+    const std::vector<Pack> packs = {
+        {"engine.core",
+         "engine",
+         "/engine",
+         {{"ui/layout.yml", "engine-ui"}, {"data_tables/map_stats.txt", "engine-map-stats"}}},
+        {"engine.data_tables.0", "engine", "/engine/data_tables", {{"english/Global.txt", "engine-global"}}},
+        {"mm6.core", "mm6", "/worlds/mm6", {{"textures/shared.bmp", "active-texture"}}},
+        {"mm6.maps.0", "mm6", "/worlds/mm6/maps", {{"shared.odm", "active-map"}}},
+        {"mm6.maps.lighting.0", "mm6", "/worlds/mm6/maps", {{"shared.lighting", "active-lighting"}}},
+        {"mm6.videos.0", "mm6", "/worlds/mm6/videos", {{"Houses/sample.ogv", "0123456789"}}},
+        {"mm8.core", "mm8", "/worlds/mm8", {{"textures/shared.bmp", "inactive-texture"}}},
+        {"mm8.maps.1", "mm8", "/worlds/mm8/maps", {{"out01.odm", "inactive-map"}}},
+    };
+    std::string index = "{\"schema\": 1, \"release\": \"test\", \"build\": \"test\", \"profile\": \"desktop\", "
+                        "\"content_format\": 1, \"store\": \"packs\", \"packs\": [";
 
-    writeZipFile(
-        assetRoot / "engine.zip",
-        {
-            {"ui/layout.yml", "engine-ui"},
-            {"data_tables/english/Global.txt", "engine-global"},
-            {"data_tables/map_stats.txt", "engine-map-stats"}
-        });
-    writeZipFile(
-        assetRoot / "worlds" / "mm6.zip",
-        {
-            {"maps/shared.odm", "active-map"},
-            {"textures/shared.bmp", "active-texture"},
-            {"videos/Houses/sample.ogv", "0123456789"}
-        });
-    writeZipFile(
-        assetRoot / "worlds" / "mm8.zip",
-        {
-            {"maps/out01.odm", "inactive-map"},
-            {"textures/shared.bmp", "inactive-texture"}
-        });
+    for (const Pack &pack : packs)
+    {
+        const std::string file = std::string(pack.pId) + "-0123456789abcdef.zip";
+        writeZipFile(assetRoot / "packs" / file, pack.entries);
+        index += std::string(&pack == &packs.front() ? "" : ", ") + "{\"id\": \"" + pack.pId + "\", \"package\": \""
+            + pack.pPackage + "\", \"mount\": \"" + pack.pMount + "\", \"file\": \"" + file + "\", \"size\": "
+            + std::to_string(std::filesystem::file_size(assetRoot / "packs" / file))
+            + ", \"content_id\": \"c\", \"sha256\": \"s\"}";
+    }
+
+    writeTextFile(assetRoot / "index.json", index + "]}");
 
     {
         OpenYAMM::Engine::AssetFileSystem assetFileSystem;
@@ -333,12 +348,27 @@ TEST_CASE("AssetFileSystem mounts generated runtime zip package sets")
 
         CHECK_FALSE(assetFileSystem.resolvePhysicalPath("Data/games/shared.odm").has_value());
 
+        CHECK(assetFileSystem.readTextFile("worlds/mm6/maps/shared.lighting")
+            == std::optional<std::string>("active-lighting"));
+        CHECK(assetFileSystem.readTextFile("engine/data_tables/english/Global.txt")
+            == std::optional<std::string>("engine-global"));
+        const std::vector<std::string> maps = assetFileSystem.enumerate("worlds/mm6/maps");
+        CHECK(std::find(maps.begin(), maps.end(), "shared.odm") != maps.end());
+        CHECK(std::find(maps.begin(), maps.end(), "shared.lighting") != maps.end());
+
         REQUIRE(assetFileSystem.switchActiveWorld("mm8"));
 
         const std::optional<std::string> switchedTextureText =
             assetFileSystem.readTextFile("Data/bitmaps/shared.bmp");
         REQUIRE(switchedTextureText.has_value());
         CHECK_EQ(*switchedTextureText, "inactive-texture");
+    }
+
+    // A missing or truncated pack makes the installation unusable instead of silently losing content.
+    std::filesystem::resize_file(assetRoot / "packs" / "mm8.maps.1-0123456789abcdef.zip", 10);
+    {
+        OpenYAMM::Engine::AssetFileSystem assetFileSystem;
+        CHECK_FALSE(assetFileSystem.initialize(temporaryRoot, assetRoot, OpenYAMM::Engine::AssetScaleTier::X1, "mm6"));
     }
 
     std::filesystem::remove_all(temporaryRoot);
@@ -962,11 +992,12 @@ TEST_CASE("AssetFileSystem restored icons resolve archive tiers and original fal
     using namespace OpenYAMM::Engine;
     const std::filesystem::path temporaryRoot = makeTemporaryRoot();
     const std::filesystem::path assetRoot = temporaryRoot / "assets";
-    writeZipFile(assetRoot / "engine.zip", {
+    writeZipFile(assetRoot / "packs/engine.core.zip", {
         {"icons/kept.bmp", "original"},
         {"icons/mixed.bmp", "original"},
         {"icons_x2/mixed.bmp", "restored"}
     });
+    writeCorePackIndex(assetRoot, {"engine"});
     {
         AssetFileSystem fs;
         AssetScaleProfile profile;
@@ -993,15 +1024,16 @@ TEST_CASE("AssetFileSystem authoritative icon packages isolate restored and reta
     using namespace OpenYAMM::Engine;
     const std::filesystem::path temporaryRoot = makeTemporaryRoot();
     const std::filesystem::path assets = temporaryRoot / "assets";
-    writeZipFile(assets / "engine.zip", {
+    writeZipFile(assets / "packs/engine.core.zip", {
         {"icon_packages.txt", "engine x2\nworlds/mm6 x2\nworlds/mm7 x2\nworlds/mm9 x1\n"},
         {"icons/retired.bmp", "must not load"},
         {"icons/same.png", "native"},
         {"icons_x2/same.bmp", "restored"}
     });
-    writeZipFile(assets / "worlds/mm6.zip", {{"icons_x2/npc1.png", "mm6 portrait"}});
-    writeZipFile(assets / "worlds/mm7.zip", {{"icons_x2/npc1.png", "mm7 portrait"}});
-    writeZipFile(assets / "worlds/mm9.zip", {{"icons/mm9_item.png", "retained native"}});
+    writeZipFile(assets / "packs/mm6.core.zip", {{"icons_x2/npc1.png", "mm6 portrait"}});
+    writeZipFile(assets / "packs/mm7.core.zip", {{"icons_x2/npc1.png", "mm7 portrait"}});
+    writeZipFile(assets / "packs/mm9.core.zip", {{"icons/mm9_item.png", "retained native"}});
+    writeCorePackIndex(assets, {"engine", "mm6", "mm7", "mm9"});
     {
         AssetFileSystem fs;
         // Content ownership applies even when an old settings file still selects x1.

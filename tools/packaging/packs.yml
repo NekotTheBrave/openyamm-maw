@@ -1,0 +1,56 @@
+# Content packs of the release packages (packaging/UPDATER_PLAN.md, part B; tools/runtime_packs.py).
+#
+# Every top-level folder (domain) of a package is either in the package's core pack or listed under domains, or
+# packaging fails. Bucket counts are committed: changing one reshuffles that domain's files once, so raise a count only
+# when `tools/package_runtime_assets.py --report` shows a pack over max_mib, or well over target_mib.
+#
+# Group rules keep files that change together in one bucket:
+#   stem       the file name up to its first dot (oute3.odm, oute3.scene.yml, oute3.bake.json)
+#   first_dir  the first sub-folder (one sprite family)
+#   model      a GLB together with the cooked textures it references
+# A split routes files by extension into their own bucket set, so large, rarely changed files do not ride along with
+# small, often changed ones.
+schema: 1
+target_mib: 64
+max_mib: 128
+core_max_mib: 24
+# The worlds a release ships.
+worlds: [mm6, mm7, mm8]
+packages:
+  engine:
+    # Small and changed in almost every release.
+    core: [behaviors, branding, data_tables, events, fonts, hud_x2, liquids, licenses, music, scripts, ui]
+    domains:
+      effects:           {buckets: 1}
+      rendering:         {buckets: 1}
+      _legacy:           {buckets: 1}
+      audio:             {buckets: 2}
+      terrain_materials: {buckets: 4, group: first_dir}
+      icons_x2:          {buckets: 10}
+      models:            {buckets: 8, group: model}
+      sprites:           {buckets: 3}
+      sprites_new:       {buckets: 1, group: first_dir}
+      world_items:       {buckets: 3, group: model}
+  # Every world; a world entry below replaces single domains or the core list.
+  world:
+    core: [audio, behaviors, effects, events, terrain_decorations, terrain_materials, textures]
+    domains:
+      maps:
+        buckets: 2
+        split:
+          lighting: {extensions: [.lighting], buckets: 4}
+      icons_x2:          {buckets: 1}
+      models:            {buckets: 10, group: model}
+      music:             {buckets: 2}
+      videos:            {buckets: 2}
+      sprites:           {buckets: 1}
+      textures_x4:       {buckets: {desktop: 14, android: 1}}
+      textures_x2:       {buckets: {desktop: 1, android: 6}}
+  mm7:
+    domains:
+      textures_x4:       {buckets: {desktop: 9, android: 1}}
+      textures_x2:       {buckets: {desktop: 1, android: 3}}
+  mm8:
+    domains:
+      textures_x4:       {buckets: {desktop: 9, android: 1}}
+      textures_x2:       {buckets: {desktop: 1, android: 3}}

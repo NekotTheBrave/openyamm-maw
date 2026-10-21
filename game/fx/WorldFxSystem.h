@@ -6,7 +6,7 @@
 #include "game/fx/ParticleRecipes.h"
 #include "game/fx/ParticleSystem.h"
 #include "game/fx/ProjectileEffectBindings.h"
-#include "game/fx/ItemModelBindings.h"
+#include "game/items/WorldItemShape.h"
 #include "game/fx/ProjectileModelBindings.h"
 #include "game/fx/SpellAuraEffectBindings.h"
 #include "game/fx/WaterRippleRuntime.h"
@@ -38,6 +38,7 @@ class GameSession;
 class GameAudioSystem;
 class IGameplayWorldRuntime;
 struct GameplayRuntimeActorState;
+struct GameplayWorldItemPresentationState;
 enum class ActorAiAnimationState : uint8_t;
 class ActorModelManifest;
 class MonsterTable;
@@ -176,6 +177,7 @@ public:
         // attack.
         std::vector<std::array<float, 3>> framePoints;
         size_t restPointCount = 0;
+        std::optional<EffectSystem> effects;
     };
     const InspectPortrait *syncInspectPortrait(const IGameplayWorldRuntime &world, size_t actorIndex,
         uint32_t animationTicks);
@@ -244,22 +246,16 @@ public:
     }
     // Shows only the projectile and item models whose sector passes visible (indoors: revealed through the portals).
     void setObjectModelVisibility(const std::function<bool(int16_t sectorId)> &visible);
-    // Item models (engine/world_items/items.yml, GROUND_ITEMS_3D_PLAN.md): an item lying on the ground draws its model,
-    // lying flat with a yaw of its own, instead of its sprite. Loads the bindings; each model loads the first time
-    // one of its items appears.
-    bool loadItemModels(const Engine::AssetFileSystem &assets, bool enabled, std::string &error);
-    // Whether a model presents this item (its sprite is not drawn); false before the first projectile sync.
-    bool hasItemModel(uint32_t itemId) const;
+    // Item models (engine/world_items/items.yml, GROUND_ITEMS_3D_BEHAVIOUR.md): every item lying on the ground draws
+    // its model, with a yaw of its own; there are no ground-item sprites. Loads the missing-model placeholder, which
+    // an item without a working model draws; each item model loads the first time one of its items appears.
+    bool loadItemModels(const Engine::AssetFileSystem &assets, std::string &error);
     // Hover or context-action outline of an item's model (the world's presentation key), 0 for none.
     void setItemModelOutline(uint32_t key, uint32_t colorAbgr);
-    // The drawn ground under an item (outdoors: the smoothed terrain, which departs from the native floor the item
-    // rests on): its height and normal, or nothing where the item does not lie on it (a building floor, a table).
-    struct ItemGround
-    {
-        float z = 0.0f;
-        std::array<float, 3> normal = {0.0f, 0.0f, 1.0f};
-    };
-    void setItemGroundSampler(std::function<std::optional<ItemGround>(float x, float y, float z)> sampler)
+    // The drawn ground under one point of a resting item's footprint (outdoors: the smoothed terrain, which departs
+    // from the native floor the item rests on), near the item's height z; nothing where nothing supports that point.
+    using ItemGroundSampler = std::function<std::optional<float>(float x, float y, float z)>;
+    void setItemGroundSampler(ItemGroundSampler sampler)
     {
         m_itemGroundSampler = std::move(sampler);
     }
@@ -368,6 +364,9 @@ private:
         std::shared_ptr<const Engine::ModelAsset> asset;
         uint32_t materialVariant = 0;
         uint32_t eyeColorAbgr = 0;
+        // A persistent particle effect at the model origin; radius includes the particles for portrait framing.
+        std::string ambientEffect;
+        float ambientRadius = 0.0f;
         // Rigid models carried on nodes (actors.yml `attachments`): a staff split out of the body, a boss's weapon.
         std::vector<Engine::ModelAttachment> attachments;
         std::array<uint32_t, 8> clips = {};
@@ -415,7 +414,8 @@ private:
             std::optional<Socket> release;
             // Size of the charge glows, their sparks and light relative to the default charge.
             float glowScale = 1.0f;
-            // Charge colour instead of the projectile's (0 = the projectile's).
+            // Charge colour instead of the projectile's (0 = the projectile's). A melee glow has no projectile and
+            // requires one.
             uint32_t colorAbgr = 0;
             // Ranged attack only (`effects`, element -> named effect): drawn at the glow sockets instead of the glow
             // while the Attack1/Attack2 missile of that element winds up; empty for the plain glow.
@@ -427,6 +427,14 @@ private:
         float strideLength = 0.0f;
         // Running clip stride (actors.yml `run_stride_length`); defaults to 1.55 x the walking stride.
         float runStrideLength = 0.0f;
+        // Authored speeds of the walking and running clips (stride over clip length, model units per second), which
+        // with the AI's hurry choose between them (actorModelRuns).
+        float walkSpeed = 0.0f;
+        float runSpeed = 0.0f;
+        // actors.yml `animation.gait_rate: [min, max]`: the locomotion clip's playback rate range relative to authored
+        // (actorModelGaitDistance; default [0, 0]: follows the distance); max 0 is uncapped.
+        float minGaitRate = 0.0f;
+        float maxGaitRate = 0.0f;
         // actors.yml `animation.blend_seconds`: blend length of every clip change except into dying (negative = the
         // defaults, 0.12 s and 0.06 s into a hit), for bodies whose clips change pose a lot (the drake's forward flight
         // and upright hover). `animation.death_blend_seconds`: blend into the death clip (default none).
@@ -439,6 +447,16 @@ private:
     // Static copy of a model frozen in its Dead clip at timeSeconds, baked on the first corpse that holds that pose.
     std::shared_ptr<const Engine::ModelAsset> corpseAsset(const std::shared_ptr<const Engine::ModelAsset> &asset,
         uint32_t deadClip, float timeSeconds);
+    // The action whose charge glows at its event's sockets (ActionEvent index + 1): a melee blow (glow only, in its
+    // authored colour), a ranged attack or a spell.
+    enum class ActorCharge : uint8_t
+    {
+        None,
+        Melee,
+        Ranged,
+        Cast
+    };
+
     struct ActorModelInstance
     {
         Engine::ModelInstanceHandle handle;
@@ -447,6 +465,8 @@ private:
         // The syncActorModels pass that last kept this model.
         uint32_t syncPass = 0;
         bool dying = false;
+        // Locomotion plays the running clip (actorModelRuns, kept between frames for its hysteresis).
+        bool running = false;
         float deathClipTime = -1.0f;
         // Seconds since the burn death started (ActorBurnDeath), -1 when not burning; flames owed and spawned so far.
         float burnSeconds = -1.0f;
@@ -467,9 +487,9 @@ private:
         bool casting = false;
         bool scripted = false;
         bool secondaryAttack = false;
-        // The ranged action whose charge is showing (1 ranged attack, 2 cast; 0 none), its wind-up length (the
-        // action up to the moment the game releases it, captured at its start) and progress through it.
-        size_t chargeRole = 0;
+        // The action whose charge is showing, its wind-up length (the action up to the moment the game applies or
+        // releases it, captured at its start) and progress through it.
+        ActorCharge chargeRole = ActorCharge::None;
         uint32_t chargeSpellId = 0;
         float chargeDuration = 0.0f;
         float chargeProgress = 0.0f;
@@ -480,6 +500,7 @@ private:
         uint32_t chargeColor = 0;
         std::string chargeEffect;
         std::array<EffectHandle, 4> chargeEffects;
+        EffectHandle ambientEffect;
         float fxScale = 1.0f;
         // Current head look relative to the body's facing (radians), eased toward the party on its own clock.
         float lookYaw = 0.0f;
@@ -524,6 +545,7 @@ private:
         float lengthSeconds = 0.0f;
         uint32_t lastTicks = 0;
         uint32_t randomState = 0x6d2b79f5u;
+        EffectHandle ambientEffect;
     };
     std::optional<InspectPortraitState> m_inspectPortrait;
     void releaseInspectPortrait();
@@ -761,23 +783,32 @@ private:
         uint32_t itemId = 0;
         int16_t sectorId = -1;
         bool seen = false;
+        bool placeholder = false;
+        // The resting pose, fitted once where the item came to rest.
+        std::optional<std::array<float, 3>> restPosition;
+        WorldItemRestingPose restPose;
+        // The looping sparkle of a valuable, artifact or quest item (WorldItemSparkle), near the party.
+        EffectHandle sparkle;
     };
     struct LoadedItemModel
     {
-        // Null when the model failed to load (the item keeps its sprite).
+        // Null when the model failed to load (its items draw the placeholder).
         std::shared_ptr<const Engine::ModelAsset> asset;
         float scale = 1.0f;
     };
-    ItemModelBindings m_itemModelBindings;
     const Engine::AssetFileSystem *m_pItemModelAssets = nullptr;
-    // By icon, loaded on first use.
+    // By model path, loaded on first use.
     std::unordered_map<std::string, LoadedItemModel> m_loadedItemModels;
+    LoadedItemModel m_missingItemModel;
+    // Icons already reported as drawing the placeholder this session.
+    std::unordered_set<std::string> m_reportedMissingItemIcons;
     std::unordered_map<uint32_t, ItemModel> m_itemModels;
+    float m_itemModelSeconds = 0.0f;
     const ItemTable *m_pItemTable = nullptr;
-    std::function<std::optional<ItemGround>(float x, float y, float z)> m_itemGroundSampler;
-    const ItemModelBinding *itemModelBinding(uint32_t itemId, std::string *pIcon = nullptr) const;
-    const LoadedItemModel *loadedItemModel(uint32_t itemId);
-    void syncItemModels(GameSession &session);
+    ItemGroundSampler m_itemGroundSampler;
+    // An item's model, or the placeholder (placeholder set) when its icon has none or its model fails to load.
+    const LoadedItemModel &loadedItemModel(const GameplayWorldItemPresentationState &item, bool &placeholder);
+    void syncItemModels(GameSession &session, float deltaSeconds);
     // The model binding of a projectile's object, or null.
     const LoadedProjectileModel *projectileModelBinding(uint16_t objectDescriptionId) const;
     void syncProjectileModels(GameSession &session);

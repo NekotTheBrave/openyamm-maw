@@ -844,12 +844,12 @@ TEST_CASE("shared actor AI pursues a remembered party target without attack line
     CHECK(*update.state.motionState == ActorAiMotionState::Pursuing);
     CHECK(update.movementIntent.action == ActorAiMovementAction::Pursue);
     CHECK(update.movementIntent.applyMovement);
-    CHECK(update.movementIntent.moveSpeed == doctest::Approx(300.0f));
+    CHECK(update.movementIntent.moveSpeed == doctest::Approx(400.0f));
     CHECK_FALSE(update.movementIntent.inMeleeRange);
     CHECK_FALSE(update.attackRequest.has_value());
 }
 
-TEST_CASE("shared actor AI scales pursuit speed and caps it")
+TEST_CASE("shared actor AI uses original pursuit speed multiplier and cap")
 {
     GameplayActorAiSystem system;
     ActorAiFrameFacts frame = makeFrame();
@@ -1928,7 +1928,7 @@ TEST_CASE("shared actor AI crowd steers while flying")
     CHECK(*update.state.crowdSideSign != 0);
 }
 
-TEST_CASE("shared actor AI continues fleeing with base speed")
+TEST_CASE("shared actor AI continues fleeing with original flee speed multiplier")
 {
     GameplayActorAiSystem system;
     ActorAiFrameFacts frame = makeFrame();
@@ -1950,7 +1950,7 @@ TEST_CASE("shared actor AI continues fleeing with base speed")
     CHECK(*update.state.motionState == ActorAiMotionState::Fleeing);
     CHECK(update.movementIntent.action == ActorAiMovementAction::Flee);
     CHECK(update.movementIntent.applyMovement);
-    CHECK(update.movementIntent.moveSpeed == doctest::Approx(180.0f));
+    CHECK(update.movementIntent.moveSpeed == doctest::Approx(360.0f));
 }
 
 TEST_CASE("shared actor AI preserves crowd steering instead of overwriting it with contact flee")

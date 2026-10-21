@@ -5,6 +5,7 @@
 #include "game/render/CinematicGrading.h"
 #include "game/app/GameInputSystem.h"
 #include "game/app/GameSettings.h"
+#include "game/app/GameUpdater.h"
 #include "game/app/GameSession.h"
 #include "engine/ApplicationConfig.h"
 #include "engine/EngineApplication.h"
@@ -37,6 +38,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace OpenYAMM::Game
@@ -192,6 +194,8 @@ private:
     bool activateWorldForMapFileName(const std::string &mapFileName);
     bool applyCurrentSessionToRuntime(bool initializeView);
     bool processPendingMapMove();
+    bool requestAutosaveBeforeMapMove();
+    bool activeViewSavePreviewCapturePending() const;
     bool processPendingWinGame();
     bool processPendingEventMovie();
     bool processPendingReturnToMainMenu();
@@ -274,6 +278,7 @@ private:
     void renderFrame(int width, int height, float mouseWheelDelta, float deltaSeconds);
     void updateScreenshotCaptureFrame();
     bool applyScreenshotTourShotPose(const ScreenshotTourShot &shot);
+    void runTourConsoleLine(const std::string &line, std::string_view logPrefix);
     bool advanceDebugGameMinutes(float minutes);
     bool setDebugClockMinute(int targetMinute);
     void advanceScreenshotTourAfterCapture(size_t shotIndex, bool success);
@@ -336,6 +341,10 @@ private:
     int m_loadingOverlayCurrentProgressPercent = 0;
     uint64_t m_loadingOverlayNextAnimationFrameTick = 0;
     bool m_mainMenuChildScreensPrepared = false;
+    // The Settings section the menu last showed; kept for the session only.
+    std::string m_settingsMenuSection = "gameplay";
+    // Null where the game does not update itself (development runs).
+    std::unique_ptr<GameUpdater> m_pUpdater;
     int m_lastFrameWidth = 640;
     int m_lastFrameHeight = 480;
     std::optional<std::string> m_pendingPartyDefeatRespawnMapFileName;
@@ -354,6 +363,8 @@ private:
     bool m_debugConsoleFrameBegun = false;
     bool m_debugConsoleCommandsRegistered = false;
     std::optional<PendingDebugMapJump> m_pendingDebugMapJump;
+    // A map move held for a few frames while the leaving map's autosave captures its preview.
+    std::optional<EventRuntimeState::PendingMapMove> m_mapMoveAwaitingAutosave;
     std::vector<EffectHandle> m_debugEffectHandles;
     std::vector<Engine::ModelInstanceHandle> m_debugModelHandles;
     ScreenshotCaptureService m_screenshotCaptureService;

@@ -15,9 +15,9 @@ void main()
     gl_Position = mul(u_viewProj, vec4(v_worldPosition, 1.0));
     v_texcoord0 = modelStaticTexcoord(a_texcoord0);
     v_worldNormal = modelStaticNormal(a_normal, u_modelCamera.xyz);
-    if (u_modelOutline.w > 1.5)
+    if (u_modelOutline.w > 0.5 && u_modelOutline.w < 1.5)
     {
-        // Hover outline shell (1 = the depth prepass, unchanged): about 2-3 pixels at any distance.
+        // Hover outline shell (1), as in vs_model; 2 is the depth prepass, unchanged: about 2-3 pixels at any distance.
         float thickness = clamp(length(v_worldPosition - u_modelCamera.xyz) * 0.005, 0.5, 24.0);
         v_worldPosition += normalize(v_worldNormal) * thickness;
         gl_Position = mul(u_viewProj, vec4(v_worldPosition, 1.0));

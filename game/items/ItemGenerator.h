@@ -47,6 +47,15 @@ public:
         Party *pParty,
         std::mt19937 &rng,
         const std::function<bool(const ItemDefinition &)> &filter = {});
+    // MM8 potion power by where the potion comes from: random treasure 2d4 x treasure level, placed on a map or in
+    // a chest 5-19, carried by a monster 2-8. Each leaves anything but a potion without power untouched.
+    static void assignTreasurePotionPower(
+        InventoryItem &item,
+        const ItemTable &itemTable,
+        int treasureLevel,
+        std::mt19937 &rng);
+    static void assignPlacedPotionPower(InventoryItem &item, const ItemTable &itemTable, std::mt19937 &rng);
+    static void assignMonsterPotionPower(InventoryItem &item, const ItemTable &itemTable, std::mt19937 &rng);
     static std::optional<uint32_t> chooseRandomBaseItem(
         const ItemTable &itemTable,
         int treasureLevel,

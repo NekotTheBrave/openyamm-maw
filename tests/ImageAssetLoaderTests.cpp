@@ -273,7 +273,7 @@ TEST_CASE("restored icon preference settings round trip without changing explici
 {
     using namespace OpenYAMM;
     Game::GameSettings settings = Game::GameSettings::createDefault();
-    CHECK_FALSE(settings.assetScaleProfile.preferRestoredIcons);
+    CHECK(settings.assetScaleProfile.preferRestoredIcons);
     settings.assetScaleProfile.icons = Engine::AssetScaleTier::X4;
     const std::filesystem::path path = std::filesystem::temp_directory_path()
         / "openyamm_restored_icons_settings.ini";

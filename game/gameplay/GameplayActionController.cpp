@@ -1008,6 +1008,8 @@ GameplayActionController::PartyAttackExecutionResult GameplayActionController::e
     bool killed = false;
     std::optional<int> appliedMeleeDamage;
     const bool hadMeleeTarget = target.has_value() && targetInMeleeRange;
+    // A hit the target fully resists plays out as a miss, as in the original game.
+    bool hitWithoutDamage = false;
 
     if (attack.mode == CharacterAttackMode::Melee)
     {
@@ -1016,17 +1018,18 @@ GameplayActionController::PartyAttackExecutionResult GameplayActionController::e
         if (target
             && targetInMeleeRange
             && attack.hit
-            && attack.damage > 0
             && config.pWorldRuntime != nullptr)
         {
             const int appliedDamage = resolveMeleeAppliedDamage(config, *pAttacker, *target, attack, rng);
             appliedMeleeDamage = appliedDamage;
+            hitWithoutDamage = !GameplayCombatController::partyHitLands(appliedDamage, attack.stunTarget);
             const int beforeHp = target->currentHp;
             const std::optional<MeleeContact> contact = resolveMeleeContact(config, *target);
-            attacked = config.pWorldRuntime->applyPartyAttackMeleeDamage(
-                target->actorIndex,
-                appliedDamage,
-                toRuntimeWorldPoint(config.partyPosition));
+            attacked = !hitWithoutDamage
+                && config.pWorldRuntime->applyPartyAttackMeleeDamage(
+                    target->actorIndex,
+                    appliedDamage,
+                    toRuntimeWorldPoint(config.partyPosition));
 
             if (attacked)
             {
@@ -1087,7 +1090,7 @@ GameplayActionController::PartyAttackExecutionResult GameplayActionController::e
         }
 
         // A miss shows the blow passing the target; the swing sound already plays.
-        if (target && targetInMeleeRange && attack.canAttack && !attack.hit)
+        if (target && targetInMeleeRange && attack.canAttack && (!attack.hit || hitWithoutDamage))
         {
             const std::optional<MeleeContact> contact = resolveMeleeContact(config, *target);
             const std::optional<MeleeContactEffectPlacement> blow = contact

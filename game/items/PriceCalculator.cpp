@@ -137,18 +137,19 @@ int PriceCalculator::playerMerchant(const Character *pCharacter, int effectiveRe
     const int merchantBonus = std::max(0, pCharacter->merchantBonus);
     const int skillBonus = pCharacter->skillBonus("Merchant");
 
-    if (pMerchant == nullptr || pMerchant->mastery == SkillMastery::None)
-    {
-        return std::min(merchantBonus + skillBonus - effectiveReputation, 100);
-    }
+    const bool hasOwnSkill = pMerchant != nullptr && pMerchant->mastery != SkillMastery::None;
 
-    if (pMerchant->mastery == SkillMastery::Grandmaster)
+    if (hasOwnSkill && pMerchant->mastery == SkillMastery::Grandmaster)
     {
         return 100;
     }
 
-    const int bonus = (static_cast<int>(pMerchant->level) + skillBonus)
-        * masteryMerchantMultiplier(pMerchant->mastery) + merchantBonus;
+    // Without a Merchant skill of their own, hireling and item levels trade at Normal mastery.
+    const int skillLevel = (hasOwnSkill ? static_cast<int>(pMerchant->level) : 0) + skillBonus;
+    const SkillMastery mastery = hasOwnSkill ? pMerchant->mastery : SkillMastery::Normal;
+    const int bonus = hasOwnSkill || skillLevel > 0
+        ? skillLevel * masteryMerchantMultiplier(mastery) + merchantBonus
+        : 0;
 
     if (bonus <= 0)
     {

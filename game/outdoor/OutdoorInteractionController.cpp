@@ -1,5 +1,7 @@
 #include "game/outdoor/OutdoorInteractionController.h"
 #include "game/gameplay/InteractiveDecorationRules.h"
+#include "game/items/WorldItemShape.h"
+#include "game/items/ItemRuntime.h"
 #include "game/outdoor/OutdoorGameView.h"
 #include "game/outdoor/OutdoorBillboardRenderer.h"
 #include "game/events/EventRuntime.h"
@@ -73,8 +75,6 @@ constexpr float InteractionDecorationMinHalfExtent = 24.0f;
 constexpr float InteractionDecorationMinHeight = 48.0f;
 constexpr float InteractionActorMinHalfExtent = 32.0f;
 constexpr float InteractionActorMinHeight = 96.0f;
-constexpr float InteractionWorldItemMinHalfExtent = 20.0f;
-constexpr float InteractionWorldItemMinHeight = 40.0f;
 constexpr float InteractionSpriteObjectMinHalfExtent = 24.0f;
 constexpr float InteractionSpriteObjectMinHeight = 48.0f;
 bool outdoorFaceHasInvisibleAttribute(uint32_t attributes)
@@ -1418,6 +1418,7 @@ void OutdoorInteractionController::presentPendingEventDialog(
                 && (result.resolvedContext.kind == DialogueContextKind::NpcTalk
                     || result.resolvedContext.kind == DialogueContextKind::NpcNews)
                 && result.resolvedContext.sourceId != 0
+                && result.resolvedContext.sourceActorIndex.has_value()
                 && view.m_pOutdoorPartyRuntime != nullptr)
             {
                 const size_t activeMemberIndex = view.m_pOutdoorPartyRuntime->party().activeMemberIndex();
@@ -1967,6 +1968,13 @@ GameplayWorldHit OutdoorInteractionController::translateInspectHitToGameplayWorl
         worldItemHit.objectSpriteId = inspectHit.objectSpriteId;
         worldItemHit.hitPoint = hitPoint;
         worldItemHit.distance = inspectHit.distance;
+        const OutdoorWorldRuntime::WorldItemState *pWorldItem = view.m_pOutdoorWorldRuntime != nullptr
+            ? view.m_pOutdoorWorldRuntime->worldItemState(inspectHit.bModelIndex)
+            : nullptr;
+        if (pWorldItem != nullptr && !view.data().itemTable().hasGroundModel(pWorldItem->item.objectDescriptionId))
+        {
+            worldItemHit.missingGroundModelItemId = pWorldItem->item.objectDescriptionId;
+        }
         worldHit.worldItem = worldItemHit;
         return worldHit;
     }
@@ -4180,23 +4188,16 @@ OutdoorGameView::InspectHit OutdoorInteractionController::inspectBModelFace(
                 continue;
             }
 
-            const float halfExtent =
-                std::max(InteractionWorldItemMinHalfExtent, static_cast<float>(pWorldItem->radius));
-            const float height =
-                std::max(InteractionWorldItemMinHeight, static_cast<float>(pWorldItem->height));
-            float distance = 0.0f;
-            const bx::Vec3 minBounds = {
-                pWorldItem->x - halfExtent,
-                pWorldItem->y - halfExtent,
-                pWorldItem->z
-            };
-            const bx::Vec3 maxBounds = {
-                pWorldItem->x + halfExtent,
-                pWorldItem->y + halfExtent,
-                pWorldItem->z + height
-            };
+            // The item's model box, turned as it lies (GROUND_ITEMS_3D_BEHAVIOUR.md section 5).
+            const std::optional<float> pickDistance = intersectWorldItemPickBox(
+                OutdoorWorldRuntime::worldItemModel(view.data().itemTable(), *pWorldItem),
+                worldItemYawRadians(pWorldItem->worldItemId),
+                {pWorldItem->x, pWorldItem->y, pWorldItem->z},
+                {rayOrigin.x, rayOrigin.y, rayOrigin.z},
+                {rayDirection.x, rayDirection.y, rayDirection.z});
+            const float distance = pickDistance.value_or(0.0f);
 
-            if (intersectRayAabb(rayOrigin, rayDirection, minBounds, maxBounds, distance)
+            if (pickDistance
                 && isVisibleInspectDistance(distance)
                 && (!bestHit.hasHit
                     || distance < bestHit.distance
@@ -5110,7 +5111,7 @@ bool OutdoorInteractionController::tryActivateWorldItemInspectEvent(
 
     const ItemDefinition *pItemDefinition = view.data().itemTable().get(pWorldItem->item.objectDescriptionId);
     const std::string itemName =
-        pItemDefinition != nullptr && !pItemDefinition->name.empty() ? pItemDefinition->name : "item";
+        pItemDefinition != nullptr ? ItemRuntime::foundItemName(*pItemDefinition) : "item";
 
     if (pWorldItem->isGold)
     {

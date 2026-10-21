@@ -27,6 +27,8 @@ namespace
 {
 constexpr float NearHoverStatusDistance = 1024.0f;
 constexpr float ActorHoverStatusDistance = 8192.0f;
+// A hovered item within reach reads "Get <name>", as the native status bar does (depth 0x200).
+constexpr float WorldItemGetStatusDistance = 512.0f;
 constexpr uint64_t HoverInspectRefreshNanoseconds = 33 * 1000 * 1000;
 constexpr uint64_t ContextActionDirectionRefreshNanoseconds = 33 * 1000 * 1000;
 constexpr uint64_t ContextActionRefreshNanoseconds = 250 * 1000 * 1000;
@@ -65,6 +67,39 @@ void appendLearnedEventEffect(
     }
 }
 
+// Names a hovered item as its inventory would: an unidentified item by its class, an enchanted one in full.
+void resolveWorldItemHoverName(
+    GameplayHoverStatusPayload &payload,
+    const IGameplayWorldRuntime &worldRuntime,
+    const GameplayScreenRuntime *pScreenRuntime)
+{
+    std::optional<GameplayWorldItemTargetHit> &worldItem = payload.worldHit.worldItem;
+
+    if (pScreenRuntime == nullptr || payload.worldHit.kind != GameplayWorldHitKind::WorldItem || !worldItem)
+    {
+        return;
+    }
+
+    const ItemTable *pItemTable = pScreenRuntime->itemTable();
+    GameplayWorldItemInspectState itemState = {};
+
+    if (pItemTable == nullptr || !worldRuntime.worldItemInspectState(worldItem->worldItemIndex, itemState))
+    {
+        return;
+    }
+
+    const ItemDefinition *pItemDefinition = pItemTable->get(itemState.item.objectDescriptionId);
+
+    if (pItemDefinition != nullptr)
+    {
+        worldItem->displayName = ItemRuntime::displayName(
+            itemState.item,
+            *pItemDefinition,
+            pScreenRuntime->standardItemEnchantTable(),
+            pScreenRuntime->specialItemEnchantTable());
+    }
+}
+
 #if defined(__ANDROID__)
 bool usesMobileGroundTargetConfirm(uint32_t spellId)
 {
@@ -97,13 +132,6 @@ GameplayWorldHit pickPrecisionContextActionTarget(
     }
 
     return {};
-}
-
-bool hasActiveLootView(const GameplayScreenRuntime &runtime)
-{
-    const IGameplayWorldRuntime *pWorldRuntime = runtime.worldRuntime();
-    return pWorldRuntime != nullptr
-        && (pWorldRuntime->activeChestView() != nullptr || pWorldRuntime->activeCorpseView() != nullptr);
 }
 
 float vecDeltaSquared(const bx::Vec3 &left, const bx::Vec3 &right)
@@ -489,9 +517,7 @@ std::string heldItemDisplayName(const GameplayScreenRuntime &runtime)
     const ItemDefinition *pItemDefinition =
         pItemTable != nullptr ? pItemTable->get(heldItem.item.objectDescriptionId) : nullptr;
 
-    return pItemDefinition != nullptr && !pItemDefinition->name.empty()
-        ? pItemDefinition->name
-        : "item";
+    return pItemDefinition != nullptr ? ItemRuntime::displayName(heldItem.item, *pItemDefinition) : "item";
 }
 
 void setHeldItemDropContextAction(GameplayScreenRuntime &runtime)
@@ -556,9 +582,7 @@ std::string worldItemDisplayName(
     const ItemDefinition *pItemDefinition =
         pItemTable != nullptr ? pItemTable->get(worldItemState.item.objectDescriptionId) : nullptr;
 
-    return pItemDefinition != nullptr && !pItemDefinition->name.empty()
-        ? pItemDefinition->name
-        : "item";
+    return pItemDefinition != nullptr ? ItemRuntime::foundItemName(*pItemDefinition) : "item";
 }
 
 bool canStoreWorldItemInInventory(
@@ -1069,7 +1093,9 @@ GameplayInteractionController::HoverStateResult GameplayInteractionController::u
     }
 
     appendLearnedEventEffect(payload, *pWorldRuntime, input.pScreenRuntime);
-    const std::optional<std::string> statusText = resolveHoverStatusText(payload);
+    resolveWorldItemHoverName(payload, *pWorldRuntime, input.pScreenRuntime);
+    const bool heldItemActive = input.pScreenRuntime != nullptr && input.pScreenRuntime->heldInventoryItem().active;
+    const std::optional<std::string> statusText = resolveHoverStatusText(payload, heldItemActive);
     result.hitKind = payload.worldHit.kind;
     result.worldHit = payload.worldHit;
     result.eventTargetStatusText = payload.eventTargetStatusText;
@@ -1299,13 +1325,35 @@ GameplayInteractionController::updateHeldItemWorldInteraction(
 }
 
 std::optional<std::string> GameplayInteractionController::resolveHoverStatusText(
-    const GameplayHoverStatusPayload &payload)
+    const GameplayHoverStatusPayload &payload,
+    bool heldItemActive)
 {
     const GameplayWorldHit &hit = payload.worldHit;
 
     if (!hit.hasHit)
     {
         return std::nullopt;
+    }
+
+    if (hit.kind == GameplayWorldHitKind::WorldItem)
+    {
+        if (!hit.worldItem || hit.worldItem->displayName.empty())
+        {
+            return std::nullopt;
+        }
+
+        std::string text = !heldItemActive && hit.worldItem->distance < WorldItemGetStatusDistance
+            ? "Get " + hit.worldItem->displayName
+            : hit.worldItem->displayName;
+
+        // An item drawing the missing-model placeholder says so, so that players report it.
+        if (hit.worldItem->missingGroundModelItemId != 0)
+        {
+            text += " [missing 3D model for item " + std::to_string(hit.worldItem->missingGroundModelItemId)
+                + " - please report]";
+        }
+
+        return text;
     }
 
     if (hit.kind == GameplayWorldHitKind::Actor)
@@ -1356,13 +1404,7 @@ GameplayInteractionController::resolveWorldInteractionPointerPolicy(
         (input.pendingSpellActive || input.heldItemActive || !policy.useCenterGameplayPoint)
             && input.pointerOverPortrait;
     policy.activationPressed = input.keyboardActivationPressed && !input.rightMousePressed;
-    policy.attackPressed =
-        (input.keyboardAttackPressed && !input.rightMousePressed)
-#if !defined(__ANDROID__)
-        || (policy.useCenterGameplayPoint && input.leftMousePressed && !input.rightMousePressed);
-#else
-        ;
-#endif
+    policy.attackPressed = input.keyboardAttackPressed && !input.rightMousePressed;
     return policy;
 }
 
@@ -1896,35 +1938,22 @@ GameplayInteractionController::updateWorldInteractionFrame(
         }
     }
 
-    const bool hadLootViewBeforeActivation = hasActiveLootView(runtime);
     GameplayWorldHit keyboardActivationHit = {};
 
+    // Use activates only what is under the cursor or crosshair. Unlike Trigger and the context popup, it never
+    // falls back to the nearest interactable on screen.
     if (pointerPolicy.activationPressed && worldReady && pWorldRuntime != nullptr)
     {
-        const GameplayContextActionState &contextActionState = runtime.contextActionStateReadOnly();
-        const bool hasPrimaryContextAction =
-            contextActionState.visible && contextActionState.primaryIndex < contextActionState.actions.size();
-        const bool contextActionRefreshedThisFrame =
-            contextActionState.lastUpdateNanoseconds == currentTickNanoseconds;
-
-        if (hasPrimaryContextAction && contextActionRefreshedThisFrame)
-        {
-            keyboardActivationHit = contextActionState.actions[contextActionState.primaryIndex].worldHit;
-        }
-        else
-        {
-            const GameplayWorldPickRequest keyboardActivationPickRequest =
-                pWorldRuntime->buildWorldPickRequest(
-                    GameplayWorldPickRequestInput{
-                        .screenX = pointerPolicy.inspectScreenX,
-                        .screenY = pointerPolicy.inspectScreenY,
-                        .screenWidth = input.screenWidth,
-                        .screenHeight = input.screenHeight,
-                        .includeRay = true,
-                    });
-            keyboardActivationHit =
-                pickPrecisionContextActionTarget(*pWorldRuntime, keyboardActivationPickRequest);
-        }
+        const GameplayWorldPickRequest keyboardActivationPickRequest =
+            pWorldRuntime->buildWorldPickRequest(
+                GameplayWorldPickRequestInput{
+                    .screenX = pointerPolicy.inspectScreenX,
+                    .screenY = pointerPolicy.inspectScreenY,
+                    .screenWidth = input.screenWidth,
+                    .screenHeight = input.screenHeight,
+                    .includeRay = true,
+                });
+        keyboardActivationHit = pWorldRuntime->pickMouseInteractionTarget(keyboardActivationPickRequest);
     }
 
     const KeyboardActivationInteractionResult keyboardActivationResult =
@@ -1954,13 +1983,6 @@ GameplayInteractionController::updateWorldInteractionFrame(
         result.keyboardActivationActivated = true;
         refreshWorldHover(standardHoverInput, pWorldRuntime);
         runtime.clearContextActionState();
-
-        const bool hasLootViewAfterActivation = hasActiveLootView(runtime);
-
-        if (!hadLootViewBeforeActivation && hasLootViewAfterActivation)
-        {
-            overlayInteractionState.lootChestItemLatch = true;
-        }
     }
 
     const GameplayActionController::AttackActionDecision attackActionDecision =

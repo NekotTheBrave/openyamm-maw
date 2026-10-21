@@ -67,6 +67,8 @@ constexpr float ShownPrecipitationThreshold = 0.03f;
 // Matches the sky: a larger game-clock jump snaps the weather instead of fading it.
 constexpr double WeatherSnapGameMinutes = 30.0;
 constexpr float OutdoorFxLightRefreshIntervalSeconds = 1.0f / 60.0f;
+// Share of the sky (ambient) light that reaches creature models as a directional key light (fs_model.sc).
+constexpr float OutdoorCreatureKeyFraction = 0.4f;
 constexpr float OutdoorTerrainChunkWorldSize = 4096.0f;
 
 bool sameWorldFxLightEmitter(const WorldFxLightEmitter &left, const WorldFxLightEmitter &right)
@@ -1464,15 +1466,6 @@ void OutdoorRenderer::applyOutdoorFxLightUniforms(OutdoorGameView &view, const b
                   << " combined_depth_slices=" << spriteStats.combinedDepthSlices
                   << " combined_slice_texture_groups=" << spriteStats.combinedDepthSliceTextureGroups
                   << " combined_slice_items=" << spriteStats.combinedDepthSliceItems
-                  << " world_item_items=" << spriteStats.worldItemItems
-                  << " world_item_batch_submits=" << spriteStats.worldItemBatchSubmits
-                  << " world_item_batched=" << spriteStats.worldItemBatchedItems
-                  << " world_item_submits=" << spriteStats.worldItemSubmits
-                  << " world_item_outline_submits=" << spriteStats.worldItemOutlineSubmits
-                  << " world_item_texture_switches=" << spriteStats.worldItemTextureSwitches
-                  << " world_item_depth_slices=" << spriteStats.worldItemDepthSlices
-                  << " world_item_slice_texture_groups=" << spriteStats.worldItemDepthSliceTextureGroups
-                  << " world_item_slice_items=" << spriteStats.worldItemDepthSliceItems
                   << " projectile_items=" << spriteStats.runtimeProjectileItems
                   << " projectile_batch_submits=" << spriteStats.runtimeProjectileBatchSubmits
                   << " projectile_batched=" << spriteStats.runtimeProjectileBatchedItems
@@ -5298,7 +5291,7 @@ void OutdoorRenderer::renderWorldPasses(OutdoorGameView &view, uint16_t viewWidt
 
     if (view.m_showSpriteObjects)
     {
-        OutdoorBillboardRenderer::renderRuntimeWorldItems(view, transparentView, pViewMatrix, cameraPosition, frustum);
+        OutdoorBillboardRenderer::outlineRuntimeWorldItems(view, pViewMatrix);
         OutdoorBillboardRenderer::renderSpriteObjectBillboards(view, transparentView, pViewMatrix, cameraPosition);
     }
 
@@ -5328,6 +5321,11 @@ void OutdoorRenderer::renderWorldPasses(OutdoorGameView &view, uint16_t viewWidt
     }
 
     ModelSceneLighting modelScene = modelSceneLighting(view, pAtmosphereState, pLightingData, farClipDistance);
+    // Creatures take part of their sky light from a camera-side key, as indoors: without it the ambient, which lights
+    // every side alike, leaves their normal-map relief flat out of the sun.
+    modelScene.creatures.keyDirection =
+        Engine::spriteKeyLightDirection({cameraForward.x, cameraForward.y, cameraForward.z});
+    modelScene.creatures.keyFraction = OutdoorCreatureKeyFraction;
     // Terrain bushes keep no point lights: foliage has no specular to take from them.
     const Engine::ModelRenderLighting bushLighting = modelScene.decorations;
     modelScene.creatures.pLightGrid = &view.m_lightGrid;

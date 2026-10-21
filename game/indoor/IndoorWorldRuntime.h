@@ -191,6 +191,7 @@ public:
         std::vector<std::optional<ChestViewState>> materializedChestViews;
         std::optional<ChestViewState> activeChestView;
         std::vector<std::optional<CorpseViewState>> mapActorCorpseViews;
+        std::vector<std::optional<CorpseViewState>> mapActorRevealedLoot;
         std::optional<CorpseViewState> activeCorpseView;
         std::vector<GameplayActorSpellEffectState> mapActorSpellEffectStates;
         std::vector<MapActorAiState> mapActorAiStates;
@@ -381,6 +382,7 @@ public:
         return m_actorHitFeedback;
     }
     std::optional<uint32_t> corpseLootValue(size_t actorIndex) const override;
+    std::optional<CorpseViewState> revealActorLoot(size_t actorIndex) override;
     bool tryStealFromActor(size_t actorIndex, uint32_t successRoll, uint32_t caughtRoll) override;
     bool actorInspectState(
         size_t actorIndex,
@@ -539,6 +541,7 @@ public:
     void commitActiveCorpseView() override;
     // Rolls the actor's corpse loot once (at death, before a steal, or after loading) into its corpse view.
     bool ensureMapActorCorpseView(size_t actorIndex);
+    std::vector<uint32_t> mapActorGuaranteedItemIds(size_t actorIndex) const;
     // After a load: dead actors whose corpse loot was never rolled get it on the first AI update.
     void rollPendingCorpseLoot();
     bool openMapActorCorpseView(size_t actorIndex);
@@ -867,6 +870,8 @@ private:
     std::optional<ChestViewState> m_activeChestView;
     std::optional<GameplayWorldPoint> m_pendingEventSourcePoint;
     std::vector<std::optional<CorpseViewState>> m_mapActorCorpseViews;
+    // Gold and random item that Telepathy rolled for a living actor; its corpse takes them at death.
+    std::vector<std::optional<CorpseViewState>> m_mapActorRevealedLoot;
     bool m_corpseLootPending = false;
     std::optional<CorpseViewState> m_activeCorpseView;
     std::vector<MapActorAiState> m_mapActorAiStates;

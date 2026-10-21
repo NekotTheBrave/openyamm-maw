@@ -284,11 +284,13 @@ std::optional<OutdoorBitmapTexture> loadCookedSurfaceTexture(
     Engine::DirectoryAssetPathCache &directoryAssetPathsByPath,
     Engine::AssetPathLookupCache &assetPathByKey,
     Engine::BinaryAssetCache *pBinaryFilesByPath);
+// A summoned monster's frames, and those of the tier its model is sized from (pActorModels: scale_reference).
 bool ensureMonsterSpriteFramesLoaded(
     const Engine::AssetFileSystem &assetFileSystem,
     const MonsterTable &monsterTable,
     int16_t monsterId,
-    SpriteFrameTable &spriteFrameTable);
+    SpriteFrameTable &spriteFrameTable,
+    const ActorModelManifest *pActorModels = nullptr);
 
 enum class MapLoadPurpose
 {

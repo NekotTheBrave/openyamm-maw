@@ -132,6 +132,8 @@ struct EventRuntimeState
         std::optional<int32_t> directionDegrees;
         bool useMapStartPosition = false;
         bool useFullscreenLoading = false;
+        // Travel time, food or fare were already spent, so the travel autosave belongs to the arrival map.
+        bool travelTimeApplied = false;
         std::string traceSourceKind;
         uint32_t traceSourceId = 0;
         uint32_t traceActionId = 0;
@@ -155,6 +157,8 @@ struct EventRuntimeState
         uint32_t participantPictureId = 0;
         std::optional<std::string> titleOverride;
         std::optional<PendingMapMove> transitionMapMove;
+        // Walking off an outdoor map edge (sourceId holds the MapBoundaryEdge); transitionMapMove is the arrival.
+        bool boundaryTravel = false;
         uint32_t transitionTextId = 0;
         uint32_t transitionImageId = 0;
         std::optional<MapNoteSourcePoint> mapNoteSourcePoint;
@@ -451,6 +455,7 @@ struct EventRuntimeState
     std::unordered_map<uint32_t, int32_t> variables;
     std::unordered_map<std::string, int32_t> namedMapVars;
     std::unordered_map<std::string, int32_t> namedGlobalVars;
+    // Legacy saves only: journal map notes now live on the party and load migrates these there.
     std::unordered_map<uint32_t, RuntimeMapNote> runtimeMapNotes;
     std::unordered_map<std::string, SavedLocation> savedLocations;
     std::unordered_map<uint64_t, TransportRouteOverride> transportRouteOverrides;
@@ -572,6 +577,8 @@ void clearTransientEventRuntimeState(EventRuntimeState &runtimeState);
 std::vector<uint32_t> consumeOpenedChestIds(EventRuntimeState &runtimeState);
 std::vector<EventRuntimeState::OpenedChestRequest> consumeOpenedChestRequests(EventRuntimeState &runtimeState);
 uint32_t normalizedHistoryContinentId(uint32_t continentId);
+// Game minute of a history entry every party knows from the start, if historyId is one.
+std::optional<int32_t> forwardHistoryEntryTime(uint32_t continentId, uint32_t historyId);
 void setActiveHistoryContinent(EventRuntimeState &runtimeState, uint32_t continentId);
 const std::unordered_map<uint32_t, int32_t> &historyEventTimesForActiveContinent(
     const EventRuntimeState &runtimeState);
@@ -732,7 +739,9 @@ public:
         uint32_t index = 0;
     };
 
-    static VariableRef decodeVariable(uint32_t rawId);
+    // A packed selector: index * 65536 + tag. 64 bits wide, so QBit ids above 65535 (the worlds' own blocks, Hesper's
+    // 100000+) survive the packing.
+    static VariableRef decodeVariable(uint64_t rawId);
     static int32_t getVariableValue(
         const EventRuntimeState &runtimeState,
         const VariableRef &variable,

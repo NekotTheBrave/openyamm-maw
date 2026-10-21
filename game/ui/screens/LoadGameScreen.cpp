@@ -1,6 +1,7 @@
 #include "game/ui/screens/LoadGameScreen.h"
 
 #include "game/maps/SaveGame.h"
+#include "engine/UserDataPaths.h"
 
 #include <SDL3/SDL.h>
 
@@ -181,6 +182,7 @@ LoadGameScreen::LoadGameScreen(const Engine::AssetFileSystem &assetFileSystem, c
 
 std::vector<LoadGameScreen::SaveSlotSummary> LoadGameScreen::s_cachedSlots;
 bool LoadGameScreen::s_cachedSlotsValid = false;
+size_t LoadGameScreen::s_cachedNewerSaveCount = 0;
 
 void LoadGameScreen::invalidateCachedSaveSlots()
 {
@@ -392,6 +394,69 @@ void LoadGameScreen::commitSave()
     }
 }
 
+void LoadGameScreen::requestImportSaves()
+{
+    m_error.clear();
+    m_folderPick = std::make_shared<FolderPick>();
+    SDL_ShowOpenFolderDialog(
+        [](void *pUserData, const char *const *pFileList, int)
+        {
+            std::unique_ptr<std::shared_ptr<FolderPick>> pPick(static_cast<std::shared_ptr<FolderPick> *>(pUserData));
+            std::lock_guard lock((*pPick)->mutex);
+            if (pFileList != nullptr && pFileList[0] != nullptr)
+            {
+                (*pPick)->folder = std::filesystem::path(pFileList[0]);
+            }
+            (*pPick)->finished = true;
+        },
+        new std::shared_ptr<FolderPick>(m_folderPick), nullptr, nullptr, false);
+}
+
+void LoadGameScreen::finishImportSaves()
+{
+    if (m_folderPick == nullptr)
+    {
+        return;
+    }
+
+    std::optional<std::filesystem::path> folder;
+    {
+        std::lock_guard lock(m_folderPick->mutex);
+        if (!m_folderPick->finished)
+        {
+            return;
+        }
+        folder = m_folderPick->folder;
+    }
+    m_folderPick.reset();
+
+    if (!folder)
+    {
+        return;
+    }
+
+    const Engine::SaveImportResult result = Engine::importSaveFiles(*folder, "saves");
+    invalidateCachedSaveSlots();
+    refreshSaveSlots();
+    m_revealSelection = true;
+
+    std::string body = result.imported == 1 ? "Imported 1 save." : "Imported " + std::to_string(result.imported)
+                                                                    + " saves.";
+    if (result.imported == 0 && result.skipped == 0 && result.failed == 0)
+    {
+        body = "No saves were found in that folder or in a \"saves\" folder inside it.";
+    }
+    if (result.skipped > 0)
+    {
+        body += "\n" + std::to_string(result.skipped) + " skipped: a save with the same name already exists.";
+    }
+    if (result.failed > 0)
+    {
+        body += "\n" + std::to_string(result.failed) + " could not be copied.";
+    }
+    confirm("Import Saves", body, {"OK"}, [](int) {});
+}
+
 void LoadGameScreen::requestDelete()
 {
     if (m_newSave || m_selectedIndex >= m_slots.size())
@@ -596,6 +661,21 @@ void LoadGameScreen::drawScreen(float deltaSeconds)
     {
         requestDelete();
     }
+#if !defined(__ANDROID__)
+    if (!saving)
+    {
+        if (action(prefix + "ImportButton", m_folderPick == nullptr))
+        {
+            requestImportSaves();
+        }
+        if (action(prefix + "OpenFolderButton"))
+        {
+            std::error_code error;
+            SDL_OpenURL(Engine::folderUrl(std::filesystem::current_path(error)).c_str());
+        }
+        finishImportSaves();
+    }
+#endif
     if (action(prefix + "ConfirmButton", saving ? !m_saveName.empty() : pSlot != nullptr) || m_commitRequested)
     {
         m_commitRequested = false;
@@ -612,6 +692,13 @@ void LoadGameScreen::drawScreen(float deltaSeconds)
     {
         textInRect(canvasRect(438.4f, 372, 323.2f, 28), m_error, "menu_lucida", 10.5f);
     }
+    else if (m_newerSaveCount > 0)
+    {
+        textInRect(canvasRect(438.4f, 372, 323.2f, 28),
+                   std::to_string(m_newerSaveCount) + (m_newerSaveCount == 1 ? " save needs" : " saves need")
+                       + " a newer version of OpenYAMM and is not listed.",
+                   "menu_lucida", 10.5f);
+    }
     drawConfirmation();
 }
 
@@ -619,6 +706,7 @@ void LoadGameScreen::refreshSaveSlots()
 {
     m_slots.clear();
     m_slotsLoaded = false;
+    m_newerSaveCount = 0;
     std::filesystem::create_directories("saves");
 
     for (const std::filesystem::directory_entry &entry : std::filesystem::directory_iterator("saves"))
@@ -638,6 +726,10 @@ void LoadGameScreen::refreshSaveSlots()
 
         if (!saveData)
         {
+            if (error == SaveFromNewerVersionError)
+            {
+                ++m_newerSaveCount;
+            }
             continue;
         }
 
@@ -712,6 +804,7 @@ void LoadGameScreen::refreshSaveSlots()
     if (!m_saveAction)
     {
         s_cachedSlots = m_slots;
+        s_cachedNewerSaveCount = m_newerSaveCount;
         s_cachedSlotsValid = true;
     }
 }
@@ -719,6 +812,7 @@ void LoadGameScreen::refreshSaveSlots()
 void LoadGameScreen::loadCachedSaveSlots()
 {
     m_slots = s_cachedSlots;
+    m_newerSaveCount = s_cachedNewerSaveCount;
 
     if (m_selectedIndex >= m_slots.size())
     {

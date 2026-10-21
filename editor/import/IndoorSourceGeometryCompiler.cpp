@@ -18,6 +18,8 @@ namespace OpenYAMM::Editor
 {
 namespace
 {
+constexpr size_t NativeTextureNameLength = 10;
+
 std::string trimCopy(const std::string &value)
 {
     const auto begin = std::find_if_not(value.begin(), value.end(), [](unsigned char character)
@@ -568,6 +570,15 @@ bool appendImportedFaces(
         face.roomNumber = roomNumber;
         face.roomBehindNumber = roomBehindNumber;
         const SourceMaterial material = resolveFaceMaterial(materialTextureLookup, importedFace.materialName);
+
+        // BLV face texture names are a fixed 10-byte field; a longer name would be cut and could collide.
+        if (material.texture.size() > NativeTextureNameLength)
+        {
+            errorMessage = "indoor source texture name \"" + material.texture + "\" in " + model.name
+                + " exceeds the native " + std::to_string(NativeTextureNameLength) + "-character limit";
+            return false;
+        }
+
         face.textureName = material.texture;
         face.vertexIndices.reserve(importedFace.vertices.size());
         face.textureUs.reserve(importedFace.vertices.size());
@@ -996,6 +1007,10 @@ bool sourceSurfaceAttributes(
     {
         return true;
     }
+    if (!pSurfaceMetadata->trigger)
+    {
+        attributes = 0;                 // a surface with only flags (water, a cog for SetTexture) is not clickable
+    }
     const std::unordered_map<std::string, Game::FaceAttribute> flags = {
         {"clickable", Game::FaceAttribute::Clickable},
         {"touch", Game::FaceAttribute::TriggerByTouch},
@@ -1096,6 +1111,11 @@ bool compileTriggerSurfaceModel(
             face.cogTriggerType = 0;
         }
 
+        if (pSurfaceMetadata != nullptr)
+        {
+            face.cogNumber = pSurfaceMetadata->cogNumber;
+        }
+
         appendFaceToSector(sector, faceIndex, face.facetType);
     }
 
@@ -1123,6 +1143,7 @@ void compileEntityMarker(
         entity.decorationListId = pEntityMetadata->decorationListId;
         entity.eventIdPrimary = pEntityMetadata->eventIdPrimary;
         entity.eventIdSecondary = pEntityMetadata->eventIdSecondary;
+        entity.facing = pEntityMetadata->facing;
         entity.name = pEntityMetadata->id;
 
         if (entity.decorationListId == 0)
@@ -1165,6 +1186,7 @@ void compileLightMarker(
         light.radius = pLightMetadata->radius;
         light.brightness = pLightMetadata->brightness;
         light.type = toLowerCopy(pLightMetadata->type) == "point" ? 0 : 1;
+        light.id = pLightMetadata->group;
 
         if (light.radius == 0 || light.brightness == 0)
         {
@@ -1296,6 +1318,7 @@ bool compileMechanismModel(
             {
                 face.cogTriggered = pSurfaceMetadata->trigger->eventId;
             }
+            face.cogNumber = pSurfaceMetadata->cogNumber;
         }
         appendFaceToSector(sector, faceIndex, indoorGeometry.faces[faceIndex].facetType);
     }

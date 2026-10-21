@@ -3,6 +3,7 @@
 #include <doctest/doctest.h>
 
 #include <cmath>
+#include <numbers>
 
 using namespace OpenYAMM;
 
@@ -68,4 +69,34 @@ TEST_CASE("swinging decorations turn about their top pivot")
     CHECK(bottom[1] == doctest::Approx(2.0f - 2.0f * std::cos(0.3f)));
     CHECK(std::abs(bottom[2]) == doctest::Approx(2.0f * std::sin(0.3f)));
     CHECK(Game::swungPlacement(identity, pivot, 0.0f) == identity);
+}
+
+TEST_CASE("turning decorations spin about their front axis and ease into their pose")
+{
+    const Engine::ModelMatrix identity = Engine::identityModelMatrix();
+    const std::array<float, 3> pivot = {1.0f, 2.0f, 0.0f};
+    const float quarter = std::numbers::pi_v<float> / 2.0f;
+    const Engine::ModelMatrix turned = Game::turnedPlacement(identity, pivot, quarter);
+    const auto apply = [&](const std::array<float, 3> &p)
+    {
+        return std::array<float, 3>{turned[0] * p[0] + turned[4] * p[1] + turned[8] * p[2] + turned[12],
+            turned[1] * p[0] + turned[5] * p[1] + turned[9] * p[2] + turned[13],
+            turned[2] * p[0] + turned[6] * p[1] + turned[10] * p[2] + turned[14]};
+    };
+    // The axle stays; a point a unit right of it, in front of the wheel, goes a unit up and keeps its depth.
+    const std::array<float, 3> axle = apply({1.0f, 2.0f, 0.5f});
+    CHECK(axle[0] == doctest::Approx(1.0f));
+    CHECK(axle[1] == doctest::Approx(2.0f));
+    CHECK(axle[2] == doctest::Approx(0.5f));
+    const std::array<float, 3> rim = apply({2.0f, 2.0f, 0.5f});
+    CHECK(rim[0] == doctest::Approx(1.0f));
+    CHECK(rim[1] == doctest::Approx(3.0f));
+    CHECK(rim[2] == doctest::Approx(0.5f));
+    CHECK(Game::turnedPlacement(identity, pivot, 0.0f) == identity);
+    // The remaining angle starts at the whole turn (backwards from the pose), eases, and is 0 from the end on.
+    CHECK(Game::turnRemaining(quarter, 1.0f, 0.0f) == doctest::Approx(-quarter));
+    CHECK(Game::turnRemaining(quarter, 1.0f, 0.5f) == doctest::Approx(-quarter * 0.5f));
+    CHECK(Game::turnRemaining(quarter, 1.0f, 0.1f) < -quarter * 0.9f);
+    CHECK(Game::turnRemaining(quarter, 1.0f, 1.0f) == 0.0f);
+    CHECK(Game::turnRemaining(quarter, 1.0f, 5.0f) == 0.0f);
 }

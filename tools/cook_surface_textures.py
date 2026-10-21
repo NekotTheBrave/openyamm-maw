@@ -30,6 +30,7 @@ liquid's colour, so the runtime never loads their art.
   tools/cook_surface_textures.py --verify                       fail on a missing, stale or orphaned cooked file
   tools/cook_surface_textures.py --force                        re-cook everything
   options: --only 'mm6/t1*'  --sources ROOT (default assets_source)  --output ROOT (default per profile)
+           --world NAME (repeatable; default mm6, mm7 and mm8: a staged world such as hesper names itself)
 
 A world whose source folder is missing (sources not pulled) is skipped: its cooked files are neither re-cooked nor
 removed. Receipts: assets_source/.cook-cache/surface_textures/<output root path>.json. A texture re-cooks when its
@@ -121,13 +122,13 @@ def sources_by_stem(source_dir, is_liquid):
             for stem, paths in by_stem.items()}
 
 
-def world_pairs(sources_root, output_root, profile, only):
+def world_pairs(sources_root, output_root, profile, only, worlds):
     """{world: {cooked path: (source path, max size)}} for worlds whose source folder exists. Android adds the x4
     masters of face textures without an x2 file, capped at half their size."""
     tier = PROFILES[profile][0]
     is_liquid = liquid_face_matcher()
     result = {}
-    for world in WORLDS:
+    for world in worlds:
         source_dir = sources_root / "worlds" / world / tier
         if not source_dir.is_dir():
             continue
@@ -162,15 +163,15 @@ def save_receipts(output_root, receipts):
     os.replace(temporary, path)
 
 
-def cook(sources_root, output_root, profile, cooker, only, force, plan):
+def cook(sources_root, output_root, profile, cooker, only, force, plan, world_names):
     tier, codec, _ = PROFILES[profile]
     if not cooker.is_file() and not plan:
         raise SystemExit(f"Missing cooker {cooker}; cmake --build build --target openyamm_model_texture_cook")
     path = receipts_path(output_root)
     receipts = {} if force or not path.is_file() else json.loads(path.read_text())
     pending, current, orphans = [], 0, []
-    worlds = world_pairs(sources_root, output_root, profile, only)
-    for world in WORLDS:
+    worlds = world_pairs(sources_root, output_root, profile, only, world_names)
+    for world in world_names:
         if world not in worlds:
             print(f"{world}: no sources in {sources_root / 'worlds' / world / tier}; its cooked files are kept",
                   flush=True)
@@ -231,14 +232,14 @@ def cook(sources_root, output_root, profile, cooker, only, force, plan):
         raise SystemExit(f"{failures} of {len(pending)} surface textures failed to cook")
 
 
-def verify(sources_root, output_root, profile, cooker, only, require_sources=False):
+def verify(sources_root, output_root, profile, cooker, only, world_names, require_sources=False):
     """Every source has a cooked file made from its current bytes, in the profile's codec, and none is orphaned."""
     tier, codec, _ = PROFILES[profile]
-    worlds = world_pairs(sources_root, output_root, profile, only)
+    worlds = world_pairs(sources_root, output_root, profile, only, world_names)
     problems = []
     if require_sources:
         problems += [f"no sources for {world} ({sources_root / 'worlds' / world / tier})"
-                     for world in WORLDS if world not in worlds]
+                     for world in world_names if world not in worlds]
     paths = []
     for world, pairs in worlds.items():
         for target, (source, _) in sorted(pairs.items()):
@@ -280,10 +281,12 @@ def main():
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--verify", action="store_true")
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--world", action="append", help="world to cook (repeatable; default mm6, mm7, mm8)")
     args = parser.parse_args()
+    world_names = tuple(args.world or WORLDS)
     output = args.output or ROOT / PROFILES[args.profile][2]
     if args.verify:
-        if verify(args.sources, output, args.profile, args.cooker, args.only):
+        if verify(args.sources, output, args.profile, args.cooker, args.only, world_names):
             raise SystemExit("run tools/cook_surface_textures.py --profile " + args.profile)
         return
     # Builds of several sessions may run the cook at once: one at a time per output root.
@@ -291,7 +294,7 @@ def main():
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        cook(args.sources, output, args.profile, args.cooker, args.only, args.force, args.plan)
+        cook(args.sources, output, args.profile, args.cooker, args.only, args.force, args.plan, world_names)
 
 
 if __name__ == "__main__":

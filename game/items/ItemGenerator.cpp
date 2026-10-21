@@ -31,6 +31,12 @@ bool defaultIdentifiedState(const ItemDefinition &itemDefinition, ItemGeneration
     return false;
 }
 
+bool needsPotionPower(const InventoryItem &item, const ItemTable &itemTable)
+{
+    const ItemDefinition *pItemDefinition = itemTable.get(item.objectDescriptionId);
+    return pItemDefinition != nullptr && pItemDefinition->hasPotionPower && item.standardEnchantPower == 0;
+}
+
 bool shouldTryGenerateRareItem(const ItemGenerationRequest &request)
 {
     return request.allowRareItems
@@ -218,6 +224,8 @@ std::optional<InventoryItem> ItemGenerator::generateRandomInventoryItem(
         initializeWandCharges(item, *pItemDefinition, std::uniform_int_distribution<int>(0, 5)(rng));
     }
 
+    assignTreasurePotionPower(item, itemTable, request.treasureLevel, rng);
+
     if (pItemDefinition == nullptr
         || ItemRuntime::isRareItem(*pItemDefinition)
         || !ItemEnchantRuntime::isEnchantable(*pItemDefinition))
@@ -297,6 +305,38 @@ std::optional<InventoryItem> ItemGenerator::generateRandomInventoryItem(
     }
 
     return item;
+}
+
+void ItemGenerator::assignTreasurePotionPower(
+    InventoryItem &item,
+    const ItemTable &itemTable,
+    int treasureLevel,
+    std::mt19937 &rng)
+{
+    if (!needsPotionPower(item, itemTable))
+    {
+        return;
+    }
+
+    std::uniform_int_distribution<int> d4(1, 4);
+    const int roll = d4(rng) + d4(rng);
+    item.standardEnchantPower = static_cast<uint16_t>(roll * std::clamp(treasureLevel, 1, 6));
+}
+
+void ItemGenerator::assignPlacedPotionPower(InventoryItem &item, const ItemTable &itemTable, std::mt19937 &rng)
+{
+    if (needsPotionPower(item, itemTable))
+    {
+        item.standardEnchantPower = static_cast<uint16_t>(std::uniform_int_distribution<int>(5, 19)(rng));
+    }
+}
+
+void ItemGenerator::assignMonsterPotionPower(InventoryItem &item, const ItemTable &itemTable, std::mt19937 &rng)
+{
+    if (needsPotionPower(item, itemTable))
+    {
+        item.standardEnchantPower = static_cast<uint16_t>(2 * std::uniform_int_distribution<int>(0, 3)(rng) + 2);
+    }
 }
 
 std::optional<uint32_t> ItemGenerator::chooseRandomBaseItem(

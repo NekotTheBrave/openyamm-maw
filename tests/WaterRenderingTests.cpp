@@ -411,7 +411,8 @@ TEST_CASE("menu water controls accept supported quality values and reject invali
     REQUIRE(setMenuSettingValue(settings, "water_reflections", "false"));
     CHECK_FALSE(settings.waterReflections);
     CHECK(menuSettingValue(settings, "water_reflections") == "false");
-    CHECK(menuSettingValue(settings, "water_sprite_reflections") == "false");
+    CHECK(menuSettingValue(settings, "water_sprite_reflections") == "true"); // Desktop default.
+    REQUIRE(setMenuSettingValue(settings, "water_sprite_reflections", "false"));
     REQUIRE(setMenuSettingValue(settings, "water_sprite_reflections", "true"));
     CHECK(settings.waterSpriteReflections);
     CHECK(menuSettingValue(settings, "water_sprite_reflections") == "true");

@@ -168,8 +168,9 @@ void GameplayInputController::handleStandardUiHotkeys(
     GameplayScreenRuntime &context,
     const GameplayStandardUiHotkeyConfig &config)
 {
-    // Letters typed into the alchemy bench search are text, not hotkeys; the bench handles Escape itself.
-    if (GameplayUiController::alchemyBenchSearchActive(context.characterScreenReadOnly()))
+    // Letters typed into the alchemy bench or journal search are text, not hotkeys; both handle Escape themselves.
+    if (GameplayUiController::alchemyBenchSearchActive(context.characterScreenReadOnly())
+        || GameplayUiController::journalSearchActive(context.journalScreenStateReadOnly()))
     {
         return;
     }
@@ -473,7 +474,8 @@ void GameplayInputController::handleSharedGameplayHotkeys(
     const GameplaySharedGameplayHotkeyConfig &config)
 {
     if (config.pKeyboardState == nullptr
-        || GameplayUiController::alchemyBenchSearchActive(context.characterScreenReadOnly()))
+        || GameplayUiController::alchemyBenchSearchActive(context.characterScreenReadOnly())
+        || GameplayUiController::journalSearchActive(context.journalScreenStateReadOnly()))
     {
         context.interactionState().alwaysRunToggleLatch = false;
         context.interactionState().adventurersInnToggleLatch = false;

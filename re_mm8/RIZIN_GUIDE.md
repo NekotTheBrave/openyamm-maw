@@ -65,6 +65,9 @@ when the whole attack sprite animation has elapsed, not on a drawn contact frame
 condition exclusions and melee/projectile callers in original MM8, with a separately fingerprinted MM7 comparison.
 Its [MM8 annotations](mm8_rel_5326d564_party_targeting.rz) target the same original executable.
 
+[Potion power](POTION_POWER.md) traces where a potion's power comes from (random treasure, map placement, monster
+loot, shops) and how each drink effect uses it, with the MMerge overrides.
+
 [Chest opening and closing sounds](CHEST_AUDIO.md) verifies the original MM8 request for sound 141
 (`openchest0101`), the separate trap-explosion path and silent close-button/Escape exit. Its
 [chest-audio annotations](mm8_rel_5326d564_chest_audio.rz) target the same original executable.

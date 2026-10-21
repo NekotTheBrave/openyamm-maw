@@ -118,6 +118,7 @@ void OutdoorMovementDriver::initialize(float x, float y, float footZHint)
     m_pendingEffects = {};
     m_jumpHeld = false;
     m_flyUpHeld = false;
+    m_landingRequested = false;
     m_pendingFlyHeightDelta = 0.0f;
     m_pendingJumpPress = false;
     m_pendingJumpVelocity.reset();
@@ -214,6 +215,14 @@ void OutdoorMovementDriver::update(
         m_pendingFlyHeightDelta = 0.0f;
     }
     const bool flyHeightChangeRequested = m_pendingFlyHeightDelta != 0.0f;
+
+    // Any vertical flight input takes over from a landing; a landing outlasts the Fly buff ending mid-descent.
+    if (input.flyUp || input.flyDown || flyHeightChangeRequested)
+    {
+        m_landingRequested = false;
+    }
+
+    const bool flyDown = input.flyDown || (m_landingRequested && m_partyMovementState.flying);
 
     const float cosYaw = std::cos(input.yawRadians);
     const float sinYaw = std::sin(input.yawRadians);
@@ -397,7 +406,7 @@ void OutdoorMovementDriver::update(
             moveVelocityZ + m_pendingFlyHeightDelta / OutdoorMovementStepSeconds,
             jumpRequestedThisStep,
             input.flyUp,
-            input.flyDown,
+            flyDown,
             m_partyMovementState.flying,
             m_partyMovementState.waterWalk,
             jumpVelocityThisStep,
@@ -612,7 +621,7 @@ void OutdoorMovementDriver::update(
     m_lastEvents.leftBurning = m_leftBurningEventSeconds > 0.0f;
     m_lastEvents.hardLanding = m_lastEvents.landed && m_lastEvents.landingFallDistance > HardLandingDistance;
 
-    if (m_partyMovementState.flying || m_partyMovementState.featherFall)
+    if (m_partyMovementState.flying || m_partyMovementState.featherFall || m_landingRequested)
     {
         m_state.fallStartZ = m_state.footZ;
         m_state.fallDistance = 0.0f;
@@ -674,7 +683,8 @@ void OutdoorMovementDriver::update(
 
     if (m_lastEvents.hardLanding
         && !m_partyMovementState.featherFall
-        && !m_partyMovementState.flying)
+        && !m_partyMovementState.flying
+        && !m_landingRequested)
     {
         m_fallDamageConsequenceSeconds = EventHoldSeconds;
         m_lastConsequences.fallDamageDistance = m_lastEvents.landingFallDistance;
@@ -695,12 +705,18 @@ void OutdoorMovementDriver::update(
         m_partyMovementState.flying = false;
     }
 
+    // A landing request ends on the ground, so it never softens a later fall.
+    if (!m_partyMovementState.flying && !m_state.airborne)
+    {
+        m_landingRequested = false;
+    }
+
     const float requestedMovementSpeedSquared =
         moveVelocityX * moveVelocityX + moveVelocityY * moveVelocityY + moveVelocityZ * moveVelocityZ;
     m_partyMovementState.activelyFlying =
         m_partyMovementState.flying
         && m_state.airborne
-        && (requestedMovementSpeedSquared > 0.01f || input.flyUp || input.flyDown || flyHeightChangeRequested);
+        && (requestedMovementSpeedSquared > 0.01f || input.flyUp || flyDown || flyHeightChangeRequested);
 
     if (pPerformanceDiagnostics != nullptr)
     {
@@ -771,6 +787,15 @@ void OutdoorMovementDriver::toggleFlying()
         m_state.verticalVelocity = 0.0f;
         m_state.fallStartZ = m_state.footZ;
         m_state.fallDistance = 0.0f;
+    }
+}
+
+void OutdoorMovementDriver::requestLanding()
+{
+    if (m_partyMovementState.flying)
+    {
+        m_landingRequested = true;
+        m_pendingFlyHeightDelta = 0.0f;
     }
 }
 

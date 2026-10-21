@@ -35,6 +35,33 @@ namespace OpenYAMM::Game
 {
 namespace
 {
+constexpr std::array<CharacterBuffId, 24> DispellableCharacterBuffs = {
+    CharacterBuffId::Bless,
+    CharacterBuffId::Fate,
+    CharacterBuffId::Preservation,
+    CharacterBuffId::Regeneration,
+    CharacterBuffId::Hammerhands,
+    CharacterBuffId::PainReflection,
+    CharacterBuffId::Haste,
+    CharacterBuffId::Heroism,
+    CharacterBuffId::Shield,
+    CharacterBuffId::Stoneskin,
+    CharacterBuffId::WaterBreathing,
+    CharacterBuffId::TempMight,
+    CharacterBuffId::TempIntellect,
+    CharacterBuffId::TempPersonality,
+    CharacterBuffId::TempEndurance,
+    CharacterBuffId::TempSpeed,
+    CharacterBuffId::TempAccuracy,
+    CharacterBuffId::TempLuck,
+    CharacterBuffId::FireResistance,
+    CharacterBuffId::AirResistance,
+    CharacterBuffId::WaterResistance,
+    CharacterBuffId::EarthResistance,
+    CharacterBuffId::MindResistance,
+    CharacterBuffId::BodyResistance,
+};
+
 constexpr uint32_t OeMaxCharacterExperience = 4000000000u;
 constexpr uint32_t ArcomageChampionAwardId = 41;
 constexpr size_t ArcomageTavernCount = 11;
@@ -527,6 +554,7 @@ void breakPotionExplosionItems(Character &member, uint8_t count)
         return;
     }
 
+    // Eradication breaks everything, hardened or not.
     if (count == 0)
     {
         for (InventoryItem *pItem : candidates)
@@ -542,7 +570,12 @@ void breakPotionExplosionItems(Character &member, uint8_t count)
 
     for (uint8_t index = 0; index < count; ++index)
     {
-        candidates[distribution(rng)]->broken = true;
+        InventoryItem *pItem = candidates[distribution(rng)];
+
+        if (!pItem->hardened)
+        {
+            pItem->broken = true;
+        }
     }
 }
 
@@ -1148,33 +1181,22 @@ uint64_t experienceRequiredForNextLevel(uint32_t currentLevel)
     return 1000ull * currentLevel * (currentLevel + 1) / 2;
 }
 
+// MM8 multiplies only the trained level by mastery; item and follower bonuses add once, and any nonzero total
+// (even from bonuses alone) earns the flat 9 percent.
 int learningPercentForExperienceGain(const Character &member)
 {
     const CharacterSkill *pSkill = member.findSkill("Learning");
+    const bool trained = pSkill != nullptr && pSkill->level > 0 && pSkill->mastery != SkillMastery::None;
+    const int baseLevel = trained ? static_cast<int>(pSkill->level) : 0;
+    const int bonusLevel = member.skillBonus("Learning");
 
-    if (pSkill == nullptr || pSkill->level == 0)
+    if (baseLevel + bonusLevel <= 0)
     {
         return 0;
     }
 
-    switch (pSkill->mastery)
-    {
-        case SkillMastery::Normal:
-            return 9 + static_cast<int>(pSkill->level);
-
-        case SkillMastery::Expert:
-            return 9 + 2 * static_cast<int>(pSkill->level);
-
-        case SkillMastery::Master:
-            return 9 + 3 * static_cast<int>(pSkill->level);
-
-        case SkillMastery::Grandmaster:
-            return 9 + 5 * static_cast<int>(pSkill->level);
-
-        case SkillMastery::None:
-        default:
-            return 0;
-    }
+    const int multiplier = trained ? utilitySkillMasteryMultiplier(pSkill->mastery) : 1;
+    return std::max(0, 9 + multiplier * baseLevel + bonusLevel);
 }
 
 bool canReceiveSharedExperience(const Character &member)
@@ -1523,6 +1545,7 @@ InventoryItem makeInventoryItem(
     item.identified = runtimeState.identified;
     item.broken = runtimeState.broken;
     item.stolen = runtimeState.stolen;
+    item.hardened = runtimeState.hardened;
     item.standardEnchantId = runtimeState.standardEnchantId;
     item.standardEnchantPower = runtimeState.standardEnchantPower;
     item.specialEnchantId = runtimeState.specialEnchantId;
@@ -1649,6 +1672,7 @@ void copyItemToEquippedRuntimeState(const InventoryItem &item, EquippedItemRunti
     runtimeState.identified = item.identified;
     runtimeState.broken = item.broken;
     runtimeState.stolen = item.stolen;
+    runtimeState.hardened = item.hardened;
     runtimeState.standardEnchantId = item.standardEnchantId;
     runtimeState.standardEnchantPower = item.standardEnchantPower;
     runtimeState.specialEnchantId = item.specialEnchantId;
@@ -2468,6 +2492,8 @@ Party::Snapshot Party::snapshot() const
     snapshot.gold = m_gold;
     snapshot.bankGold = m_bankGold;
     snapshot.food = m_food;
+    snapshot.daysWithoutRest = m_daysWithoutRest;
+    snapshot.awakeDayIndex = m_awakeDayIndex;
     snapshot.fineGold = m_fineGold;
     snapshot.waterDamageTicks = m_waterDamageTicks;
     snapshot.burningDamageTicks = m_burningDamageTicks;
@@ -2487,6 +2513,9 @@ Party::Snapshot Party::snapshot() const
     snapshot.explosiveMixes = m_explosiveMixes;
     snapshot.continentReputations = m_continentReputations;
     snapshot.questBits = m_questBits;
+    snapshot.autonotes = m_autonotes;
+    snapshot.historyEventTimesByContinent = m_historyEventTimesByContinent;
+    snapshot.journalMapNotes = m_journalMapNotes;
     snapshot.eventVariables = m_eventVariables;
     snapshot.npcTopicOverrides = m_npcTopicOverrides;
     snapshot.npcGroupNews = m_npcGroupNews;
@@ -2516,6 +2545,8 @@ void Party::restoreSnapshot(const Snapshot &snapshot)
     m_gold = snapshot.gold;
     m_bankGold = snapshot.bankGold;
     m_food = snapshot.food;
+    m_daysWithoutRest = snapshot.daysWithoutRest;
+    m_awakeDayIndex = snapshot.awakeDayIndex;
     m_fineGold = snapshot.fineGold;
     m_waterDamageTicks = snapshot.waterDamageTicks;
     m_burningDamageTicks = snapshot.burningDamageTicks;
@@ -2535,6 +2566,9 @@ void Party::restoreSnapshot(const Snapshot &snapshot)
     m_explosiveMixes = snapshot.explosiveMixes;
     m_continentReputations = snapshot.continentReputations;
     m_questBits = snapshot.questBits;
+    m_autonotes = snapshot.autonotes;
+    m_historyEventTimesByContinent = snapshot.historyEventTimesByContinent;
+    m_journalMapNotes = snapshot.journalMapNotes;
     m_eventVariables = snapshot.eventVariables;
     m_npcTopicOverrides = snapshot.npcTopicOverrides;
     m_npcGroupNews = snapshot.npcGroupNews;
@@ -2606,6 +2640,9 @@ void Party::seed(const PartySeed &seed)
     m_explosiveMixes.clear();
     m_continentReputations.clear();
     m_questBits.clear();
+    m_autonotes.clear();
+    m_historyEventTimesByContinent.clear();
+    m_journalMapNotes.clear();
     m_eventVariables.clear();
     m_npcTopicOverrides.clear();
     m_npcGroupNews.clear();
@@ -2641,6 +2678,7 @@ void Party::seed(const PartySeed &seed)
             resolvedItem.identified = seededItem.identified;
             resolvedItem.broken = seededItem.broken;
             resolvedItem.stolen = seededItem.stolen;
+            resolvedItem.hardened = seededItem.hardened;
             resolvedItem.standardEnchantId = seededItem.standardEnchantId;
             resolvedItem.standardEnchantPower = seededItem.standardEnchantPower;
             resolvedItem.specialEnchantId = seededItem.specialEnchantId;
@@ -2738,6 +2776,8 @@ void Party::seed(const PartySeed &seed)
     m_landingSoundCount = 0;
     m_hardLandingSoundCount = 0;
     m_lastFallDamageDistance = 0.0f;
+    m_daysWithoutRest = 0;
+    m_awakeDayIndex.reset();
     m_lastStatus.clear();
     m_heldItemIdForQueries = 0;
     m_pendingAudioRequests.clear();
@@ -3174,11 +3214,9 @@ uint32_t Party::grantSharedExperience(uint32_t totalExperience)
             continue;
         }
 
-        const int learningPercent = learningPercentForExperienceGain(member)
-            + hiredNpcSkillBonus(m_hiredNpcFollowers, "Learning");
+        const int learningPercent = learningPercentForExperienceGain(member);
         const uint32_t learnedExperience =
-            experiencePerEligibleMember
-            + experiencePerEligibleMember * std::max(0, learningPercent) / 100;
+            experiencePerEligibleMember + experiencePerEligibleMember * learningPercent / 100;
         const uint32_t grantedExperience = static_cast<uint32_t>(std::max(
             0.0f,
             std::floor(static_cast<float>(learnedExperience) * member.experienceGainMultiplier)));
@@ -3576,6 +3614,90 @@ void Party::restAndHealAll()
         if (member.conditions.test(static_cast<size_t>(CharacterCondition::Insane)))
         {
             member.spellPoints = 0;
+        }
+    }
+
+    clearDaysWithoutRest();
+}
+
+int Party::daysWithoutRest() const
+{
+    return m_daysWithoutRest;
+}
+
+void Party::clearDaysWithoutRest()
+{
+    m_daysWithoutRest = 0;
+    m_awakeDayIndex.reset();
+}
+
+void Party::addDayWithoutRest()
+{
+    ++m_daysWithoutRest;
+}
+
+void Party::updateDaysWithoutRest(float gameMinutes)
+{
+    // A new day dawns at 3 AM.
+    constexpr float DawnMinuteOfDay = 3.0f * 60.0f;
+    constexpr float MinutesPerDay = 24.0f * 60.0f;
+    const int dayIndex = static_cast<int>(std::floor((gameMinutes - DawnMinuteOfDay) / MinutesPerDay));
+
+    if (!m_awakeDayIndex || *m_awakeDayIndex >= dayIndex)
+    {
+        m_awakeDayIndex = dayIndex;
+        return;
+    }
+
+    // Like the original timed effects, one time step passes at most one dawn, however many days it skips.
+    m_awakeDayIndex = dayIndex;
+    ++m_daysWithoutRest;
+
+    if (m_daysWithoutRest <= 1)
+    {
+        return;
+    }
+
+    const bool starving = m_food <= 0;
+
+    if (!starving)
+    {
+        addFood(-1);
+    }
+
+    static thread_local std::mt19937 rng(std::random_device{}());
+    std::uniform_int_distribution<int> percent(0, 99);
+
+    for (size_t memberIndex = 0; memberIndex < m_members.size(); ++memberIndex)
+    {
+        Character &member = m_members[memberIndex];
+        applyMemberCondition(memberIndex, CharacterCondition::Weak, gameMinutes);
+
+        if (member.conditions.test(static_cast<size_t>(CharacterCondition::Dead))
+            || member.conditions.test(static_cast<size_t>(CharacterCondition::Petrified))
+            || member.conditions.test(static_cast<size_t>(CharacterCondition::Eradicated)))
+        {
+            continue;
+        }
+
+        if (starving)
+        {
+            member.health = member.health / (m_daysWithoutRest + 1) + 1;
+        }
+
+        if (m_daysWithoutRest > 3)
+        {
+            clearTemporaryEventBonuses(member);
+
+            if (percent(rng) < 5 * m_daysWithoutRest)
+            {
+                applyMemberCondition(memberIndex, CharacterCondition::Dead, gameMinutes);
+            }
+
+            if (percent(rng) < 10 * m_daysWithoutRest)
+            {
+                applyMemberCondition(memberIndex, CharacterCondition::Insane, gameMinutes);
+            }
         }
     }
 }
@@ -4059,6 +4181,85 @@ void Party::setQuestBit(uint32_t questBitId, bool value)
             GAMEPLAY_DEBUG_TRACE("qbit_cleared id=" + std::to_string(questBitId));
         }
     }
+}
+
+bool Party::hasAutonote(uint32_t autonoteId) const
+{
+    return autonoteId != 0 && m_autonotes.contains(autonoteId);
+}
+
+void Party::setAutonote(uint32_t autonoteId, bool value)
+{
+    if (autonoteId == 0)
+    {
+        return;
+    }
+
+    if (value)
+    {
+        m_autonotes.insert(autonoteId);
+    }
+    else
+    {
+        m_autonotes.erase(autonoteId);
+    }
+}
+
+const std::unordered_map<uint32_t, int32_t> &Party::historyEventTimes(uint32_t continentId) const
+{
+    static const std::unordered_map<uint32_t, int32_t> EmptyHistory;
+    const auto continentIt = m_historyEventTimesByContinent.find(continentId);
+    return continentIt != m_historyEventTimesByContinent.end() ? continentIt->second : EmptyHistory;
+}
+
+void Party::recordHistoryEvent(uint32_t continentId, uint32_t historyId, int32_t gameMinutes)
+{
+    if (historyId != 0)
+    {
+        m_historyEventTimesByContinent[continentId].try_emplace(historyId, gameMinutes);
+    }
+}
+
+void Party::clearHistoryEvent(uint32_t continentId, uint32_t historyId)
+{
+    const auto continentIt = m_historyEventTimesByContinent.find(continentId);
+
+    if (continentIt != m_historyEventTimesByContinent.end())
+    {
+        continentIt->second.erase(historyId);
+    }
+}
+
+const std::vector<JournalMapNote> &Party::journalMapNotes() const
+{
+    return m_journalMapNotes;
+}
+
+const JournalMapNote *Party::findJournalMapNote(const std::string &mapFileName, uint32_t noteId) const
+{
+    for (const JournalMapNote &note : m_journalMapNotes)
+    {
+        if (note.id == noteId && note.mapFileName == mapFileName)
+        {
+            return &note;
+        }
+    }
+
+    return nullptr;
+}
+
+void Party::setJournalMapNote(const JournalMapNote &note)
+{
+    for (JournalMapNote &existing : m_journalMapNotes)
+    {
+        if (existing.id == note.id && existing.mapFileName == note.mapFileName)
+        {
+            existing = note;
+            return;
+        }
+    }
+
+    m_journalMapNotes.push_back(note);
 }
 
 uint64_t Party::dialogueEligibilityRevision() const
@@ -4788,6 +4989,7 @@ bool Party::tryEquipItemOnMember(
     targetRuntimeState.identified = item.identified;
     targetRuntimeState.broken = item.broken;
     targetRuntimeState.stolen = item.stolen;
+    targetRuntimeState.hardened = item.hardened;
     targetRuntimeState.standardEnchantId = item.standardEnchantId;
     targetRuntimeState.standardEnchantPower = item.standardEnchantPower;
     targetRuntimeState.specialEnchantId = item.specialEnchantId;
@@ -6002,6 +6204,12 @@ void Party::advanceTimedStates(float deltaSeconds)
             {
                 buffsChanged = true;
                 buff.periodicAccumulatorSeconds = 0.0f;
+
+                // A Haste potion leaves its drinker weak, like the spell.
+                if (&buff == &m_characterBuffs[memberIndex][static_cast<size_t>(CharacterBuffId::Haste)])
+                {
+                    applyMemberCondition(memberIndex, CharacterCondition::Weak);
+                }
             }
         }
     }
@@ -6317,13 +6525,7 @@ bool Party::clearDispellableBuffs()
 
     for (size_t memberIndex = 0; memberIndex < m_members.size(); ++memberIndex)
     {
-        for (CharacterBuffId buffId : {
-                 CharacterBuffId::Bless,
-                 CharacterBuffId::Fate,
-                 CharacterBuffId::Preservation,
-                 CharacterBuffId::Regeneration,
-                 CharacterBuffId::Hammerhands,
-                 CharacterBuffId::PainReflection})
+        for (CharacterBuffId buffId : DispellableCharacterBuffs)
         {
             const size_t buffIndex = static_cast<size_t>(buffId);
             cleared = m_characterBuffs[memberIndex][buffIndex].active() || cleared;
@@ -6371,13 +6573,7 @@ bool Party::hasDispellableBuffs() const
 
     for (size_t memberIndex = 0; memberIndex < m_members.size(); ++memberIndex)
     {
-        for (CharacterBuffId buffId : {
-                 CharacterBuffId::Bless,
-                 CharacterBuffId::Fate,
-                 CharacterBuffId::Preservation,
-                 CharacterBuffId::Regeneration,
-                 CharacterBuffId::Hammerhands,
-                 CharacterBuffId::PainReflection})
+        for (CharacterBuffId buffId : DispellableCharacterBuffs)
         {
             if (m_characterBuffs[memberIndex][static_cast<size_t>(buffId)].active())
             {
@@ -7089,6 +7285,67 @@ void Party::rebuildMagicalBonusesFromBuffs()
         if (const CharacterBuffState *pBuff = characterBuff(memberIndex, CharacterBuffId::Glamour))
         {
             member.merchantBonus += pBuff->power;
+        }
+
+        if (characterBuff(memberIndex, CharacterBuffId::Haste) != nullptr && partyBuff(PartyBuffId::Haste) == nullptr)
+        {
+            member.attackRecoveryReductionTicks += 25;
+        }
+
+        if (const CharacterBuffState *pBuff = characterBuff(memberIndex, CharacterBuffId::Heroism))
+        {
+            member.magicalBonuses.meleeDamage += pBuff->power;
+            member.magicalBonuses.rangedDamage += pBuff->power;
+        }
+
+        if (characterBuff(memberIndex, CharacterBuffId::Shield) != nullptr)
+        {
+            member.halfMissileDamage = true;
+        }
+
+        if (const CharacterBuffState *pBuff = characterBuff(memberIndex, CharacterBuffId::Stoneskin))
+        {
+            member.magicalBonuses.armorClass += pBuff->power;
+        }
+
+        if (characterBuff(memberIndex, CharacterBuffId::WaterBreathing) != nullptr)
+        {
+            member.waterWalking = true;
+        }
+
+        const std::array<std::pair<CharacterBuffId, int CharacterStatBonuses::*>, 7> tempStatBuffs = {{
+            {CharacterBuffId::TempMight, &CharacterStatBonuses::might},
+            {CharacterBuffId::TempIntellect, &CharacterStatBonuses::intellect},
+            {CharacterBuffId::TempPersonality, &CharacterStatBonuses::personality},
+            {CharacterBuffId::TempEndurance, &CharacterStatBonuses::endurance},
+            {CharacterBuffId::TempSpeed, &CharacterStatBonuses::speed},
+            {CharacterBuffId::TempAccuracy, &CharacterStatBonuses::accuracy},
+            {CharacterBuffId::TempLuck, &CharacterStatBonuses::luck},
+        }};
+
+        for (const auto &[buffId, field] : tempStatBuffs)
+        {
+            if (const CharacterBuffState *pBuff = characterBuff(memberIndex, buffId))
+            {
+                member.magicalBonuses.*field += pBuff->power;
+            }
+        }
+
+        const std::array<std::pair<CharacterBuffId, int CharacterResistanceSet::*>, 6> resistanceBuffs = {{
+            {CharacterBuffId::FireResistance, &CharacterResistanceSet::fire},
+            {CharacterBuffId::AirResistance, &CharacterResistanceSet::air},
+            {CharacterBuffId::WaterResistance, &CharacterResistanceSet::water},
+            {CharacterBuffId::EarthResistance, &CharacterResistanceSet::earth},
+            {CharacterBuffId::MindResistance, &CharacterResistanceSet::mind},
+            {CharacterBuffId::BodyResistance, &CharacterResistanceSet::body},
+        }};
+
+        for (const auto &[buffId, field] : resistanceBuffs)
+        {
+            if (const CharacterBuffState *pBuff = characterBuff(memberIndex, buffId))
+            {
+                member.magicalBonuses.resistances.*field += pBuff->power;
+            }
         }
     }
 

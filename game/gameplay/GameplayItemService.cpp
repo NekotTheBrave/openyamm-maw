@@ -13,6 +13,7 @@
 #include "game/tables/MergedBaseTables.h"
 #include "game/tables/ObjectTable.h"
 #include "game/tables/PotionNoteTable.h"
+#include "game/tables/SpellTable.h"
 
 #include <SDL3/SDL.h>
 
@@ -787,6 +788,19 @@ void GameplayItemService::applyMixResultEffects(
         if (mixResult.success && mixResult.action == InventoryItemMixAction::PotionMix)
         {
             runtime.audioSystem()->playCommonSound(SoundId::MixPotion, GameAudioSystem::PlaybackGroup::Ui);
+        }
+        else if (mixResult.success
+            && (mixResult.action == InventoryItemMixAction::HardenPotion
+                || mixResult.action == InventoryItemMixAction::WeaponEnchantPotion))
+        {
+            const SpellEntry *pEnchantItem = runtime.spellTable() != nullptr
+                ? runtime.spellTable()->findById(static_cast<int>(SpellId::EnchantItem))
+                : nullptr;
+
+            if (pEnchantItem != nullptr && pEnchantItem->effectSoundId > 0)
+            {
+                runtime.audioSystem()->playSound(pEnchantItem->effectSoundId, GameAudioSystem::PlaybackGroup::Ui);
+            }
         }
         else if (potionExplosion)
         {

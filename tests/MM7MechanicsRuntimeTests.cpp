@@ -9,6 +9,7 @@
 #include "game/gameplay/ReputationRuntime.h"
 #include "game/gameplay/StealingRuntime.h"
 #include "game/items/InventoryItemUseRuntime.h"
+#include "game/items/ItemGenerator.h"
 #include "game/items/ItemRuntime.h"
 #include "game/items/PriceCalculator.h"
 #include "game/party/Party.h"
@@ -21,6 +22,8 @@
 #include "tests/PartySpellTestHarness.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <random>
 
 using namespace OpenYAMM::Game;
 
@@ -278,6 +281,155 @@ TEST_CASE("MMerge extra potion drink effects apply and one-shot essence potions 
         &gameData.mergedPotionSettingTable);
     CHECK(protectionResult.consumed);
     CHECK(party.hasPartyBuff(PartyBuffId::ProtectionFromMagic));
+}
+
+TEST_CASE("potion strength scales drink effects as in MM8")
+{
+    REQUIRE_MESSAGE(
+        OpenYAMM::Tests::regressionGameDataLoaded(),
+        OpenYAMM::Tests::regressionGameDataFailure().c_str());
+    const OpenYAMM::Tests::RegressionGameData &gameData = OpenYAMM::Tests::regressionGameData();
+
+    Party party = makeOneMemberParty();
+    Character *pMember = party.member(0);
+    REQUIRE(pMember != nullptr);
+
+    const auto drink =
+        [&](uint32_t itemId, uint16_t power)
+        {
+            InventoryItem potion = {};
+            potion.objectDescriptionId = itemId;
+            potion.standardEnchantPower = power;
+            return InventoryItemUseRuntime::useItemOnMember(
+                party,
+                0,
+                potion,
+                gameData.itemTable,
+                &gameData.readableScrollTable,
+                &gameData.mergedPotionSettingTable);
+        };
+    constexpr float SecondsPerPower = 30.0f * 60.0f;
+
+    pMember->health = 10;
+    REQUIRE(drink(222, 7).consumed);
+    CHECK_EQ(pMember->health, 27);
+    pMember->spellPoints = 0;
+    REQUIRE(drink(223, 4).consumed);
+    CHECK_EQ(pMember->spellPoints, 14);
+    pMember->health = 10;
+    REQUIRE(drink(253, 4).consumed);
+    CHECK_EQ(pMember->health, 30);
+
+    REQUIRE(drink(240, 4).consumed);
+    const CharacterBuffState *pMight = party.characterBuff(0, CharacterBuffId::TempMight);
+    REQUIRE(pMight != nullptr);
+    CHECK_EQ(pMight->power, 12);
+    CHECK_EQ(pMight->remainingSeconds, doctest::Approx(4.0f * SecondsPerPower));
+    party.clearPartyBuff(PartyBuffId::TorchLight);
+    CHECK_EQ(pMember->magicalBonuses.might, 12);
+    REQUIRE(drink(240, 1).consumed);
+    CHECK_EQ(party.characterBuff(0, CharacterBuffId::TempMight)->power, 12);
+
+    REQUIRE(drink(256, 2).consumed);
+    CHECK_EQ(pMember->magicalBonuses.resistances.fire, 6);
+
+    REQUIRE(drink(230, 3).consumed);
+    const CharacterBuffState *pBless = party.characterBuff(0, CharacterBuffId::Bless);
+    REQUIRE(pBless != nullptr);
+    CHECK_EQ(pBless->power, 5);
+    CHECK_EQ(pBless->remainingSeconds, doctest::Approx(3.0f * SecondsPerPower));
+
+    REQUIRE(drink(235, 2).consumed);
+    CHECK_FALSE(party.hasPartyBuff(PartyBuffId::WaterWalk));
+    CHECK(pMember->waterWalking);
+
+    REQUIRE(drink(228, 1).consumed);
+    CHECK_FALSE(party.hasPartyBuff(PartyBuffId::Haste));
+    REQUIRE(party.hasCharacterBuff(0, CharacterBuffId::Haste));
+    CHECK_EQ(pMember->attackRecoveryReductionTicks, 25);
+    party.advanceTimedStates(SecondsPerPower + 1.0f);
+    CHECK_FALSE(party.hasCharacterBuff(0, CharacterBuffId::Haste));
+    CHECK(pMember->conditions.test(static_cast<size_t>(CharacterCondition::Weak)));
+    REQUIRE(drink(228, 1).consumed);
+    CHECK_FALSE(party.hasCharacterBuff(0, CharacterBuffId::Haste));
+}
+
+TEST_CASE("potion buffs survive a save and older saves still load")
+{
+    Party party = makeOneMemberParty();
+    party.applyCharacterBuff(0, CharacterBuffId::BodyResistance, 600.0f, 9, 0, 0, SkillMastery::Master, 0);
+    party.applyCharacterBuff(0, CharacterBuffId::Glamour, 600.0f, 4, 0, 0, SkillMastery::Master, 0);
+    GameSaveData save;
+    save.mapFileName = "out02.odm";
+    save.party = party.snapshot();
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "openyamm_potion_buffs.oysav";
+    std::string error;
+    REQUIRE(saveGameDataToPath(path, save, error));
+    const std::optional<GameSaveData> loaded = loadGameDataFromPath(path, error);
+    std::filesystem::remove(path);
+    REQUIRE(loaded.has_value());
+    Party restored;
+    restored.restoreSnapshot(loaded->party);
+    REQUIRE(restored.hasCharacterBuff(0, CharacterBuffId::BodyResistance));
+    CHECK_EQ(restored.member(0)->magicalBonuses.resistances.body, 9);
+    CHECK_EQ(restored.characterBuff(0, CharacterBuffId::Glamour)->power, 4);
+}
+
+TEST_CASE("potions get their power from where they come from")
+{
+    REQUIRE_MESSAGE(
+        OpenYAMM::Tests::regressionGameDataLoaded(),
+        OpenYAMM::Tests::regressionGameDataFailure().c_str());
+    const ItemTable &itemTable = OpenYAMM::Tests::regressionGameData().itemTable;
+    std::mt19937 rng(1234);
+
+    for (int attempt = 0; attempt < 50; ++attempt)
+    {
+        InventoryItem treasure = ItemGenerator::makeInventoryItem(222, itemTable, ItemGenerationMode::ChestLoot);
+        ItemGenerator::assignTreasurePotionPower(treasure, itemTable, 3, rng);
+        CHECK(treasure.standardEnchantPower >= 6);
+        CHECK(treasure.standardEnchantPower <= 24);
+        CHECK_EQ(treasure.standardEnchantPower % 3, 0);
+
+        InventoryItem placed = ItemGenerator::makeInventoryItem(240, itemTable, ItemGenerationMode::Generic);
+        ItemGenerator::assignPlacedPotionPower(placed, itemTable, rng);
+        CHECK(placed.standardEnchantPower >= 5);
+        CHECK(placed.standardEnchantPower <= 19);
+
+        InventoryItem carried = ItemGenerator::makeInventoryItem(221, itemTable, ItemGenerationMode::MonsterLoot);
+        ItemGenerator::assignMonsterPotionPower(carried, itemTable, rng);
+        CHECK(carried.standardEnchantPower >= 2);
+        CHECK(carried.standardEnchantPower <= 8);
+        CHECK_EQ(carried.standardEnchantPower % 2, 0);
+    }
+
+    InventoryItem bottle = ItemGenerator::makeInventoryItem(220, itemTable, ItemGenerationMode::Shop);
+    ItemGenerator::assignTreasurePotionPower(bottle, itemTable, 6, rng);
+    CHECK_EQ(bottle.standardEnchantPower, 0);
+
+    InventoryItem brewed = ItemGenerator::makeInventoryItem(222, itemTable, ItemGenerationMode::Generic);
+    brewed.standardEnchantPower = 40;
+    ItemGenerator::assignPlacedPotionPower(brewed, itemTable, rng);
+    CHECK_EQ(brewed.standardEnchantPower, 40);
+
+    const ItemDefinition *pMm9Potion = itemTable.get(1766);
+    REQUIRE(pMm9Potion != nullptr);
+    CHECK_FALSE(pMm9Potion->hasPotionPower);
+
+    const std::optional<InventoryItem> generated = ItemGenerator::generateRandomInventoryItem(
+        itemTable,
+        OpenYAMM::Tests::regressionGameData().standardItemEnchantTable,
+        OpenYAMM::Tests::regressionGameData().specialItemEnchantTable,
+        ItemGenerationRequest{.treasureLevel = 1, .mode = ItemGenerationMode::ChestLoot},
+        nullptr,
+        rng,
+        [](const ItemDefinition &entry)
+        {
+            return entry.itemId == 222;
+        });
+    REQUIRE(generated.has_value());
+    CHECK(generated->standardEnchantPower >= 2);
+    CHECK(generated->standardEnchantPower <= 8);
 }
 
 TEST_CASE("MMerge stealing runtime resolves success, caught failure, and monster distance")
@@ -740,6 +892,14 @@ TEST_CASE("hireling profession bonuses match the merged descriptions")
         const int bonus = professionId == 4 ? 5 : professionId == 13 ? 10 : 15;
         CHECK_EQ(party.grantSharedExperience(100), 114u + bonus);
         CHECK_EQ(party.member(0)->experience, 114u + bonus);
+    }
+    for (uint32_t professionId : {4u, 13u, 14u})
+    {
+        Party party = makeOneMemberParty();
+        party.member(0)->skills.erase("Learning");
+        party.addHiredNpcFollower({1001, professionId, 100});
+        const int bonus = professionId == 4 ? 5 : professionId == 13 ? 10 : 15;
+        CHECK_EQ(party.grantSharedExperience(100), 109u + bonus);
     }
 }
 

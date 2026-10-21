@@ -5,6 +5,9 @@
 /build-windows-cross/
 /build-flatpak-release/
 /build_release/
+/build-rehearsal/
+/build-bgfxdebug/
+/build-release-host/
 /out/
 /.idea/
 /.vscode/
@@ -25,6 +28,7 @@ __pycache__/
 # Local captures, packaged builds, user configuration and authoring archives.
 /output/
 /logs/
+/openyamm.log
 /.codex
 /.codex-log/
 /.openyamm-editor.ini

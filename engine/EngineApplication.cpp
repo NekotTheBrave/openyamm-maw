@@ -6,11 +6,13 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace OpenYAMM::Engine
@@ -178,6 +180,17 @@ void enforceMinimumWindowAspect(SDL_Window *pWindow)
     }
 }
 
+// Agent test runs set OPENYAMM_START_MINIMIZED=1 so the window renders without covering the desktop.
+bool startMinimizedRequested()
+{
+#if defined(__ANDROID__)
+    return false;
+#else
+    const char *pValue = std::getenv("OPENYAMM_START_MINIMIZED");
+    return pValue != nullptr && std::string_view(pValue) != "0" && std::string_view(pValue) != "false";
+#endif
+}
+
 uint64_t initialWindowFlagsForMode(WindowMode mode)
 {
     uint64_t flags = 0;
@@ -192,7 +205,12 @@ uint64_t initialWindowFlagsForMode(WindowMode mode)
 
 SDL_Window *createApplicationWindow(const ApplicationConfig &config)
 {
-    const uint64_t flags = initialWindowFlagsForMode(config.windowMode);
+    uint64_t flags = initialWindowFlagsForMode(config.windowMode);
+
+    if (startMinimizedRequested())
+    {
+        flags |= SDL_WINDOW_MINIMIZED;
+    }
 
 #if defined(__ANDROID__)
     const SDL_PropertiesID properties = SDL_CreateProperties();
@@ -218,6 +236,16 @@ SDL_Window *createApplicationWindow(const ApplicationConfig &config)
         config.windowHeight,
         flags);
 #endif
+}
+
+// Exclusive fullscreen accepts only a mode the display lists, so a saved size picks the display's closest mode.
+bool setExclusiveFullscreenMode(SDL_Window *pWindow, int width, int height)
+{
+    SDL_DisplayMode displayMode = {};
+
+    return SDL_GetClosestFullscreenDisplayMode(
+               SDL_GetDisplayForWindow(pWindow), width, height, 0.0f, true, &displayMode)
+        && SDL_SetWindowFullscreenMode(pWindow, &displayMode);
 }
 
 bool applyWindowMode(SDL_Window *pWindow, const ApplicationConfig &config)
@@ -249,23 +277,11 @@ bool applyWindowMode(SDL_Window *pWindow, const ApplicationConfig &config)
 
     case WindowMode::Fullscreen:
     {
-        const SDL_DisplayID displayId = SDL_GetPrimaryDisplay();
-        const SDL_DisplayMode requestedMode = {
-            .displayID = displayId,
-            .format = SDL_PIXELFORMAT_UNKNOWN,
-            .w = config.windowWidth,
-            .h = config.windowHeight,
-            .pixel_density = 0.0f,
-            .refresh_rate = 0.0f,
-            .refresh_rate_numerator = 0,
-            .refresh_rate_denominator = 0,
-            .internal = nullptr
-        };
-
-        if (!SDL_SetWindowFullscreenMode(pWindow, &requestedMode))
+        // A display without that mode (another monitor, Gamescope) starts at desktop resolution instead of quitting.
+        if (!setExclusiveFullscreenMode(pWindow, config.windowWidth, config.windowHeight))
         {
-            std::cerr << "SDL_SetWindowFullscreenMode failed: " << SDL_GetError() << '\n';
-            return false;
+            std::cerr << "No " << config.windowWidth << "x" << config.windowHeight
+                      << " fullscreen mode (" << SDL_GetError() << "), using the desktop resolution\n";
         }
 
         if (!SDL_SetWindowFullscreen(pWindow, true))
@@ -400,6 +416,11 @@ int EngineApplication::run() const
     if (m_config.windowMode == WindowMode::Windowed)
     {
         enforceMinimumWindowAspect(pWindow.get());
+    }
+    else if (startMinimizedRequested())
+    {
+        // Entering fullscreen can restore a window created minimized.
+        SDL_MinimizeWindow(pWindow.get());
     }
 
     BgfxContext bgfxContext;
@@ -789,10 +810,7 @@ bool EngineApplication::applyDisplaySettings(WindowMode mode, int width, int hei
     }
     else if (mode == WindowMode::Fullscreen)
     {
-        SDL_DisplayMode displayMode = {};
-        success = SDL_GetClosestFullscreenDisplayMode(SDL_GetDisplayForWindow(m_pRunningWindow), width, height, 0, true,
-                                                      &displayMode) &&
-                  SDL_SetWindowFullscreenMode(m_pRunningWindow, &displayMode) &&
+        success = setExclusiveFullscreenMode(m_pRunningWindow, width, height) &&
                   SDL_SetWindowFullscreen(m_pRunningWindow, true);
     }
     else

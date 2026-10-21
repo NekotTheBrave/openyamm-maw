@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/AssetFileSystem.h"
+#include "game/tables/ItemModelBindings.h"
 
 #include <array>
 #include <cstdint>
@@ -12,6 +13,7 @@
 namespace OpenYAMM::Game
 {
 enum class EquipmentSlot : uint8_t;
+class MergedPotionSettingTable;
 
 struct ItemEquipmentPlacement
 {
@@ -119,9 +121,13 @@ struct ItemDefinition
     std::string sourceIconPath;
     std::string importStatus;
     std::string balanceProfile;
+    // An MM6-MM8 potion (not the empty bottle): its strength is the item's standard enchant power.
+    bool hasPotionPower = false;
 
     bool hasContentFlag(const std::string &flag) const;
     bool availableInWorld(const std::string &worldId) const;
+    // A gold heap (equip stat "Gold"): picking it up adds its amount to the party purse.
+    bool isGold() const;
 };
 
 class ItemTable
@@ -143,10 +149,21 @@ public:
     std::optional<uint32_t> spellbookItemIdForSpell(uint32_t spellId, const std::string &worldId) const;
     const std::vector<ItemDefinition> &entries() const;
     const std::vector<ItemSetBonusDefinition> &setBonuses() const;
+    // Binds every item to its icon's ground model (engine/world_items/items.yml), after the item rows are loaded.
+    void setGroundModels(const ItemModelBindings &bindings);
+    // Marks the potions listed in the potion settings, after the item rows are loaded.
+    void applyPotionSettings(const MergedPotionSettingTable &potionSettingTable);
+    // The model an item draws lying on the ground: its icon's binding, or the missing-model placeholder.
+    const ItemModelBinding &groundModel(uint32_t itemId) const;
+    // Whether the item's icon has a ground model of its own (false: it draws the placeholder).
+    bool hasGroundModel(uint32_t itemId) const;
 
 private:
     std::vector<ItemDefinition> m_entries;
     std::vector<ItemSetBonusDefinition> m_setBonuses;
     std::unordered_map<std::string, uint32_t> m_sourceAliases;
+    std::vector<ItemModelBinding> m_groundModels;
+    // By item id: index into m_groundModels, or -1 for the placeholder.
+    std::vector<int32_t> m_groundModelIndexByItemId;
 };
 }

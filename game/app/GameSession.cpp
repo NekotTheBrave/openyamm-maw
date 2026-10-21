@@ -869,11 +869,21 @@ void GameSession::updateGameplay(
             !standardWorldInputBlocked
             && !pendingSpellTargetActive
             && !rightMouseInspectPauseActive;
-        float worldMovementDeltaSeconds = rightMouseInspectPauseActive ? 0.0f : deltaSeconds;
+        // Modal screens (inventory, dialogue, rest, menus) freeze party timers and physics like the original; outdoor
+        // movement already returns early on the same flags.
+        const bool worldMovementPaused =
+            rightMouseInspectPauseActive
+            || m_sharedInputFrameResult.journalInputConsumed
+            || m_sharedInputFrameResult.worldInputBlocked;
+        float worldMovementDeltaSeconds = worldMovementPaused ? 0.0f : deltaSeconds;
+        worldInput.cameraDeltaSeconds = worldMovementDeltaSeconds;
         bool turnBasedMovementStep = false;
-        if (m_turnBasedCombatRuntime.active() && !rightMouseInspectPauseActive)
+        if (m_turnBasedCombatRuntime.active() && !worldMovementPaused)
         {
-            turnBasedMovementStep = m_turnBasedCombatRuntime.noteMovementInput(worldInput, deltaSeconds);
+            const bool classicTurnKeys =
+                m_gameplayScreenRuntime.settingsSnapshot().controlScheme == ControlScheme::Classic;
+            turnBasedMovementStep =
+                m_turnBasedCombatRuntime.noteMovementInput(worldInput, deltaSeconds, classicTurnKeys);
             worldMovementDeltaSeconds = m_turnBasedCombatRuntime.movementDeltaSecondsForFrame(deltaSeconds);
             if (!turnBasedMovementStep && pWorldRuntime->partyNeedsTurnBasedPhysicsUpdate())
             {

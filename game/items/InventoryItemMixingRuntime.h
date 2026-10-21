@@ -23,6 +23,8 @@ enum class InventoryItemMixAction : uint8_t
     PotionMix,
     ReagentBottleMix,
     RechargePotion,
+    HardenPotion,
+    WeaponEnchantPotion,
 };
 
 struct InventoryItemMixResult

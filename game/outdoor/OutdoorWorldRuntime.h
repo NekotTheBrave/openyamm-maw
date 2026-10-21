@@ -40,6 +40,8 @@
 
 namespace OpenYAMM::Game
 {
+struct ItemModelBinding;
+struct WorldItemSphereChain;
 class ItemTable;
 class ChestTable;
 struct ChestTrapOpenResult;
@@ -547,6 +549,7 @@ public:
         uint32_t sessionChestSeed = 0;
         uint32_t nextActorId = 0;
         std::vector<std::optional<CorpseViewState>> mapActorCorpseViews;
+        std::vector<std::optional<CorpseViewState>> mapActorRevealedLoot;
         std::optional<CorpseViewState> activeCorpseView;
         std::vector<WorldItemState> worldItems;
         uint32_t nextWorldItemId = 1;
@@ -674,6 +677,7 @@ public:
         return m_actorHitFeedback;
     }
     std::optional<uint32_t> corpseLootValue(size_t actorIndex) const override;
+    std::optional<CorpseViewState> revealActorLoot(size_t actorIndex) override;
     bool setMapActorPosition(size_t actorIndex, float x, float y, float z) override;
     bool isMapActorHostile(size_t actorIndex) const override;
     bool isMapActorWithinPartyDistance(size_t actorIndex, float distance) const override;
@@ -828,6 +832,7 @@ public:
     void commitActiveCorpseView() override;
     // Rolls the actor's corpse loot once (at death, before a steal, or after loading) into its corpse view.
     bool ensureMapActorCorpseView(size_t actorIndex);
+    std::vector<uint32_t> mapActorGuaranteedItemIds(size_t actorIndex) const;
     // After a load: dead actors whose corpse loot was never rolled (older saves, map deltas) get it on the first update,
     // once the event state that adds guaranteed items is bound.
     void rollPendingCorpseLoot();
@@ -856,6 +861,8 @@ public:
     );
     void collectWorldItemPresentationStates(
         std::vector<GameplayWorldItemPresentationState> &items) const override;
+    // The model a world item is drawn and picked with: a loot container is a bag of loot, not one of the items.
+    static const ItemModelBinding &worldItemModel(const ItemTable &itemTable, const WorldItemState &worldItem);
     void collectFireSpikeTrapPresentationStates(
         std::vector<GameplayProjectilePresentationState> &traps) const override;
     bool spawnPartyFireSpikeTrap(
@@ -1310,6 +1317,20 @@ private:
         float maximumZ,
         std::vector<size_t> &candidateFaceIndices) const;
     void updateWorldItems(float deltaSeconds);
+    // One sub-step of a moving item: gravity, its sphere chain against walls (none: it moves as a point), its floor,
+    // water.
+    void stepWorldItem(
+        WorldItemState &worldItem,
+        float deltaSeconds,
+        const WorldItemSphereChain *pChain,
+        std::vector<size_t> &candidateFaceIndices);
+    // The nearest BModel wall an item's sphere chain meets moving from start to end: the distance travelled to it and
+    // the wall's normal.
+    std::optional<std::pair<float, bx::Vec3>> sweepWorldItemAgainstWalls(
+        const WorldItemSphereChain &chain,
+        const bx::Vec3 &start,
+        const bx::Vec3 &end,
+        std::vector<size_t> &candidateFaceIndices) const;
     void updateImmolation(float deltaSeconds);
     void updateFireSpikeTraps(float deltaSeconds, float partyX, float partyY, float partyZ);
     void applyFireSpikeTrapTriggerResult(
@@ -1536,6 +1557,8 @@ private:
     uint32_t m_sessionChestSeed = 0;
     uint32_t m_nextActorId = 0;
     std::vector<std::optional<CorpseViewState>> m_mapActorCorpseViews;
+    // Gold and random item that Telepathy rolled for a living actor; its corpse takes them at death.
+    std::vector<std::optional<CorpseViewState>> m_mapActorRevealedLoot;
     bool m_corpseLootPending = false;
     std::optional<CorpseViewState> m_activeCorpseView;
     std::vector<size_t> m_actorCorpsePhysicsActorIndices;

@@ -415,6 +415,7 @@ bool collideWithLine(
     intersection = factor;
     return true;
 }
+}
 
 bool collideSphereWithFace(
     const OutdoorFaceGeometryData &geometry,
@@ -536,6 +537,8 @@ bool collideSphereWithFace(
     return true;
 }
 
+namespace
+{
 bool collideSphereWithCylinder(
     const bx::Vec3 &centerLo,
     float cylinderRadius,
@@ -2818,6 +2821,23 @@ OutdoorMoveState OutdoorMovementController::resolveMoveForBody(
         partyNewPosition.z = finalGroundLevel;
         partyInputSpeed.z = 0.0f;
     }
+    else if (finalFloor.hasFloor
+        && finalFloor.fromBModel
+        && finalFloor.normalZ >= WalkableNormalZ
+        && wasAirborne
+        && partyInputSpeed.z <= 0.0f)
+    {
+        // The body sphere comes to rest on a sloped face above the face height under its centre, so it would
+        // never reach the ground snap height and land; walking keeps the same resting offset.
+        const float slopeRestHeight = (bodyRadius + ClosestDistance) / finalFloor.normalZ - bodyRadius;
+
+        if (partyNewPosition.z <= finalGroundLevel + slopeRestHeight)
+        {
+            landedThisFrame = true;
+            fallDistance = std::max(0.0f, fallStartZ - partyNewPosition.z);
+            partyInputSpeed.z = 0.0f;
+        }
+    }
 
     OutdoorMoveState result = {};
     float clampedX = partyNewPosition.x;
@@ -2833,7 +2853,11 @@ OutdoorMoveState OutdoorMovementController::resolveMoveForBody(
     result.supportBModelIndex = finalFloor.bModelIndex;
     result.supportFaceIndex = finalFloor.faceIndex;
     result.supportIsFluid = finalFloor.isFluid;
-    if (state.airborne)
+    if (landedThisFrame)
+    {
+        result.airborne = false;
+    }
+    else if (state.airborne)
     {
         result.airborne = result.footZ > finalGroundLevel + GroundSnapHeight;
     }

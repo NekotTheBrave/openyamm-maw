@@ -237,6 +237,14 @@ function(openyamm_configure_bgfx_runtime)
             set(openyammBgfxOpenGlesVersion 0)
             set(openyammBgfxDebug "$<IF:$<CONFIG:Debug>,1,0>")
         endif()
+        # Diagnostic builds: bgfx checks every GL call and stops at the first GL error with the call and source line.
+        if (OPENYAMM_BGFX_DEBUG)
+            set(openyammBgfxDebug 1)
+            # A failed check aborts, so the crash report shows the call that failed. Setting a uniform twice before
+            # one draw is legal (the last value wins), so that bookkeeping check stays off.
+            target_compile_definitions(openyamm_bgfx PUBLIC OPENYAMM_BGFX_ABORT_ON_CHECK=1
+                PRIVATE BGFX_CONFIG_DEBUG_UNIFORM=0)
+        endif()
 
         target_compile_definitions(openyamm_bgfx
             PUBLIC

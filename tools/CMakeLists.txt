@@ -9,6 +9,7 @@ add_executable(openyamm_event_asset_export
     ../game/maps/MapIdentity.cpp
     ../game/party/SkillData.cpp
     ../game/tables/HouseTable.cpp
+    ../game/tables/ItemModelBindings.cpp
     ../game/tables/ItemTable.cpp
     ../game/tables/MapStats.cpp
     ../game/tables/MergedBaseTables.cpp

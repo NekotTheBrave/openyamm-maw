@@ -90,8 +90,7 @@ public:
         const ObjectTable &objectTable,
         const ItemTable &itemTable,
         const ChestTable &chestTable,
-        const HouseTable &houseTable,
-        bool itemModels
+        const HouseTable &houseTable
     );
     void render(
         int width,
@@ -346,6 +345,8 @@ private:
         uint16_t objectSpriteId = 0;
         int32_t spellId = 0;
         bool hasContainingItem = false;
+        // The item an object carries (0 for none).
+        uint32_t containedItemId = 0;
         uint32_t doorAttributes = 0;
         uint32_t doorId = 0;
         uint16_t doorState = 0;

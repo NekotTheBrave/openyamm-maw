@@ -49,10 +49,14 @@ public:
             << (pMessage != nullptr ? pMessage : "")
             << '\n';
 
+#if defined(OPENYAMM_BGFX_ABORT_ON_CHECK)
+        std::abort();
+#else
         if (code != bgfx::Fatal::DebugCheck)
         {
             std::abort();
         }
+#endif
     }
 
     void traceVargs(const char *pFilePath, uint16_t line, const char *pFormat, va_list argList) override

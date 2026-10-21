@@ -188,6 +188,21 @@ struct CharacterEquipPlan
     bool autoStoreDisplacedItem = false;
 };
 
+// Sections of the monster inspect popup revealed by the Identify Monster skill.
+struct IdentifyMonsterReveal
+{
+    bool hasSkill = false;
+    bool hitPointsAndArmorClass = false;
+    bool attackAndDamage = false;
+    bool spellsAndEffects = false;
+    bool resistances = false;
+
+    bool identified() const
+    {
+        return hitPointsAndArmorClass;
+    }
+};
+
 class GameMechanics
 {
 public:
@@ -256,6 +271,11 @@ public:
         int attackBonus,
         float targetDistance,
         std::mt19937 &rng);
+    static IdentifyMonsterReveal resolveIdentifyMonsterReveal(
+        int identifySkillLevel,
+        SkillMastery mastery,
+        int monsterLevel);
+    static IdentifyMonsterReveal resolveIdentifyMonsterReveal(const Character &character, int monsterLevel);
     static SpeechId resolveIdentifyMonsterSpeech(const Character &character, int monsterLevel);
     static CombatDamageType parseCombatDamageType(const std::string &value);
     static CombatDamageType spellCombatDamageType(uint32_t spellId, const SpellTable *pSpellTable);

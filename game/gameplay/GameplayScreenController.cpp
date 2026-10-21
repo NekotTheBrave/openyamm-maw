@@ -870,16 +870,14 @@ GameplayUiOverlayInputResult GameplayScreenController::handleStandardUiInput(
         && !houseBankInputActive
         && !config.blockJournalToggle;
 
-    const bool mapShortcutPressed =
-        input.isScancodeHeld(SDL_SCANCODE_M)
-        || input.action(KeyboardAction::MapBook).held;
-    const bool storyShortcutPressed =
-        input.action(KeyboardAction::History).held;
+    // Keys typed into the journal search are text, not journal shortcuts.
+    const bool journalTyping = GameplayUiController::journalSearchActive(context.journalScreenStateReadOnly());
+    const bool mapShortcutPressed = !journalTyping
+        && (input.isScancodeHeld(SDL_SCANCODE_M) || input.action(KeyboardAction::MapBook).held);
+    const bool storyShortcutPressed = !journalTyping && input.action(KeyboardAction::History).held;
     const bool notesShortcutPressed = false;
-    const bool zoomInPressed =
-        input.action(KeyboardAction::ZoomIn).held;
-    const bool zoomOutPressed =
-        input.action(KeyboardAction::ZoomOut).held;
+    const bool zoomInPressed = !journalTyping && input.action(KeyboardAction::ZoomIn).held;
+    const bool zoomOutPressed = !journalTyping && input.action(KeyboardAction::ZoomOut).held;
 
     const GameplayUiOverlayInputResult result = handleSharedOverlayInput(
         context,
