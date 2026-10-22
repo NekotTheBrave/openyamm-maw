@@ -77,9 +77,12 @@ To play OpenYAMM without MAW, set "enabled: false" in mods.yml.
 Upgrading
 ---------
 Close the game, then unzip the new version over the folder you have, replacing the files it asks about. Your saves
-(saves), your settings (settings.ini, made from settings.default.ini on the first start) and MAW's settings file
-(mods/maw/files) are not in the zip, so they are kept. mods.yml is replaced: set "enabled: false" again if you had.
-To start from the default settings, delete settings.ini.
+(saves), your settings (settings.ini, made on the first start; it keeps only what you changed) and MAW's settings
+file (mods/maw/files) are not in the zip, so they are kept. mods.yml is replaced: set "enabled: false" again if you
+had. To start from the default settings, delete settings.ini.
+
+From a version of 2026-10-20 or older: the game's data moved to assets/packs. Unzip this version into a new folder
+instead, and move the saves folder, settings.ini and mods/maw/files from the old one into it.
 
 Known issues
 ------------

@@ -29,7 +29,8 @@ packages:
       icons_x2:          {buckets: 10}
       models:            {buckets: 8, group: model}
       sprites:           {buckets: 3}
-      sprites_new:       {buckets: 1, group: first_dir}
+      # MAW port: the port keeps the cooked sprite atlases (about 560 MiB) upstream no longer ships.
+      sprites_new:       {buckets: 12, group: first_dir}
       world_items:       {buckets: 3, group: model}
   # Every world; a world entry below replaces single domains or the core list.
   world:
