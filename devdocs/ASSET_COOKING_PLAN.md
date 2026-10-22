@@ -230,7 +230,8 @@ build/game/openyamm_model_texture_cook --preview <file.oytex> <out.rgba> [level]
     and fails when that set differs from the cooked textures in `assets_dev`. `.oytex` is stored without deflate.
   - Since 2026-10-15 (MM6 ships no sprites) release zips include each package's `models/`: every GLB, the cooked
     textures and the runtime manifests (`release_model_file`). README, review/stress manifests and fixtures stay out.
-    Worlds in `UNRELEASED_MODEL_WORLDS` (MM8, work in progress) ship no `models/`: their monsters keep sprites.
+    MM8 shipped no `models/` until release 1.7 (its monsters kept sprites); since its sprites were retired, every world
+    ships its models.
 - **Shared encoder:** the sprite atlas cooker now uses `tools/TextureBlockEncode.cpp` too. Its output is
   byte-identical to before for both profiles (checked on `mm6_rat`), and the 60 installed packages verify.
 - **BC1 fix:** etcpak can quantize both endpoints of a nearly uniform block to one colour. That selects BC1's

@@ -359,9 +359,9 @@ content (`tools/package_runtime_assets.py --report`):
 
 ### 5.5 Packager changes (`tools/package_runtime_assets.py`)
 
-- Keep `package()`'s entry selection and filters (`world_items`, `_legacy`, unreleased model worlds, profile
-  overlays, surface selection, lighting dependencies). Only the output step changes: instead of one zip per package,
-  route each entry to its pack by the rules above.
+- Keep `package()`'s entry selection and filters (`world_items`, `_legacy`, profile overlays, surface selection,
+  lighting dependencies). Only the output step changes: instead of one zip per package, route each entry to its pack
+  by the rules above.
 - New output: `<out>/packs/*.zip` and `<out>/index.json` (§6.1). The old `engine.zip` + `worlds/*.zip` output is
   removed once all platforms consume packs; no layout fallback is kept.
 - `--report` prints domain sizes, bucket sizes and pack counts; it fails on the size limits or on overlaps.
@@ -938,7 +938,7 @@ returning players (§15). Phase 6 matters only if 64 MiB granularity proves too 
    carries them too (2026-10-21). Google Drive is rejected and the
    Nextcloud share only keeps already-posted links working (§7.3). Later, if traffic outgrows the home upstream:
    object storage with free egress in front of `packs/` and `downloads/`.
-2. **Releases:** revised on 2026-10-21 — from GitHub Actions on a `vX.Y` tag after an approval, with the keys as
+2. **Releases:** revised on 2026-10-21 — from GitHub Actions on a `vX.Y` tag, with the keys as
    secrets of the `release` environment; test releases go to the staging site from a manual run; one `stable`
    channel ([Releases](RELEASE.md)).
 3. **Developer-flavoured defaults that reach players today** (§4.3): for example `debug_console=true`. Decide the

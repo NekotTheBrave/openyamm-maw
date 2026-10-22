@@ -2,7 +2,7 @@
 #   push to main          builds every package and plays the release scenarios; publishes nothing
 #   tag vX.Y              the same, then publishes release X.Y to https://jasicek.net/openyamm/ and GitHub Releases
 #   Run workflow + X.Y    the same, then publishes a test release to https://jasicek.net/openyamm-staging/
-# Only the publish job holds secrets: the GitHub environment "release" (required reviewer) carries the manifest
+# Only the publish job holds secrets: the GitHub environment "release" (tags v* and main only) carries the manifest
 # signing key, the Android release key and the deploy key of the server.
 name: Packages
 

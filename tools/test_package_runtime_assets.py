@@ -39,13 +39,6 @@ def check_model_selection():
                     "models/textures/0123.oytex", "effects/mm9/models/spells/bugpath.glb",
                     "world_items/items.yml", "world_items/models/boots.glb", "world_items/models/textures/boots.oytex"
                 }, archive.namelist()
-            # A world whose models are not released (UNRELEASED_MODEL_WORLDS) ships no models/ at all.
-            package(source, output, models=False)
-            with zipfile.ZipFile(output) as archive:
-                assert set(archive.namelist()) == {
-                    "world.yml", "sprites/grass.png", "effects/mm9/models/spells/bugpath.glb",
-                    "world_items/items.yml", "world_items/models/boots.glb", "world_items/models/textures/boots.oytex"
-                }, archive.namelist()
 
 
 def check_profile_textures():

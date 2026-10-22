@@ -11,6 +11,9 @@ Builds what the workflow builds, from this checkout, publishes it with the real 
   all FIRST SECOND [--manual]                 every step above for both releases and all platforms
   clean                                       stops the server and emulator and removes the work folder
 
+--site URL (for install and update) takes the packages and updates from a published site instead, for example
+https://jasicek.net/openyamm-staging after a staging run.
+
 Platforms: linux (native), windows (Wine), android (the emulator; its x86_64 APK stands in for the arm64 one). Nothing
 is uploaded anywhere; the work folder (default build-rehearsal/) holds the builds, the site and the installations.
 """
@@ -62,6 +65,7 @@ class Work:
         self.root = Path(root).resolve()
         self.state_path = self.root / "state.json"
         self.state = json.loads(self.state_path.read_text()) if self.state_path.is_file() else {}
+        self.site = None  # a published site (--site) in place of the local one
 
     def save(self):
         self.root.mkdir(parents=True, exist_ok=True)
@@ -80,6 +84,8 @@ class Work:
 
     @property
     def channel_url(self):
+        if self.site:
+            return f"{self.site}/updates/"
         return f"{self.base_url}/openyamm/updates/"
 
     def install_dir(self, platform):
@@ -120,6 +126,16 @@ def ensure_server(work):
 
 def published_package(work, version, platform):
     name = publish_release.PACKAGE_NAMES[platform].format(version=version)
+    if work.site:
+        path = work.root / "downloads" / version / name
+        if not path.is_file():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            url = f"{work.site}/downloads/{version}/{name}"
+            log(f"downloading {url}")
+            with urllib.request.urlopen(url, timeout=60) as response, path.with_suffix(".part").open("wb") as stream:
+                shutil.copyfileobj(response, stream)
+            path.with_suffix(".part").rename(path)
+        return path
     path = work.www / "openyamm" / "downloads" / version / name
     if not path.is_file():
         fail(f"{path} is missing; publish {version} first")
@@ -498,8 +514,9 @@ class Android:
             time.sleep(60)
         if self.adb("shell", "getprop", "ro.kernel.qemu").strip() != "1":
             fail("Android checks run only on an emulator")
-        port = self.work.state["port"]
-        self.adb("reverse", f"tcp:{port}", f"tcp:{port}")
+        if not self.work.site:
+            port = self.work.state["port"]
+            self.adb("reverse", f"tcp:{port}", f"tcp:{port}")
 
     def version_name(self):
         for line in self.adb("shell", "dumpsys", "package", PACKAGE, check=False).splitlines():
@@ -595,7 +612,8 @@ def update_android(work, previous, version):
 # Commands
 
 def install(work, args):
-    ensure_server(work)
+    if not work.site:
+        ensure_server(work)
     if args.platform == "android":
         install_android(work, args.version)
     else:
@@ -603,7 +621,8 @@ def install(work, args):
 
 
 def update(work, args):
-    ensure_server(work)
+    if not work.site:
+        ensure_server(work)
     if args.platform == "android":
         update_android(work, args.previous, args.version)
     else:
@@ -653,6 +672,8 @@ def clean(work, args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--work", default=str(REPO / "build-rehearsal"))
+    parser.add_argument("--site", help="Install and update from this published site, e.g. "
+                        "https://jasicek.net/openyamm-staging, instead of the local one")
     commands = parser.add_subparsers(dest="command", required=True)
 
     build_parser = commands.add_parser("build")
@@ -690,6 +711,7 @@ def main():
 
     args = parser.parse_args()
     work = Work(args.work)
+    work.site = args.site.rstrip("/") if args.site else None
     # Compilers, the packer and the publisher write gigabytes of temporary files: keep them in the work folder on disk,
     # not in /tmp, which is often a size-limited RAM disk.
     if args.command != "clean":

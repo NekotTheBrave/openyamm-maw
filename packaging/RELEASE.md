@@ -58,7 +58,8 @@ The publish job (`packaging/publish_release.py`):
    server, so the router forwards the public TCP port 2222 to `192.168.1.128:2222`. `packaging/server/known_hosts`
    pins the server's own host key, so the job refuses to upload anywhere else.
 3. **Environment.** GitHub → Settings → Environments → New environment `release`:
-   - Required reviewers: yourself. Every publish waits for your approval.
+   - No required reviewers: a tag or a staging run publishes as soon as its builds and scenarios pass. Tick
+     Required reviewers (yourself, "Prevent self-review" unticked) to make every publish wait for an approval.
    - Deployment branches and tags: selected only, tag rule `v*` and branch `main` (staging runs start from `main`).
 4. **Environment secrets** of `release` (with the GitHub CLI, from the keys folder):
 
@@ -79,10 +80,13 @@ The publish job (`packaging/publish_release.py`):
 
 ## Making a release
 
-1. Test it on the staging site: Actions → Packages → Run workflow on `main`, version `X.Y`, then approve the
-   deployment. Point a test installation at it with `[updates] url=https://jasicek.net/openyamm-staging/updates/` in
-   its `settings.ini`, or extract the small package from `https://jasicek.net/openyamm-staging/downloads/X.Y/` and set
-   the same line before the first start. Running the same version again replaces the staged release.
+1. Test it on the staging site: Actions → Packages → Run workflow on `main`, version `X.Y`. Point a test
+   installation at it with `[updates] url=https://jasicek.net/openyamm-staging/updates/` in its `settings.ini`, or
+   extract the small package from `https://jasicek.net/openyamm-staging/downloads/X.Y/` and set the same line before
+   the first start. Running the same version again replaces the staged release. On this PC,
+   `python3 packaging/rehearse_release.py --site https://jasicek.net/openyamm-staging install X.Y --platform P` (P:
+   `linux`, `windows` under Wine, `android` on the emulator) installs the staged packages as a player would and
+   renders a map; `clean` removes the installations afterwards.
 2. Publish: create an annotated tag whose message is the release notes (plain text, at most 1500 characters; the
    update question shows them) and push it:
 
@@ -91,8 +95,7 @@ The publish job (`packaging/publish_release.py`):
    git push origin v1.7
    ```
 
-3. Approve the deployment in the run. Afterwards
-   `python3 packaging/publish_release.py verify --expect 1.7` checks the release from outside.
+3. When the run is green, `python3 packaging/publish_release.py verify --expect 1.7` checks the release from outside.
 
 A failed publish can be re-run from the run page: nothing is visible to players before the manifests upload, and a
 release whose manifests went up can be published again only on the staging site. Versions must increase; a tag that
@@ -123,11 +126,11 @@ removes it, stops the local site, uninstalls the game from the emulator and stop
 ## Security
 
 - Push builds and the build jobs of a release hold no secrets. Only the publish job, which runs only for `v*` tags and
-  `main` after your approval, sees the keys.
-- Someone who can push tags and approve deployments can publish. A leaked manifest key lets an attacker sign
-  manifests that clients accept: publish a release whose game trusts only slot 2, then make a new slot 1 key. A leaked
-  deploy key can change the release folders, but clients reject any content that the manifests do not sign; delete
-  `~/openyamm-keys/ci-deploy-ed25519*`, run `setup_deploy_key.sh` again and update the secret.
+  manual runs on `main`, sees the keys.
+- Someone who can push tags or start the workflow can publish (with required reviewers, only after an approval). A
+  leaked manifest key lets an attacker sign manifests that clients accept: publish a release whose game trusts only
+  slot 2, then make a new slot 1 key. A leaked deploy key can change the release folders, but clients reject any
+  content that the manifests do not sign; delete `~/openyamm-keys/ci-deploy-ed25519*`, run `setup_deploy_key.sh` again and update the secret.
 - The server holds no keys and runs no publishing code; it can be rebuilt by publishing the next release.
 
 ## Local work

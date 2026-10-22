@@ -170,9 +170,6 @@ def verify_surface_cook(assets_root, profile):
 # The model manifests the game reads (ActorModelManifest, DecorationModelManifest, DecorationModelSet). Review and
 # stress-test manifests selected through debug.actor_models_manifest stay out.
 RUNTIME_MODEL_MANIFESTS = {"actors.yml", "decorations.yml", "indoor_decorations.yml", "decoration_overlays.yml"}
-# World packages whose 3D models are work in progress: releases leave their models/ out, so those monsters keep their
-# sprites. Development runs still load them from assets_dev.
-UNRELEASED_MODEL_WORLDS = {"mm8"}
 
 
 def release_model_file(relative):
@@ -186,7 +183,7 @@ def release_model_file(relative):
 
 
 def collect_entries(source, *, sprites=None, profile=None, dependencies=None, model_textures=None,
-                    surface_profile=None, surface_overlay=None, models=True):
+                    surface_profile=None, surface_overlay=None):
     """The files one package (engine or a world) ships: {name inside the package: source path or bytes}."""
     if not source.is_dir():
         raise ValueError(f"Missing asset package: {source}")
@@ -199,7 +196,7 @@ def collect_entries(source, *, sprites=None, profile=None, dependencies=None, mo
         if any(".cook-" in part or part.endswith(".previous") for part in relative.parts):
             raise ValueError(f"Finish/recover the sprite deployment before packaging: {path}")
         # Development model files, render fixtures and archived sources stay outside release bundles.
-        if (not release_model_file(relative) or (not models and relative.parts[0] == "models")
+        if (not release_model_file(relative)
                 or "_legacy" in relative.parts
                 or (sprites is not None and relative.parts[0] == "sprites_new")):
             continue
@@ -321,8 +318,7 @@ def main():
             packages[name] = collect_entries(
                 worlds / name, model_textures=profile_root / "worlds" / name if profile_root else None,
                 surface_profile=args.profile,
-                surface_overlay=args.assets_root.parent / "assets_cooked" / args.profile / "worlds" / name,
-                models=name not in UNRELEASED_MODEL_WORLDS)
+                surface_overlay=args.assets_root.parent / "assets_cooked" / args.profile / "worlds" / name)
     reuse = published_packs(args.reuse_manifest, args.reuse_store or Path("."))
     records = build_packs(packages, config, args.profile, args.output, reuse)
     write_index(args.output, records, profile=args.profile, release=args.release, build=args.build,
