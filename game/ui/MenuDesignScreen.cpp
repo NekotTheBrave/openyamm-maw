@@ -172,13 +172,16 @@ void MenuDesignScreen::scrollViewport(const Rect &viewport, float contentHeight,
 {
     const float unit = designScale();
     const float maxScroll = std::max(0.0f, contentHeight - viewport.height / unit);
+    // A confirmation's own scroll box (its notes) takes input while the confirmation draws; a viewport behind it
+    // leaves the drag alone, which belongs to the box.
+    const bool interactive = !modalOpen() || m_drawingConfirmation;
     revealFocus(viewport, scroll);
-    if (!modalOpen() && pointerInside(viewport))
+    if (interactive && pointerInside(viewport))
     {
         scroll -= mouseWheelDelta() * wheelStep;
     }
     scroll = std::clamp(scroll, 0.0f, maxScroll);
-    if (!leftMouseDown() || modalOpen() || maxScroll == 0)
+    if (interactive && (!leftMouseDown() || maxScroll == 0))
     {
         m_scrollDragOffset.reset();
     }
@@ -191,7 +194,7 @@ void MenuDesignScreen::scrollViewport(const Rect &viewport, float contentHeight,
     const float travel = viewport.height - thumbHeight;
     const Rect track{viewport.x + viewport.width - 12 * unit, viewport.y, 12 * unit, viewport.height};
     float thumbY = viewport.y + travel * scroll / maxScroll;
-    if (!modalOpen() && leftMouseJustPressed() && pointerInside(track))
+    if (interactive && leftMouseJustPressed() && pointerInside(track))
     {
         if (mouseY() >= thumbY && mouseY() <= thumbY + thumbHeight)
         {
@@ -203,14 +206,14 @@ void MenuDesignScreen::scrollViewport(const Rect &viewport, float contentHeight,
             scroll = std::clamp(scroll + (mouseY() < thumbY ? -1 : 1) * viewport.height / unit, 0.0f, maxScroll);
         }
     }
-    if (m_scrollDragOffset && travel > 0)
+    if (interactive && m_scrollDragOffset && travel > 0)
     {
         scroll = std::clamp((mouseY() - viewport.y - *m_scrollDragOffset) / travel, 0.0f, 1.0f) * maxScroll;
     }
     thumbY = viewport.y + travel * scroll / maxScroll;
     drawSolidRect({track.x + 4.5f * unit, viewport.y, 3 * unit, viewport.height}, 0xff29382au);
     drawSolidRect({track.x + 3 * unit, thumbY, 6 * unit, thumbHeight},
-                  m_scrollDragOffset || pointerInside(track) ? 0xff90bedau : 0xff6a8dacu);
+                  (interactive && m_scrollDragOffset) || pointerInside(track) ? 0xff90bedau : 0xff6a8dacu);
 }
 
 void MenuDesignScreen::drawDesign()
@@ -267,6 +270,30 @@ void MenuDesignScreen::drawDesign()
     }
 }
 
+// The lines of one paragraph word-wrapped to width (pixels); an empty paragraph is one empty line.
+std::vector<std::string> MenuDesignScreen::wrapParagraph(const std::string &paragraph, const std::string &font,
+                                                         float scale, float width)
+{
+    std::vector<std::string> lines;
+    std::istringstream words(paragraph);
+    std::string word, line;
+    while (words >> word)
+    {
+        const std::string candidate = line.empty() ? word : line + " " + word;
+        if (!line.empty() && measureTextWidth(font, candidate, scale) > width + 0.5f)
+        {
+            lines.push_back(line);
+            line = word;
+        }
+        else
+        {
+            line = candidate;
+        }
+    }
+    lines.push_back(line);
+    return lines;
+}
+
 void MenuDesignScreen::textInRect(const Rect &rect, const std::string &text, const std::string &font, float logicalSize,
                                   uint32_t color, bool centered)
 {
@@ -299,22 +326,8 @@ void MenuDesignScreen::textInRect(const Rect &rect, const std::string &text, con
     std::string paragraph;
     while (std::getline(paragraphs, paragraph))
     {
-        std::istringstream words(paragraph);
-        std::string word, line;
-        while (words >> word)
-        {
-            const std::string candidate = line.empty() ? word : line + " " + word;
-            if (!line.empty() && measureTextWidth(font, candidate, scale) > rect.width + 0.5f)
-            {
-                lines.push_back(line);
-                line = word;
-            }
-            else
-            {
-                line = candidate;
-            }
-        }
-        lines.push_back(line);
+        const std::vector<std::string> wrapped = wrapParagraph(paragraph, font, scale, rect.width);
+        lines.insert(lines.end(), wrapped.begin(), wrapped.end());
     }
     const float glyphHeight = logicalSize * designScale();
     const float blockHeight = glyphHeight + (lines.empty() ? 0 : lines.size() - 1) * lineHeight;
@@ -523,6 +536,14 @@ void MenuDesignScreen::setModalBody(const std::string &text)
         m_confirmation->body = text;
     }
 }
+void MenuDesignScreen::setModalNotes(const std::string &text)
+{
+    if (m_confirmation)
+    {
+        m_confirmation->notes = text;
+        m_confirmation->notesScroll = 0;
+    }
+}
 
 void MenuDesignScreen::drawConfirmation()
 {
@@ -539,8 +560,59 @@ void MenuDesignScreen::drawConfirmation()
     const int count = twoColumns ? total : std::min(8, total);
     const int columns = twoColumns ? std::min(2, count) : 1;
     const auto *pPanel = m_designLayouts.findElement("MenuConfirmationPanel");
+    const auto *pBody = m_designLayouts.findElement("MenuConfirmationBody");
+    const float unit = designScale();
+    const float bodySize = pBody->textScale * fontHeight(pBody->fontName);
+    const float bodyScale = unit * bodySize / std::max(1, fontHeight(pBody->fontName));
+    const float bodyLineHeight = bodySize * 1.2f;
+    // With a row of buttons the panel grows to fit a long body, and by the notes box above it.
+    constexpr float NotesPadding = 6;
+    float bodyExtra = 0;
+    float notesHeight = 0;
+    struct NoteLine
+    {
+        std::string text;
+        float indent = 0;
+    };
+    std::vector<NoteLine> noteLines;
+    if (!list && !twoColumns)
+    {
+        size_t bodyLines = 0;
+        std::istringstream paragraphs(menuEncoding(m_confirmation->body));
+        std::string paragraph;
+        while (std::getline(paragraphs, paragraph))
+        {
+            bodyLines += wrapParagraph(paragraph, pBody->fontName, bodyScale, pBody->width * unit).size();
+        }
+        if (bodyLines > 0)
+        {
+            bodyExtra = std::max(0.0f, bodySize + (bodyLines - 1) * bodyLineHeight - pBody->height);
+        }
+
+        // A "- " line is a bullet: its wrapped lines align after the dash.
+        constexpr float NotesMaxHeight = 150;
+        const float wrapWidth = (pBody->width - 2 * NotesPadding - 14) * unit;
+        std::istringstream notes(menuEncoding(m_confirmation->notes));
+        while (std::getline(notes, paragraph))
+        {
+            const bool bullet = paragraph.starts_with("- ");
+            const float indent = bullet ? measureTextWidth(pBody->fontName, "- ", bodyScale) : 0;
+            const std::vector<std::string> wrapped =
+                wrapParagraph(bullet ? paragraph.substr(2) : paragraph, pBody->fontName, bodyScale, wrapWidth - indent);
+            for (size_t i = 0; i < wrapped.size(); ++i)
+            {
+                noteLines.push_back({(bullet && i == 0 ? "- " : "") + wrapped[i], bullet && i > 0 ? indent : 0});
+            }
+        }
+        if (!noteLines.empty())
+        {
+            notesHeight = std::min(NotesMaxHeight, noteLines.size() * bodyLineHeight + 2 * NotesPadding);
+        }
+    }
+    constexpr float NotesGap = 10;
+    const float notesShift = notesHeight > 0 ? notesHeight + NotesGap : 0;
     const float height = twoColumns ? 172.0f + ((count + columns - 1) / columns) * 46
-                                   : list ? 155.0f + count * 25 : pPanel->height;
+                                   : list ? 155.0f + count * 25 : pPanel->height + bodyExtra + notesShift;
     const float verticalShift = (pPanel->height - height) / 2 * designScale();
     const auto modalRect = [this, verticalShift](const std::string &id)
     {
@@ -573,7 +645,34 @@ void MenuDesignScreen::drawConfirmation()
     drawTexture(pPanel->primaryAsset, panel);
     drawTexture(m_designLayouts.findElement("MenuConfirmationSeal")->primaryAsset, modalRect("MenuConfirmationSeal"));
     modalText("MenuConfirmationTitle", m_confirmation->title);
-    modalText("MenuConfirmationBody", m_confirmation->body);
+    if (notesHeight > 0)
+    {
+        Rect box = modalRect("MenuConfirmationBody");
+        box.height = notesHeight * unit;
+        outline(box, 0xff29382au);
+        const Rect viewport{box.x + NotesPadding * unit, box.y + NotesPadding * unit,
+                            box.width - 2 * NotesPadding * unit, box.height - 2 * NotesPadding * unit};
+        scrollViewport(viewport, noteLines.size() * bodyLineHeight, m_confirmation->notesScroll, bodyLineHeight * 3);
+        setDesignClip(viewport);
+        float y = viewport.y - m_confirmation->notesScroll * unit;
+        for (const NoteLine &line : noteLines)
+        {
+            drawText(pBody->fontName, line.text, viewport.x + line.indent, y, pBody->textColorAbgr, bodyScale);
+            y += bodyLineHeight * unit;
+        }
+        setDesignClip(std::nullopt);
+    }
+    if (twoColumns || list)
+    {
+        modalText("MenuConfirmationBody", m_confirmation->body);
+    }
+    else
+    {
+        Rect body = modalRect("MenuConfirmationBody");
+        body.y += notesShift * unit;
+        body.height += bodyExtra * unit;
+        textInRect(body, m_confirmation->body, pBody->fontName, bodySize, pBody->textColorAbgr, true);
+    }
     int selected = -2;
     if (!m_confirmationNew &&
         (keyPressed(SDL_SCANCODE_ESCAPE) ||
@@ -652,6 +751,7 @@ void MenuDesignScreen::drawConfirmation()
         else
         {
             rect.x += i * (width + 6 * scale);
+            rect.y += (bodyExtra + notesShift) * scale;
             rect.width = width;
         }
         const bool hasIcon = index < int(m_confirmation->choiceIcons.size())

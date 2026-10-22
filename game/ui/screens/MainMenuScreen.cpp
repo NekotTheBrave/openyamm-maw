@@ -483,19 +483,9 @@ void MainMenuScreen::offerUpdate()
     }
 
     const std::string size = std::to_string((status.totalBytes + 999999) / 1000000) + " MB";
-    std::string body = m_pUpdater->updatesInGame()
+    const std::string body = m_pUpdater->updatesInGame()
         ? "Downloads " + size + ". Your saves and settings stay as they are."
         : "Downloads " + size + " in the update screen. Your saves and settings stay as they are.";
-
-    // The signed manifest's short notes; the dialog has room for a few lines.
-    if (!status.notes.empty())
-    {
-        constexpr size_t MaximumNotes = 320;
-        const std::string notes =
-            status.notes.size() > MaximumNotes ? status.notes.substr(0, MaximumNotes - 3) + "..." : status.notes;
-        body = "What's new: " + notes + "\n\n" + body;
-    }
-
     const bool hasNotesPage = !status.notesUrl.empty();
     std::vector<std::string> choices = {"Later", "Update"};
 
@@ -531,6 +521,8 @@ void MainMenuScreen::offerUpdate()
                             m_followingUpdate = false;
                         });
             });
+    // The signed manifest's notes (the release tag's message), whole: the box scrolls when they are long.
+    setModalNotes(status.notes);
 }
 
 void MainMenuScreen::followUpdate()
