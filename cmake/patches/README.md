@@ -88,3 +88,16 @@ with `eglGetProcAddress`, which drivers without `EXT_disjoint_timer_query` answe
 without a check. The water renderer's reflection occlusion queries then crashed the first frame with water on a
 Samsung Galaxy A34 (Mali-G68, Android 15, 2026-10-22): `SIGSEGV` at pc 0 in `RendererContextGL::submit`, with
 `GL_QUERY_RESULT_AVAILABLE` in `x1`. Timer queries are unaffected: bgfx disables them when that function is null.
+
+## Opaque EGL windows
+
+`bgfx-egl-opaque-window.patch` makes the EGL backend request a window config with no alpha channel on desktop
+(Android and headless keep the upstream value). It also prefers an alpha-free config if the driver lists configs
+with alpha first. Wayland compositors honour the window surface's alpha, and the scene leaves alpha below 1 in the
+back buffer (fogged distant terrain, buildings and decorations, alpha-blended content). With an alpha config the
+window turned see-through there: far land showed as black silhouettes with white, cyan and red fringes at the coast.
+Engine screenshots read the same back buffer, so they look correct once their alpha is ignored.
+
+The fix was first applied by hand in a local `build/_deps/bgfx-src`, so the 1.9 CI build (NVIDIA, Wayland,
+2026-10-22) shipped without it while development builds looked correct. To check a build, take an engine screenshot
+outdoors with fog: its PNG alpha must be 255 everywhere.
