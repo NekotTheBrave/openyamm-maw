@@ -546,6 +546,8 @@ jobs:
           chmod +x "$game"
           mkdir -p "$RUNNER_TEMP/user"
           while read -r scenario; do
+            # The Windows checkout converts text files to CRLF.
+            scenario="${scenario%$'\r'}"
             case "$scenario" in ''|'#'*) continue ;; esac
             echo "::group::$scenario"
             "$game" --user-data "$RUNNER_TEMP/user" --asset-root "$PWD/content" \
