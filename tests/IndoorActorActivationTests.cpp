@@ -37,12 +37,14 @@ TEST_CASE("OE indoor detection shortcut uses Nearby but not Aggressor")
     CHECK_FALSE(indoorActorHasPreviouslyDetectedParty(attr(EvtActorAttribute::Nearby), false));
 }
 
-TEST_CASE("Wizard Eye actor markers include corpses, detected hostiles, and friendly actors")
+TEST_CASE("Wizard Eye actor markers include corpses with loot, detected hostiles, and friendly actors")
 {
     using OpenYAMM::Game::wizardEyeShowsActorMarker;
 
-    CHECK(wizardEyeShowsActorMarker(true, false, true));
-    CHECK(wizardEyeShowsActorMarker(false, true, true));
-    CHECK(wizardEyeShowsActorMarker(false, false, false));
-    CHECK_FALSE(wizardEyeShowsActorMarker(false, false, true));
+    CHECK(wizardEyeShowsActorMarker(true, false, false, true));
+    CHECK_FALSE(wizardEyeShowsActorMarker(true, true, false, true));
+    CHECK_FALSE(wizardEyeShowsActorMarker(true, true, false, false));
+    CHECK(wizardEyeShowsActorMarker(false, false, true, true));
+    CHECK(wizardEyeShowsActorMarker(false, false, false, false));
+    CHECK_FALSE(wizardEyeShowsActorMarker(false, false, false, true));
 }

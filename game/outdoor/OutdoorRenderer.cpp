@@ -3456,6 +3456,13 @@ bool OutdoorRenderer::initializeWorldRenderResources(
     {
         std::cerr << "Decoration models require renderer instancing support; decorations stay sprites.\n";
     }
+    // Emissive-texture variants of the colour programs, loaded only when a model with an emissive texture appears.
+    view.m_modelRenderer.setEmissiveProgramLoader([]()
+    {
+        return Engine::ModelEmissivePrograms{loadProgramHandle("vs_model", "fs_model_emissive"),
+            loadProgramHandle("vs_model_skinned_instanced", "fs_model_emissive"),
+            loadProgramHandle("vs_model_instanced", "fs_model_emissive")};
+    });
     view.m_outdoorTexturedFogProgramHandle =
         loadProgramHandle("vs_outdoor_textured_fog", "fs_outdoor_textured_fog");
     if (view.m_gameSettings.lightmaps && outdoorMapData.lightingData)

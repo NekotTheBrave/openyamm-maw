@@ -556,6 +556,9 @@ function(openyamm_configure_runtime_shaders)
         "${CMAKE_SOURCE_DIR}/game/shaders/vs_model_instanced.sc" "vertex" "vs_model_instanced.bin")
     openyamm_compile_bgfx_shader(
         "${CMAKE_SOURCE_DIR}/game/shaders/fs_model.sc" "fragment" "fs_model_prepassed.bin" "MODEL_PREPASSED=1")
+    # Materials with an emissive texture (loaded the first time such a model is prepared).
+    openyamm_compile_bgfx_shader(
+        "${CMAKE_SOURCE_DIR}/game/shaders/fs_model.sc" "fragment" "fs_model_emissive.bin" "MODEL_EMISSIVE_MAP=1")
     # Alpha to coverage under multisample anti-aliasing: the foliage depth prepass and the grass. Loaded only while
     # anti-aliasing is on.
     openyamm_compile_bgfx_shader(
@@ -687,7 +690,8 @@ function(openyamm_configure_runtime_shaders)
         vs_terrain_shadow.bin fs_terrain_shadow.bin
         fs_outdoor_bmodel_lightmap_array.bin fs_outdoor_bmodel_baked_array.bin fs_outdoor_textured_fog_array.bin
         fs_outdoor_bmodel_baked_array_shadow.bin fs_outdoor_textured_fog_array_shadow.bin
-        fs_model_coverage.bin fs_terrain_decoration_coverage.bin fs_terrain_decoration_baked_coverage.bin
+        fs_model_coverage.bin fs_model_emissive.bin
+        fs_terrain_decoration_coverage.bin fs_terrain_decoration_baked_coverage.bin
         fs_terrain_decoration_shadow_coverage.bin fs_terrain_decoration_baked_shadow_coverage.bin)
 
     # Android startup extracts exactly the shaders that this build produces.

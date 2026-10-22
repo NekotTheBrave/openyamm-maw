@@ -81,7 +81,14 @@ struct ModelMaterial
     ModelSampler normalSampler;
     ModelSampler metallicRoughnessSampler;
     float normalScale = 1.0f;
+    // glTF emissiveFactor (linear RGB) times KHR_materials_emissive_strength: light the surface gives off, added unlit
+    // to its shaded colour. With emissiveImageIndex (glTF emissiveTexture, sRGB, UV0) it is factor x texel.
     std::array<float, 3> emissive = {};
+    int emissiveImageIndex = -1;
+    ModelSampler emissiveSampler;
+    // Creature (skinned) draws draw their emission into the bloom glow view only when set: an emissive texture sets it,
+    // the extra "openyamm_bloom" (bool) overrides. Static models glow whenever they emit, as before.
+    bool bloom = false;
     ModelAlphaMode alphaMode = ModelAlphaMode::Opaque;
     float alphaCutoff = 0.5f;
     bool doubleSided = false;
@@ -134,13 +141,19 @@ struct ModelMaterial
     // second], frames left to right then top to bottom, looping with a per-placement phase (fire). "openyamm_flutter": cloth wave amplitude in model units; each vertex moves along
     // its normal by amplitude x COLOR_0 alpha x a wave travelling along texture coordinate u (flags).
     // "openyamm_pulse": [amplitude, period seconds]; the emission is scaled by 1 + amplitude x sin(2 pi t / period),
-    // with the per-placement phase (glowing crystals). "openyamm_flicker": [amplitude, changes per second] scales it
+    // with the per-placement phase (glowing crystals); creatures pulse too, every one of a material in step.
+    // "openyamm_flicker": [amplitude, changes per second] scales it
     // by 1 + amplitude x smooth random noise instead (flames); stored as a pulse with a negative period.
     std::array<float, 2> uvScroll = {};
     std::array<float, 3> flipbook = {};
     float flutter = 0.0f;
     std::array<float, 2> pulse = {};
 };
+
+// Emission scale of a creature material's "openyamm_pulse" or "openyamm_flicker" at seconds (1 without either): the
+// static placements' modelStaticPulse (game/shaders/model_static.sh) at phase 0, so every creature of a material
+// pulses in step (ModelRenderer scales the emission it uploads per draw).
+float modelCreaturePulse(const ModelMaterial &material, float seconds);
 
 struct ModelVertexInfluences
 {

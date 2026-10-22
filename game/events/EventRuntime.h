@@ -131,6 +131,8 @@ struct EventRuntimeState
         std::optional<std::string> mapName;
         std::optional<int32_t> directionDegrees;
         bool useMapStartPosition = false;
+        // With useMapStartPosition: the start decoration to use ("north start", ...); empty means "party start".
+        std::string startPointName;
         bool useFullscreenLoading = false;
         // Travel time, food or fare were already spent, so the travel autosave belongs to the arrival map.
         bool travelTimeApplied = false;

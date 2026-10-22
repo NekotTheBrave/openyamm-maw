@@ -15313,7 +15313,11 @@ void IndoorWorldRuntime::collectGameplayMinimapMarkers(std::vector<GameplayMinim
             continue;
         }
 
-        if (!wizardEyeShowsActorMarker(actorState.isDead, actorState.hasDetectedParty, actorState.hostileToParty))
+        if (!wizardEyeShowsActorMarker(
+                actorState.isDead,
+                indoorMapActorCorpseWasConsumed(m_mapActorCorpseViews, actorIndex),
+                actorState.hasDetectedParty,
+                actorState.hostileToParty))
         {
             continue;
         }

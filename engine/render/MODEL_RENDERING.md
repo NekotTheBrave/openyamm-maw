@@ -1,8 +1,8 @@
 # 3D model rendering: what we stand on
 
-State of 2026-10-08. This document covers glTF creatures (skinned actors), their carried items, and static
-decoration models: the asset contract, the build post-processes, how `ModelRenderer` draws them, and how to make a
-variant such as a boss. Keep it in step with the code. If a statement here disagrees with the code, the code wins;
+State of 2026-10-08 (emission and creature bloom: 2026-10-22). This document covers glTF creatures (skinned actors),
+their carried items, and static decoration models: the asset contract, the build post-processes, how `ModelRenderer`
+draws them, and how to make a variant such as a boss. Keep it in step with the code. If a statement here disagrees with the code, the code wins;
 fix this file in the same change.
 
 Code: `engine/models/` (loading, `ModelInstanceSystem`, poses) and `engine/render/ModelRenderer.{h,cpp}` (drawing).
@@ -16,6 +16,7 @@ Shaders: `game/shaders/vs_model*.sc`, `fs_model.sc`, `model_skin.sh`, `model_sta
 |---|---|
 | Colour LODs | Base mesh `extras.openyamm_lods`: up to 3 coarser mesh indices, coarsest last, decreasing triangles. Shadow-only chains go in `openyamm_shadow_lods` (up to 4). Static models get these from `tools/link_static_model_lods.py`; creatures from `tools/build_actor_lods.py`. |
 | Colour variants (tiers) | `KHR_materials_variants`. Tiers share one skin: a region mask (`extras.openyamm_region_mask`, up to four RGBA channels) and per-tier `openyamm_region_ramps` (16 linear stops over a luminance range per region), written by `level_generation/creatures/claude_shared/region_variants.py`. `actors.yml` picks a tier with `skin:`. |
+| Emission | glTF `emissiveFactor` (times `KHR_materials_emissive_strength`, up to 16) and `emissiveTexture` (sRGB, UV0; cooked as a colour map), per material and so per tier variant; `extras.openyamm_bloom` and `openyamm_pulse` on creatures. See "Emission and bloom" in section 4. |
 | Specular | `extras.openyamm_specular` (0..1; 0 skips sky reflection and specular lobes). `extras.openyamm_specular_mask: true` multiplies it per texel by the metallic-roughness texture's red channel, which glTF leaves unused. It lets a matte head and glossy armour share one material. |
 | Normal maps | glTF convention: +x along +u, +y up the image (against +v), tangent space from screen derivatives (no TANGENT attribute needed; the frame's sign is divided out, so OpenGL and Vulkan agree). Meshy's retexture returns +y-down maps: `tools/normal_map_convention.py` measures each map (slope integrability) and inverts green, run by `tools/prepare_actor_glb.py` and `tools/link_static_model_lods.py`; `--check` audits installed GLBs. |
 | Static decoration extras | `openyamm_wind`, `openyamm_billboard`, `openyamm_translucency`, `openyamm_uv_scroll`, `openyamm_flipbook`, `openyamm_flutter`; COLOR_0 multiplies the base colour (`engine/models/ModelAsset.h` documents each). |
@@ -353,8 +354,49 @@ billboard's sector, and carried items their carrier's.
 (`BGFX_DISCARD_NONE`), the alpha-tested program and an additive state over the world depth: blended flame and glow
 cards (additive, unlit or flipbook materials) with their display colour times a weight (0.45 for additive cards,
 whose flipbooks already include a halo; 0.8 for blended flames), other emissive materials with their emission and
-pulse. `fs_model` returns the glow right after the fog, so cards still fade in fog and so does their bloom. Creatures
-do not glow yet (their instanced paths would need the same second submission).
+pulse. `fs_model` returns the glow right after the fog, so cards still fade in fog and so does their bloom. Creature
+materials glow only when they opt in (below).
+
+**Emission and bloom** (2026-10-22, opt-in from data; Hesper's energy parts). How it works:
+- *Emission.* `ModelMaterial::emissive` is the glTF `emissiveFactor` times `KHR_materials_emissive_strength`; the
+  loader reads both for every material, static or skinned. `fs_model` adds it unlit after the lighting, the edge
+  darkening and before the SDR shoulder and fog (`u_modelSurface.xyz`, times `v_flowInfo.a`: a static placement's
+  `openyamm_pulse`/`openyamm_flicker` from `vs_model_instanced`, 1 for creatures). The contour shell emits nothing.
+  This was already so for factor-only emission on creatures (the MM6 robot's eye, `mm6_rob1`: the only emitting
+  creature material of MM6-MM8) and static models (196 materials: satchel gems, braziers, crystals).
+- *Emissive texture* (`emissiveImageIndex`, new). Desktop and Android share the shader source: `fs_model.sc` compiled
+  with `MODEL_EMISSIVE_MAP=1` is `fs_model_emissive.bin` (every shader profile: glsl, essl, spirv), which multiplies the
+  emission by `s_modelEmissive` (stage 7). `ModelRenderer` draws a material with that program (single draws,
+  instanced creatures, static placements, the glow pass) only when the material has an emissive texture, and binds
+  stage 7 only then. The three programs load the first time a model with an emissive texture is prepared
+  (`setEmissiveProgramLoader`, set by the indoor and outdoor renderers); a renderer without a loader (terrain
+  bushes) gives such a texture no emission rather than lighting the whole material. Every other draw keeps its
+  program, bindings and uniforms: `fs_model.bin`, `fs_model_prepassed.bin` and `fs_model_coverage.bin` compile to
+  the same bytes as before (checked for glsl and essl: the default variant preprocesses to the same source). An
+  emissive alpha-tested static material shades with the emissive program after its depth prepass (alpha test
+  repeated at equal depth, normal map and sky reflection kept).
+- *Bloom* (`video.bloom`; `CinematicGrading::glowView`). Static emitters glow whenever they emit, as before. A
+  creature (skinned) material draws into the glow view only with `ModelMaterial::bloom`: true with an emissive
+  texture, otherwise only with the extra `openyamm_bloom: true` (false opts a textured one out), so `mm6_rob1`'s eye
+  keeps its unbloomed look. The glow is a second submission of the same colour draw (`BGFX_DISCARD_NONE`,
+  `submitCreatureGlow`): single draws and instanced runs alike, before the contour shell; not in reflections or
+  inspect portraits (the portrait shows the emission without bloom). Burning emitters glow with their burn too. With
+  bloom off, or no emitter in view, nothing is submitted and the bloom chain is skipped (`glowDrawn`).
+- *Tiers.* Each `KHR_materials_variants` material carries its own factor (and may name its own texture), so tiers
+  share one mask and glow in different colours. Corpses (`bakeStaticModelPose`) and split attachments are static
+  models with the same materials: they glow as statics do.
+- *Pulse on creatures.* `openyamm_pulse` / `openyamm_flicker` scale a creature material's emission on the CPU
+  (`modelCreaturePulse` in `ModelAsset.h`, the static shader's formula at phase 0, on the creature clock), in the
+  factor uploaded per draw: every creature of a material pulses in step, instanced or not.
+- *Cook.* `tools/cook_models.py` cooks an `emissiveTexture` as an sRGB colour map of the model's quality (desktop
+  BC1/BC7, Android ETC2; flat maps shrink like colour maps); before it rejected the slot. Models without one plan
+  and cook exactly as before (all 1,657 source models compared, 2026-10-22).
+- *In use* (Hesper stage only): the acid crawlers (`hes_crawler_claude`: grey acid mask, one factor per tier, pulse)
+  and the Landfall turrets (`hes_turrets_claude`: the `_Energy` material's own base colour map as its emissive
+  texture, so the glow costs no extra texture; the cook shares the cooked map).
+- *Authoring:* `level_generation/creatures/CLAUDE_CREATURE_TEXTURES.md` ("Emission") and
+  `level_generation/creatures/claude_shared/emission.py`. The three.js review viewers show emissive maps as they are
+  (MeshStandardMaterial), without bloom.
 
 **Highlights on static models** (`pointSpecularOnly`, 2026-10-16). Indoors, a decoration placement's light is the
 light its sprite would receive, which already includes the nearby torches' diffuse share, and the sky reflection is

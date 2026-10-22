@@ -107,9 +107,8 @@ def texture_uses(document):
     ModelRenderer::prepare and GltfModelLoader. Unsampled slots are rejected rather than silently dropped."""
     uses = []
     for material_index, material in enumerate(document.get("materials", [])):
-        for slot in ("emissiveTexture", "occlusionTexture"):
-            if slot in material:
-                raise ValueError(f"material {material_index} uses {slot}, which the engine does not sample")
+        if "occlusionTexture" in material:
+            raise ValueError(f"material {material_index} uses occlusionTexture, which the engine does not sample")
         if any("Texture" in key for extension in material.get("extensions", {}).values() for key in extension):
             raise ValueError(f"material {material_index} has a texture in a material extension")
         pbr = material.get("pbrMetallicRoughness", {})
@@ -134,13 +133,18 @@ def texture_uses(document):
         burn = material.get("extras", {}).get("openyamm_burn_map")
         if burn is not None:
             uses.append((material_index, ("extras", "openyamm_burn_map"), burn["index"], "linear", 0, False))
+        if "emissiveTexture" in material:
+            # Emission (sRGB, like a colour map): the glow of energy parts, ModelMaterial::emissiveImageIndex.
+            uses.append((material_index, ("emissiveTexture",), material["emissiveTexture"]["index"], "srgb", 0,
+                         False))
     return uses
 
 
 
 def role_of(slot):
     return {"baseColorTexture": "colour", "normalTexture": "normal", "metallicRoughnessTexture": "metallic_roughness",
-            "openyamm_region_mask": "region_mask", "openyamm_burn_map": "burn_map"}[slot[-1]]
+            "openyamm_region_mask": "region_mask", "openyamm_burn_map": "burn_map",
+            "emissiveTexture": "emissive"}[slot[-1]]
 
 
 class Rules:
@@ -173,7 +177,7 @@ def reduced_max_size(reductions, role, size, hints):
         cap = min(cap, caps.get(min(lods), cap))
     if hints["prop"] and role != "region_mask":
         cap = min(cap, reductions.get("prop_max_size", cap))
-    if role in ("colour", "metallic_roughness") and hints["psnr"] >= reductions.get("flat_psnr", 99):
+    if role in ("colour", "metallic_roughness", "emissive") and hints["psnr"] >= reductions.get("flat_psnr", 99):
         cap = min(cap, reductions.get("flat_max_size", cap))
     if role == "metallic_roughness" and hints["psnr"] >= reductions.get("halve_psnr", 99) \
             and largest >= reductions.get("halve_min_size", 1 << 30):
@@ -188,7 +192,7 @@ def texture_hints(png, role, lods, prop):
     image = Image.open(io.BytesIO(png)).convert("RGB")
     w, h = image.size
     psnr, empty = 99.0, 0.0
-    if role in ("colour", "metallic_roughness") and w >= 8 and h >= 8:
+    if role in ("colour", "metallic_roughness", "emissive") and w >= 8 and h >= 8:
         a = np.asarray(image, dtype=np.float32)
         b = np.asarray(image.resize((w // 2, h // 2), Image.BOX).resize((w, h), Image.BICUBIC), dtype=np.float32)
         mse = float(np.mean((a - b) ** 2))
@@ -252,6 +256,9 @@ def decide(rules, relative, sidecar, image_name, role, uses_alpha, profile, size
     codecs = rules.data["codecs"][profile]
     if role == "colour":
         key = "colour_alpha" if uses_alpha else ("colour_hero" if quality == "hero" else "colour")
+    elif role == "emissive":
+        # An emission map cooks as an opaque colour map of the model's quality.
+        key = "colour_hero" if quality == "hero" else "colour"
     else:
         key = role
     codec = per_profile(override["codec"], profile) if "codec" in override else codecs[key]

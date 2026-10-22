@@ -299,8 +299,8 @@ TEST_CASE("merged outdoor travels add mm6 map boundary transitions")
     CHECK_EQ(pNewSorpigal->westTransition->travelDays, 5);
     CHECK_FALSE(pNewSorpigal->westTransition->useMapStartPosition);
     CHECK(pNewSorpigal->westTransition->straightTravel);
-    REQUIRE(pNewSorpigal->westTransition->straightTravelSide.has_value());
-    CHECK_EQ(*pNewSorpigal->westTransition->straightTravelSide, OpenYAMM::Game::MapBoundaryEdge::West);
+    REQUIRE(pNewSorpigal->westTransition->arrivalSide.has_value());
+    CHECK_EQ(*pNewSorpigal->westTransition->arrivalSide, OpenYAMM::Game::MapBoundaryEdge::East);
     CHECK_FALSE(pNewSorpigal->westTransition->directionDegrees.has_value());
 }
 

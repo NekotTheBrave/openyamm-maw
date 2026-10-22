@@ -473,6 +473,13 @@ bool loadMaterials(const cgltf_data &data, ModelAsset &asset, std::vector<bool> 
         {
             return false;
         }
+        if (!loadMaterialTexture(data, source.emissive_texture, material.emissiveImageIndex,
+                material.emissiveSampler, error))
+        {
+            error = "material " + std::to_string(materialIndex) + " emissive texture: " + error;
+            return false;
+        }
+        material.bloom = material.emissiveImageIndex >= 0;
         material.normalScale = source.normal_texture.scale;
         cgltf_size materialExtrasSize = 0;
         cgltf_copy_extras_json(&data, &source.extras, nullptr, &materialExtrasSize);
@@ -533,6 +540,10 @@ bool loadMaterials(const cgltf_data &data, ModelAsset &asset, std::vector<bool> 
                 if (extras["openyamm_additive"])
                 {
                     material.additive = extras["openyamm_additive"].as<bool>();
+                }
+                if (extras["openyamm_bloom"])
+                {
+                    material.bloom = extras["openyamm_bloom"].as<bool>();
                 }
                 if (extras["openyamm_uv_scroll"])
                 {
@@ -706,6 +717,20 @@ bool loadMaterials(const cgltf_data &data, ModelAsset &asset, std::vector<bool> 
         {
             error = "material " + std::to_string(materialIndex) + " has invalid colour or surface factors";
             return false;
+        }
+        if (source.has_emissive_strength)
+        {
+            // KHR_materials_emissive_strength: brighter than the 0..1 factor allows (a stronger bloom).
+            const float strength = source.emissive_strength.emissive_strength;
+            if (!std::isfinite(strength) || strength < 0.0f || strength > 16.0f)
+            {
+                error = "material " + std::to_string(materialIndex) + " emissive strength must be 0..16";
+                return false;
+            }
+            for (float &channel : material.emissive)
+            {
+                channel *= strength;
+            }
         }
         asset.materials.push_back(std::move(material));
     }

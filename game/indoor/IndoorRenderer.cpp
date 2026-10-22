@@ -3010,6 +3010,13 @@ bool IndoorRenderer::initialize(
     {
         std::cerr << "IndoorRenderer: model attachments require renderer instancing support\n";
     }
+    // Emissive-texture variants of the colour programs, loaded only when a model with an emissive texture appears.
+    m_modelRenderer.setEmissiveProgramLoader([]()
+    {
+        return Engine::ModelEmissivePrograms{loadProgram("vs_model", "fs_model_emissive"),
+            loadProgram("vs_model_skinned_instanced", "fs_model_emissive"),
+            loadProgram("vs_model_instanced", "fs_model_emissive")};
+    });
     m_textureSamplerHandle = bgfx::createUniform("s_texColor", bgfx::UniformType::Sampler);
     m_hudTintUniformHandle = bgfx::createUniform("u_menuTint", bgfx::UniformType::Vec4);
     m_indoorLightPositionsUniformHandle =

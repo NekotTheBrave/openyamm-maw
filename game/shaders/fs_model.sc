@@ -16,6 +16,11 @@ $input v_texcoord0, v_worldNormal, v_worldPosition, v_color0, v_texcoord1, v_flo
 #ifndef ALPHA_TO_COVERAGE
 #define ALPHA_TO_COVERAGE 0
 #endif
+// MODEL_EMISSIVE_MAP (fs_model_emissive): the emission is the material's emissive factor times its emissive texture
+// (s_modelEmissive, sRGB), only for materials that have one (ModelRenderer picks this program for them).
+#ifndef MODEL_EMISSIVE_MAP
+#define MODEL_EMISSIVE_MAP 0
+#endif
 
 SAMPLER2D(s_modelTexture, 0);
 SAMPLER2D(s_modelNormal, 1);
@@ -25,6 +30,12 @@ SAMPLER2D(s_modelEnvironmentBrdf, 4);
 SAMPLER2D(s_modelRegionMask, 8);
 SAMPLER2D(s_modelRegionRamp, 9);
 SAMPLER2D(s_modelBurn, 10);
+#if MODEL_EMISSIVE_MAP
+SAMPLER2D(s_modelEmissive, 7);
+#define MODEL_EMISSION u_modelSurface.xyz * v_flowInfo.a * texture2D(s_modelEmissive, v_texcoord0).rgb
+#else
+#define MODEL_EMISSION u_modelSurface.xyz * v_flowInfo.a
+#endif
 uniform vec4 u_modelEnvironment;
 uniform vec4 u_modelSurface;
 uniform vec4 u_modelPbr;
@@ -434,8 +445,8 @@ void main()
             shaded *= 1.0 - u_modelEdge.x * (1.0 - smoothstep(0.0, band, facing));
         }
     }
-    // v_flowInfo.a scales the emission: a static material's pulse, 1 otherwise.
-    shaded += contour ? vec3_splat(0.0) : u_modelSurface.xyz * v_flowInfo.a + burnGlow;
+    // v_flowInfo.a scales the emission: a static material's pulse, 1 otherwise (a creature's pulse is in its factor).
+    shaded += contour ? vec3_splat(0.0) : MODEL_EMISSION + burnGlow;
     // An SDR shoulder preserves sub-0.8 values and hue while compressing specular peaks smoothly.
     float peak = max(max(shaded.r, shaded.g), shaded.b);
     float compressed = 0.8 + 0.2 * (1.0 - exp(-max(peak - 0.8, 0.0) / 0.2));
@@ -464,7 +475,7 @@ void main()
         // space, fading with the fog like an additive card. Cards (y = their weight) glow with their whole colour;
         // other surfaces with their emission (the material's, pulsed, and a burn's).
         vec3 emitted = u_modelGlow.y > 0.0 ? displayColor * u_modelGlow.y
-            : modelEncodeSrgb(u_modelSurface.xyz * v_flowInfo.a + burnGlow);
+            : modelEncodeSrgb(MODEL_EMISSION + burnGlow);
         gl_FragColor = vec4(emitted * (1.0 - fog) * u_modelGlow.x, color.a);
         return;
     }

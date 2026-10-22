@@ -202,6 +202,8 @@ std::vector<std::string> splitString(const std::string &value, char separator)
     return parts;
 }
 
+// The destination edge the party enters by. MMerge's "left" and "right" enter by the east and west start
+// decorations respectively (Erathia's "left" leads to Tatalia's only start, "east start").
 std::optional<MapBoundaryEdge> parseMergedOutdoorTravelSide(const std::string &value)
 {
     const std::string side = lowercaseCopy(trimCopy(value));
@@ -218,12 +220,12 @@ std::optional<MapBoundaryEdge> parseMergedOutdoorTravelSide(const std::string &v
 
     if (side == "left" || side == "3")
     {
-        return MapBoundaryEdge::West;
+        return MapBoundaryEdge::East;
     }
 
     if (side == "right" || side == "4")
     {
-        return MapBoundaryEdge::East;
+        return MapBoundaryEdge::West;
     }
 
     return std::nullopt;
@@ -486,9 +488,10 @@ bool applyMergedOutdoorTravelDirection(
     transition.destinationMapFileName = direction.mapName;
     transition.travelDays = static_cast<int>(direction.days.value_or(0));
     transition.straightTravel = straightTravel;
-    transition.straightTravelSide = straightTravel ? parseMergedOutdoorTravelSide(direction.side) : std::nullopt;
+    transition.arrivalSide = parseMergedOutdoorTravelSide(direction.side);
     // Straight travel keeps the party's own heading, as MMerge does; the arrival is mirrored from the departure.
-    transition.useMapStartPosition = !transition.straightTravelSide.has_value();
+    // Otherwise the party enters at the destination's start decoration for that side.
+    transition.useMapStartPosition = !straightTravel || !transition.arrivalSide.has_value();
 
     std::string errorMessage;
 
@@ -502,6 +505,31 @@ bool applyMergedOutdoorTravelDirection(
     *pTransition = std::move(transition);
     return true;
 }
+}
+
+std::string mapStartPointName(std::optional<MapBoundaryEdge> side)
+{
+    if (!side.has_value())
+    {
+        return {};
+    }
+
+    switch (*side)
+    {
+        case MapBoundaryEdge::North:
+            return "north start";
+
+        case MapBoundaryEdge::South:
+            return "south start";
+
+        case MapBoundaryEdge::East:
+            return "east start";
+
+        case MapBoundaryEdge::West:
+            return "west start";
+    }
+
+    return {};
 }
 
 const std::optional<MapEdgeTransition> *MapStatsEntry::edgeTransition(MapBoundaryEdge edge) const
