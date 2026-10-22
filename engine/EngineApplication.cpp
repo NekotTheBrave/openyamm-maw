@@ -390,7 +390,8 @@ int EngineApplication::run() const
     }
 
     std::unique_ptr<SDL_Window, SdlWindowDeleter> pWindow(pRawWindow);
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) && !defined(__APPLE__)
+    // Apple app bundles carry their own icon; a window icon would replace it in the Dock.
     const std::optional<std::vector<uint8_t>> iconBytes =
         assetFileSystem.readBinaryFile("engine/branding/app_icon.png");
     std::optional<ImagePixelsBgra> icon = iconBytes

@@ -730,4 +730,6 @@ function(openyamm_configure_runtime_shaders)
         DEPENDS
             ${runtimeShaderOutputs}
     )
+    # Apple app bundles carry the shader files as resources.
+    set_property(GLOBAL PROPERTY OPENYAMM_RUNTIME_SHADER_OUTPUTS "${runtimeShaderOutputs}")
 endfunction()
