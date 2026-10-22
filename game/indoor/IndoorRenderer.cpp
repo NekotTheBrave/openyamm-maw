@@ -4498,6 +4498,31 @@ const WorldFxSystem &IndoorRenderer::worldFxSystem() const
     return m_worldFxSystem;
 }
 
+bool IndoorRenderer::ensureMonsterVisualResources(int16_t monsterId)
+{
+    if (m_pAssetFileSystem == nullptr || !m_monsterTable || monsterId <= 0)
+    {
+        return false;
+    }
+
+    if (!m_indoorActorPreviewBillboardSet)
+    {
+        m_indoorActorPreviewBillboardSet.emplace();
+    }
+
+    return ensureMonsterSpriteFramesLoaded(
+        *m_pAssetFileSystem,
+        *m_monsterTable,
+        monsterId,
+        m_indoorActorPreviewBillboardSet->spriteFrameTable,
+        m_indoorActorPreviewBillboardSet->actorModels.get());
+}
+
+const SpriteFrameTable *IndoorRenderer::actorSpriteFrameTable() const
+{
+    return m_indoorActorPreviewBillboardSet ? &m_indoorActorPreviewBillboardSet->spriteFrameTable : nullptr;
+}
+
 const EffectRenderer::Diagnostics &IndoorRenderer::effectRenderDiagnostics() const
 {
     return m_effectRenderer.diagnostics();

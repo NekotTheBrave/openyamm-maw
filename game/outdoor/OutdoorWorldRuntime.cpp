@@ -9561,6 +9561,8 @@ void OutdoorWorldRuntime::applyOutdoorActorMovementIntent(
         }
     }
 
+    actor.intendedSpeed = 0.0f;
+
     if (!movementIntent.applyMovement || pStats == nullptr)
     {
         return;
@@ -10339,6 +10341,7 @@ void OutdoorWorldRuntime::applyOutdoorActorMovementIntegration(
 
     actor.velocityX = desiredMoveX * moveSpeed;
     actor.velocityY = desiredMoveY * moveSpeed;
+    actor.intendedSpeed = length2d(actor.velocityX, actor.velocityY);
     if (pStats->canFly)
     {
         actor.velocityZ = effectiveDesiredMoveZ * moveSpeed;
@@ -14372,6 +14375,7 @@ bool OutdoorWorldRuntime::actorRuntimeState(size_t actorIndex, GameplayRuntimeAc
     state.actionSeconds = pActor->actionSeconds;
     state.velocityX = pActor->velocityX;
     state.velocityY = pActor->velocityY;
+    state.intendedSpeed = pActor->intendedSpeed;
     state.hurrying = pActor->aiState == ActorAiState::Pursuing || pActor->aiState == ActorAiState::Fleeing;
     state.castingSpell = pActor->queuedAttackAbility == MonsterAttackAbility::Spell1
         || pActor->queuedAttackAbility == MonsterAttackAbility::Spell2;

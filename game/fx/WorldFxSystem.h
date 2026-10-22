@@ -478,6 +478,8 @@ private:
         Engine::ModelTransform transform;
         bool initialized = false;
         float yaw = 0.0f;
+        // Walking, the model faces its actual movement rather than the AI's yaw (actorModelFacesMovement).
+        bool facingMovement = false;
         float previousX = 0.0f;
         float previousY = 0.0f;
         float gaitPhase = 0.0f;

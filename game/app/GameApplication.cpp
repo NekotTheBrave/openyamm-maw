@@ -6990,10 +6990,19 @@ bool GameApplication::syncActorModels(IGameplayWorldRuntime &world, float deltaS
         ? (m_pMapSceneRuntime->kind() == SceneKind::Outdoor
             ? &map->outdoorActorPreviewBillboardSet : &map->indoorActorPreviewBillboardSet) : nullptr;
     const ActorPreviewBillboardSet *pActorSet = pActors != nullptr && *pActors ? &**pActors : nullptr;
+    // The view's actor frames, not the loaded map's: a summoned monster the map did not preload gets its frames there,
+    // and a model sized from a standing sprite (scale_reference) reads them when its binding is built.
+    // Headless runs have no view: the loaded map's frames then.
+    const SpriteFrameTable *pActorFrames = m_pMapSceneRuntime->kind() == SceneKind::Outdoor
+        ? m_outdoorGameView.actorSpriteFrameTable() : m_indoorRenderer.actorSpriteFrameTable();
+    if (pActorFrames == nullptr && pActorSet != nullptr)
+    {
+        pActorFrames = &pActorSet->spriteFrameTable;
+    }
     if (!worldFx.configureActorModels(*m_pAssetFileSystem,
             m_gameDataLoader.actorModelManifest(),
             m_gameDataLoader.getMonsterTable(),
-            pActorSet != nullptr ? &pActorSet->spriteFrameTable : nullptr,
+            pActorFrames,
             pActorSet != nullptr ? std::span<const std::string>(pActorSet->modelDescriptors)
                 : std::span<const std::string>(),
             error))

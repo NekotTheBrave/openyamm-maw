@@ -4043,6 +4043,11 @@ void IndoorWorldRuntime::initialize(
 void IndoorWorldRuntime::bindRenderer(IndoorRenderer *pRenderer)
 {
     m_pRenderer = pRenderer;
+    // The renderer's actor frames gain the frames of summoned monsters the map did not preload; use them from now on.
+    if (pRenderer != nullptr && pRenderer->actorSpriteFrameTable() != nullptr)
+    {
+        m_pActorSpriteFrameTable = pRenderer->actorSpriteFrameTable();
+    }
 }
 
 void IndoorWorldRuntime::bindGameplayView(IndoorGameView *pView)
@@ -5599,6 +5604,8 @@ std::vector<bool> IndoorWorldRuntime::applyIndoorActorAiFrameResult(
                 aiState.velocityZ = 0.0f;
             }
         }
+
+        aiState.intendedSpeed = 0.0f;
 
         if (update.movementIntent.applyMovement)
         {
@@ -8975,6 +8982,7 @@ void IndoorWorldRuntime::applyIndoorActorMovementIntegration(
 
     const float desiredVelocityX = movementIntent.desiredMoveX * movementIntentSpeed;
     const float desiredVelocityY = movementIntent.desiredMoveY * movementIntentSpeed;
+    aiState.intendedSpeed = std::hypot(desiredVelocityX, desiredVelocityY);
     std::vector<size_t> contactedActorIndices;
     IndoorMoveDebugInfo moveDebugInfo = {};
     IndoorMoveDebugInfo verticalMoveDebugInfo = {};
@@ -11541,6 +11549,7 @@ bool IndoorWorldRuntime::actorRuntimeState(size_t actorIndex, GameplayRuntimeAct
     state.actionSeconds = pAiState != nullptr ? pAiState->actionSeconds : 0.0f;
     state.velocityX = pAiState != nullptr ? pAiState->velocityX : 0.0f;
     state.velocityY = pAiState != nullptr ? pAiState->velocityY : 0.0f;
+    state.intendedSpeed = pAiState != nullptr ? pAiState->intendedSpeed : 0.0f;
     state.hurrying = pAiState != nullptr && (pAiState->motionState == ActorAiMotionState::Pursuing
         || pAiState->motionState == ActorAiMotionState::Fleeing);
     state.castingSpell = pAiState != nullptr
@@ -12933,6 +12942,12 @@ bool IndoorWorldRuntime::summonFriendlyMonsterById(
         return false;
     }
 
+    if (m_pRenderer != nullptr)
+    {
+        m_pRenderer->ensureMonsterVisualResources(monsterId);
+        m_pActorSpriteFrameTable = m_pRenderer->actorSpriteFrameTable();
+    }
+
     const MonsterEntry *pMonsterEntry = m_pMonsterTable->findById(monsterId);
 
     if (pMonsterEntry == nullptr)
@@ -13030,6 +13045,12 @@ bool IndoorWorldRuntime::summonHostileMonsterById(
     if (pStats == nullptr)
     {
         return false;
+    }
+
+    if (m_pRenderer != nullptr)
+    {
+        m_pRenderer->ensureMonsterVisualResources(monsterId);
+        m_pActorSpriteFrameTable = m_pRenderer->actorSpriteFrameTable();
     }
 
     const MonsterEntry *pMonsterEntry = m_pMonsterTable->findById(monsterId);

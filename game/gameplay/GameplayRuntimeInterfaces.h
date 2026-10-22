@@ -140,6 +140,8 @@ struct GameplayRuntimeActorState
     float actionSeconds = 0.0f;
     float velocityX = 0.0f;
     float velocityY = 0.0f;
+    // Horizontal speed the AI asked for before collision (0 when not moving): what velocity would be without walls.
+    float intendedSpeed = 0.0f;
     // Pursuing or fleeing (moving at twice the wander speed): a 3D model prefers its run clip.
     bool hurrying = false;
     bool castingSpell = false;

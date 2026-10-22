@@ -1258,6 +1258,7 @@ void WorldFxSystem::syncActorModels(const IGameplayWorldRuntime &world, float wo
         const float distance = std::hypot(state.preciseX - model.previousX, state.preciseY - model.previousY);
         const bool teleported = model.initialized && distance > std::max(256.0f, scale * 8.0f);
         const float speed = std::hypot(state.velocityX, state.velocityY);
+        const float gaitSpeed = actorModelGaitSpeed(speed, state.intendedSpeed);
         if (binding.fixedYaw)
         {
             model.yaw = *binding.fixedYaw;
@@ -1273,21 +1274,27 @@ void WorldFxSystem::syncActorModels(const IGameplayWorldRuntime &world, float wo
         else if (!model.dying && state.animationState != ActorAiAnimationState::Dead && !binding.fixedYaw)
         {
             // Visual facing only. Collision, LOS, paths and projectile aiming retain the AI's exact yaw.
-            model.yaw = advanceActorModelYaw(model.yaw, state.yawRadians, deltaSeconds,
-                3.0f * std::numbers::pi_v<float>);
+            model.facingMovement = state.animationState == ActorAiAnimationState::Walking && speed > 4.0f
+                && actorModelFacesMovement(state.yawRadians, state.velocityX, state.velocityY, model.facingMovement);
+            const float targetYaw =
+                model.facingMovement ? std::atan2(state.velocityY, state.velocityX) : state.yawRadians;
+            model.yaw = advanceActorModelYaw(model.yaw, targetYaw, deltaSeconds, 3.0f * std::numbers::pi_v<float>);
             if (binding.strideLength > 0.0f && deltaSeconds > 0.0f)
             {
-                if (speed > 4.0f)
+                if (gaitSpeed > 4.0f)
                 {
-                    model.running = actorModelRuns(speed / scale, binding.walkSpeed, binding.runSpeed, state.hurrying,
-                        model.running);
+                    model.running = actorModelRuns(gaitSpeed / scale, binding.walkSpeed, binding.runSpeed,
+                        state.hurrying, model.running);
                 }
                 const float stride = model.running ? binding.runStrideLength : binding.strideLength;
                 const uint32_t gaitClip =
                     model.running ? binding.runClip : binding.clips[size_t(ActorAiAnimationState::Walking)];
-                model.gaitPhase = advanceActorModelGait(model.gaitPhase, actorModelGaitDistance(distance,
+                // A body slowed by collision keeps part of its intended gait (actorModelGaitSpeed).
+                const float gaitDistance =
+                    std::max(distance, ActorModelHinderedGaitShare * state.intendedSpeed * deltaSeconds);
+                model.gaitPhase = advanceActorModelGait(model.gaitPhase, actorModelGaitDistance(gaitDistance,
                     stride * scale, deltaSeconds, binding.asset->clips[gaitClip].durationSeconds,
-                    speed > 4.0f ? binding.minGaitRate : 0.0f, binding.maxGaitRate), stride * scale);
+                    gaitSpeed > 4.0f ? binding.minGaitRate : 0.0f, binding.maxGaitRate), stride * scale);
             }
         }
         const bool moving = speed > 4.0f && !teleported;

@@ -298,6 +298,27 @@ TEST_CASE("Actor model locomotion prefers walking to wander and running to chase
     CHECK(actorModelGaitDistance(100, 50, .1f, 1, .8f, 1.5f) == doctest::Approx(7.5f));
 }
 
+TEST_CASE("Actor model gait keeps pace and turns along a wall that slows its body")
+{
+    using namespace OpenYAMM::Game;
+    constexpr float Degrees = std::numbers::pi_v<float> / 180.0f;
+    // Unhindered, or hindered a little, the gait follows the body; pushing nearly head-on it keeps 60 % of its pace.
+    CHECK(actorModelGaitSpeed(200, 200) == doctest::Approx(200));
+    CHECK(actorModelGaitSpeed(150, 200) == doctest::Approx(150));
+    CHECK(actorModelGaitSpeed(30, 200) == doctest::Approx(120));
+    CHECK(actorModelGaitSpeed(0, 200) == doctest::Approx(120));
+    // Knocked back or drifting without trying to move, it follows the body alone.
+    CHECK(actorModelGaitSpeed(50, 0) == doctest::Approx(50));
+    // Sliding sideways along a wall it faces the slide; backing away it keeps the AI's yaw, with a margin.
+    CHECK(actorModelFacesMovement(0, std::cos(90 * Degrees), std::sin(90 * Degrees), false));
+    CHECK(actorModelFacesMovement(0, std::cos(95 * Degrees), std::sin(95 * Degrees), false));
+    CHECK_FALSE(actorModelFacesMovement(0, std::cos(100 * Degrees), std::sin(100 * Degrees), false));
+    CHECK(actorModelFacesMovement(0, std::cos(105 * Degrees), std::sin(105 * Degrees), true));
+    CHECK_FALSE(actorModelFacesMovement(0, std::cos(115 * Degrees), std::sin(115 * Degrees), true));
+    CHECK_FALSE(actorModelFacesMovement(0, -1, 0, true));
+    CHECK_FALSE(actorModelFacesMovement(0, 0, 0, true));
+}
+
 TEST_CASE("Loot satchel tiers follow the corpse's loot value, and the satchel appears as the body dissolves")
 {
     using namespace OpenYAMM::Game;

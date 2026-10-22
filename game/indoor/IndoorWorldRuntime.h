@@ -96,6 +96,8 @@ public:
         float velocityX = 0.0f;
         float velocityY = 0.0f;
         float velocityZ = 0.0f;
+        // Horizontal speed the AI's movement asked for before collision; 0 when it did not try to move.
+        float intendedSpeed = 0.0f;
         int16_t sectorId = -1;
         int16_t eyeSectorId = -1;
         size_t supportFaceIndex = static_cast<size_t>(-1);

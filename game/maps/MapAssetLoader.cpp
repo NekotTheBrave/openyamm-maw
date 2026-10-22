@@ -3830,22 +3830,52 @@ bool ensureMonsterSpriteFramesLoaded(
         return false;
     }
 
-    for (const std::string &spriteName : pMonsterEntry->spriteNames)
+    // The monster, and the tier its model is sized from (actors.yml scale_reference). A family already in the table
+    // (one of its sprites is there) is not loaded again: the table rejects a family loaded twice, which stopped the
+    // load of a second tier sized from the same reference (MM7 Harpy C summoned after Harpy B).
+    std::vector<const MonsterEntry *> monsterEntries = {pMonsterEntry};
+    const ActorModelManifest::Entry *pModel =
+        pActorModels != nullptr ? pActorModels->find(pMonsterEntry->internalName) : nullptr;
+
+    if (pModel != nullptr && pModel->node["scale_reference"])
     {
-        if (!spriteName.empty() && spriteFrameTable.findFrameIndexBySpriteName(spriteName))
-        {
-            return true;
-        }
+        monsterEntries.push_back(monsterTable.findByInternalName(pModel->node["scale_reference"].as<std::string>()));
     }
 
     std::unordered_set<std::string> monsterFamilies;
+    std::unordered_set<std::string> loadedFamilies;
     std::unordered_set<std::string> worldPrefixedMonsterSpriteNames;
-    appendMonsterSpriteFamilies(monsterFamilies, worldPrefixedMonsterSpriteNames, pMonsterEntry);
-    appendScaleReferenceSpriteFamilies(monsterFamilies, worldPrefixedMonsterSpriteNames, monsterTable, pActorModels);
+
+    for (const MonsterEntry *pEntry : monsterEntries)
+    {
+        if (pEntry == nullptr)
+        {
+            continue;
+        }
+
+        for (const std::string &spriteName : pEntry->spriteNames)
+        {
+            const bool present = spriteFrameTable.findFrameIndexBySpriteName(spriteName).has_value();
+
+            if (const std::optional<std::string> familyRoot = monsterSpriteFamilyRoot(spriteName))
+            {
+                (present ? loadedFamilies : monsterFamilies).insert(*familyRoot);
+            }
+            else if (!present && isWorldPrefixedMonsterSpriteName(spriteName))
+            {
+                worldPrefixedMonsterSpriteNames.insert(toLowerCopy(spriteName));
+            }
+        }
+    }
+
+    for (const std::string &familyRoot : loadedFamilies)
+    {
+        monsterFamilies.erase(familyRoot);
+    }
 
     if (monsterFamilies.empty() && worldPrefixedMonsterSpriteNames.empty())
     {
-        return false;
+        return spriteFrameTable.findFrameIndexBySpriteName(pMonsterEntry->spriteNames[0]).has_value();
     }
 
     if (!appendMonsterSpriteFrameFamilies(

@@ -1714,7 +1714,9 @@ EventDialogContent buildEventDialogContent(
                             }
                         }
 
-                        if (pProfession->descriptionTextId != 0)
+                        // Descriptions read as a hiring pitch with a gold share, so like MMerge only offer them to
+                        // followers; non-joining NPCs keep just their news topics.
+                        if (npcIsHired && pProfession->descriptionTextId != 0)
                         {
                             EventDialogAction action = {};
                             action.kind = EventDialogActionKind::NpcProfessionDescription;

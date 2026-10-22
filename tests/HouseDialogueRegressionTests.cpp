@@ -1891,6 +1891,8 @@ TEST_CASE("NPC More Info expands descriptions for every imported profession")
         OpenYAMM::Tests::HouseDialogueTestHarness harness(gameData);
         harness.eventRuntimeState().npcNameOverrides[1184] = "Gordon";
         harness.eventRuntimeState().npcProfessionOverrides[1184] = profession.id;
+        // Followers see the description whether or not their profession joins on its own.
+        harness.party().addHiredNpcFollower({1184, profession.id, profession.weeklyCost});
         const OpenYAMM::Game::EventDialogContent dialog = harness.openNpcDialogue(1184);
         const std::optional<size_t> infoIndex = findActionIndexByLabel(dialog, "More Info");
         REQUIRE(infoIndex.has_value());
@@ -1898,6 +1900,31 @@ TEST_CASE("NPC More Info expands descriptions for every imported profession")
         CHECK_FALSE(description.lines.empty());
         CHECK_FALSE(dialogContainsText(description, "%"));
         CHECK(dialogContainsText(description, "Gordon"));
+    }
+}
+
+TEST_CASE("non-joining street NPCs offer only their news topic, not More Info")
+{
+    const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
+    for (uint32_t professionId : {24u, 50u}) // Barrister, Duper.
+    {
+        const OpenYAMM::Game::MergedNpcProfessionEntry *pProfession =
+            gameData.mergedNpcProfessionTable.get(professionId);
+        REQUIRE(pProfession != nullptr);
+        REQUIRE_FALSE(pProfession->joins);
+        CAPTURE(pProfession->profession);
+        OpenYAMM::Tests::HouseDialogueTestHarness harness(gameData);
+        harness.eventRuntimeState().npcNameOverrides[1184] = "Gordon";
+        harness.eventRuntimeState().npcProfessionOverrides[1184] = professionId;
+
+        const OpenYAMM::Game::EventDialogContent dialog = harness.openNpcDialogue(1184);
+        CHECK_FALSE(findActionIndexByLabel(dialog, "Join").has_value());
+        CHECK_FALSE(findActionIndexByLabel(dialog, "More Info").has_value());
+        CHECK(std::any_of(dialog.actions.begin(), dialog.actions.end(),
+            [](const OpenYAMM::Game::EventDialogAction &action)
+            {
+                return action.kind == OpenYAMM::Game::EventDialogActionKind::NpcProfessionNews;
+            }));
     }
 }
 

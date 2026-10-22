@@ -21,8 +21,9 @@ inline float advanceActorModelGait(float phase, float distance, float cycleDista
 }
 
 // The distance a gait advances by this frame: what the body travelled, kept between what the clip covers at minRate
-// and at maxRate (0: no cap) times its authored rate. By default the clip follows the distance exactly, so feet never
-// slide: a clip that scurries or crawls at the game's speed is fixed in the clip (stride), not by capping its rate.
+// and at maxRate (0: no cap) times its authored rate. By default the clip follows the distance exactly, so feet do not
+// slide (unless collision hinders the body: actorModelGaitSpeed): a clip that scurries or crawls at the game's speed is
+// fixed in the clip (stride), not by capping its rate.
 // actors.yml `animation.gait_rate: [min, max]` sets the range for bodies without foot contact: fliers and swimmers
 // keep beating at a minimum rate when they drift slowly.
 inline float actorModelGaitDistance(float distance, float cycleDistance, float deltaSeconds, float clipSeconds,
@@ -35,6 +36,28 @@ inline float actorModelGaitDistance(float distance, float cycleDistance, float d
     const float authoredDistance = cycleDistance * std::max(deltaSeconds, 0.0f) / clipSeconds;
     const float atMost = maxRate > 0.0f ? std::min(distance, authoredDistance * maxRate) : distance;
     return std::max(atMost, authoredDistance * minRate);
+}
+
+// The share of the speed its AI asked for that a moving 3D actor's gait keeps while a wall, slope or crowd slows its
+// body: the feet slip a little as it pushes, instead of the clip crawling in slow motion or freezing head-on.
+inline constexpr float ActorModelHinderedGaitShare = 0.6f;
+
+// The speed a moving 3D actor's gait presents: what its body moves at, or ActorModelHinderedGaitShare of the speed its
+// AI asked for (0 when it is not trying to move) when collision slows it more than that.
+inline float actorModelGaitSpeed(float speed, float intendedSpeed)
+{
+    return std::max(speed, ActorModelHinderedGaitShare * intendedSpeed);
+}
+
+// Whether a walking 3D actor faces where it actually moves instead of the AI's yaw: one sliding along a wall turns
+// along it, as MM's actors do, rather than stepping sideways while facing the wall. Moving against its yaw (backing
+// away) it keeps the AI's yaw and plays its gait backwards. facingMovement, the current choice, holds across the same
+// margin as the backwards gait so neither flickers.
+inline bool actorModelFacesMovement(float aiYaw, float velocityX, float velocityY, bool facingMovement)
+{
+    const float speed = std::hypot(velocityX, velocityY);
+    return speed > 0.0f
+        && velocityX * std::cos(aiYaw) + velocityY * std::sin(aiYaw) >= (facingMovement ? -0.35f : -0.15f) * speed;
 }
 
 // How badly a locomotion clip authored for clipSpeed suits a body moving at speed: the log of the rate it would play at,

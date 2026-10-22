@@ -277,6 +277,8 @@ public:
         float velocityX = 0.0f;
         float velocityY = 0.0f;
         float velocityZ = 0.0f;
+        // Horizontal speed the AI's movement asked for before collision; 0 when it did not try to move.
+        float intendedSpeed = 0.0f;
         float yawRadians = 0.0f;
         float slowRemainingSeconds = 0.0f;
         float slowMoveMultiplier = 1.0f;
