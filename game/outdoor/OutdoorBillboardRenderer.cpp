@@ -623,17 +623,19 @@ void OutdoorBillboardRenderer::applyBillboardFogUniforms(OutdoorGameView &view, 
         fogDistances[1] = clearFogProfile.strongDistance;
         fogDistances[2] = clearFogProfile.farDistance;
 
-        if ((atmosphereState.weatherFlags & 1) != 0
-            && atmosphereState.fogWeakDistance >= 0
-            && atmosphereState.fogStrongDistance > atmosphereState.fogWeakDistance)
+        const OutdoorWorldRuntime::AtmosphereState::ShownFog shownFog = atmosphereState.shownFog();
+
+        if (shownFog.foggy
+            && shownFog.weakDistance >= 0
+            && shownFog.strongDistance > shownFog.weakDistance)
         {
             const OutdoorFogProfile fogProfile = atmosphereState.directFog
                 ? buildOutdoorDirectFogProfile(
-                    atmosphereState.fogWeakDistance,
-                    atmosphereState.fogStrongDistance)
+                    shownFog.weakDistance,
+                    shownFog.strongDistance)
                 : buildOutdoorFogProfile(
-                    atmosphereState.fogWeakDistance,
-                    atmosphereState.fogStrongDistance,
+                    shownFog.weakDistance,
+                    shownFog.strongDistance,
                     clampedRenderDistance,
                     OutdoorFogNearOpacity,
                     OutdoorFogStrongOpacity);

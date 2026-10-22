@@ -627,3 +627,102 @@ TEST_CASE("distant sea follows the water share of each map side")
     map.noTerrain = true;
     CHECK(measureOutdoorDistantSea(map, landMask, nullptr).sideWeights[2] == 0.0f);
 }
+
+namespace
+{
+// The test library with one more preset (indented as a `presets` entry).
+std::string withPreset(const std::string &preset)
+{
+    std::string yaml = TestLibraryYaml;
+    const std::string marker = "presets:\n";
+    yaml.insert(yaml.find(marker) + marker.size(), preset);
+    return yaml;
+}
+}
+
+TEST_CASE("sky orbit ring is off unless a preset asks for it")
+{
+    const SkyPresetLibrary repository = loadRepositoryLibrary();
+
+    for (const std::string &name : repository.skyNames())
+    {
+        const SkyPreset *pPreset = repository.find(repository.presetForSkyName(name));
+        REQUIRE(pPreset);
+        CAPTURE(name);
+        CHECK(pPreset->orbitRing.opacity == 0.0f);
+        CHECK(pPreset->orbitRing.lightCount == 0);
+    }
+
+    const std::string ringed = withPreset(R"(  ringed:
+    inherits: day
+    orbit_ring: {opacity: 0.6, width_deg: 5, color: [0.9, 0.8, 1], fragments: 2,
+                 lights: {count: 3, size_deg: 0.1, orbit_minutes: [10, 30], color: [1, 0.8, 0.5], brightness: 3}}
+)");
+    SkyPresetLibrary library;
+    std::string error;
+    INFO(error);
+    REQUIRE(library.loadFromYaml(ringed, error));
+    const SkyOrbitRing &ring = library.find("ringed")->orbitRing;
+    CHECK(ring.opacity == doctest::Approx(0.6f));
+    CHECK(ring.widthDegrees == doctest::Approx(5.0f));
+    CHECK(ring.fragments == doctest::Approx(2.0f));
+    CHECK(ring.lightCount == 3);
+    CHECK(ring.lightSizeDegrees == doctest::Approx(0.1f));
+    CHECK(ring.lightOrbitMinutes[0] == doctest::Approx(10.0f));
+    CHECK(ring.lightOrbitMinutes[1] == doctest::Approx(30.0f));
+    CHECK(ring.lightBrightness == doctest::Approx(3.0f));
+    CHECK(library.find("day")->orbitRing.opacity == 0.0f);
+
+
+    for (const std::string &bad : {"{glitter: 1}", "{opacity: -1}", "{lights: {count: 9}}",
+             "{lights: {orbit_minutes: [30, 10]}}", "{lights: {orbit_minutes: [10]}}", "{lights: {spin: 1}}"})
+    {
+        CAPTURE(bad);
+        CHECK_FALSE(library.loadFromYaml(
+            withPreset("  bad:\n    inherits: day\n    orbit_ring: " + std::string(bad) + "\n"), error));
+    }
+}
+
+TEST_CASE("sky orbit lights cross the sky at their own pace and fade with the stars")
+{
+    SkyOrbitRing ring;
+    ring.lightCount = 4;
+    ring.lightOrbitMinutes = {20.0f, 45.0f};
+
+    for (int light = 0; light < ring.lightCount; ++light)
+    {
+        const float start = skyOrbitLightAngle(ring, light, 600.0);
+        const float later = skyOrbitLightAngle(ring, light, 601.0);
+        CHECK(start >= 0.0f);
+        CHECK(start < 6.2832f);
+        // At most a twentieth of a turn per game minute; never standing still.
+        const float step = std::fabs(later - start);
+        CHECK(std::min(step, 6.2832f - step) > 0.1f);
+        CHECK(std::min(step, 6.2832f - step) < 0.32f);
+        CHECK(skyOrbitLightAngle(ring, light, 600.0) == start);
+    }
+
+    CHECK(skyOrbitLightAngle(ring, 0, 600.0) != doctest::Approx(skyOrbitLightAngle(ring, 1, 600.0)));
+
+    const std::string ringed = withPreset(R"(  ringed:
+    inherits: day
+    orbit_ring: {opacity: 0.5, lights: {count: 2, brightness: 2}}
+)");
+    SkyPresetLibrary library;
+    std::string error;
+    REQUIRE(library.loadFromYaml(ringed, error));
+    SkyStateModel model;
+    model.setLibrary(&library);
+    SkyInputs inputs = {};
+    inputs.forcedPreset = "ringed";
+    // The test preset's stars rise from 0 at 06:00 to 1 at 18:00.
+    inputs.gameMinutes = 6.0f * 60.0f;
+    model.snap();
+    CHECK(model.update(inputs, 0.02f).orbitRing.opacity == doctest::Approx(0.0f));
+    inputs.gameMinutes = 18.0f * 60.0f;
+    model.snap();
+    const SkyFrameState &night = model.update(inputs, 0.02f);
+    CHECK(night.orbitRing.opacity == doctest::Approx(0.5f));
+    CHECK(night.orbitRing.lightBrightness == doctest::Approx(2.0f));
+    CHECK(night.orbitLightAngles[0] == doctest::Approx(skyOrbitLightAngle(night.orbitRing, 0, 18.0 * 60.0)));
+}

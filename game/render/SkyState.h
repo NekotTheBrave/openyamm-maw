@@ -73,6 +73,10 @@ struct SkyFrameState
     float starRotationRadians = 0.0f;
     SkyStarField stars;
     SkyHorizonRing horizonRing;
+    // The orbit ring, opacity and light brightness already scaled by star visibility; light angles around the ring
+    // (radians from +X toward +Z, like the moon's path) for this moment.
+    SkyOrbitRing orbitRing;
+    std::array<float, MaxSkyOrbitLights> orbitLightAngles = {};
     std::vector<SkyCloudLayerState> clouds;
     float lightningFlash = 0.0f;
     SkyBelowHorizon belowHorizon = SkyBelowHorizon::Fog;
@@ -96,6 +100,9 @@ struct SkyFrameState
 std::array<float, 3> skySunDirection(float gameMinutes);
 std::array<float, 3> skyMoonDirection(float gameMinutes);
 float skyMoonPhase(float gameMinutes);
+// Angle of orbit light `index` around the orbit ring at a game time: each light has its own period within the
+// range and its own start, from the index alone.
+float skyOrbitLightAngle(const SkyOrbitRing &ring, int index, double gameMinutes);
 
 // Whether the preset draws an original painted sky (a colour cloud layer).
 bool isPaintedSkyPreset(const SkyPreset &preset);

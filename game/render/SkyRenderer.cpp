@@ -96,6 +96,39 @@ SkyFogUniformValues packSkyFogUniform(const SkyFrameState *pFrame, const SkySurr
     }};
 }
 
+SkyOrbitUniformValues packSkyOrbitUniform(const SkyFrameState &frame)
+{
+    SkyOrbitUniformValues values = {};
+    const SkyOrbitRing &ring = frame.orbitRing;
+    const int lightCount = std::clamp(ring.lightCount, 0, int(MaxSkyOrbitLights));
+
+    if (ring.opacity <= 0.0f && (lightCount == 0 || ring.lightBrightness <= 0.0f))
+    {
+        return values;
+    }
+
+    // The ring follows the moon's path, a circle of constant y round the sky (skyMoonDirection), so the moon always
+    // hangs in it.
+    const float height = std::clamp(frame.moonDirection[1], -0.99f, 0.99f);
+    const float halfWidth = ring.widthDegrees * 0.5f * DegreesToRadians;
+    values[0] = {std::atan2(frame.moonDirection[2], frame.moonDirection[0]), height, 0.0f, 0.0f};
+    values[1] = vec4(ring.color, ring.opacity);
+    values[2] = {halfWidth, ring.fragments, float(lightCount), ring.lightSizeDegrees * DegreesToRadians};
+    values[3] = vec4(ring.lightColor, ring.lightBrightness);
+
+    for (int light = 0; light < lightCount; ++light)
+    {
+        // Each light keeps its own lane across the ring: centre, inner or outer edge.
+        const float lane = float(light % 3 - 1) * 0.35f * halfWidth;
+        const float angle = frame.orbitLightAngles[size_t(light)];
+        const float laneHeight = std::sin(std::asin(height) + lane);
+        const float laneRadius = std::sqrt(std::max(1.0f - laneHeight * laneHeight, 0.0f));
+        values[size_t(4 + light)] = {std::cos(angle) * laneRadius, laneHeight, std::sin(angle) * laneRadius, 0.0f};
+    }
+
+    return values;
+}
+
 std::array<float, 3> skyEnvironmentTint(const SkyFrameState &frame)
 {
     // Classic's noon reflection scale is 1; the Enhanced noon sky averages to about this luminance.
@@ -161,6 +194,7 @@ bool SkyRenderer::initialize(const Engine::AssetFileSystem &assets)
     m_rayUniform = bgfx::createUniform("u_skyRay", bgfx::UniformType::Mat4);
     m_paramsUniform = bgfx::createUniform("u_skyParams", bgfx::UniformType::Vec4, 8);
     m_cloudsUniform = bgfx::createUniform("u_skyClouds", bgfx::UniformType::Vec4, 8);
+    m_orbitUniform = bgfx::createUniform("u_skyOrbit", bgfx::UniformType::Vec4, SkyOrbitUniformVectors);
     const std::array<const char *, 7> samplerNames = {
         "s_skyCloud0", "s_skyCloud1", "s_skyCloud2", "s_skyCloud3", "s_skyRing", "s_skyStars", "s_skyMoon"};
 
@@ -211,7 +245,7 @@ void SkyRenderer::shutdown()
     }
 
     for (bgfx::UniformHandle *pUniform : {&m_fogUniform, &m_rayUniform, &m_paramsUniform, &m_cloudsUniform,
-             &m_imageSampler, &m_upscaleUniform})
+             &m_orbitUniform, &m_imageSampler, &m_upscaleUniform})
     {
         if (bgfx::isValid(*pUniform))
         {
@@ -267,6 +301,7 @@ void SkyRenderer::abandonGpuResources()
     m_rayUniform = BGFX_INVALID_HANDLE;
     m_paramsUniform = BGFX_INVALID_HANDLE;
     m_cloudsUniform = BGFX_INVALID_HANDLE;
+    m_orbitUniform = BGFX_INVALID_HANDLE;
     m_samplers.fill(BGFX_INVALID_HANDLE);
     m_program = BGFX_INVALID_HANDLE;
     m_upscaleProgram = BGFX_INVALID_HANDLE;
@@ -285,7 +320,8 @@ void SkyRenderer::abandonGpuResources()
 bool SkyRenderer::isReady() const
 {
     return bgfx::isValid(m_program) && bgfx::isValid(m_fogUniform) && bgfx::isValid(m_rayUniform)
-        && bgfx::isValid(m_paramsUniform) && bgfx::isValid(m_cloudsUniform) && bgfx::isValid(m_emptyTexture)
+        && bgfx::isValid(m_paramsUniform) && bgfx::isValid(m_cloudsUniform) && bgfx::isValid(m_orbitUniform)
+        && bgfx::isValid(m_emptyTexture)
         && bgfx::isValid(m_moonFallbackTexture)
         && std::all_of(m_samplers.begin(), m_samplers.end(),
             [](bgfx::UniformHandle sampler) { return bgfx::isValid(sampler); })
@@ -551,6 +587,8 @@ void SkyRenderer::render(uint16_t viewId, const float *pView, const float *pProj
     bgfx::setUniform(m_rayUniform, ray);
     bgfx::setUniform(m_paramsUniform, params.data(), uint16_t(params.size()));
     bgfx::setUniform(m_cloudsUniform, clouds.data(), uint16_t(clouds.size()));
+    const SkyOrbitUniformValues orbit = packSkyOrbitUniform(frame);
+    bgfx::setUniform(m_orbitUniform, orbit.data(), SkyOrbitUniformVectors);
 
     bgfx::TransientVertexBuffer vertices;
     bgfx::allocTransientVertexBuffer(&vertices, 3, m_vertexLayout);

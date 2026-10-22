@@ -29,12 +29,17 @@ constexpr float ActorMeleeRange = 307.2f;
 constexpr float HostilityLongRange = GameplayActorService::MaximumPartyEngagementRange;
 constexpr float IdleStandSeconds = 1.5f;
 constexpr float IdleBoredSeconds = 2.0f;
-// The original doubles monster speed while pursuing or fleeing.
-constexpr float PursueFleeMoveSpeedMultiplier = 2.0f;
+// The original doubles monster speed while pursuing or fleeing; OpenYAMM pursues at 1.75x (user choice, 2026-10-22).
+constexpr float PursueMoveSpeedMultiplier = 1.75f;
+constexpr float FleeMoveSpeedMultiplier = 2.0f;
 // 16 of the original 2048 angle units.
 constexpr float RangedOrbitStepRadians = Pi / 64.0f;
 constexpr float MaxActorMoveSpeed = 1000.0f;
 constexpr uint32_t IdleStandChancePercent = 25u;
+// Tactics (ActorTacticsFacts): a post counts as reached within this distance of home; band moves last at most these.
+constexpr float TacticPostArrivalRadius = 48.0f;
+constexpr float TacticPostReturnStepSeconds = 0.5f;
+constexpr float TacticBackOffSeconds = 0.4f;
 
 float normalizeAngleRadians(float angle)
 {
@@ -85,9 +90,13 @@ float movementSpeedForMotion(float effectiveMoveSpeed, ActorAiMotionState motion
 {
     float moveSpeed = std::max(0.0f, effectiveMoveSpeed);
 
-    if (motionState == ActorAiMotionState::Pursuing || motionState == ActorAiMotionState::Fleeing)
+    if (motionState == ActorAiMotionState::Pursuing)
     {
-        moveSpeed *= PursueFleeMoveSpeedMultiplier;
+        moveSpeed *= PursueMoveSpeedMultiplier;
+    }
+    else if (motionState == ActorAiMotionState::Fleeing)
+    {
+        moveSpeed *= FleeMoveSpeedMultiplier;
     }
 
     return std::min(moveSpeed, MaxActorMoveSpeed);
@@ -266,6 +275,8 @@ struct CombatAbilityChoiceInput
     bool inMeleeRange = false;
     bool chooseRandomAbility = true;
     bool applyAbilityConstraints = true;
+    // Tactics' ranged band: a chosen ranged attack commits at any distance instead of the native distance roll.
+    bool forceRangedCommit = false;
 };
 
 struct CombatAbilityChoiceResult
@@ -1202,7 +1213,7 @@ CombatAbilityChoiceResult chooseCombatAbility(const CombatAbilityChoiceInput &in
         rangedCommitInput.targetIsActor = input.targetIsActor;
         rangedCommitInput.targetEdgeDistance = input.targetEdgeDistance;
 
-        if (!shouldCommitToRangedAbility(rangedCommitInput))
+        if (!input.forceRangedCommit && !shouldCommitToRangedAbility(rangedCommitInput))
         {
             constraintState.rangedCommitAllowed = false;
         }
@@ -3396,6 +3407,205 @@ bool actorAttackReady(const ActorAiFacts &actor, const ActorAiFrameFacts &frame)
     return std::find(grants.begin(), grants.end(), actor.actorIndex) != grants.end();
 }
 
+// Tactics (ActorTacticsFacts, opt-in from world data). Without tactics every helper returns the native result.
+
+// The yaw after one AI step toward desiredYaw: the tactic's traverse rate, or the native instant turn.
+float tacticFacingYaw(const ActorAiFacts &actor, const ActorAiFrameFacts *pFrame, float desiredYaw)
+{
+    if (actor.tactics.traverseRadiansPerSecond <= 0.0f || pFrame == nullptr)
+    {
+        return desiredYaw;
+    }
+
+    const float difference = normalizeAngleRadians(desiredYaw - actor.runtime.yawRadians);
+    const float step = actor.tactics.traverseRadiansPerSecond * std::max(0.0f, pFrame->fixedStepSeconds);
+    return normalizeAngleRadians(actor.runtime.yawRadians + std::clamp(difference, -step, step));
+}
+
+float yawTowardTarget(const ActorAiFacts &actor)
+{
+    return std::atan2(
+        actor.target.currentPosition.y - actor.movement.position.y,
+        actor.target.currentPosition.x - actor.movement.position.x);
+}
+
+// A post's leash: true when the actor is already at least the leash from home and the move would take it further.
+bool tacticMoveLeavesLeash(const ActorAiFacts &actor, float directionX, float directionY)
+{
+    const float leash = actor.tactics.holdPost ? actor.tactics.postLeashRadius : 0.0f;
+
+    if (leash <= 0.0f)
+    {
+        return false;
+    }
+
+    const float fromHomeX = actor.movement.position.x - actor.movement.homePosition.x;
+    const float fromHomeY = actor.movement.position.y - actor.movement.homePosition.y;
+    return fromHomeX * fromHomeX + fromHomeY * fromHomeY >= leash * leash
+        && fromHomeX * directionX + fromHomeY * directionY > 0.0f;
+}
+
+void AI_TacticStandFacingTarget(ActorAiCommandContext &ai)
+{
+    const ActorAiFacts &actor = ai.actor();
+    ai.setMotionState(ActorAiMotionState::Standing);
+    ai.setAnimationState(ActorAiAnimationState::Standing);
+    ai.setMovementAction(ActorAiMovementAction::Stand);
+    ai.clearMovementDirection();
+    ai.faceYaw(tacticFacingYaw(actor, ai.frame(), yawTowardTarget(actor)));
+    applyActiveMovementCommit(actor, false, ai.update());
+}
+
+// Tactics in an engagement, before the native plan is carried out: a turret turns to its target before it fires, a
+// ranged band keeps its distance between shots and a post stays on its leash. False leaves the step to the native
+// plan.
+bool AI_TacticEngage(
+    ActorAiCommandContext &ai,
+    const CombatAbilityChoiceResult &abilityChoice,
+    const CombatEngagePlan &engagePlan)
+{
+    const ActorAiFacts &actor = ai.actor();
+    const ActorTacticsFacts &tactics = actor.tactics;
+    const CombatEngageAction action = engagePlan.action;
+
+    if (action == CombatEngageAction::StartRangedAttack || action == CombatEngageAction::StartMeleeAttack)
+    {
+        if (tactics.traverseRadiansPerSecond <= 0.0f)
+        {
+            return false;
+        }
+
+        const float remaining = std::abs(normalizeAngleRadians(yawTowardTarget(actor) - actor.runtime.yawRadians));
+
+        if (remaining <= std::max(0.0f, tactics.fireToleranceRadians))
+        {
+            return false;
+        }
+
+        AI_TacticStandFacingTarget(ai);
+        return true;
+    }
+
+    const bool rangedBetweenShots = abilityChoice.abilityIsRanged
+        && (action == CombatEngageAction::StandForRangedBlock
+            || action == CombatEngageAction::ContinueRangedPursuit
+            || action == CombatEngageAction::StartRangedPursuit);
+
+    if (tactics.keepsRangedBand() && rangedBetweenShots && actor.movement.movementAllowed
+        && actor.movement.effectiveMoveSpeed > 0.0f)
+    {
+        const ActorTargetState combatTarget = buildActorTargetStateFromFacts(actor);
+        const float distance = combatTarget.horizontalDistanceToTarget;
+        const bool hasMoveDirection =
+            std::abs(actor.movement.moveDirectionX) > 0.001f || std::abs(actor.movement.moveDirectionY) > 0.001f;
+        // A back-off (TacticBackOffSeconds) walks straight away from the target.
+        const bool backingOff = hasMoveDirection && distance > 0.01f
+            && actor.runtime.actionSeconds <= TacticBackOffSeconds
+            && actor.movement.moveDirectionX * combatTarget.deltaX + actor.movement.moveDirectionY * combatTarget.deltaY
+                < -0.7f * distance;
+        const bool continuing = actor.runtime.actionSeconds > 0.0f
+            && actor.runtime.motionState == ActorAiMotionState::Pursuing && hasMoveDirection
+            && !tacticMoveLeavesLeash(actor, actor.movement.moveDirectionX, actor.movement.moveDirectionY);
+        // Backing off, the actor keeps facing its target and walks (pursuit would hurry).
+        const auto backOffPresentation = [&]()
+        {
+            ai.faceYaw(tacticFacingYaw(actor, ai.frame(), yawTowardTarget(actor)));
+            ai.update().movementIntent.keepYawWhileMoving = true;
+            applyActiveMovementCommit(actor, false, ai.update());
+            ai.update().movementIntent.moveSpeed =
+                movementSpeedForMotion(actor.movement.effectiveMoveSpeed, ActorAiMotionState::Wandering);
+        };
+
+        if (continuing)
+        {
+            ai.setMotionState(ActorAiMotionState::Pursuing);
+            ai.setAnimationState(ActorAiAnimationState::Walking);
+            ai.setMovementAction(backingOff ? ActorAiMovementAction::Wander : ActorAiMovementAction::Pursue);
+            ai.setMoveDirection(actor.movement.moveDirectionX, actor.movement.moveDirectionY);
+            ai.setDesiredMovement(actor.movement.moveDirectionX, actor.movement.moveDirectionY);
+
+            if (backingOff)
+            {
+                backOffPresentation();
+            }
+            else
+            {
+                applyActiveMovementCommit(actor, false, ai.update());
+            }
+
+            return true;
+        }
+
+        PursueActionMode mode = PursueActionMode::RangedOrbit;
+
+        if (actor.target.currentEdgeDistance < tactics.rangedMinDistance && distance > 0.01f)
+        {
+            // Too close: step back, still facing the target (a model walks backwards), at walking speed.
+            const float awayX = -combatTarget.deltaX / distance;
+            const float awayY = -combatTarget.deltaY / distance;
+
+            if (!tacticMoveLeavesLeash(actor, awayX, awayY))
+            {
+                ai.setMotionState(ActorAiMotionState::Pursuing);
+                ai.setAnimationState(ActorAiAnimationState::Walking);
+                ai.resetAnimationOnChange();
+                ai.setMovementAction(ActorAiMovementAction::Wander);
+                ai.setMoveDirection(awayX, awayY);
+                ai.setDesiredMovement(awayX, awayY);
+                ai.setActionSeconds(TacticBackOffSeconds);
+                ai.setAttackImpactTriggered(false);
+                backOffPresentation();
+                return true;
+            }
+        }
+        else if (actor.target.currentEdgeDistance > tactics.rangedMaxDistance)
+        {
+            mode = PursueActionMode::Direct;
+        }
+
+        ai.setMotionState(ActorAiMotionState::Pursuing);
+        ai.setAnimationState(ActorAiAnimationState::Walking);
+        AI_Pursue(ai, mode, 0.0f);
+
+        if (tacticMoveLeavesLeash(actor, ai.update().movementIntent.desiredMoveX,
+                ai.update().movementIntent.desiredMoveY))
+        {
+            ai.update().movementIntent.desiredMoveX = 0.0f;
+            ai.update().movementIntent.desiredMoveY = 0.0f;
+            ai.update().movementIntent.applyMovement = false;
+            ai.setActionSeconds(0.0f);
+            AI_TacticStandFacingTarget(ai);
+            return true;
+        }
+
+        applyActiveMovementCommit(actor, false, ai.update());
+        return true;
+    }
+
+    const bool pursuing = action == CombatEngageAction::StartMeleePursuit
+        || action == CombatEngageAction::ContinueMeleePursuit
+        || action == CombatEngageAction::StartRangedPursuit
+        || action == CombatEngageAction::ContinueRangedPursuit;
+
+    if (pursuing && tactics.holdPost && tactics.postLeashRadius > 0.0f)
+    {
+        const bool continuing = action == CombatEngageAction::ContinueMeleePursuit
+            || action == CombatEngageAction::ContinueRangedPursuit;
+        const ActorTargetState combatTarget = buildActorTargetStateFromFacts(actor);
+        const float distance = std::max(combatTarget.horizontalDistanceToTarget, 0.01f);
+        const float directionX = continuing ? actor.movement.moveDirectionX : combatTarget.deltaX / distance;
+        const float directionY = continuing ? actor.movement.moveDirectionY : combatTarget.deltaY / distance;
+
+        if (tacticMoveLeavesLeash(actor, directionX, directionY))
+        {
+            AI_TacticStandFacingTarget(ai);
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool AI_AttackOrPursue(ActorAiCommandContext &ai)
 {
     const ActorAiFacts &actor = ai.actor();
@@ -3444,6 +3654,7 @@ bool AI_AttackOrPursue(ActorAiCommandContext &ai)
     abilityInput.inMeleeRange = engagement.inMeleeRange;
     abilityInput.chooseRandomAbility = true;
     abilityInput.applyAbilityConstraints = true;
+    abilityInput.forceRangedCommit = actor.tactics.keepsRangedBand();
     const CombatAbilityChoiceResult abilityChoice = chooseCombatAbility(abilityInput);
 
     CombatEngagePlanInput engageInput = {};
@@ -3465,6 +3676,11 @@ bool AI_AttackOrPursue(ActorAiCommandContext &ai)
     ai.resetAnimationOnChange();
     ai.setAttackDecisionCount(abilityChoice.nextAttackDecisionCount);
 
+    if (AI_TacticEngage(ai, abilityChoice, engagePlan))
+    {
+        return true;
+    }
+
     if (engagePlan.action == CombatEngageAction::HoldCrowdStand)
     {
         ai.setMotionState(ActorAiMotionState::Standing);
@@ -3484,9 +3700,7 @@ bool AI_AttackOrPursue(ActorAiCommandContext &ai)
         ai.setAnimationState(attackAnimationStateForAbility(abilityChoice.ability, actor.stats.attackConstraints));
         ai.setMovementAction(ActorAiMovementAction::Stand);
         ai.clearMovementDirection();
-        ai.faceYaw(std::atan2(
-            actor.target.currentPosition.y - actor.movement.position.y,
-            actor.target.currentPosition.x - actor.movement.position.x));
+        ai.faceYaw(tacticFacingYaw(actor, pFrame, yawTowardTarget(actor)));
         AI_Attack(ai, abilityChoice);
         return true;
     }
@@ -3498,9 +3712,7 @@ bool AI_AttackOrPursue(ActorAiCommandContext &ai)
         ai.setAnimationState(ActorAiAnimationState::Standing);
         ai.setMovementAction(ActorAiMovementAction::Stand);
         ai.clearMovementDirection();
-        ai.faceYaw(std::atan2(
-            actor.target.currentPosition.y - actor.movement.position.y,
-            actor.target.currentPosition.x - actor.movement.position.x));
+        ai.faceYaw(tacticFacingYaw(actor, pFrame, yawTowardTarget(actor)));
         applyActiveMovementCommit(actor, engagePlan.preserveCrowdSteering, ai.update());
         return true;
     }
@@ -3523,6 +3735,12 @@ bool AI_AttackOrPursue(ActorAiCommandContext &ai)
         ai.setAnimationState(ActorAiAnimationState::Standing);
         ai.setMovementAction(ActorAiMovementAction::Stand);
         ai.clearMovementDirection();
+
+        // A traversing turret keeps tracking a target it cannot shoot at this moment.
+        if (actor.tactics.traverseRadiansPerSecond > 0.0f)
+        {
+            ai.faceYaw(tacticFacingYaw(actor, pFrame, yawTowardTarget(actor)));
+        }
         applyActiveMovementCommit(actor, engagePlan.preserveCrowdSteering, ai.update());
         return true;
     }
@@ -3665,7 +3883,7 @@ bool AI_ContinueCurrentAction(ActorAiCommandContext &ai)
         if (dx * dx + dy * dy > 0.0001f)
         {
             // Release already aims at the current target. Keep windup facing consistent with that aim.
-            ai.faceYaw(std::atan2(dy, dx));
+            ai.faceYaw(tacticFacingYaw(actor, ai.frame(), std::atan2(dy, dx)));
         }
     }
     return true;
@@ -3804,9 +4022,62 @@ void AI_StartIdleStand(ActorAiCommandContext &ai)
     AI_RandomMove(ai, idleStandBehavior(actorChoosesBored(actor.actorId, actor.runtime.idleDecisionCount)));
 }
 
+// A post with nothing to fight (ActorTacticsFacts::holdPost): walks back to its home position, then turns to its
+// placement direction and stands there with the native fidgets, never wandering.
+void AI_HoldPost(ActorAiCommandContext &ai, float actionSeconds)
+{
+    const ActorAiFacts &actor = ai.actor();
+    const float deltaHomeX = actor.movement.homePosition.x - actor.movement.position.x;
+    const float deltaHomeY = actor.movement.homePosition.y - actor.movement.position.y;
+    const float distanceToHome = length2d(deltaHomeX, deltaHomeY);
+
+    if (actor.movement.movementAllowed && actor.movement.effectiveMoveSpeed > 0.0f
+        && distanceToHome > TacticPostArrivalRadius)
+    {
+        const float directionX = deltaHomeX / distanceToHome;
+        const float directionY = deltaHomeY / distanceToHome;
+        ai.faceYaw(std::atan2(directionY, directionX));
+        ai.setActionSeconds(std::min(TacticPostReturnStepSeconds, distanceToHome / actor.movement.effectiveMoveSpeed));
+        ai.setIdleDecisionSeconds(0.0f);
+        AI_RandomMove(ai, directionX, directionY);
+        return;
+    }
+
+    if (actor.runtime.motionState == ActorAiMotionState::Wandering)
+    {
+        AI_Stand(ai);
+        ai.setActionSeconds(0.0f);
+        actionSeconds = 0.0f;
+    }
+
+    if (actor.movement.hasHomeYaw
+        && std::abs(normalizeAngleRadians(actor.movement.homeYawRadians - actor.runtime.yawRadians)) > 0.01f)
+    {
+        ai.faceYaw(tacticFacingYaw(actor, ai.frame(), actor.movement.homeYawRadians));
+        AI_HoldIdle(ai);
+        return;
+    }
+
+    if (actionSeconds <= 0.0f)
+    {
+        AI_StartIdleStand(ai);
+        ai.setMotionState(ActorAiMotionState::Standing);
+    }
+    else
+    {
+        AI_HoldIdle(ai);
+    }
+}
+
 void AI_StandOrBored(ActorAiCommandContext &ai, float actionSeconds)
 {
     const ActorAiFacts &actor = ai.actor();
+
+    if (actor.tactics.holdPost)
+    {
+        AI_HoldPost(ai, actionSeconds);
+        return;
+    }
 
     if (!actor.movement.movementAllowed || actor.status.hostileToParty || actor.movement.wanderRadius <= 0.0f)
     {
@@ -4055,10 +4326,13 @@ ActorAiUpdate updateBackgroundActor(const ActorAiFacts &actor, const ActorAiFram
     }
     else
     {
-        // MM8's background StandOrBored requests the party direction before testing fidget facing.
-        ai.faceYaw(std::atan2(
-            actor.world.listenerPosition.y - actor.movement.position.y,
-            actor.world.listenerPosition.x - actor.movement.position.x));
+        // MM8's background StandOrBored requests the party direction before testing fidget facing; a post keeps
+        // facing its placement direction.
+        ai.faceYaw(actor.tactics.holdPost && actor.movement.hasHomeYaw
+            ? actor.movement.homeYawRadians
+            : std::atan2(
+                actor.world.listenerPosition.y - actor.movement.position.y,
+                actor.world.listenerPosition.x - actor.movement.position.x));
         AI_StartIdleStand(ai);
     }
     return ai.finish();

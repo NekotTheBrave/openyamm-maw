@@ -179,6 +179,8 @@ public:
         ScenarioCombatLootResult &result,
         std::string &failure);
     ScenarioInteractionResult activateActor(size_t actorIndex, std::string &failure);
+    // A party melee hit on a living actor through the normal damage path (it turns on the party, alerts its kin).
+    bool damageActor(size_t actorIndex, int amount, std::string &failure);
     ScenarioInteractionResult activateWorldItem(
         size_t worldItemIndex,
         std::optional<uint16_t> recordedObjectDescriptionId,

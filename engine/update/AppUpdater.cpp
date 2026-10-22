@@ -5,6 +5,8 @@
 
 #include <physfs.h>
 
+#include <array>
+#include <chrono>
 #include <fstream>
 #include <unordered_set>
 
@@ -14,6 +16,10 @@ namespace
 {
 constexpr const char *ChannelName = "stable";
 constexpr size_t ParallelDownloads = 3;
+// The pauses before each further attempt at a file after a broken connection or a busy server (HTTP 408, 429, 5xx;
+// nginx answers 503 above its connections per address, which a household or a mobile carrier's shared address
+// reaches). Each attempt resumes the partial file.
+constexpr std::array<int, 5> RetryDelaySeconds = {0, 2, 5, 10, 20};
 // Free space required beyond the download, so a nearly full disk is refused before it fills up.
 constexpr double FreeSpaceMargin = 1.1;
 constexpr const char *ArchiveMountPoint = "/.openyamm-update-archive";
@@ -457,8 +463,9 @@ bool AppUpdater::downloadJob(const Job &job, std::string &error)
     }
 
     const std::filesystem::path part = m_installation.updateDirectory() / (job.target.filename().string() + ".part");
+    bool verificationFailed = false;
 
-    for (int attempt = 0; attempt < 2; ++attempt)
+    for (size_t attempt = 0;; ++attempt)
     {
         uint64_t offset = std::filesystem::exists(part, fileError) ? std::filesystem::file_size(part, fileError) : 0;
 
@@ -510,21 +517,50 @@ bool AppUpdater::downloadJob(const Job &job, std::string &error)
             return true;
         }
 
-        // Neither a broken connection nor a damaged file is kept across a second attempt from scratch.
         m_doneBytes.fetch_sub(std::min(m_doneBytes.load(), received));
 
+        // A complete answer with the wrong bytes is downloaded once more from scratch.
         if (status == 200 || status == 206)
         {
             error = job.target.filename().string() + " failed verification";
             std::filesystem::remove(part, fileError);
+
+            if (verificationFailed)
+            {
+                return false;
+            }
+
+            verificationFailed = true;
+            continue;
         }
-        else if (error.empty())
+
+        if (error.empty())
         {
             error = "HTTP " + std::to_string(status);
         }
-    }
 
-    return false;
+        const bool transient = status == 0 || status == 408 || status == 429 || status >= 500;
+
+        if (!transient || attempt >= RetryDelaySeconds.size())
+        {
+            return false;
+        }
+
+        const auto resume = std::chrono::steady_clock::now() + std::chrono::seconds(RetryDelaySeconds[attempt]);
+
+        while (std::chrono::steady_clock::now() < resume && !m_cancel)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        if (m_cancel)
+        {
+            error = "cancelled";
+            return false;
+        }
+
+        error.clear();
+    }
 }
 
 void AppUpdater::runDownload()

@@ -2747,9 +2747,9 @@ actors:
   yaw_offset: -1.570796327
   animation:
     cast: Attack
-    run: Running
+    run: Walking
     stride_length: 1.602
-    run_stride_length: 3.057
+    run_stride_length: 1.602
     upper_body_root: B_Spine
     look:
       nodes:
@@ -2779,9 +2779,9 @@ actors:
   yaw_offset: -1.570796327
   animation:
     cast: Attack
-    run: Running
+    run: Walking
     stride_length: 1.602
-    run_stride_length: 3.057
+    run_stride_length: 1.602
     upper_body_root: B_Spine
     look:
       nodes:
@@ -2811,9 +2811,9 @@ actors:
   yaw_offset: -1.570796327
   animation:
     cast: Attack
-    run: Running
+    run: Walking
     stride_length: 1.602
-    run_stride_length: 3.057
+    run_stride_length: 1.602
     upper_body_root: B_Spine
     look:
       nodes:
@@ -3987,8 +3987,9 @@ actors:
     sockets:
       arrow: Socket_Arrow
     cast: Cast
-    run: Running
+    run: Walking
     stride_length: 1.365689918
+    run_stride_length: 1.366
     upper_body_root: B_Spine
     look:
       nodes:

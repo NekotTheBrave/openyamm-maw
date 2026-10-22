@@ -43,6 +43,17 @@ The existing `android/repack_runtime_assets.sh` packages all map files, includin
 `.bake.json`; there is no extension whitelist to change. Repacking replaces the normal runtime ZIPs.
 Development play uses `assets_dev` directly and does not require repacking.
 
+### Staged worlds (Hesper)
+
+A world that lives in its own isolated asset root (the [Hesper stage](../../../level_generation/projects/hesper_stage/README.md))
+bakes with `--assets <stage root>` and one `--sources <dir>` per extra source-art root beside `assets_source`. Its
+faces may have no native BMP: they resolve to their `textures_x4` PNG masters at a quarter of the master's size in
+texels (a native BMP of the same name wins), a decoration with only a `pending` placeholder sprite casts through its
+3D model, and a world other than MM6 or MM7 reads MM8's terrain tile table (as the engine does). Without these
+arguments the producer resolves exactly as before (checked against every installed MM bake's dependency list,
+2026-10-22). Hesper's wrapper is `level_generation/projects/hesper_stage/bake.sh`; its bakes go to
+`output/hesper_stage/bakes`, never `assets_dev`.
+
 ## Authoring choices
 
 ### Batch bake MM6–MM8 outdoor maps

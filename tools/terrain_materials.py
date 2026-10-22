@@ -157,6 +157,8 @@ def prepare(ids):
             **({"specular": entry["specular"]} if "specular" in entry else {}),
             # How much of the rain-wet sheen it takes (1 when absent): grass blades scatter instead of forming a film.
             **({"wet_sheen": entry["wet_sheen"]} if "wet_sheen" in entry else {}),
+            # Glowing texels (lava, creep veins): {color: [r, g, b], threshold: albedo red minus blue where it starts}.
+            **({"emissive": entry["emissive"]} if "emissive" in entry else {}),
         }
         print(f"prepared {material_id}: mean colour {library['materials'][material_id]['mean_color']}")
     library["materials"] = dict(sorted(library["materials"].items()))

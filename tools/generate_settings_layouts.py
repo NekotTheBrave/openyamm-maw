@@ -42,6 +42,8 @@ CONTROLS = {
     "toggle": (70.4, 32.158),
     "select": (110.9333, 23.4667),
     "range": (88.5333, 16.0),
+    # A button the game draws itself, the size of Controls' Configure Keyboard.
+    "action": (118.6501, 20.2667),
 }
 RANGE_VALUE_WIDTH = 26.6667
 RANGE_VALUE_HEIGHT = 11.7333

@@ -2,6 +2,8 @@
 # Rows appear in catalog order; a new `group` value starts a new heading. After editing, regenerate the tab layouts
 # with `python3 tools/generate_settings_layouts.py`. An empty `desc` gives a compact row, used for the intensity
 # sliders that follow their own toggle; `depends` rows are indented under the setting they depend on.
+# An `action` row stores no setting: the game fills its label, description and button (update_now: the installed
+# version, the update status and Check Now). `updater_only` sections and rows exist only where the game updates itself.
 sections:
 - id: gameplay
   name: Gameplay
@@ -15,6 +17,9 @@ sections:
   name: Controls
 - id: keyboard
   name: Keyboard
+- id: updates
+  name: Updates
+  updater_only: true
 settings:
 - id: bolster_monsters
   section: gameplay
@@ -97,9 +102,16 @@ settings:
   name: Portrait frame
   type: toggle
   desc: Draw the frame behind the party portraits during play. Other screens always keep it.
+- id: update_now
+  section: updates
+  group: Version
+  name: Installed version
+  type: action
+  updater_only: true
+  desc: Check Now looks for a new version on jasicek.net. Nothing downloads without asking.
 - id: check_for_updates
-  section: interface
-  group: Updates
+  section: updates
+  group: Automatic checks
   name: Check for updates
   type: select
   updater_only: true

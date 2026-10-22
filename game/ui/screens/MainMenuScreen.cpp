@@ -85,6 +85,10 @@ void MainMenuScreen::loadCatalog()
     const YAML::Node catalog = YAML::Load(*text);
     for (const YAML::Node &item : catalog["sections"])
     {
+        if (item["updater_only"].as<bool>(false) && m_pUpdater == nullptr)
+        {
+            continue;
+        }
         m_sections.push_back({item["id"].as<std::string>(), item["name"].as<std::string>()});
     }
     for (const YAML::Node &item : catalog["settings"])
@@ -106,6 +110,11 @@ void MainMenuScreen::loadCatalog()
             {
                 setting.options.emplace_back(option[0].as<std::string>(), option[1].as<std::string>());
             }
+        }
+        // An action row stores no setting; drawUpdateSettings draws the only one, update_now.
+        if (setting.type == "action")
+        {
+            continue;
         }
         menuSettingValue(m_draft, setting.id); // An unknown catalog field is an installation error.
         // Settings of the self-updater only exist where the game updates itself.
@@ -355,6 +364,80 @@ void MainMenuScreen::drawUpdates()
     if (!text.empty() && button("update", canvasRect(14, 430, 250, 22), text, "button_quiet") && !modalOpen())
     {
         offerUpdate();
+    }
+}
+
+void MainMenuScreen::drawUpdateSettings(const std::string &prefix)
+{
+    // The Updates tab's version row: the installed version, the update status and one button that checks again or,
+    // in the main menu, installs what a check found. From the pause menu it only checks: on Android an update closes
+    // the game, and the unsaved game with it.
+    if (m_followingUpdate)
+    {
+        followUpdate();
+    }
+
+    const Engine::UpdateStatus status = m_pUpdater->status();
+    const std::string size = std::to_string((status.totalBytes + 999999) / 1000000) + " MB";
+    std::string text = "Check Now looks for a new version on jasicek.net. Nothing downloads without asking.";
+    std::string buttonText = "Check Now";
+    bool enabled = true;
+    bool install = false;
+
+    if (status.state == Engine::UpdateState::Checking)
+    {
+        text = "Looking for a new version on jasicek.net...";
+        buttonText = "Checking...";
+        enabled = false;
+    }
+    else if (status.state == Engine::UpdateState::UpToDate)
+    {
+        text = "This is the newest version.";
+    }
+    else if (status.state == Engine::UpdateState::Failed)
+    {
+        text = "The last check failed: " + status.message;
+    }
+    else if (status.state == Engine::UpdateState::Available)
+    {
+        m_updateRelease = status.release;
+        text = "OpenYAMM " + status.release + " is available (" + size + ")."
+            + (m_paused ? " Update it from the main menu." : "");
+        buttonText = m_paused ? "Check Now" : "Update";
+        install = !m_paused;
+    }
+    else if (status.state == Engine::UpdateState::Downloading)
+    {
+        text = "Downloading OpenYAMM " + m_updateRelease + ": " + std::to_string(status.doneBytes / 1000000) + " of "
+            + size + ".";
+        buttonText = "Downloading...";
+        enabled = false;
+    }
+    else if (status.state == Engine::UpdateState::Ready)
+    {
+        text = "OpenYAMM " + status.release + " is downloaded. Restart"
+            + (m_paused ? " from the main menu" : "") + " to play it.";
+        buttonText = "Restart";
+        enabled = !m_paused;
+        install = !m_paused;
+    }
+
+    const std::string id = prefix + "UpdateNow";
+    label(id + "Label", "Installed: OpenYAMM " + m_pUpdater->installedVersion(), 0, -m_scroll);
+    label(id + "Description", text, 0, -m_scroll);
+    Rect rect = designRect(id + "Control");
+    rect.y -= m_scroll * designScale();
+
+    if (button("update-now", rect, buttonText, "button_small", enabled) && !modalOpen())
+    {
+        if (install)
+        {
+            offerUpdate();
+        }
+        else
+        {
+            m_pUpdater->check();
+        }
     }
 }
 
@@ -941,6 +1024,10 @@ void MainMenuScreen::drawSettings(float deltaSeconds)
             }
             label(id + "Value", value + setting.unit, 0, -m_scroll);
         }
+    }
+    if (m_section == "updates" && m_pUpdater != nullptr)
+    {
+        drawUpdateSettings(prefix);
     }
     if (m_section == "controls")
     {

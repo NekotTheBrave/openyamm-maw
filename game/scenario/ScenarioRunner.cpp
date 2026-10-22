@@ -2709,6 +2709,43 @@ bool runNoOpObservation(
     return true;
 }
 
+// damage_actor: {actor_index, amount}: a party melee hit through the normal damage path (the actor turns on the party),
+// for combat scenarios on maps whose actors are friendly.
+bool runDamageActor(
+    ScenarioExecutionContext &context,
+    const ScenarioStep &step,
+    std::vector<std::string> &failures)
+{
+    if (!payloadIsMap(step, failures))
+    {
+        return false;
+    }
+
+    if (!step.payload["actor_index"] || !step.payload["actor_index"].IsScalar())
+    {
+        failures.push_back(stepLocation(step) + ": damage_actor requires scalar field 'actor_index'");
+        return false;
+    }
+
+    if (!ensureRuntimeDriver(context, failures))
+    {
+        return false;
+    }
+
+    seedRuntimeDriverFromContext(context);
+    std::string failure;
+
+    if (!context.runtimeDriver->damageActor(
+            step.payload["actor_index"].as<size_t>(), step.payload["amount"].as<int>(1), failure))
+    {
+        failures.push_back(stepLocation(step) + ": " + failure);
+        return false;
+    }
+
+    syncContextFromRuntime(context);
+    return true;
+}
+
 bool runCombatLoot(
     ScenarioExecutionContext &context,
     const ScenarioStep &step,
@@ -5606,7 +5643,11 @@ bool assertActorVisible(
         {
             message << " position=" << runtimeState.preciseX << ',' << runtimeState.preciseY
                     << ',' << runtimeState.preciseZ
-                    << " targeting_party=" << boolText(runtimeState.combatTargetingParty);
+                    << " yaw_degrees=" << runtimeState.yawRadians * 180.0f / 3.14159265f
+                    << " animation=" << static_cast<int>(runtimeState.animationState)
+                    << " hostile=" << boolText(runtimeState.hostileToParty)
+                    << " targeting_party=" << boolText(runtimeState.combatTargetingParty)
+                    << " aim_target=" << boolText(runtimeState.hasAimTarget);
         }
         scenarioLog(context, ScenarioLogColor::Default, message.str());
     }
@@ -5673,6 +5714,53 @@ bool assertActorVisible(
             : std::string(pKey) == "has_detected_party" ? runtimeState.hasDetectedParty
             : runtimeState.combatTargetingParty;
         success = checkRuntimeField(pKey, boolText(value)) && success;
+    }
+
+    // near: {x, y, max_distance}: the actor stands within max_distance of a point (horizontally); far: {x, y,
+    // min_distance}: at least that far from it; faces: {x, y, within_degrees}: its yaw points at it.
+    for (const char *pKey : {"near", "far", "faces"})
+    {
+        const YAML::Node pointNode = actorNode[pKey];
+
+        if (!pointNode)
+        {
+            continue;
+        }
+
+        const char *pLimitKey = std::string(pKey) == "near" ? "max_distance"
+            : std::string(pKey) == "far" ? "min_distance" : "within_degrees";
+
+        if (!hasRuntimeState || !pointNode.IsMap() || !pointNode["x"] || !pointNode["y"] || !pointNode[pLimitKey])
+        {
+            failures.push_back(stepLocation(step) + ": actor_visible " + pKey + " needs live state, x, y and "
+                + pLimitKey);
+            success = false;
+            continue;
+        }
+
+        const float dx = pointNode["x"].as<float>() - runtimeState.preciseX;
+        const float dy = pointNode["y"].as<float>() - runtimeState.preciseY;
+        const float limit = pointNode[pLimitKey].as<float>();
+        const float distance = std::hypot(dx, dy);
+        const float offDegrees = std::abs(std::remainder(std::atan2(dy, dx) - runtimeState.yawRadians,
+            2.0f * 3.14159265f)) * 180.0f / 3.14159265f;
+        const bool passed = std::string(pKey) == "near" ? distance <= limit
+            : std::string(pKey) == "far" ? distance >= limit : offDegrees <= limit;
+
+        if (!passed)
+        {
+            std::ostringstream message;
+            message << stepLocation(step) << ": actor_visible " << pKey << " failed: distance=" << distance
+                    << " off_degrees=" << offDegrees << " limit=" << limit;
+            failures.push_back(message.str());
+            success = false;
+        }
+    }
+
+    if (actorNode["has_aim_target"])
+    {
+        success = hasRuntimeState
+            && checkRuntimeField("has_aim_target", boolText(runtimeState.hasAimTarget)) && success;
     }
     syncContextFromRuntime(context);
     return success;
@@ -7133,6 +7221,9 @@ ScenarioRunResult ScenarioRunner::run(
             break;
         case ScenarioStepKind::CombatLoot:
             stepSuccess = runCombatLoot(context, step, result.failures);
+            break;
+        case ScenarioStepKind::DamageActor:
+            stepSuccess = runDamageActor(context, step, result.failures);
             break;
         case ScenarioStepKind::WaitUntil:
             stepSuccess = runWaitUntil(context, step, result.failures);

@@ -97,6 +97,10 @@ public:
         float windY = 0.0f;
         bool storm = false;
         float wetness = 0.0f;
+        // Haze of falling flakes that have one (ash), not saved: the fog closes to at most these distances while
+        // it lasts. A strong distance of 0 is no haze.
+        int32_t hazeWeakDistance = 0;
+        int32_t hazeStrongDistance = 0;
         float ambientBrightness = 0.69f;
         float visibilityDistance = 200000.0f;
         float darknessOverlayAlpha = 0.0f;
@@ -112,6 +116,32 @@ public:
         std::string weatherSkyTextureName;
         int mergedWeatherState = -1;
         int mergedWeatherStateCount = 0;
+
+        struct ShownFog
+        {
+            bool foggy = false;
+            int32_t weakDistance = 0;
+            int32_t strongDistance = 0;
+        };
+
+        // The fog the world is drawn with: the map's fog weather (flag bit 1 and its distances), closed further by
+        // any precipitation haze. Without a haze it is exactly the map's fog.
+        ShownFog shownFog() const
+        {
+            const bool mapFoggy = (weatherFlags & 1) != 0;
+
+            if (hazeStrongDistance <= 0)
+            {
+                return {mapFoggy, fogWeakDistance, fogStrongDistance};
+            }
+
+            if (!mapFoggy || fogWeakDistance < 0 || fogStrongDistance <= fogWeakDistance)
+            {
+                return {true, hazeWeakDistance, hazeStrongDistance};
+            }
+
+            return {true, std::min(fogWeakDistance, hazeWeakDistance), std::min(fogStrongDistance, hazeStrongDistance)};
+        }
     };
 
     enum class ActorAiState

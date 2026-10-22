@@ -30,6 +30,8 @@ public:
     static void destroySkyResources(OutdoorGameView &view);
     // Sets u_skyFog for the following fog shaders (zero, i.e. flat fog, without an enhanced sky frame).
     static void applySkyFogUniform(const OutdoorGameView &view);
+    // Loads the map's decoration models once (also on the first world pass); without them decorations are sprites.
+    static void ensureDecorationModels(OutdoorGameView &view);
 
     static void renderWorldPasses(
         OutdoorGameView &view,
@@ -99,7 +101,6 @@ private:
     // The main view's dynamic lights come from the light grid, a reflection's from the shared uniform list.
     static void submitTerrainMaterials(OutdoorGameView &view, uint16_t viewId, const ViewFrustum &frustum,
         const bx::Vec3 &cameraPosition, bool openWater, bool sunShadows, bool reflection);
-    static void ensureDecorationModels(OutdoorGameView &view);
     // Light (baked probes, as decoration models) and distance fade of the low bushes placed with the grass.
     static void updateTerrainBushes(OutdoorGameView &view, const OutdoorLightingData *pBakedLighting,
         const OutdoorWorldRuntime::AtmosphereState *pAtmosphereState, const std::array<float, 3> &camera);

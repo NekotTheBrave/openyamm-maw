@@ -427,7 +427,7 @@ uint32_t computeOutdoorSkyFogColorAbgr(const OutdoorWorldRuntime::AtmosphereStat
         return makeAbgr(UnderwaterFogRed, UnderwaterFogGreen, UnderwaterFogBlue);
     }
 
-    if ((atmosphereState.weatherFlags & MapWeatherFoggy) == 0)
+    if (!atmosphereState.shownFog().foggy)
     {
         return 0xff000000u;
     }
@@ -857,18 +857,21 @@ OutdoorFogParameters buildOutdoorWorldFogParameters(
         1.0f
     };
 
+    const OutdoorWorldRuntime::AtmosphereState::ShownFog shownFog =
+        pAtmosphereState != nullptr ? pAtmosphereState->shownFog() : OutdoorWorldRuntime::AtmosphereState::ShownFog{};
+
     if (pAtmosphereState != nullptr
-        && (pAtmosphereState->weatherFlags & MapWeatherFoggy) != 0
-        && pAtmosphereState->fogWeakDistance >= 0
-        && pAtmosphereState->fogStrongDistance > pAtmosphereState->fogWeakDistance)
+        && shownFog.foggy
+        && shownFog.weakDistance >= 0
+        && shownFog.strongDistance > shownFog.weakDistance)
     {
         const OutdoorFogProfile fogProfile = pAtmosphereState->directFog
             ? buildOutdoorDirectFogProfile(
-                pAtmosphereState->fogWeakDistance,
-                pAtmosphereState->fogStrongDistance)
+                shownFog.weakDistance,
+                shownFog.strongDistance)
             : buildOutdoorFogProfile(
-                pAtmosphereState->fogWeakDistance,
-                pAtmosphereState->fogStrongDistance,
+                shownFog.weakDistance,
+                shownFog.strongDistance,
                 clampedFarClipDistance,
                 OutdoorWorldFogNearOpacity,
                 OutdoorWorldFogStrongOpacity);
@@ -931,18 +934,21 @@ OutdoorFogParameters buildOutdoorSkyFogParameters(
         1.0f
     };
 
+    const OutdoorWorldRuntime::AtmosphereState::ShownFog shownFog =
+        pAtmosphereState != nullptr ? pAtmosphereState->shownFog() : OutdoorWorldRuntime::AtmosphereState::ShownFog{};
+
     if (pAtmosphereState != nullptr
-        && (pAtmosphereState->weatherFlags & MapWeatherFoggy) != 0
-        && pAtmosphereState->fogWeakDistance >= 0
-        && pAtmosphereState->fogStrongDistance > pAtmosphereState->fogWeakDistance)
+        && shownFog.foggy
+        && shownFog.weakDistance >= 0
+        && shownFog.strongDistance > shownFog.weakDistance)
     {
         const OutdoorFogProfile fogProfile = pAtmosphereState->directFog
             ? buildOutdoorDirectFogProfile(
-                pAtmosphereState->fogWeakDistance,
-                pAtmosphereState->fogStrongDistance)
+                shownFog.weakDistance,
+                shownFog.strongDistance)
             : buildOutdoorFogProfile(
-                pAtmosphereState->fogWeakDistance,
-                pAtmosphereState->fogStrongDistance,
+                shownFog.weakDistance,
+                shownFog.strongDistance,
                 clampedRenderDistance,
                 OutdoorSkyFogNearOpacity,
                 OutdoorSkyFogStrongOpacity);
@@ -1152,7 +1158,7 @@ void OutdoorRenderer::renderWeather(OutdoorGameView &view, uint16_t viewId,
 
     if (pAtmosphereState == nullptr || pAtmosphereState->underwater
         || view.m_gameSettings.weatherQuality == WeatherQuality::Off || !view.m_renderLayers.effects
-        || (weather.rainLevel() <= 0.0f && weather.snowLevel() <= 0.0f))
+        || (weather.rainLevel() <= 0.0f && weather.snowLevel() <= 0.0f && weather.ashLevel() <= 0.0f))
     {
         view.m_weatherRenderer.resetCamera();
         return;
@@ -1206,6 +1212,14 @@ void OutdoorRenderer::renderWeather(OutdoorGameView &view, uint16_t viewId,
     frame.deltaSeconds = view.m_weatherFrameSeconds;
     frame.rainLevel = weather.rainLevel();
     frame.snowLevel = weather.snowLevel();
+    frame.ashLevel = weather.ashLevel();
+
+    if (view.m_pOutdoorWorldRuntime != nullptr)
+    {
+        frame.snowLook = view.m_pOutdoorWorldRuntime->weatherRules().snowFlakes;
+        frame.ashLook = view.m_pOutdoorWorldRuntime->weatherRules().ashFlakes;
+    }
+
     frame.windX = weather.windX();
     frame.windY = weather.windY();
     frame.light = light;
@@ -1264,9 +1278,9 @@ void OutdoorRenderer::updateEnhancedSky(
     inputs.redFog = atmosphere.redFog;
     inputs.alwaysLight = atmosphere.alwaysLight;
     inputs.alwaysDark = atmosphere.alwaysDark;
-    inputs.foggy = (atmosphere.weatherFlags & MapWeatherFoggy) != 0
-        && atmosphere.fogStrongDistance > atmosphere.fogWeakDistance;
-    inputs.fogStrongDistance = static_cast<float>(atmosphere.fogStrongDistance);
+    const OutdoorWorldRuntime::AtmosphereState::ShownFog shownFog = atmosphere.shownFog();
+    inputs.foggy = shownFog.foggy && shownFog.strongDistance > shownFog.weakDistance;
+    inputs.fogStrongDistance = static_cast<float>(shownFog.strongDistance);
     // The sky follows the shown weather, which fades in step with the sky's own cross-fade.
     const WeatherPresentation &weather = view.m_weatherPresentation;
     inputs.raining = weather.rainLevel() > ShownPrecipitationThreshold;
@@ -3995,8 +4009,9 @@ bool OutdoorRenderer::initializeWaterResources(OutdoorGameView &view, const Outd
         std::map<std::pair<int32_t, int32_t>, std::array<bx::Vec3, 2>> patches;
     };
     // Separate surfaces per liquid, so each draws as its own kind and only water takes a reflection.
-    std::map<std::pair<LiquidKind, float>, SurfaceBuild> planes;
-    std::map<LiquidKind, SurfaceBuild> sloped;
+    // A liquid that takes no reflection gets surfaces of its own.
+    std::map<std::tuple<LiquidKind, float, bool>, SurfaceBuild> planes;
+    std::map<std::pair<LiquidKind, bool>, SurfaceBuild> sloped;
     for (size_t index = 0; index + 6 <= vertices.size(); index += 6)
     {
         const OutdoorGameView::TexturedTerrainVertex &first = vertices[index];
@@ -4012,10 +4027,12 @@ bool OutdoorRenderer::initializeWaterResources(OutdoorGameView &view, const Outd
         }
         const OutdoorTerrainTile &tile = terrainTiles.tiles[size_t(first.flowUPerSecond)];
         const float liquid = liquidShaderValue(tile.liquid);
-        SurfaceBuild &surface = planar ? planes[{tile.liquid, first.z}] : sloped[tile.liquid];
+        SurfaceBuild &surface = planar ? planes[{tile.liquid, first.z, tile.liquidReflects}]
+            : sloped[{tile.liquid, tile.liquidReflects}];
         surface.geometry.height = first.z;
         surface.geometry.planar = planar;
         surface.geometry.liquid = tile.liquid;
+        surface.geometry.reflects = tile.liquidReflects;
         for (size_t offset = 0; offset < 6; ++offset)
         {
             const OutdoorGameView::TexturedTerrainVertex &vertex = vertices[index + offset];
@@ -4047,7 +4064,7 @@ bool OutdoorRenderer::initializeWaterResources(OutdoorGameView &view, const Outd
     {
         append(surface);
     }
-    for (auto &[liquid, surface] : sloped)
+    for (auto &[key, surface] : sloped)
     {
         append(surface);
     }

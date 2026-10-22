@@ -14,6 +14,8 @@ month_multipliers:
 
 # Per-map chance overrides (map file name), replacing the global chances before the month multiplier.
 # rain/snow set the chance; a snow chance only applies to maps bolster_maps.txt lets snow.
+# ash (falling volcanic ash) is the daily chance on that map alone: only maps listed with an ash chance get ash,
+# with or without a bolster_maps.txt row, and it has no month multiplier. No MM6-MM8 map has it.
 maps:
   7out13.odm: {rain: 30}  # Tatalia: swamp and lowland humidity
   outc3.odm: {rain: 30}   # Mire of the Damned
@@ -35,6 +37,7 @@ intensities:
 # off over ramp_down. Clouds gather cloud_lead minutes before the first drops and linger cloud_linger after the last.
 rain: {min_minutes: 120, max_minutes: 540, ramp_up: [20, 60], ramp_down: [30, 90]}
 snow: {min_minutes: 180, max_minutes: 720, ramp_up: [30, 80], ramp_down: [40, 120]}
+ash: {min_minutes: 240, max_minutes: 900, ramp_up: [40, 90], ramp_down: [60, 150]}
 cloud_lead: 60
 cloud_linger: 75
 # Relative variation of intensity during the spell (0 = steady), and its period in game minutes.
@@ -57,8 +60,19 @@ wind:
   calm: [30, 160]
   rain: 320
   snow: 280
+  # Falling ash brings dust winds (the wind sound follows the wind speed).
+  ash: 220
   # Real-time gusts vary the wind between these multiples of the daily wind.
   gust_range: [0.6, 1.6]
+
+# Falling flakes. color is linear before the sky light (above 1 stays brighter than the fog behind it), fall_speed in
+# units per second, size (flake radius) and alpha for the [near, far] layers, sway amplitude and rate. haze closes
+# the fog to [weak, strong] distances at full strength (from distant at a trace); omitted, the flakes bring no haze.
+# snow is the engine's snow as it always was; ash is grey, slow and swirling, never settles and wets nothing.
+flakes:
+  snow: {color: [1.2, 1.22, 1.26], fall_speed: 150, size: [3, 6], alpha: [0.9, 0.75], sway: 30, sway_rate: 1.1}
+  ash: {color: [0.58, 0.56, 0.6], fall_speed: 55, size: [2.4, 4.8], alpha: [0.85, 0.7], sway: 55, sway_rate: 0.55,
+        haze: [2500, 12000]}
 
 # Real seconds for the shown precipitation to fade from none to full (map loads and clock jumps snap instead).
 fade_seconds: 40

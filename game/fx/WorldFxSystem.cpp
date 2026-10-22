@@ -788,9 +788,25 @@ bool WorldFxSystem::buildActorModelBinding(const std::string &descriptor, std::s
                 binding.lookHeadHeight = rest.globalMatrices[binding.lookNodes.back()][13];
                 binding.lookMaxYaw = look["max_yaw_degrees"].as<float>() * Degrees;
                 binding.lookMaxPitch = look["max_pitch_degrees"].as<float>() * Degrees;
+                binding.lookMinPitch = look["min_pitch_degrees"]
+                    ? look["min_pitch_degrees"].as<float>() * Degrees : -binding.lookMaxPitch;
+                const std::string lookTarget = look["target"].as<std::string>("party");
+                binding.lookAtCombatTarget = lookTarget == "combat";
+                if (look["hold_clip"])
+                {
+                    const std::optional<uint32_t> clip = binding.asset->findClip(look["hold_clip"].as<std::string>());
+                    if (!clip)
+                    {
+                        throw std::runtime_error("actor look hold_clip not found: " + descriptor);
+                    }
+                    binding.lookHoldClip = *clip;
+                }
                 if (binding.lookNodes.empty() || !std::isfinite(binding.lookMaxYaw)
                     || !std::isfinite(binding.lookMaxPitch) || binding.lookMaxYaw < 0.0f
-                    || binding.lookMaxYaw > 1.6f || binding.lookMaxPitch < 0.0f || binding.lookMaxPitch > 1.0f)
+                    || binding.lookMaxYaw > 1.6f || binding.lookMaxPitch < 0.0f || binding.lookMaxPitch > 1.0f
+                    || !std::isfinite(binding.lookMinPitch) || binding.lookMinPitch < -1.0f
+                    || binding.lookMinPitch > binding.lookMaxPitch || (lookTarget != "party" && lookTarget != "combat")
+                    || (binding.lookHoldClip != UINT32_MAX && !binding.lookAtCombatTarget))
                 {
                     throw std::runtime_error("invalid actor look: " + descriptor);
                 }
@@ -1122,16 +1138,19 @@ void WorldFxSystem::updateActorLook(ActorModelInstance &model, const GameplayRun
     model.lookClock = 0.0f;
     float targetYaw = 0.0f;
     float targetPitch = 0.0f;
-    if (canLook && partyDistance < LookRange)
+    // The party's eyes within LookRange, or (`target: combat`) the combat target at any distance.
+    const bool hasLookTarget = binding.lookAtCombatTarget ? state.hasAimTarget : partyDistance < LookRange;
+    if (canLook && hasLookTarget)
     {
-        const float dx = world.partyX() - state.preciseX;
-        const float dy = world.partyY() - state.preciseY;
-        const float dz = world.partyEyeZ() - (state.preciseZ + binding.zOffset + scale * binding.lookHeadHeight);
+        const float dx = (binding.lookAtCombatTarget ? state.aimTargetX : world.partyX()) - state.preciseX;
+        const float dy = (binding.lookAtCombatTarget ? state.aimTargetY : world.partyY()) - state.preciseY;
+        const float dz = (binding.lookAtCombatTarget ? state.aimTargetZ : world.partyEyeZ())
+            - (state.preciseZ + binding.zOffset + scale * binding.lookHeadHeight);
         const float yaw = std::remainder(std::atan2(dy, dx) - model.yaw, 2.0f * std::numbers::pi_v<float>);
         if (std::abs(yaw) <= binding.lookMaxYaw + BehindMargin)
         {
             targetYaw = std::clamp(yaw, -binding.lookMaxYaw, binding.lookMaxYaw);
-            targetPitch = std::clamp(std::atan2(dz, std::hypot(dx, dy)), -binding.lookMaxPitch, binding.lookMaxPitch);
+            targetPitch = std::clamp(std::atan2(dz, std::hypot(dx, dy)), binding.lookMinPitch, binding.lookMaxPitch);
         }
     }
     if (targetYaw == 0.0f && targetPitch == 0.0f && model.lookYaw == 0.0f && model.lookPitch == 0.0f)
@@ -1524,6 +1543,14 @@ void WorldFxSystem::syncActorModels(const IGameplayWorldRuntime &world, float wo
                 time = model.followTime;
                 continuingFollow = true;
             }
+        }
+        // `look.hold_clip`: an actor tracking its combat target holds still instead of playing its idle (a turret's
+        // scan would swing the guns off the target).
+        if (binding.lookHoldClip != UINT32_MAX && state.hasAimTarget && !scripted && !continuingFollow
+            && state.animationState == ActorAiAnimationState::Standing)
+        {
+            clip = binding.lookHoldClip;
+            time = 0.0f;
         }
         // Animation LOD: actors sample their clips at most 240 times a second, at 60 Hz beyond ~7 m, 15 Hz beyond
         // ~14 m and the native sprite rate (8 Hz) beyond ~28 m. Pose evaluation was a third of the main thread with a

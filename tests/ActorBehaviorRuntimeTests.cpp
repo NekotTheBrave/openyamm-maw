@@ -7,9 +7,11 @@
 #include "game/maps/SaveGame.h"
 #include "game/tables/SpellTable.h"
 
+#include "engine/AssetFileSystem.h"
 #include "engine/TextTable.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -590,4 +592,128 @@ TEST_CASE("actor behaviour wards publish dome displays with their visual and rec
     // Ripples last under a second.
     runtime.update(makeFrame(makeActor(100), 1.0f));
     CHECK(runtime.wardDisplays()[0].impacts.empty());
+}
+
+namespace
+{
+std::filesystem::path writeTacticsAssetRoot(const std::string &worldBehaviors)
+{
+    const std::filesystem::path root =
+        std::filesystem::temp_directory_path() / ("openyamm_tactics_" + std::to_string(std::rand()));
+    std::filesystem::create_directories(root / "assets_dev/engine/behaviors");
+    std::filesystem::create_directories(root / "assets_dev/worlds/testworld");
+    std::ofstream(root / "assets_dev/engine/behaviors/behaviors.yml")
+        << "schema: openyamm.actorBehaviors.v1\nlibrary: engine/behaviors/behavior.lua\n";
+    std::ofstream(root / "assets_dev/engine/behaviors/behavior.lua") << "return {}\n";
+    std::ofstream(root / "assets_dev/worlds/testworld/behaviors.yml") << worldBehaviors;
+    return root;
+}
+
+bool loadTacticsCatalog(const std::string &worldBehaviors, ActorBehaviorCatalog &catalog, std::string &error)
+{
+    const std::filesystem::path root = writeTacticsAssetRoot(worldBehaviors);
+    OpenYAMM::Engine::AssetFileSystem assets;
+    REQUIRE(assets.initialize(root, root / "assets_dev", OpenYAMM::Engine::AssetScaleTier::X1, "testworld"));
+    const bool loaded = catalog.load(assets, "testworld", error);
+    assets.shutdown();
+    std::filesystem::remove_all(root);
+    return loaded;
+}
+}
+
+TEST_CASE("actor behaviour catalogue reads declarative tactics per monster")
+{
+    ActorBehaviorCatalog catalog;
+    std::string error;
+    REQUIRE_MESSAGE(loadTacticsCatalog(
+        "schema: openyamm.actorBehaviors.v1\n"
+        "tactics:\n"
+        "  10065: {traverse_degrees_per_second: 90, fire_within_degrees: 4, post: {}}\n"
+        "  10067: {ranged_band: [768, 2304], post: {leash: 1536}}\n",
+        catalog, error), error);
+
+    REQUIRE(catalog.hasTactics());
+    const OpenYAMM::Game::ActorTacticsFacts *pTurret = catalog.tacticsForMonster(10065);
+    REQUIRE(pTurret != nullptr);
+    CHECK(pTurret->traverseRadiansPerSecond == doctest::Approx(3.14159265f / 2.0f));
+    CHECK(pTurret->fireToleranceRadians == doctest::Approx(4.0f * 3.14159265f / 180.0f));
+    CHECK(pTurret->holdPost);
+    CHECK(pTurret->postLeashRadius == 0.0f);
+    CHECK_FALSE(pTurret->keepsRangedBand());
+    const OpenYAMM::Game::ActorTacticsFacts *pGuard = catalog.tacticsForMonster(10067);
+    REQUIRE(pGuard != nullptr);
+    CHECK(pGuard->rangedMinDistance == 768.0f);
+    CHECK(pGuard->rangedMaxDistance == 2304.0f);
+    CHECK(pGuard->postLeashRadius == 1536.0f);
+    CHECK(pGuard->traverseRadiansPerSecond == 0.0f);
+    CHECK(catalog.tacticsForMonster(10068) == nullptr);
+
+    ActorBehaviorCatalog plain;
+    REQUIRE(loadTacticsCatalog("schema: openyamm.actorBehaviors.v1\n", plain, error));
+    CHECK_FALSE(plain.hasTactics());
+}
+
+TEST_CASE("actor behaviour catalogue rejects malformed tactics")
+{
+    for (const char *pTactics : {"{travers_degrees_per_second: 90}", "{ranged_band: [900, 800]}",
+             "{fire_within_degrees: 4}", "{post: {radius: 10}}", "{traverse_degrees_per_second: 0}"})
+    {
+        ActorBehaviorCatalog catalog;
+        std::string error;
+        CHECK_FALSE(loadTacticsCatalog(
+            std::string("schema: openyamm.actorBehaviors.v1\ntactics:\n  10065: ") + pTactics + "\n", catalog, error));
+        CHECK(error.find("tactic") != std::string::npos);
+    }
+}
+
+TEST_CASE("actor behaviour runtime applies tactics only to their monster and posts only to immobile placements")
+{
+    ActorBehaviorCatalog catalog;
+    OpenYAMM::Game::ActorTacticsFacts tactics = {};
+    tactics.rangedMinDistance = 768.0f;
+    tactics.rangedMaxDistance = 2304.0f;
+    tactics.holdPost = true;
+    tactics.postLeashRadius = 1536.0f;
+    catalog.setMonsterTactics(10067, tactics);
+    ActorBehaviorRuntime runtime;
+    runtime.bind(&catalog, nullptr);
+
+    const auto makeFacts = [](size_t index, int16_t monsterId, bool placedImmobile)
+    {
+        ActorAiFacts facts = {};
+        facts.actorIndex = index;
+        facts.actorId = uint32_t(100 + index);
+        facts.identity.monsterId = monsterId;
+        facts.movement.placedImmobile = placedImmobile;
+        facts.movement.wanderRadius = 2560.0f;
+        facts.movement.movementAllowed = !placedImmobile;
+        return facts;
+    };
+    ActorAiFrameFacts frame = {};
+    frame.activeActors.push_back(makeFacts(0, 10067, true));      // a gate post
+    frame.activeActors.push_back(makeFacts(1, 10067, false));     // the patrol
+    frame.activeActors.push_back(makeFacts(2, 194, true));        // another monster
+    frame.activeActors[0].target.currentKind = ActorAiTargetKind::Party;
+    frame.activeActors[0].target.currentCanSense = true;
+    frame.activeActors[0].target.currentPosition = {10.0f, 20.0f, 30.0f};
+    runtime.applyAiFacts(frame);
+
+    CHECK(frame.activeActors[0].tactics.holdPost);
+    CHECK(frame.activeActors[0].tactics.keepsRangedBand());
+    CHECK(frame.activeActors[0].movement.movementAllowed);
+    CHECK_FALSE(frame.activeActors[1].tactics.holdPost);
+    CHECK(frame.activeActors[1].tactics.postLeashRadius == 0.0f);
+    CHECK(frame.activeActors[1].tactics.keepsRangedBand());
+    CHECK_FALSE(frame.activeActors[2].tactics.keepsRangedBand());
+    CHECK_FALSE(frame.activeActors[2].movement.movementAllowed);
+
+    GameplayRuntimeActorState aimed = {};
+    aimed.actorId = 100;
+    runtime.applyPresentation(0, aimed);
+    CHECK(aimed.hasAimTarget);
+    CHECK(aimed.aimTargetZ == 30.0f);
+    GameplayRuntimeActorState idle = {};
+    idle.actorId = 101;
+    runtime.applyPresentation(1, idle);
+    CHECK_FALSE(idle.hasAimTarget);
 }

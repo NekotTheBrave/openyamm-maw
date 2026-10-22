@@ -242,6 +242,7 @@ private:
     bgfx::UniformHandle m_layerCliffTints = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_layerMacro = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_layerVariants = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_layerEmissive = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_control = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_light = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_misc = BGFX_INVALID_HANDLE;
@@ -260,6 +261,8 @@ private:
     std::array<std::array<float, 4>, OutdoorTerrainMaterialConfig::MaxLayers> m_layerCliffValues = {};
     std::array<std::array<float, 4>, OutdoorTerrainMaterialConfig::MaxLayers> m_layerMacroValues = {};
     std::array<std::array<float, 4>, OutdoorTerrainMaterialConfig::MaxLayers> m_layerVariantValues = {};
+    // Per layer: rgb = glow colour of the material's emissive texels (0: none), w = where the glow starts.
+    std::array<std::array<float, 4>, OutdoorTerrainMaterialConfig::MaxLayers> m_layerEmissiveValues = {};
     std::array<float, 4> m_controlValues = {};
     std::array<float, 4> m_miscValues = {};
     std::array<std::array<float, 4>, 2> m_meadowValues = {};

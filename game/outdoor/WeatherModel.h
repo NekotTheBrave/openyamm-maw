@@ -14,6 +14,9 @@ enum class PrecipitationKind : uint8_t
     None = 0,
     Rain = 1,
     Snow = 2,
+    // Falling volcanic ash: flakes like snow, but it never settles, wets nothing and is not seasonal. It falls only
+    // on maps whose weather.yml entry gives an ash chance.
+    Ash = 3,
 };
 
 struct WeatherIntensityLevel
@@ -36,6 +39,23 @@ struct WeatherMapChances
 {
     std::optional<float> rainPercent;
     std::optional<float> snowPercent;
+    std::optional<float> ashPercent;
+};
+
+// How one kind of falling flake looks and moves (weather.yml flakes). The defaults are the engine's snow.
+struct WeatherFlakeLook
+{
+    // Linear colour before the sky light; above 1 reads brighter than the fog behind it.
+    std::array<float, 3> color = {1.2f, 1.22f, 1.26f};
+    // World units per second.
+    float fallSpeed = 150.0f;
+    // Near and far layer: flake radius and opacity.
+    std::array<float, 2> size = {3.0f, 6.0f};
+    std::array<float, 2> alpha = {0.9f, 0.75f};
+    float sway = 30.0f;
+    float swayRate = 1.1f;
+    // Weak and strong fog distances the haze closes to at full strength; a strong distance of 0 is no haze.
+    std::array<float, 2> haze = {0.0f, 0.0f};
 };
 
 // One weather sound: asset paths (one-shots pick one at random) and a volume that levels it with the others.
@@ -67,6 +87,7 @@ struct WeatherRules
         {"heavy", 0.8f, 20.0f}, {"very_heavy", 1.0f, 10.0f}};
     WeatherSpellShape rain = {};
     WeatherSpellShape snow = {180.0f, 720.0f, {30.0f, 80.0f}, {40.0f, 120.0f}};
+    WeatherSpellShape ash = {240.0f, 900.0f, {40.0f, 90.0f}, {60.0f, 150.0f}};
     float cloudLeadMinutes = 60.0f;
     float cloudLingerMinutes = 75.0f;
     float variationAmount = 0.25f;
@@ -79,16 +100,20 @@ struct WeatherRules
     std::array<float, 2> calmWind = {30.0f, 160.0f};
     float rainWind = 320.0f;
     float snowWind = 280.0f;
+    float ashWind = 220.0f;
     std::array<float, 2> gustRange = {0.6f, 1.6f};
     float fadeSeconds = 40.0f;
     WeatherSounds sounds = {};
+    WeatherFlakeLook snowFlakes = {};
+    WeatherFlakeLook ashFlakes = {{0.58f, 0.56f, 0.6f}, 55.0f, {2.4f, 4.8f}, {0.85f, 0.7f}, 55.0f, 0.55f,
+        {2500.0f, 12000.0f}};
 
     bool loadFromYaml(const std::string &yamlText, std::string &errorMessage);
     // A named intensity level ("light", "medium", "heavy", "very_heavy"), if defined.
     std::optional<float> namedIntensity(const std::string &name) const;
 };
 
-// Weather rules resolved for one map: whether it can rain or snow and the base daily chances.
+// Weather rules resolved for one map: whether it can rain, snow or fall ash and the base daily chances.
 struct WeatherMapSettings
 {
     uint32_t mapId = 0;
@@ -96,12 +121,15 @@ struct WeatherMapSettings
     bool snowEnabled = false;
     float rainChancePercent = 0.0f;
     float snowChancePercent = 0.0f;
+    // Ash is enabled by its own weather.yml map entry, independent of bolster_maps.txt.
+    bool ashEnabled = false;
+    float ashChancePercent = 0.0f;
 };
 
 WeatherMapSettings resolveWeatherMapSettings(const WeatherRules &rules, uint32_t mapId,
     const std::string &mapFileName, bool rainEnabled, bool snowEnabled);
 
-// One day's rolled weather: an optional rain or snow spell starting that day, plus the day's calm wind.
+// One day's rolled weather: an optional rain, snow or ash spell starting that day, plus the day's calm wind.
 struct WeatherDayPlan
 {
     PrecipitationKind kind = PrecipitationKind::None;
@@ -144,6 +172,8 @@ WeatherSample sampleWeather(const WeatherRules &rules, const WeatherMapSettings 
 int weatherLadderState(int dryState, int stateCount, const WeatherSample &sample, float stormThreshold);
 // Continuous ladder position for MMerge fog distances, so fog thickens smoothly as rain builds.
 float weatherFogLadderPosition(int dryState, int stateCount, const WeatherSample &sample, float stormThreshold);
+// The look of falling flakes of a kind (snow or ash), or nothing for rain and dry weather.
+const WeatherFlakeLook *weatherFlakeLook(const WeatherRules &rules, PrecipitationKind kind);
 
 struct WeatherFogDistances
 {
@@ -154,4 +184,7 @@ struct WeatherFogDistances
 
 // MMerge ladder fog (8192 / position, 16192 / position above a third of the ladder), faded in over one ladder step.
 WeatherFogDistances weatherLadderFog(float position, int stateCount);
+// Fog closing in with falling flakes that have a haze (ash): from distant at a trace to the look's haze distances
+// at full strength. Not foggy when the sample has no haze.
+WeatherFogDistances weatherPrecipitationHaze(const WeatherRules &rules, const WeatherSample &sample);
 }

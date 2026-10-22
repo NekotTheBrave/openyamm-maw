@@ -21,6 +21,10 @@ uniform mat4 u_skyRay;
 uniform vec4 u_skyParams[8];
 // Per layer: (scale, coverage, softness, opacity), (offset x, offset y, curvature, colour layer flag).
 uniform vec4 u_skyClouds[8];
+// The orbit ring (game/render/SkyRenderer.cpp, packSkyOrbitUniform): [0] moon angle, ring height; [1] colour,
+// opacity; [2] half width, fragments, light count, light radius (radians); [3] light colour, brightness; [4..11] lights.
+// All zero, and skipped, unless a preset has an orbit_ring.
+uniform vec4 u_skyOrbit[12];
 
 #define SKY_PI 3.14159265
 
@@ -131,6 +135,60 @@ vec3 moonDisc(vec3 direction, out float coverage, out float lit)
     return vec3(0.92, 0.94, 1.0) * surface.rgb * lit + halo;
 }
 
+float skyNoise1(float x)
+{
+    float cell = floor(x);
+    float t = fract(x);
+    return mix(skyHash13(vec3(cell, 7.0, 3.0)), skyHash13(vec3(cell + 1.0, 7.0, 3.0)), t * t * (3.0 - 2.0 * t));
+}
+
+// A planetary debris ring along the moon's path: banded across its width, clumped along it, and densest in the
+// fragments trailing from the moon.
+vec3 orbitRing(vec3 direction)
+{
+    float across = (asin(clamp(direction.y, -1.0, 1.0)) - asin(u_skyOrbit[0].y)) / u_skyOrbit[2].x;
+    float edge = abs(across);
+
+    if (edge >= 1.0)
+    {
+        return vec3_splat(0.0);
+    }
+
+    float along = atan2(direction.z, direction.x);
+    float profile = 1.0 - smoothstep(0.35, 1.0, edge);
+    // A few soft bands and gaps across the width, as in a planetary ring.
+    float bands = 0.7 + 0.3 * sin(across * 9.0 + 2.0 * sin(across * 4.0));
+    float clumps = 0.45 + 0.55 * skyNoise1(along * 40.0) * (0.6 + 0.4 * skyNoise1(along * 170.0 + 11.0));
+    // Scattered bright specks of debris, about a twelfth of a degree each.
+    vec3 grainCell = floor(vec3(along * 700.0, across * u_skyOrbit[2].x * 700.0, 1.0));
+    float grain = step(0.965, skyHash13(grainCell)) * 1.5;
+    // Signed distance round the ring from the moon: the fragments trail far behind it and barely lead it.
+    float fromMoon = mod(along - u_skyOrbit[0].x + SKY_PI, 2.0 * SKY_PI) - SKY_PI;
+    float trail = exp(-max(fromMoon, 0.0) * 2.2 - max(-fromMoon, 0.0) * 9.0);
+    float density = profile * bands * clumps * (1.0 + u_skyOrbit[2].y * trail) + profile * grain * (0.3 + trail);
+    return u_skyOrbit[1].rgb * u_skyOrbit[1].w * density;
+}
+
+// Small lights crossing the sky in the ring (orbital platforms): a sharp point with a little glow.
+vec3 orbitLights(vec3 direction)
+{
+    float glow = 0.0;
+    float radius = u_skyOrbit[2].w;
+
+    for (int light = 0; light < 8; ++light)
+    {
+        if (float(light) < u_skyOrbit[2].z)
+        {
+            // The chord to the light, which equals the angle at these sizes and keeps float precision.
+            float distanceToLight = length(direction - u_skyOrbit[4 + light].xyz);
+            glow += 1.0 - smoothstep(radius * 0.4, radius, distanceToLight);
+            glow += exp(-distanceToLight / (radius * 3.0)) * 0.25;
+        }
+    }
+
+    return u_skyOrbit[3].rgb * u_skyOrbit[3].w * glow;
+}
+
 // The world's fog colour at the horizon below this direction (fog mode), or the flat fog colour (flat mode).
 vec3 belowHorizonFog(vec3 direction, float belowMode)
 {
@@ -178,6 +236,13 @@ void main()
         color += starField(skyDirection) * starVisibility;
     }
 
+    float orbitHorizon = smoothstep(0.0, 0.15, skyDirection.z);
+
+    if (u_skyOrbit[1].w > 0.001 && orbitHorizon > 0.0)
+    {
+        color += orbitRing(skyDirection) * orbitHorizon;
+    }
+
     float moonVisibility = u_skyParams[2].y * smoothstep(-0.02, 0.04, skyDirection.z);
 
     if (moonVisibility > 0.001)
@@ -189,6 +254,12 @@ void main()
         vec3 behindMoon = mix(color, gradient * 0.92, moonCoverage * moonVisibility);
         color = mix(behindMoon, moon, moonCoverage * moonVisibility * moonLit);
         color += moon * (1.0 - moonCoverage) * moonVisibility;
+    }
+
+    // The lights pass in front of the moon: they orbit far closer.
+    if (u_skyOrbit[2].z > 0.5 && u_skyOrbit[3].w > 0.001 && skyDirection.z > 0.0)
+    {
+        color += orbitLights(skyDirection) * smoothstep(0.0, 0.05, skyDirection.z);
     }
 
     float sunFacing = dot(skyDirection, u_skyFog[3].xyz);

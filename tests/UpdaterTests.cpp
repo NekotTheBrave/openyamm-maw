@@ -7,6 +7,7 @@
 #include <doctest/doctest.h>
 #include <monocypher-ed25519.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -198,7 +199,8 @@ std::string storedZip(const std::map<std::string, std::string> &entries)
     return archive;
 }
 
-// Serves files below a folder for URLs below BaseUrl, honouring ranges; can cut a transfer short once.
+// Serves files below a folder for URLs below BaseUrl, honouring ranges; can cut a transfer short once, or answer
+// HTTP 503 a number of times as nginx does above its connections per address.
 class FolderTransport final : public OpenYAMM::Engine::HttpTransport
 {
 public:
@@ -207,6 +209,7 @@ public:
         std::mutex mutex;
         std::vector<std::pair<std::string, uint64_t>> requests;
         std::map<std::string, size_t> cutAfter;
+        std::map<std::string, int> busyFor;
     };
 
     FolderTransport(std::filesystem::path root, std::shared_ptr<Log> log)
@@ -229,6 +232,15 @@ public:
             {
                 cut = found->second;
                 m_log->cutAfter.erase(found);
+            }
+
+            const auto busy = m_log->busyFor.find(relative);
+
+            if (busy != m_log->busyFor.end() && busy->second > 0)
+            {
+                --busy->second;
+                error = "HTTP 503";
+                return 503;
             }
         }
 
@@ -563,6 +575,47 @@ TEST_CASE("an update downloads only changed packs, resumes broken transfers and 
     CHECK(std::filesystem::exists(install / "assets" / "packs" / "engine.models.0-bbbb.zip"));
     CHECK_FALSE(std::filesystem::exists(install / "assets" / "engine.zip"));
     CHECK(readFile(install / LauncherExecutableName) == "launcher 1.1");
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("an update waits out a busy server and gives up on a missing file")
+{
+    const std::filesystem::path root = makeTemporaryRoot();
+    const std::filesystem::path install = root / "OpenYAMM";
+    const std::filesystem::path server = root / "server";
+    const TestSigner signer;
+    installRelease(install, "1.0", ReleaseOnePacks);
+    publishRelease(server, signer, "1.1", ReleaseTwoPacks, "game 1.1");
+    const std::string pack = "packs/" + OpenYAMM::Engine::sha256Hex(ReleaseTwoPacks[0].data.data(), 6000) + ".zip";
+    auto log = std::make_shared<FolderTransport::Log>();
+    // Two refusals: the second retry, after the first pause, gets the file.
+    log->busyFor[pack] = 2;
+    std::unique_ptr<AppUpdater> updater = makeUpdater(install, server, signer, log);
+    updater->check();
+    updater->wait();
+    REQUIRE(updater->status().state == UpdateState::Available);
+    updater->download();
+    updater->wait();
+    CHECK_MESSAGE(updater->status().state == UpdateState::Ready, updater->status().message);
+    CHECK(std::count_if(log->requests.begin(), log->requests.end(),
+                        [&pack](const auto &request) { return request.first == pack; }) == 3);
+
+    // A missing file is not asked for again.
+    const std::filesystem::path other = makeTemporaryRoot();
+    installRelease(other / "OpenYAMM", "1.0", ReleaseOnePacks);
+    std::filesystem::remove(server / pack);
+    log->requests.clear();
+    updater = makeUpdater(other / "OpenYAMM", server, signer, log);
+    updater->check();
+    updater->wait();
+    REQUIRE(updater->status().state == UpdateState::Available);
+    updater->download();
+    updater->wait();
+    CHECK(updater->status().state == UpdateState::Failed);
+    CHECK(updater->status().message.find("HTTP 404") != std::string::npos);
+    CHECK(std::count_if(log->requests.begin(), log->requests.end(),
+                        [&pack](const auto &request) { return request.first == pack; }) == 1);
+    std::filesystem::remove_all(other);
     std::filesystem::remove_all(root);
 }
 

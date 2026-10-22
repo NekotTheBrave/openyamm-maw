@@ -844,12 +844,12 @@ TEST_CASE("shared actor AI pursues a remembered party target without attack line
     CHECK(*update.state.motionState == ActorAiMotionState::Pursuing);
     CHECK(update.movementIntent.action == ActorAiMovementAction::Pursue);
     CHECK(update.movementIntent.applyMovement);
-    CHECK(update.movementIntent.moveSpeed == doctest::Approx(400.0f));
+    CHECK(update.movementIntent.moveSpeed == doctest::Approx(350.0f));
     CHECK_FALSE(update.movementIntent.inMeleeRange);
     CHECK_FALSE(update.attackRequest.has_value());
 }
 
-TEST_CASE("shared actor AI uses original pursuit speed multiplier and cap")
+TEST_CASE("shared actor AI uses the pursuit speed multiplier and cap")
 {
     GameplayActorAiSystem system;
     ActorAiFrameFacts frame = makeFrame();
@@ -1928,7 +1928,7 @@ TEST_CASE("shared actor AI crowd steers while flying")
     CHECK(*update.state.crowdSideSign != 0);
 }
 
-TEST_CASE("shared actor AI continues fleeing with original flee speed multiplier")
+TEST_CASE("shared actor AI continues fleeing with the original flee speed multiplier")
 {
     GameplayActorAiSystem system;
     ActorAiFrameFacts frame = makeFrame();
@@ -2321,4 +2321,275 @@ TEST_CASE("shared actor AI special pursuit alone can vocalize on entry")
     const OpenYAMM::Game::ActorAiFrameResult direct = system.updateActors(frame);
     CHECK(direct.actorUpdates.front().movementIntent.action == ActorAiMovementAction::Pursue);
     CHECK(direct.audioRequests.empty());
+}
+
+namespace
+{
+using OpenYAMM::Game::ActorTacticsFacts;
+
+constexpr float TacticDegrees = 3.14159265358979323846f / 180.0f;
+
+// A hostile ranged actor at the origin engaging the party, for the tactics tests (ActorTacticsFacts).
+ActorAiFacts makeTacticRangedActor(float targetX, float targetY, float edgeDistance)
+{
+    ActorAiFacts actor = makeActor(20, 120);
+    actor.world.active = true;
+    actor.identity.hostilityType = 4;
+    actor.status.hostileToParty = true;
+    actor.status.hasDetectedParty = true;
+    actor.stats.aiType = GameplayActorAiType::Normal;
+    actor.stats.attackConstraints.attack1IsRanged = true;
+    actor.stats.attackConstraints.rangedCommitAllowed = true;
+    actor.runtime.rangedAttackAnimationSeconds = 0.5f;
+    actor.runtime.meleeAttackAnimationSeconds = 0.5f;
+    actor.runtime.recoverySeconds = 1.0f;
+    actor.movement.position = {0.0f, 0.0f, 0.0f};
+    actor.movement.homePosition = actor.movement.position;
+    actor.movement.movementAllowed = true;
+    actor.movement.effectiveMoveSpeed = 250.0f;
+    actor.movement.wanderRadius = 2560.0f;
+    actor.movement.allowIdleWander = true;
+    actor.target.currentKind = ActorAiTargetKind::Party;
+    actor.target.currentPosition = {targetX, targetY, 64.0f};
+    actor.target.currentDistance = std::hypot(targetX, targetY);
+    actor.target.currentEdgeDistance = edgeDistance;
+    actor.target.currentCanSense = true;
+    actor.target.currentHasAttackLineOfSight = true;
+    actor.target.partyCanSenseActor = true;
+    return actor;
+}
+
+ActorAiFacts makeTacticTurret(float targetX, float targetY)
+{
+    ActorAiFacts actor = makeTacticRangedActor(targetX, targetY, std::hypot(targetX, targetY) - 60.0f);
+    actor.movement.movementAllowed = false;
+    actor.movement.effectiveMoveSpeed = 0.0f;
+    actor.movement.wanderRadius = 0.0f;
+    actor.tactics.traverseRadiansPerSecond = 90.0f * TacticDegrees;
+    actor.tactics.fireToleranceRadians = 5.0f * TacticDegrees;
+    return actor;
+}
+
+OpenYAMM::Game::ActorAiUpdate updateOne(const ActorAiFacts &actor)
+{
+    ActorAiFrameFacts frame = makeFrame();
+    frame.activeActors.push_back(actor);
+    const OpenYAMM::Game::ActorAiFrameResult result = GameplayActorAiSystem().updateActors(frame);
+    REQUIRE_EQ(result.actorUpdates.size(), 1u);
+    return result.actorUpdates.front();
+}
+}
+
+TEST_CASE("actor tactics leave a stationary ranged actor's native snap-and-fire unchanged by default")
+{
+    ActorAiFacts actor = makeTacticTurret(0.0f, 1500.0f);
+    actor.tactics = {};
+    const OpenYAMM::Game::ActorAiUpdate update = updateOne(actor);
+
+    REQUIRE(update.state.motionState.has_value());
+    CHECK(*update.state.motionState == ActorAiMotionState::Attacking);
+    REQUIRE(update.movementIntent.updateYaw);
+    CHECK(update.movementIntent.yawRadians == doctest::Approx(std::atan2(1500.0f, 0.0f)));
+}
+
+TEST_CASE("actor tactics turn a turret at its traverse rate and fire only once it is on target")
+{
+    ActorAiFacts actor = makeTacticTurret(0.0f, 1500.0f);
+    const OpenYAMM::Game::ActorAiUpdate turning = updateOne(actor);
+
+    CHECK_FALSE(turning.attackRequest.has_value());
+    REQUIRE(turning.state.motionState.has_value());
+    CHECK(*turning.state.motionState == ActorAiMotionState::Standing);
+    REQUIRE(turning.movementIntent.updateYaw);
+    CHECK(turning.movementIntent.yawRadians == doctest::Approx(90.0f * TacticDegrees / 128.0f));
+    CHECK_FALSE(turning.movementIntent.applyMovement);
+
+    actor.runtime.yawRadians = 87.0f * TacticDegrees;
+    const OpenYAMM::Game::ActorAiUpdate firing = updateOne(actor);
+    REQUIRE(firing.state.motionState.has_value());
+    CHECK(*firing.state.motionState == ActorAiMotionState::Attacking);
+    REQUIRE(firing.animation.animationState.has_value());
+    CHECK(*firing.animation.animationState == ActorAiAnimationState::AttackRanged);
+}
+
+TEST_CASE("actor tactics keep a turret tracking its target between shots and through the windup")
+{
+    ActorAiFacts actor = makeTacticTurret(-1500.0f, 0.0f);
+    actor.runtime.attackCooldownSeconds = 1.0f;
+    actor.runtime.yawRadians = 3.0f;
+    const OpenYAMM::Game::ActorAiUpdate waiting = updateOne(actor);
+
+    REQUIRE(waiting.state.motionState.has_value());
+    CHECK(*waiting.state.motionState == ActorAiMotionState::Standing);
+    REQUIRE(waiting.movementIntent.updateYaw);
+    CHECK(waiting.movementIntent.yawRadians == doctest::Approx(3.0f + 90.0f * TacticDegrees / 128.0f));
+
+    actor.runtime.motionState = ActorAiMotionState::Attacking;
+    actor.runtime.animationState = ActorAiAnimationState::AttackRanged;
+    actor.runtime.actionSeconds = 0.4f;
+    actor.runtime.yawRadians = 3.1f;
+    const OpenYAMM::Game::ActorAiUpdate windup = updateOne(actor);
+    REQUIRE(windup.movementIntent.updateYaw);
+    CHECK(windup.movementIntent.yawRadians > 3.1f);
+    CHECK(windup.movementIntent.yawRadians < 3.1f + 0.02f);
+}
+
+TEST_CASE("actor tactics hold a post: walk home, face the placement, never wander")
+{
+    ActorAiFacts actor = makeTacticRangedActor(0.0f, 0.0f, 0.0f);
+    actor.target = {};
+    actor.status.hostileToParty = false;
+    actor.status.hasDetectedParty = false;
+    actor.tactics.holdPost = true;
+    actor.movement.hasHomeYaw = true;
+    actor.movement.homeYawRadians = 1.0f;
+    actor.movement.homePosition = {600.0f, 0.0f, 0.0f};
+    actor.movement.distanceToParty = 5000.0f;
+    const OpenYAMM::Game::ActorAiUpdate returning = updateOne(actor);
+
+    REQUIRE(returning.state.motionState.has_value());
+    CHECK(*returning.state.motionState == ActorAiMotionState::Wandering);
+    CHECK(returning.movementIntent.applyMovement);
+    CHECK(returning.movementIntent.desiredMoveX == doctest::Approx(1.0f));
+    CHECK(returning.movementIntent.yawRadians == doctest::Approx(0.0f));
+
+    actor.movement.position = actor.movement.homePosition;
+    actor.runtime.motionState = ActorAiMotionState::Wandering;
+    const OpenYAMM::Game::ActorAiUpdate facing = updateOne(actor);
+    REQUIRE(facing.state.motionState.has_value());
+    CHECK(*facing.state.motionState == ActorAiMotionState::Standing);
+    REQUIRE(facing.movementIntent.updateYaw);
+    CHECK(facing.movementIntent.yawRadians == doctest::Approx(1.0f));
+    CHECK_FALSE(facing.movementIntent.applyMovement);
+
+    // At its post and facing the right way, every idle decision stands (the native AI would wander 75 % of them).
+    actor.runtime.motionState = ActorAiMotionState::Standing;
+    actor.runtime.yawRadians = 1.0f;
+    for (uint32_t decision = 0; decision < 16; ++decision)
+    {
+        actor.runtime.idleDecisionCount = decision;
+        const OpenYAMM::Game::ActorAiUpdate idle = updateOne(actor);
+        REQUIRE(idle.state.motionState.has_value());
+        CHECK(*idle.state.motionState == ActorAiMotionState::Standing);
+        CHECK_FALSE(idle.movementIntent.applyMovement);
+    }
+}
+
+TEST_CASE("actor tactics keep a distant post facing its placement instead of the party")
+{
+    ActorAiFacts actor = makeTacticRangedActor(0.0f, 0.0f, 0.0f);
+    actor.target = {};
+    actor.world.active = false;
+    actor.world.listenerPosition = {0.0f, 3000.0f, 0.0f};
+    actor.movement.hasHomeYaw = true;
+    actor.movement.homeYawRadians = -2.0f;
+    ActorAiFrameFacts frame = makeFrame();
+    frame.backgroundActors.push_back(actor);
+    const OpenYAMM::Game::ActorAiFrameResult native = GameplayActorAiSystem().updateActors(frame);
+    REQUIRE_EQ(native.actorUpdates.size(), 1u);
+    CHECK(native.actorUpdates[0].movementIntent.yawRadians == doctest::Approx(std::atan2(3000.0f, 0.0f)));
+
+    frame.backgroundActors[0].tactics.holdPost = true;
+    const OpenYAMM::Game::ActorAiFrameResult post = GameplayActorAiSystem().updateActors(frame);
+    REQUIRE_EQ(post.actorUpdates.size(), 1u);
+    CHECK(post.actorUpdates[0].movementIntent.yawRadians == doctest::Approx(-2.0f));
+}
+
+TEST_CASE("actor tactics ranged band always shoots a non-adjacent target instead of closing to melee")
+{
+    // 400 units: the native roll mostly walks in to melee here.
+    size_t nativeRanged = 0;
+    for (uint32_t decision = 0; decision < 32; ++decision)
+    {
+        ActorAiFacts actor = makeTacticRangedActor(460.0f, 0.0f, 400.0f);
+        actor.stats.attack2Chance = 25;
+        actor.runtime.attackDecisionCount = decision;
+        const OpenYAMM::Game::ActorAiUpdate native = updateOne(actor);
+        nativeRanged += native.animation.animationState == ActorAiAnimationState::AttackRanged ? 1 : 0;
+
+        actor.tactics.rangedMinDistance = 768.0f;
+        actor.tactics.rangedMaxDistance = 2304.0f;
+        const OpenYAMM::Game::ActorAiUpdate band = updateOne(actor);
+        REQUIRE(band.state.motionState.has_value());
+        CHECK(*band.state.motionState == ActorAiMotionState::Attacking);
+        REQUIRE(band.animation.animationState.has_value());
+        CHECK(*band.animation.animationState == ActorAiAnimationState::AttackRanged);
+    }
+    CHECK(nativeRanged < 32);
+}
+
+TEST_CASE("actor tactics ranged band uses melee only against an adjacent target on its melee roll")
+{
+    ActorAiFacts actor = makeTacticRangedActor(150.0f, 0.0f, 90.0f);
+    actor.tactics.rangedMinDistance = 768.0f;
+    actor.tactics.rangedMaxDistance = 2304.0f;
+    actor.stats.attack2Chance = 100;
+    const OpenYAMM::Game::ActorAiUpdate melee = updateOne(actor);
+    REQUIRE(melee.animation.animationState.has_value());
+    CHECK(*melee.animation.animationState == ActorAiAnimationState::AttackMelee);
+
+    actor.stats.attack2Chance = 0;
+    const OpenYAMM::Game::ActorAiUpdate shot = updateOne(actor);
+    REQUIRE(shot.animation.animationState.has_value());
+    CHECK(*shot.animation.animationState == ActorAiAnimationState::AttackRanged);
+}
+
+TEST_CASE("actor tactics ranged band backs off, closes in and circles between shots")
+{
+    ActorAiFacts actor = makeTacticRangedActor(500.0f, 0.0f, 440.0f);
+    actor.tactics.rangedMinDistance = 768.0f;
+    actor.tactics.rangedMaxDistance = 2304.0f;
+    actor.runtime.attackCooldownSeconds = 1.0f;
+    const OpenYAMM::Game::ActorAiUpdate backOff = updateOne(actor);
+    REQUIRE(backOff.state.motionState.has_value());
+    CHECK(*backOff.state.motionState == ActorAiMotionState::Pursuing);
+    CHECK(backOff.movementIntent.moveSpeed == doctest::Approx(250.0f));
+    CHECK(backOff.movementIntent.applyMovement);
+    CHECK(backOff.movementIntent.desiredMoveX == doctest::Approx(-1.0f));
+    REQUIRE(backOff.movementIntent.updateYaw);
+    CHECK(backOff.movementIntent.yawRadians == doctest::Approx(0.0f));
+    CHECK(backOff.movementIntent.keepYawWhileMoving);
+
+    actor = makeTacticRangedActor(3000.0f, 0.0f, 2940.0f);
+    actor.tactics.rangedMinDistance = 768.0f;
+    actor.tactics.rangedMaxDistance = 2304.0f;
+    actor.runtime.attackCooldownSeconds = 1.0f;
+    const OpenYAMM::Game::ActorAiUpdate closeIn = updateOne(actor);
+    REQUIRE(closeIn.state.motionState.has_value());
+    CHECK(*closeIn.state.motionState == ActorAiMotionState::Pursuing);
+    CHECK(closeIn.movementIntent.desiredMoveX == doctest::Approx(1.0f));
+
+    actor = makeTacticRangedActor(1500.0f, 0.0f, 1440.0f);
+    actor.tactics.rangedMinDistance = 768.0f;
+    actor.tactics.rangedMaxDistance = 2304.0f;
+    actor.runtime.attackCooldownSeconds = 1.0f;
+    const OpenYAMM::Game::ActorAiUpdate circle = updateOne(actor);
+    REQUIRE(circle.state.motionState.has_value());
+    CHECK(*circle.state.motionState == ActorAiMotionState::Pursuing);
+    CHECK(std::abs(circle.movementIntent.desiredMoveY) > 0.9f);
+}
+
+TEST_CASE("actor tactics leash a post: it stops moving away from home but keeps facing the target")
+{
+    ActorAiFacts actor = makeTacticRangedActor(4000.0f, 0.0f, 3940.0f);
+    actor.tactics.rangedMinDistance = 768.0f;
+    actor.tactics.rangedMaxDistance = 2304.0f;
+    actor.tactics.holdPost = true;
+    actor.tactics.postLeashRadius = 500.0f;
+    actor.movement.homePosition = {-600.0f, 0.0f, 0.0f};
+    actor.runtime.attackCooldownSeconds = 1.0f;
+    const OpenYAMM::Game::ActorAiUpdate held = updateOne(actor);
+
+    REQUIRE(held.state.motionState.has_value());
+    CHECK(*held.state.motionState == ActorAiMotionState::Standing);
+    CHECK_FALSE(held.movementIntent.applyMovement);
+    REQUIRE(held.movementIntent.updateYaw);
+    CHECK(held.movementIntent.yawRadians == doctest::Approx(0.0f));
+
+    // Within the leash it closes in as usual.
+    actor.movement.homePosition = {-100.0f, 0.0f, 0.0f};
+    const OpenYAMM::Game::ActorAiUpdate free = updateOne(actor);
+    REQUIRE(free.state.motionState.has_value());
+    CHECK(*free.state.motionState == ActorAiMotionState::Pursuing);
+    CHECK(free.movementIntent.applyMovement);
 }

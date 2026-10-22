@@ -391,7 +391,14 @@ private:
         std::vector<uint32_t> lookNodes;
         float lookMaxYaw = 0.0f;
         float lookMaxPitch = 0.0f;
+        // `min_pitch_degrees` (default -max_pitch_degrees): how far the look may turn down.
+        float lookMinPitch = 0.0f;
         float lookHeadHeight = 0.0f;
+        // `target: combat`: the look follows the actor's combat target (GameplayRuntimeActorState::aimTarget, set for
+        // actors with tactics) at any distance instead of the party, and rests without one. `hold_clip`: while it has
+        // that target and stands, this clip's first frame replaces the standing clip (a turret stops its idle scan).
+        bool lookAtCombatTarget = false;
+        uint32_t lookHoldClip = UINT32_MAX;
         // actors.yml `animation.sockets`: a named point on the skeleton, a node (a GLB socket node or a bone) and an
         // offset in that node's space, in model units.
         struct Socket

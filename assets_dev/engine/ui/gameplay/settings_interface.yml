@@ -244,6 +244,27 @@ elements:
       scale: 0.43333
       pad_x: 8.5333
     notes: Switch section without losing draft values. Selected state follows current section.
+  - id: SettingsInterfaceTabUpdates
+    anchor: top_left
+    offset_x: 91.7333
+    offset_y: 361.3837
+    width: 97.6
+    height: 34.1333
+    z_index: 10
+    visible: true
+    interactive: true
+    asset:
+      default: hud_x2/menus/omenu_tab.png
+      selected: hud_x2/menus/omenu_tab_selected.png
+    text:
+      value: Updates
+      font: fondamento
+      color: '#bfc1b2'
+      align_x: left
+      align_y: middle
+      scale: 0.43333
+      pad_x: 8.5333
+    notes: Switch section without losing draft values. Selected state follows current section.
   - id: SettingsInterfaceHeading
     anchor: top_left
     offset_x: 220.8
@@ -441,23 +462,6 @@ elements:
       interactive: false
       text:
         value: Party
-        font: fondamento
-        color: '#e0c990'
-        align_x: left
-        align_y: middle
-        scale: 0.4
-        pad_x: 0.0
-    - id: SettingsInterfaceGroup4
-      anchor: top_left
-      offset_x: 0.0
-      offset_y: 430.8692
-      width: 525.3333
-      height: 18.1333
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Updates
         font: fondamento
         color: '#e0c990'
         align_x: left
@@ -846,59 +850,6 @@ elements:
       asset:
         default: hud_x2/menus/omenu_toggle_off.png
         selected: hud_x2/menus/omenu_toggle_on.png
-    - id: SettingsInterfaceCheckForUpdatesLabel
-      anchor: top_left
-      offset_x: 1.6
-      offset_y: 456.4692
-      width: 395.2
-      height: 14.0752
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Check for updates
-        font: menu_arrus
-        color: '#eadfc6'
-        align_x: left
-        align_y: middle
-        scale: 0.74105
-        pad_x: 0.0
-    - id: SettingsInterfaceCheckForUpdatesDescription
-      anchor: top_left
-      offset_x: 1.6
-      offset_y: 472.6777
-      width: 395.2
-      height: 23.0336
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Look for a new version on jasicek.net when OpenYAMM starts. Nothing downloads without asking.
-        font: menu_lucida
-        color: '#aeb5a5'
-        align_x: left
-        align_y: middle
-        scale: 0.60235
-        pad_x: 0.0
-    - id: SettingsInterfaceCheckForUpdatesControl
-      anchor: top_left
-      offset_x: 412.8
-      offset_y: 464.3569
-      width: 110.9333
-      height: 23.4667
-      z_index: 10
-      visible: true
-      interactive: true
-      asset:
-        default: hud_x2/menus/omenu_text_field.png
-      text:
-        value: '{check_for_updates}'
-        font: menu_lucida
-        color: '#e9dcc0'
-        align_x: left
-        align_y: middle
-        scale: 0.71529
-        pad_x: 6.9333
   - id: SettingsInterfaceNavigationRule
     anchor: top_left
     offset_x: 201.6

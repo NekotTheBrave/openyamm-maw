@@ -39,6 +39,9 @@ uniform vec4 u_terrainLayerMacro[8];
 // z = scale of the edge fringe noise where it meets another layer, w = 1 when its smoothest texels are standing
 // water (swamp pools).
 uniform vec4 u_terrainLayerVariant[8];
+// Per layer: rgb = glow colour of its emissive texels (0 for every material without library emissive), w = the albedo
+// warmth (red minus blue, untinted) where the glow starts: lava and creep veins glow whatever the light.
+uniform vec4 u_terrainLayerEmissive[8];
 // x = weighted layer count, y = slope layer (negative: none), z/w = slope start/end as 1 - normal.z.
 uniform vec4 u_terrainMaterialControl;
 // xyz = direction toward the baked sun, w = 1 when the bake's direct-only sun page is bound at stage 5.
@@ -195,6 +198,14 @@ vec3 shoreAlbedo(vec3 albedo, vec3 position, float shore)
 // u_terrainMaterialMisc.z, a second projection (rotated from above, or the other vertical plane) hides the repeat
 // and blends cliff sides; detail scales its share (zero on the plain seabed). That branch is uniform, so
 // anisotropic filtering keeps its implicit derivatives. faceUp is the triangle's own normal.z.
+// The glow of a layer's sample: its untinted albedo where it is warm enough, in the layer's glow colour.
+vec3 terrainLayerGlow(vec3 tintedAlbedo, vec3 tint, float layer)
+{
+    vec4 emissive = u_terrainLayerEmissive[int(layer + 0.5)];
+    vec3 albedo = tintedAlbedo / max(tint, vec3_splat(0.02));
+    return albedo * emissive.rgb * smoothstep(emissive.w, emissive.w + 0.25, albedo.r - albedo.b);
+}
+
 void sampleTerrainLayer(float layer, vec3 tint, vec3 world, vec3 geometric, float faceUp, float variation,
     float detail, out vec4 albedoHeight, out vec3 normal, out vec2 occlusionRoughness)
 {
@@ -355,6 +366,7 @@ void main()
     float layerSpecular = 0.0;
     float layerWetSheen = 1.0;
     float pool = 0.0;
+    vec3 glow = vec3_splat(0.0);
     // Open liquid without a seabed: the liquid renderer draws the whole cell.
     if (waterKind > 0.5 && waterKind < 1.5 && renderedWater && !seabed)
     {
@@ -519,6 +531,13 @@ void main()
         float secondPacked = u_terrainLayerCliff[int(secondLayer + 0.5)].w;
         layerSpecular = mix(fract(firstPacked), fract(secondPacked), secondMix) * (1.0 - plain);
         layerWetSheen = mix(floor(firstPacked), floor(secondPacked), secondMix) * 0.25;
+        vec3 firstEmissive = u_terrainLayerEmissive[int(firstLayer + 0.5)].rgb;
+        vec3 secondEmissive = u_terrainLayerEmissive[int(secondLayer + 0.5)].rgb;
+        if (dot(firstEmissive + secondEmissive, vec3_splat(1.0)) > 0.0)
+        {
+            glow = mix(terrainLayerGlow(firstColor.rgb, firstTint, firstLayer),
+                terrainLayerGlow(secondColor.rgb, secondTint, secondLayer), secondMix) * (1.0 - plain);
+        }
         pool = mix(u_terrainLayerVariant[int(firstLayer + 0.5)].w * safeSmoothstep(0.2, 0.12, firstSurface.y),
             u_terrainLayerVariant[int(secondLayer + 0.5)].w * safeSmoothstep(0.2, 0.12, secondSurface.y), secondMix)
             * (1.0 - plain) * safeSmoothstep(0.94, 0.985, geometricNormal.z);
@@ -650,6 +669,12 @@ void main()
         float glint = pow(max(dot(reflect(-toCamera, waterNormal), toSun), 0.0), 160.0) * 0.5;
         vec3 water = mix(litColor * 0.65, u_fogColor.rgb * 0.8, min(fresnel, 0.7)) + vec3(1.0, 0.95, 0.85) * glint;
         litColor = mix(litColor, water, pool);
+    }
+
+    if (dot(glow, vec3_splat(1.0)) > 0.0)
+    {
+        // Emissive ground (library emissive): light of its own on top of the lit colour, fogged like the rest.
+        litColor += glow;
     }
 
     float fogDistance = length(position - u_cameraPosition.xyz);

@@ -2565,6 +2565,70 @@ TEST_CASE("mm7 Temple of the Moon scene keeps MMerge initial door states")
     }
 }
 
+TEST_CASE("liquids scoped to a world override the shared ones there alone and shallow ones are waded")
+{
+    OpenYAMM::Engine::AssetFileSystem assetFileSystem;
+    REQUIRE(initializeTestAssetFileSystem(assetFileSystem));
+    const std::optional<std::string> liquidYaml = assetFileSystem.readTextFile("engine/liquids/liquids.yml");
+    REQUIRE(liquidYaml.has_value());
+
+    OpenYAMM::Game::LiquidTable shipped;
+    std::string error;
+    REQUIRE_MESSAGE(shipped.loadFromYaml(*liquidYaml, error), error);
+    CHECK_FALSE(shipped.hasShallowLiquids());
+
+    // A world's own entry, appended after the shared ones, still wins in that world.
+    const std::string scopedYaml = *liquidYaml + R"(
+  - id: test_brine
+    kind: water
+    color: [150, 60, 20]
+    worlds: [testworld]
+    depth: shallow
+    applies_to: [terrain, face]
+    match:
+      texture_names: [wtrtyl]
+      texture_prefixes: [wtrdr]
+    terrain_transition_overlay: true
+)";
+    OpenYAMM::Game::LiquidTable scoped;
+    REQUIRE_MESSAGE(scoped.loadFromYaml(scopedYaml, error), error);
+
+    for (const char *pWorld : {"mm6", "mm7", "mm8", "mm9", ""})
+    {
+        const OpenYAMM::Game::LiquidTable table = scoped.forWorld(pWorld);
+        CHECK_FALSE(table.hasShallowLiquids());
+
+        for (const char *pTexture : {"wtrtyl", "wtrdrne", "hdwtr000", "6wtrtyl", "7wtrtyl", "lavtyl", "tartyl"})
+        {
+            const OpenYAMM::Game::LiquidDefinition *pBefore = shipped.findMatch(pTexture, 0, true);
+            const OpenYAMM::Game::LiquidDefinition *pAfter = table.findMatch(pTexture, 0, true);
+            REQUIRE((pBefore == nullptr) == (pAfter == nullptr));
+
+            if (pBefore != nullptr)
+            {
+                CHECK(pBefore->id == pAfter->id);
+                CHECK(pBefore->colorAbgr == pAfter->colorAbgr);
+                CHECK_FALSE(pAfter->shallow);
+            }
+        }
+    }
+
+    const OpenYAMM::Game::LiquidTable testWorld = scoped.forWorld("TestWorld");
+    CHECK(testWorld.hasShallowLiquids());
+    const OpenYAMM::Game::LiquidDefinition *pBrine = testWorld.findMatch("wtrtyl", 0, true);
+    REQUIRE(pBrine != nullptr);
+    CHECK(pBrine->id == "test_brine");
+    CHECK(pBrine->shallow);
+    CHECK(testWorld.findMatch("wtrdrNE", 0, true) == pBrine);
+    // Other liquids are still the shared ones.
+    REQUIRE(testWorld.findMatch("lavtyl", 0, true) != nullptr);
+    CHECK(testWorld.findMatch("lavtyl", 0, true)->id == "lava");
+
+    OpenYAMM::Game::LiquidTable bad;
+    CHECK_FALSE(bad.loadFromYaml("liquids:\n  - {id: x, kind: water, color: [1, 2, 3], applies_to: [terrain], "
+        "depth: puddle, match: {texture_names: [x]}}\n", error));
+}
+
 TEST_CASE("outdoor terrain descriptors use mm6 and mm7 merged tile tables")
 {
     OpenYAMM::Engine::AssetFileSystem assetFileSystem;

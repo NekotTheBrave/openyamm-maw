@@ -1091,9 +1091,9 @@ actors:
   yaw_offset: -1.570796327
   skin: m428_a
   animation:
-    run: Running
-    stride_length: 1.411
-    run_stride_length: 1.636
+    run: Walking
+    stride_length: 1.558
+    run_stride_length: 1.558
     upper_body_root: B_Spine
     look:
       nodes: [B_Neck, B_Head]
@@ -1119,9 +1119,9 @@ actors:
   yaw_offset: -1.570796327
   skin: m428_b
   animation:
-    run: Running
-    stride_length: 1.411
-    run_stride_length: 1.636
+    run: Walking
+    stride_length: 1.558
+    run_stride_length: 1.558
     upper_body_root: B_Spine
     look:
       nodes: [B_Neck, B_Head]
@@ -1147,9 +1147,9 @@ actors:
   yaw_offset: -1.570796327
   skin: m428_c
   animation:
-    run: Running
-    stride_length: 1.411
-    run_stride_length: 1.636
+    run: Walking
+    stride_length: 1.558
+    run_stride_length: 1.558
     upper_body_root: B_Spine
     look:
       nodes: [B_Neck, B_Head]
@@ -1383,9 +1383,9 @@ actors:
   yaw_offset: -1.570796327
   skin: pirate_a
   animation:
-    run: Jog
+    run: Walking
     stride_length: 1.4998
-    run_stride_length: 2.3583
+    run_stride_length: 1.708
     upper_body_root: B_Spine
     look:
       nodes:
@@ -1482,9 +1482,9 @@ actors:
   yaw_offset: -1.570796327
   skin: pirate_a
   animation:
-    run: Jog
+    run: Walking
     stride_length: 1.4998
-    run_stride_length: 2.3583
+    run_stride_length: 1.708
     upper_body_root: B_Spine
     look:
       nodes:
@@ -1515,9 +1515,9 @@ actors:
   yaw_offset: -1.570796327
   skin: pirate_b
   animation:
-    run: Jog
+    run: Walking
     stride_length: 1.4998
-    run_stride_length: 2.3583
+    run_stride_length: 1.708
     upper_body_root: B_Spine
     look:
       nodes:
@@ -1548,9 +1548,9 @@ actors:
   yaw_offset: -1.570796327
   skin: pirate_c
   animation:
-    run: Jog
+    run: Walking
     stride_length: 1.4998
-    run_stride_length: 2.3583
+    run_stride_length: 1.708
     upper_body_root: B_Spine
     look:
       nodes:
@@ -2104,10 +2104,10 @@ actors:
   yaw_offset: -1.570796327
   skin: gog_a
   animation:
-    run: Running
+    run: Walking
     cast: Cast
     stride_length: 1.832
-    run_stride_length: 1.456
+    run_stride_length: 1.832
     upper_body_root: B_Spine
     sockets:
       l_hand: {node: B_L_Hand, offset: [0.0412, 0.1454, 0.0039]}
@@ -2135,10 +2135,10 @@ actors:
   yaw_offset: -1.570796327
   skin: gog_b
   animation:
-    run: Running
+    run: Walking
     cast: Cast
     stride_length: 1.832
-    run_stride_length: 1.456
+    run_stride_length: 1.832
     upper_body_root: B_Spine
     sockets:
       l_hand: {node: B_L_Hand, offset: [0.0412, 0.1454, 0.0039]}
@@ -2166,10 +2166,10 @@ actors:
   yaw_offset: -1.570796327
   skin: gog_c
   animation:
-    run: Running
+    run: Walking
     cast: Cast
     stride_length: 1.832
-    run_stride_length: 1.456
+    run_stride_length: 1.832
     upper_body_root: B_Spine
     sockets:
       l_hand: {node: B_L_Hand, offset: [0.0412, 0.1454, 0.0039]}
@@ -2665,9 +2665,9 @@ actors:
   yaw_offset: -1.570796327
   animation:
     cast: Cast
-    run: Running
+    run: Walking
     stride_length: 1.594
-    run_stride_length: 2.626
+    run_stride_length: 1.594
     upper_body_root: B_Spine
     sockets:
       l_hand: {node: B_L_Hand, offset: [0.0337, 0.0676, 0.0286]}
@@ -3358,9 +3358,9 @@ actors:
   skin: pirate_mage_a
   animation:
     cast: Cast
-    run: Jog
+    run: Walk2
     stride_length: 1.2486
-    run_stride_length: 1.3514
+    run_stride_length: 1.249
     upper_body_root: B_Spine
     look:
       nodes:
@@ -3395,9 +3395,9 @@ actors:
   skin: pirate_mage_b
   animation:
     cast: Cast
-    run: Jog
+    run: Walk2
     stride_length: 1.2486
-    run_stride_length: 1.3514
+    run_stride_length: 1.2486
     upper_body_root: B_Spine
     look:
       nodes:
@@ -3432,9 +3432,9 @@ actors:
   skin: pirate_mage_c
   animation:
     cast: Cast
-    run: Jog
+    run: Walking
     stride_length: 1.2486
-    run_stride_length: 1.3514
+    run_stride_length: 1.822
     upper_body_root: B_Spine
     look:
       nodes:
@@ -3469,9 +3469,9 @@ actors:
   skin: pirate_seer_a
   animation:
     cast: Cast
-    run: Jog
+    run: Walking
     stride_length: 1.2486
-    run_stride_length: 1.3514
+    run_stride_length: 1.822
     upper_body_root: B_Spine
     look:
       nodes:
@@ -3506,9 +3506,9 @@ actors:
   skin: pirate_seer_b
   animation:
     cast: Cast
-    run: Jog
+    run: Walking
     stride_length: 1.2486
-    run_stride_length: 1.3514
+    run_stride_length: 1.822
     upper_body_root: B_Spine
     look:
       nodes:
@@ -3543,9 +3543,9 @@ actors:
   skin: pirate_seer_c
   animation:
     cast: Cast
-    run: Jog
+    run: Walking
     stride_length: 1.2486
-    run_stride_length: 1.3514
+    run_stride_length: 1.822
     upper_body_root: B_Spine
     look:
       nodes:
@@ -3961,9 +3961,9 @@ actors:
   yaw_offset: -1.570796327
   skin: m416_a
   animation:
-    run: Jog
+    run: Walking
     stride_length: 1.3276
-    run_stride_length: 1.8976
+    run_stride_length: 1.771
     upper_body_root: B_Spine
     look:
       nodes:
@@ -4003,9 +4003,9 @@ actors:
   yaw_offset: -1.570796327
   skin: m416_b
   animation:
-    run: Jog
+    run: Walking
     stride_length: 1.3276
-    run_stride_length: 1.8976
+    run_stride_length: 1.771
     upper_body_root: B_Spine
     look:
       nodes:
@@ -4045,9 +4045,9 @@ actors:
   yaw_offset: -1.570796327
   skin: m416_c
   animation:
-    run: Jog
+    run: Walking
     stride_length: 1.3276
-    run_stride_length: 1.8976
+    run_stride_length: 1.771
     upper_body_root: B_Spine
     look:
       nodes:
@@ -4090,9 +4090,9 @@ actors:
   yaw_offset: -1.570796327
   skin: m416_a
   animation:
-    run: Jog
+    run: Walk2
     stride_length: 1.3276
-    run_stride_length: 1.8976
+    run_stride_length: 1.328
     upper_body_root: B_Spine
     look:
       nodes:
@@ -4132,9 +4132,9 @@ actors:
   yaw_offset: -1.570796327
   skin: m416_b
   animation:
-    run: Jog
+    run: Walking
     stride_length: 1.3276
-    run_stride_length: 1.8976
+    run_stride_length: 1.771
     upper_body_root: B_Spine
     look:
       nodes:
@@ -4174,9 +4174,9 @@ actors:
   yaw_offset: -1.570796327
   skin: m416_c
   animation:
-    run: Jog
+    run: Walking
     stride_length: 1.3276
-    run_stride_length: 1.8976
+    run_stride_length: 1.771
     upper_body_root: B_Spine
     look:
       nodes:
@@ -5517,9 +5517,9 @@ actors:
   yaw_offset: -1.570796327
   skin: m436_a
   animation:
-    run: Running
+    run: Walking
     stride_length: 1.6948224311618636
-    run_stride_length: 1.468004122876998
+    run_stride_length: 1.695
     upper_body_root: B_Spine
     sockets:
       palm_left: Socket_Palm_Left
@@ -5543,9 +5543,9 @@ actors:
   yaw_offset: -1.570796327
   skin: m436_b
   animation:
-    run: Running
+    run: Walking
     stride_length: 1.6948224311618636
-    run_stride_length: 1.468004122876998
+    run_stride_length: 1.695
     upper_body_root: B_Spine
     sockets:
       palm_left: Socket_Palm_Left
@@ -5569,9 +5569,9 @@ actors:
   yaw_offset: -1.570796327
   skin: m436_c
   animation:
-    run: Running
+    run: Walking
     stride_length: 1.6948224311618636
-    run_stride_length: 1.468004122876998
+    run_stride_length: 1.695
     upper_body_root: B_Spine
     sockets:
       palm_left: Socket_Palm_Left
@@ -5679,9 +5679,9 @@ actors:
   yaw_offset: -1.570796327
   skin: m480_a
   animation:
-    run: Running
+    run: Walking
     stride_length: 1.494
-    run_stride_length: 1.108
+    run_stride_length: 1.494
     upper_body_root: B_Spine
     look:
       nodes:
@@ -5712,9 +5712,9 @@ actors:
   yaw_offset: -1.570796327
   skin: m480_b
   animation:
-    run: Running
+    run: Walking
     stride_length: 1.494
-    run_stride_length: 1.108
+    run_stride_length: 1.494
     upper_body_root: B_Spine
     look:
       nodes:
@@ -5745,9 +5745,9 @@ actors:
   yaw_offset: -1.570796327
   skin: m480_c
   animation:
-    run: Running
+    run: Walking
     stride_length: 1.494
-    run_stride_length: 1.108
+    run_stride_length: 1.494
     upper_body_root: B_Spine
     look:
       nodes:

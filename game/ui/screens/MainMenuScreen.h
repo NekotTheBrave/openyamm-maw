@@ -68,6 +68,7 @@ class MainMenuScreen : public MenuDesignScreen
     void revertDisplay();
     // The main menu's update notice, question and progress (packaging/UPDATER_PLAN.md 10).
     void drawUpdates();
+    void drawUpdateSettings(const std::string &prefix);
     void askAboutUpdates();
     void setUpdateCheck(const std::string &mode);
     void offerUpdate();

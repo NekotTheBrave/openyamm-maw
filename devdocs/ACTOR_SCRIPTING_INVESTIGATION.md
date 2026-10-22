@@ -103,7 +103,8 @@ attachment model, OpenMW's "return nothing to keep the default" overrides and Tr
 | Shield dome (fresnel shell renderer and shaders) | `game/render/ShieldDomeRenderer.{h,cpp}`, `game/shaders/vs/fs_shield_dome.sc` |
 | Dome presentation (grow, fade, hit ripples) | `WorldFxSystem::syncShieldDomes` in `game/fx/WorldFxSystem.cpp` |
 | Ward sparks effect | `openyamm:fx/shadow_ward` in `assets_dev/engine/effects/authored/library.yml` |
-| Tests | `tests/ActorBehaviorRuntimeTests.cpp` |
+| Declarative tactics (turret traverse, ranged band, posts; see Tactics) | `ActorBehaviorCatalog`, `ActorBehaviorRuntime::applyTactics`, `GameplayActorAiSystem.cpp` |
+| Tests | `tests/ActorBehaviorRuntimeTests.cpp`, `tests/GameplayActorAiSystemTests.cpp` (tactics) |
 
 ### Each actor step (1/128 s, indoor and outdoor)
 
@@ -127,6 +128,54 @@ attachment model, OpenMW's "return nothing to keep the default" overrides and Tr
 - **A specific placed actor:** a map script calls `evt.SetActorBehavior(actorIndex, "bosses/necro_mage")`. It is
   idempotent, so on-load events can call it on every load.
 - **Debug:** `actor behavior <index> <id>`. `actor behavior` lists the scripted actors.
+
+### Tactics (declarative, no script)
+
+Status (2026-10-22): implemented for Hesper's Landfall defenders; no MM6–MM9 data uses it.
+
+A world's `behaviors.yml` may give monsters **tactics**: small, scriptless adjustments of the native AI, applied by
+`ActorBehaviorRuntime::applyAiFacts` to every actor of that monster (`ActorTacticsFacts`). Without a `tactics` entry the
+AI facts are untouched, so the native AI runs exactly as before; a catalogue without tactics costs one boolean test per
+AI step.
+
+```yaml
+schema: openyamm.actorBehaviors.v1
+tactics:
+  10065: {traverse_degrees_per_second: 120, fire_within_degrees: 5, post: {}}    # a wall turret
+  10067: {ranged_band: [768, 2304], post: {leash: 1536}}                         # a rifle guard
+```
+
+- **`traverse_degrees_per_second`** (with `fire_within_degrees`, default 6): the actor turns toward its target at this
+  rate instead of snapping to it, keeps tracking it between attacks and through the wind-up, and starts an attack only
+  once it is within the tolerance. It also keeps turning toward a target it cannot shoot (no line of sight).
+- **`ranged_band: [min, max]`** (edge distances): a chosen ranged attack always commits, instead of the native distance
+  roll that walks ranged monsters in to melee; melee (attack 2 on its chance) only happens against an adjacent target.
+  Between shots the actor backs off inside `min` (walking, still facing the target), closes in beyond `max` and circles
+  the target in between (the native ranged orbit).
+- **`post: {leash}`**: applies only to actors the map places `immobile` (the same monster placed free keeps the native
+  wander). The post may leave its spot to fight (unless the monster is Stationary) but never moves further than `leash`
+  from home (0: unlimited); with no target it walks back, turns to its placement facing (at the traverse rate when it
+  has one) and stands there with the native fidgets, never wandering, also as a background actor.
+
+The facts it reads are filled by both world runtimes: `ActorMovementFacts::placedImmobile`, `hasHomeYaw` and
+`homeYawRadians` from the map placement (spawned actors have none). Outdoors a moving actor turns to its movement; a
+back-off sets `ActorMovementIntent::keepYawWhileMoving` so it keeps facing its target.
+
+Presentation: an actor with tactics publishes the target it engages as `GameplayRuntimeActorState::aimTarget`
+(presentation only, never saved). An `actors.yml` look block opts in with `target: combat`: the look nodes follow that
+target at any distance and rest without one, `min_pitch_degrees` limits how far they turn down (default
+`-max_pitch_degrees`), and `hold_clip: <clip>` holds that clip's first frame instead of the standing clip while the
+actor tracks a target (a turret stops its idle scan). Landfall's turrets pitch `B_Barrel` −20…+45°.
+
+Code: `ActorTacticsFacts` (`GameplayActorAiTypes.h`), `AI_TacticEngage`, `AI_HoldPost`, `tacticFacingYaw`
+(`GameplayActorAiSystem.cpp`), the `tactics` parser (`ActorBehaviorCatalog.cpp`), `applyTactics` (`ActorBehaviorRuntime.cpp`),
+`updateActorLook` (`WorldFxSystem.cpp`). Tests: `--test-case='*tactic*'`. Headless check on Hesper:
+`level_generation/projects/hesper_out1/landfall_defenders.yml`, with the scenario steps `damage_actor: {actor_index,
+amount}` and the `actor_visible` checks `near`, `far`, `faces` and `has_aim_target`.
+
+Not covered: monster relations (Hesper's ids lie past the relation table; `evt.SetMonsterRelation` in a map script is the
+existing per-map path), patrol routes, and the instant facing snap when an actor is first turned hostile
+(`setMapActorHostileToParty`).
 
 ### Shield dome
 

@@ -174,6 +174,12 @@ struct GameplayRuntimeActorState
     float scriptedClipSeconds = 0.0f;
     // Hit flash mixed over the sprite or model (GameplayActorHitFeedback), 0 when none.
     float hitFlash = 0.0f;
+    // The target an actor with tactics is engaging (ActorBehaviorRuntime; its attack aim point), for a model whose
+    // look follows its combat target (actors.yml `look.target: combat`). Unset for every other actor.
+    bool hasAimTarget = false;
+    float aimTargetX = 0.0f;
+    float aimTargetY = 0.0f;
+    float aimTargetZ = 0.0f;
 };
 
 struct GameplayCombatFeedbackEvent

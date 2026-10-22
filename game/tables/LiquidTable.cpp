@@ -159,6 +159,27 @@ bool LiquidTable::loadFromYaml(const std::string &yamlText, std::string &errorMe
         }
         liquid.terrainTransitionOverlay = liquidNode["terrain_transition_overlay"].as<bool>(false);
 
+        if (!readStrings(liquidNode["worlds"], liquid.worlds))
+        {
+            errorMessage = context + ": worlds must be a list of world ids";
+            return false;
+        }
+
+        liquid.reflects = liquidNode["reflections"].as<bool>(true);
+
+        if (const YAML::Node depthNode = liquidNode["depth"]; depthNode)
+        {
+            const std::string depth = depthNode.IsScalar() ? toLowerCopy(depthNode.as<std::string>()) : std::string();
+
+            if (depth != "deep" && depth != "shallow")
+            {
+                errorMessage = context + ": depth must be deep or shallow";
+                return false;
+            }
+
+            liquid.shallow = depth == "shallow";
+        }
+
         const YAML::Node matchNode = liquidNode["match"];
         std::vector<std::string> attributes;
         if (!matchNode || !matchNode.IsMap()
@@ -183,6 +204,35 @@ bool LiquidTable::loadFromYaml(const std::string &yamlText, std::string &errorMe
         m_liquids.push_back(std::move(liquid));
     }
     return true;
+}
+
+LiquidTable LiquidTable::forWorld(std::string_view worldId) const
+{
+    const std::string normalizedWorldId = toLowerCopy(std::string(worldId));
+    LiquidTable table;
+
+    for (const LiquidDefinition &liquid : m_liquids)
+    {
+        if (std::find(liquid.worlds.begin(), liquid.worlds.end(), normalizedWorldId) != liquid.worlds.end())
+        {
+            table.m_liquids.push_back(liquid);
+        }
+    }
+
+    for (const LiquidDefinition &liquid : m_liquids)
+    {
+        if (liquid.worlds.empty())
+        {
+            table.m_liquids.push_back(liquid);
+        }
+    }
+
+    return table;
+}
+
+bool LiquidTable::hasShallowLiquids() const
+{
+    return std::any_of(m_liquids.begin(), m_liquids.end(), [](const LiquidDefinition &liquid) { return liquid.shallow; });
 }
 
 const LiquidDefinition *LiquidTable::findMatch(std::string_view textureName, uint32_t faceAttributes,

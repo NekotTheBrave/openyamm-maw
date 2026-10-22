@@ -244,6 +244,27 @@ elements:
       scale: 0.43333
       pad_x: 8.5333
     notes: Switch section without losing draft values. Selected state follows current section.
+  - id: SettingsControlsTabUpdates
+    anchor: top_left
+    offset_x: 91.7333
+    offset_y: 361.3837
+    width: 97.6
+    height: 34.1333
+    z_index: 10
+    visible: true
+    interactive: true
+    asset:
+      default: hud_x2/menus/omenu_tab.png
+      selected: hud_x2/menus/omenu_tab_selected.png
+    text:
+      value: Updates
+      font: fondamento
+      color: '#bfc1b2'
+      align_x: left
+      align_y: middle
+      scale: 0.43333
+      pad_x: 8.5333
+    notes: Switch section without losing draft values. Selected state follows current section.
   - id: SettingsControlsHeading
     anchor: top_left
     offset_x: 220.8

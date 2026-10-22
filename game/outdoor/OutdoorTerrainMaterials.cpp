@@ -307,6 +307,8 @@ struct OutdoorTerrainMaterials::SourceImages
     // Per configured material: the library's ground highlight strength (0: none) and rain-wet sheen share (1: full).
     std::vector<float> layerSpecular;
     std::vector<float> layerWetSheen;
+    // Per configured material: the library's emissive glow (rgb, 0: none) and its start (w); see library.yml.
+    std::vector<std::array<float, 4>> layerEmissive;
     // The first failure in task order; empty when everything loaded.
     std::string error;
 };
@@ -328,6 +330,7 @@ OutdoorTerrainMaterials::SourceImages OutdoorTerrainMaterials::loadSourceImages(
         const YAML::Node library = YAML::Load(*libraryText)["materials"];
         images.layerSpecular.assign(config.layers.size(), 0.0f);
         images.layerWetSheen.assign(config.layers.size(), 1.0f);
+        images.layerEmissive.assign(config.layers.size(), {0.0f, 0.0f, 0.0f, 0.0f});
         for (size_t layer = 0; layer < config.layers.size(); ++layer)
         {
             const YAML::Node entry = library[config.layers[layer].library];
@@ -338,6 +341,26 @@ OutdoorTerrainMaterials::SourceImages OutdoorTerrainMaterials::loadSourceImages(
             if (entry.IsMap() && entry["wet_sheen"])
             {
                 images.layerWetSheen[layer] = std::clamp(entry["wet_sheen"].as<float>(), 0.0f, 1.0f);
+            }
+            if (entry.IsMap() && entry["emissive"])
+            {
+                // emissive: {color: [r, g, b], threshold: t}: texels whose albedo is warmer (red minus blue) than
+                // t glow in color times their albedo, whatever the light (lava veins, embers).
+                const YAML::Node emissive = entry["emissive"];
+                const std::array<float, 3> color = emissive["color"].as<std::array<float, 3>>();
+                const float threshold = emissive["threshold"].as<float>(0.1f);
+                for (float value : color)
+                {
+                    if (!std::isfinite(value) || value < 0.0f || value > 16.0f)
+                    {
+                        throw std::runtime_error("invalid terrain material emissive color");
+                    }
+                }
+                if (!std::isfinite(threshold) || threshold < -1.0f || threshold > 1.0f)
+                {
+                    throw std::runtime_error("invalid terrain material emissive threshold");
+                }
+                images.layerEmissive[layer] = {color[0], color[1], color[2], threshold};
             }
         }
         const std::array<const char *, 2> kinds = {"albedo_height", "normal_ao_rough"};
@@ -557,6 +580,9 @@ bool OutdoorTerrainMaterials::initialize(const Engine::AssetFileSystem &assets, 
         uint16_t(OutdoorTerrainMaterialConfig::MaxLayers));
     m_layerVariants = bgfx::createUniform("u_terrainLayerVariant", bgfx::UniformType::Vec4,
         uint16_t(OutdoorTerrainMaterialConfig::MaxLayers));
+    m_layerEmissive = bgfx::createUniform("u_terrainLayerEmissive", bgfx::UniformType::Vec4,
+        uint16_t(OutdoorTerrainMaterialConfig::MaxLayers));
+    m_layerEmissiveValues = {};
     m_control = bgfx::createUniform("u_terrainMaterialControl", bgfx::UniformType::Vec4);
     m_light = bgfx::createUniform("u_terrainMaterialLight", bgfx::UniformType::Vec4);
     m_misc = bgfx::createUniform("u_terrainMaterialMisc", bgfx::UniformType::Vec4);
@@ -580,6 +606,10 @@ bool OutdoorTerrainMaterials::initialize(const Engine::AssetFileSystem &assets, 
         m_layerMacroValues[index] = {layer.macroTint[0], layer.macroTint[1], layer.macroTint[2], layer.macroBrightness};
         m_layerVariantValues[index] = {float(layer.variant < 0 ? int(index) : layer.variant), layer.variantAmount,
             layer.fringe, layer.pools ? 1.0f : 0.0f};
+        if (index < images.layerEmissive.size())
+        {
+            m_layerEmissiveValues[index] = images.layerEmissive[index];
+        }
     }
     m_smoothing = config.smoothing;
     m_controlValues = {float(config.weightedLayers), float(config.slopeLayer), config.slopeStart, config.slopeEnd};
@@ -640,6 +670,7 @@ void OutdoorTerrainMaterials::shutdown(bool destroyResources)
     release(m_layerCliffTints);
     release(m_layerMacro);
     release(m_layerVariants);
+    release(m_layerEmissive);
     release(m_control);
     release(m_light);
     release(m_misc);
@@ -706,6 +737,7 @@ void OutdoorTerrainMaterials::bind(const OutdoorLightingData *pBakedLighting, bo
     bgfx::setUniform(m_layerCliffTints, m_layerCliffValues.data(), uint16_t(m_layerCliffValues.size()));
     bgfx::setUniform(m_layerMacro, m_layerMacroValues.data(), uint16_t(m_layerMacroValues.size()));
     bgfx::setUniform(m_layerVariants, m_layerVariantValues.data(), uint16_t(m_layerVariantValues.size()));
+    bgfx::setUniform(m_layerEmissive, m_layerEmissiveValues.data(), uint16_t(m_layerEmissiveValues.size()));
     bgfx::setUniform(m_control, m_controlValues.data());
     std::array<float, 4> light = {0.0f, 0.0f, 1.0f, directSun ? 1.0f : 0.0f};
     if (pBakedLighting != nullptr)

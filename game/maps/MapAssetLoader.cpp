@@ -3347,9 +3347,65 @@ std::optional<ActorPreviewBillboardSet> buildActorPreviewBillboardSet(
     return billboardSet;
 }
 
+// Per raw tile id: whether the tile is a shallow liquid (liquids.yml depth: shallow), waded through rather than deep
+// water. All false when the world has no shallow liquid.
+std::array<bool, 256> shallowLiquidTiles(
+    const std::vector<TerrainTileDescriptor> &tileDescriptors,
+    const LiquidTable *pLiquidTable)
+{
+    std::array<bool, 256> shallow = {};
+
+    if (pLiquidTable == nullptr || !pLiquidTable->hasShallowLiquids())
+    {
+        return shallow;
+    }
+
+    for (size_t tileIndex = 0; tileIndex < shallow.size() && tileIndex < tileDescriptors.size(); ++tileIndex)
+    {
+        const LiquidDefinition *pLiquid =
+            findTerrainLiquidForDescriptor(tileDescriptors[tileIndex], tileDescriptors, pLiquidTable, nullptr);
+        shallow[tileIndex] = pLiquid != nullptr && pLiquid->shallow;
+    }
+
+    return shallow;
+}
+
+// A shallow liquid's cells are never deep water: the party wades through them instead of drowning.
+void applyShallowLiquidTerrainAttributes(
+    const Engine::AssetFileSystem &assetFileSystem,
+    OutdoorMapData &outdoorMapData,
+    const LiquidTable *pLiquidTable)
+{
+    if (pLiquidTable == nullptr || !pLiquidTable->hasShallowLiquids())
+    {
+        return;
+    }
+
+    const std::optional<std::vector<TerrainTileDescriptor>> tileDescriptors =
+        loadTerrainTileDescriptors(assetFileSystem, outdoorMapData);
+
+    if (!tileDescriptors)
+    {
+        return;
+    }
+
+    const std::array<bool, 256> shallow = shallowLiquidTiles(*tileDescriptors, pLiquidTable);
+    const size_t cellCount = std::min(outdoorMapData.attributeMap.size(), outdoorMapData.tileMap.size());
+
+    for (size_t cellIndex = 0; cellIndex < cellCount; ++cellIndex)
+    {
+        if (shallow[outdoorMapData.tileMap[cellIndex]])
+        {
+            outdoorMapData.attributeMap[cellIndex] =
+                static_cast<uint8_t>(outdoorMapData.attributeMap[cellIndex] & ~TerrainTileFlagWater);
+        }
+    }
+}
+
 std::optional<std::vector<uint8_t>> buildOutdoorLandMask(
     const Engine::AssetFileSystem &assetFileSystem,
-    const OutdoorMapData &outdoorMapData
+    const OutdoorMapData &outdoorMapData,
+    const LiquidTable *pLiquidTable
 )
 {
     const std::optional<std::vector<TerrainTileDescriptor>> tileDescriptors =
@@ -3359,6 +3415,8 @@ std::optional<std::vector<uint8_t>> buildOutdoorLandMask(
     {
         return std::nullopt;
     }
+
+    const std::array<bool, 256> shallow = shallowLiquidTiles(*tileDescriptors, pLiquidTable);
 
     std::vector<uint8_t> landMask(
         static_cast<size_t>(OutdoorMapData::TerrainWidth - 1) * static_cast<size_t>(OutdoorMapData::TerrainHeight - 1),
@@ -3373,7 +3431,7 @@ std::optional<std::vector<uint8_t>> buildOutdoorLandMask(
                 static_cast<size_t>(gridY * OutdoorMapData::TerrainWidth + gridX);
             const uint8_t rawTileId = outdoorMapData.tileMap[tileMapIndex];
             const bool isWaterTile =
-                hasTerrainTileFlag((*tileDescriptors)[rawTileId], TerrainTileFlagWater);
+                hasTerrainTileFlag((*tileDescriptors)[rawTileId], TerrainTileFlagWater) && !shallow[rawTileId];
             landMask[static_cast<size_t>(gridY * (OutdoorMapData::TerrainWidth - 1) + gridX)] = isWaterTile ? 0 : 1;
         }
     }
@@ -3466,6 +3524,7 @@ std::optional<OutdoorTerrainTiles> buildOutdoorTerrainTiles(
         tile.transitionOverlay = liquidEdge;
         tile.liquid = pLiquid != nullptr ? pLiquid->kind : LiquidKind::None;
         tile.waterColorAbgr = pLiquid != nullptr ? pLiquid->colorAbgr : 0;
+        tile.liquidReflects = pLiquid == nullptr || pLiquid->reflects;
 
         if (liquidEdge)
         {
@@ -4284,9 +4343,18 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
     {
         textureFrameTable = loadTextureFrameTable(assetFileSystem, pSharedCache);
         logStageComplete("texture frame table loaded");
-        liquidTable = loadLiquidTable(assetFileSystem, pSharedCache);
-        logStageComplete("liquids loaded");
     }
+
+    // Liquids decide how liquid tiles and faces look and, for every load, which liquid terrain is only waded
+    // through. The map's world sees its own liquids before the shared ones.
+    liquidTable = loadLiquidTable(assetFileSystem, pSharedCache);
+
+    if (liquidTable)
+    {
+        liquidTable = liquidTable->forWorld(map.worldId);
+    }
+
+    logStageComplete("liquids loaded");
 
     const std::string normalizedFileName = toLowerCopy(map.fileName);
 
@@ -4499,6 +4567,9 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
                 std::cerr << "Failed to apply outdoor terrain tile flags for " << map.fileName << '\n';
             }
 
+            applyShallowLiquidTerrainAttributes(
+                assetFileSystem, *assetInfo.outdoorMapData, liquidTable ? &*liquidTable : nullptr);
+
             if (assetInfo.outdoorMapDeltaData)
             {
                 uint32_t mapExtraBitsRaw = 0;
@@ -4529,7 +4600,8 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
 
             if (loadRenderSurfaces)
             {
-                assetInfo.outdoorLandMask = buildOutdoorLandMask(assetFileSystem, *assetInfo.outdoorMapData);
+                assetInfo.outdoorLandMask = buildOutdoorLandMask(
+                    assetFileSystem, *assetInfo.outdoorMapData, liquidTable ? &*liquidTable : nullptr);
                 logStageComplete("outdoor land mask built");
                 assetInfo.outdoorTileColors = buildOutdoorTileColors(assetFileSystem, *assetInfo.outdoorMapData);
                 logStageComplete("outdoor tile colors built");

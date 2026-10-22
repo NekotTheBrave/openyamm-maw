@@ -383,13 +383,23 @@ final class OpenYammUpdater {
     }
 
     /**
+     * The pauses before each further attempt at a file after a broken connection or a busy server (HTTP 408, 429,
+     * 5xx; nginx answers 503 above its connections per address, which a household or a mobile carrier's shared
+     * address reaches), as in the desktop updater (engine/update/AppUpdater.cpp).
+     */
+    private static final int[] RETRY_DELAY_SECONDS = {0, 2, 5, 10, 20};
+
+    /**
      * Downloads a file into place: resumes target.part with a Range request, checks the SHA-256 of the whole file and
-     * only then renames it, so a store file is always complete and verified. One retry from scratch.
+     * only then renames it, so a store file is always complete and verified. A broken connection or a busy server is
+     * retried after RETRY_DELAY_SECONDS, resuming the partial file; a complete file with the wrong bytes is downloaded
+     * once more from scratch.
      */
     static void download(String url, File target, long size, String sha256, AtomicBoolean cancel, Progress progress)
             throws IOException {
         File part = new File(target.getPath() + ".part");
-        for (int attempt = 0; attempt < 2; ++attempt) {
+        boolean verificationFailed = false;
+        for (int attempt = 0;; ++attempt) {
             long offset = part.isFile() ? part.length() : 0;
             if (offset > size) {
                 part.delete();
@@ -397,9 +407,12 @@ final class OpenYammUpdater {
             }
             progress.advance(offset);
             long received = offset;
-            HttpURLConnection connection = open(url, offset);
+            int status = 0;
+            IOException failure = null;
+            HttpURLConnection connection = null;
             try {
-                int status = connection.getResponseCode();
+                connection = open(url, offset);
+                status = connection.getResponseCode();
                 if (status != 200 && status != 206) {
                     throw new IOException("The update server answered HTTP " + status + " for " + url);
                 }
@@ -424,10 +437,17 @@ final class OpenYammUpdater {
                         }
                     }
                 }
+            } catch (IOException exception) {
+                if (cancel.get()) {
+                    throw exception;
+                }
+                failure = exception;
             } finally {
-                connection.disconnect();
+                if (connection != null) {
+                    connection.disconnect();
+                }
             }
-            if (received == size && sha256.equals(sha256(part))) {
+            if (failure == null && received == size && sha256.equals(sha256(part))) {
                 target.delete();
                 if (!part.renameTo(target)) {
                     throw new IOException("Cannot move " + part + " into place");
@@ -435,9 +455,29 @@ final class OpenYammUpdater {
                 return;
             }
             progress.advance(-received);
-            part.delete();
+            if (failure == null) {
+                part.delete();
+                if (verificationFailed) {
+                    throw new IOException(target.getName() + " failed verification");
+                }
+                verificationFailed = true;
+                continue;
+            }
+            boolean busy = status == 0 || status == 408 || status == 429 || status >= 500;
+            if (!busy || attempt >= RETRY_DELAY_SECONDS.length) {
+                throw failure;
+            }
+            try {
+                for (int tenth = 0; tenth < RETRY_DELAY_SECONDS[attempt] * 10 && !cancel.get(); ++tenth) {
+                    Thread.sleep(100);
+                }
+            } catch (InterruptedException exception) {
+                throw new IOException("cancelled");
+            }
+            if (cancel.get()) {
+                throw new IOException("cancelled");
+            }
         }
-        throw new IOException(target.getName() + " failed verification");
     }
 
     static String sha256(File file) throws IOException {

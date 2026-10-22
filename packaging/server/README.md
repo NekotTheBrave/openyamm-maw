@@ -28,7 +28,9 @@ compromised server can serve wrong files but cannot produce a manifest that clie
    raise `worker_connections` to 4096 and add `worker_rlimit_nofile 16384;` in `/etc/nginx/nginx.conf` (nginx's
    soft open-file limit is 1024). Then `sudo nginx -t && sudo systemctl reload nginx`. Done on 2026-10-18; the
    previous files are in `/etc/nginx/backup-openyamm-20261018/`. The snippet's `history/` rule and the removed
-   `flatpak/` rule are newer than that installation.
+   `flatpak/` rule are newer than that installation. On 2026-10-22 the per-address limit went from 4 to 16
+   connections (two players behind one address could get 503); the previous snippet is
+   `/etc/nginx/snippets/openyamm.conf.before-limit16-*`.
 
 3. The router forwards the public port 2222 to `192.168.1.128:2222` (`jasicek.net:22` is the router's own SSH).
 

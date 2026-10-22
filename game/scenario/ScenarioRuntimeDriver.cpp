@@ -1025,6 +1025,30 @@ bool ScenarioRuntimeDriver::actorInspectState(
     return true;
 }
 
+bool ScenarioRuntimeDriver::damageActor(size_t actorIndex, int amount, std::string &failure)
+{
+    IGameplayWorldRuntime *pWorldRuntime = worldRuntime();
+    GameplayRuntimeActorState state = {};
+
+    if (pWorldRuntime == nullptr || amount <= 0 || !pWorldRuntime->actorRuntimeState(actorIndex, state)
+        || state.isDead)
+    {
+        failure = "damage_actor needs an active map, a living actor " + std::to_string(actorIndex)
+            + " and a positive amount";
+        return false;
+    }
+
+    const ScenarioPose pose = currentPose();
+
+    if (!pWorldRuntime->applyPartyAttackMeleeDamage(actorIndex, amount, GameplayWorldPoint{pose.x, pose.y, pose.z}))
+    {
+        failure = "damage_actor could not damage actor " + std::to_string(actorIndex);
+        return false;
+    }
+
+    return true;
+}
+
 bool ScenarioRuntimeDriver::executeCombatLoot(
     const ScenarioCombatLootRequest &request,
     ScenarioCombatLootResult &result,

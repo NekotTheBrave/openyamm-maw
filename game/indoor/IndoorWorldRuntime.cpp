@@ -9944,6 +9944,10 @@ std::optional<ActorAiFacts> IndoorWorldRuntime::collectIndoorActorAiFacts(
         pStats->movementType != MonsterTable::MonsterMovementType::Stationary
         && !bolster.immobile;
     facts.movement.movementBlocked = false;
+    // The placement (posts and their facing) for tactics.
+    facts.movement.placedImmobile = actor.immobile;
+    facts.movement.hasHomeYaw = true;
+    facts.movement.homeYawRadians = static_cast<float>(actor.initialYawUnits % 2048u) * (Pi * 2.0f / 2048.0f);
 
     facts.world.listenerPosition = partyFacts.position;
     facts.world.targetZ = actorTargetZ;

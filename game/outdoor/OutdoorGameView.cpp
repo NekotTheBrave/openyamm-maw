@@ -2917,6 +2917,9 @@ bool OutdoorGameView::initialize(
         return false;
     }
 
+    // The decoration models load with the map, before anything asks whether a model draws a decoration: the touch
+    // controls' context action target is picked from the first gameplay frame, before its world passes.
+    OutdoorRenderer::ensureDecorationModels(*this);
     m_isRenderable = true;
     m_renderableStartTickNanoseconds = SDL_GetTicksNS();
     m_renderFrameIndex = 0;

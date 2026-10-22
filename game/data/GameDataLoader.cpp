@@ -4901,6 +4901,10 @@ void GameDataLoader::applyMergedContinentSettingsToSelectedMap(const Engine::Ass
     if (m_selectedMap->outdoorWeatherProfile)
     {
         m_selectedMap->outdoorWeatherProfile->weatherRules = weatherRules(assetFileSystem);
+        // weather.yml alone decides ash; rain and snow need a bolster_maps.txt row (below).
+        m_selectedMap->outdoorWeatherProfile->weatherMap = resolveWeatherMapSettings(
+            m_selectedMap->outdoorWeatherProfile->weatherRules, static_cast<uint32_t>(m_selectedMap->map.id),
+            m_selectedMap->map.fileName, false, false);
     }
 
     const MergedBolsterMapEntry *pBolsterMap =

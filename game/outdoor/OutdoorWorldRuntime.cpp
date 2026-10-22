@@ -7842,9 +7842,16 @@ WeatherMapSettings OutdoorWorldRuntime::weatherMapSettings() const
         return m_outdoorWeatherProfile->weatherMap;
     }
 
-    // No rolled rain or snow, but the map still has a daily calm wind.
+    // No rolled rain or snow, but the map still has a daily calm wind, and ash where weather.yml gives it.
     WeatherMapSettings settings;
     settings.mapId = static_cast<uint32_t>(std::max(m_mapId, 0));
+
+    if (m_outdoorWeatherProfile.has_value())
+    {
+        settings.ashEnabled = m_outdoorWeatherProfile->weatherMap.ashEnabled;
+        settings.ashChancePercent = m_outdoorWeatherProfile->weatherMap.ashChancePercent;
+    }
+
     return settings;
 }
 
@@ -8077,6 +8084,9 @@ void OutdoorWorldRuntime::applyPrecipitationState(const WeatherSample &sample)
     m_atmosphereState.windY = sample.windY;
     m_atmosphereState.storm = sample.storm;
     m_atmosphereState.wetness = sample.wetness;
+    const WeatherFogDistances haze = weatherPrecipitationHaze(weatherRules(), sample);
+    m_atmosphereState.hazeWeakDistance = haze.foggy ? haze.weakDistance : 0;
+    m_atmosphereState.hazeStrongDistance = haze.foggy ? haze.strongDistance : 0;
     m_atmosphereState.weatherFlags &= ~(MapWeatherSnowing | MapWeatherRaining);
 
     if (sample.precipitation == PrecipitationKind::Snow)
@@ -9040,6 +9050,17 @@ std::optional<ActorAiFacts> OutdoorWorldRuntime::collectOutdoorActorAiFacts(
         pStats->movementType != MonsterTable::MonsterMovementType::Stationary
         && (!actor.immobile || actor.mm9FleeingFromParty);
     facts.movement.movementBlocked = false;
+
+    // The placement (posts and their facing) for tactics; actors spawned at runtime have none.
+    if (!actor.spawnedAtRuntime && m_pOutdoorMapDeltaData != nullptr
+        && actorIndex < m_pOutdoorMapDeltaData->actors.size())
+    {
+        const MapDeltaActor &placement = m_pOutdoorMapDeltaData->actors[actorIndex];
+        facts.movement.placedImmobile = placement.immobile;
+        facts.movement.hasHomeYaw = true;
+        facts.movement.homeYawRadians =
+            static_cast<float>(placement.initialYawUnits % 2048u) * (Pi * 2.0f / 2048.0f);
+    }
     {
         const GameplayActorService *pActorService = m_pGameplayActorService;
         GameplayActorService fallbackActorService = {};
@@ -9591,6 +9612,12 @@ void OutdoorWorldRuntime::applyOutdoorActorMovementIntent(
         nextAnimation,
         desiredMoveX,
         desiredMoveY);
+
+    // Outdoors a moving actor turns to its movement; a tactics back-off keeps facing its target.
+    if (movementIntent.keepYawWhileMoving && movementIntent.updateYaw)
+    {
+        actor.yawRadians = movementIntent.yawRadians;
+    }
 }
 
 void OutdoorWorldRuntime::applyOutdoorActorAttackRequest(

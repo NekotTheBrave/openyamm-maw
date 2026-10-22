@@ -186,6 +186,12 @@ bool ScenarioYamlLoader::parseStepKind(const std::string &value, ScenarioStepKin
         return true;
     }
 
+    if (value == "damage_actor")
+    {
+        kind = ScenarioStepKind::DamageActor;
+        return true;
+    }
+
     if (value == "note")
     {
         kind = ScenarioStepKind::Note;
