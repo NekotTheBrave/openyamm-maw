@@ -680,7 +680,7 @@ jobs:
           notes="$RUNNER_TEMP/release-notes.md"
           {
             if [ -s "$RUNNER_TEMP/notes.txt" ]; then cat "$RUNNER_TEMP/notes.txt"; echo; fi
-            echo "Extract the package and start OpenYAMM; the first start downloads the game content (about 4 GB)."
+            echo "Extract the package and start OpenYAMM; the first start downloads the game content (about 5 GB)."
             echo "Saves and settings stay in the extracted folder, and the game updates itself."
           } > "$notes"
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \

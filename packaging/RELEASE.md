@@ -11,7 +11,7 @@ Releases are built, checked, signed and published by GitHub Actions
 | Actions → Packages → Run workflow with a version | The same, then publishes a test release to `https://jasicek.net/openyamm-staging/`. |
 
 Players download a small package of tens of MB (the game without its content): `OpenYAMM-X.Y-windows-x64.zip`,
-`OpenYAMM-X.Y-linux-x64.tar.gz` or the APK. The first start downloads the content packs (about 4 GB on the desktop,
+`OpenYAMM-X.Y-linux-x64.tar.gz` or the APK. The first start downloads the content packs (about 5 GB on the desktop,
 3 GB on Android), and every later release downloads only the packs that changed. On Windows and Linux everything,
 including `saves/`, `settings.ini` and `openyamm.log`, stays in the extracted folder.
 

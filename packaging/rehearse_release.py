@@ -293,7 +293,8 @@ class Desktop:
 
     def start(self, executable, *arguments, visible=False):
         env = dict(self.env)
-        if not visible:
+        # Under Wine a minimized OpenGL window reads back black frames, so Windows runs stay visible.
+        if not visible and not self.windows:
             env["OPENYAMM_START_MINIMIZED"] = "1"
         command = (["wine"] if self.windows else []) + [str(executable), *arguments]
         print("$ " + " ".join(command), flush=True)
@@ -333,6 +334,8 @@ class Desktop:
 
     def packs(self):
         folder = self.install / "assets" / "packs"
+        if not folder.is_dir():
+            return {}  # the Windows zip lists no empty folders; the first start creates it
         return {path.name: path.stat().st_size for path in folder.iterdir() if path.is_file()}
 
     def write_settings(self, extra=None):
@@ -554,12 +557,15 @@ def update_android(work, previous, version):
     if android.version_name() != previous:
         fail(f"the emulator runs {android.version_name()}, not {previous}")
     android.push_settings()
+    # A player allows "install unknown apps" for OpenYAMM once, in Settings, on the first in-app update.
+    android.adb("shell", "appops", "set", PACKAGE, "REQUEST_INSTALL_PACKAGES", "allow")
     android.adb("logcat", "-c")
     android.adb("shell", "am", "force-stop", PACKAGE)
     android.adb("shell", "am", "start", "-n", f"{PACKAGE}/.OpenYammActivity")
     log(f"android: update {previous} -> {version}")
-    print("In the emulator window, choose the update in the game's main menu. The update screen and the system's "
-          "install question are confirmed automatically.", flush=True)
+    print("In the emulator window, answer the game's \"Check for Updates?\" with At start, then choose the update in "
+          "the main menu and confirm it. The update screen and the system's install question are confirmed "
+          "automatically.", flush=True)
     deadline = time.monotonic() + 1800
     while android.version_name() != version:
         if time.monotonic() > deadline:
@@ -569,7 +575,11 @@ def update_android(work, previous, version):
         if tapped:
             print(f"tapped {tapped}", flush=True)
         time.sleep(3)
-    # After the install the update screen starts the game with the staged content.
+    # Replacing the package ends the running app, so Android returns to the home screen; the player starts the game
+    # again from its icon, and it promotes the staged content.
+    android.adb("logcat", "-c")
+    time.sleep(5)
+    android.adb("shell", "am", "start", "-n", f"{PACKAGE}/.OpenYammActivity")
     deadline = time.monotonic() + 600
     while "Starting shared OpenYAMM game entry" not in android.adb("logcat", "-d", "-s", "OpenYAMM", check=False):
         if time.monotonic() > deadline:
@@ -626,6 +636,10 @@ def clean(work, args):
             android.adb("uninstall", PACKAGE, check=False)
             if alive(work.state.get("emulator_pid")):
                 android.adb("emu", "kill", check=False)
+                # It writes to its temporary folder in the work folder until it exits.
+                deadline = time.monotonic() + 60
+                while alive(work.state["emulator_pid"]) and time.monotonic() < deadline:
+                    time.sleep(1)
     except SystemExit:
         pass
     if (work.root / "wineprefix").is_dir():
@@ -676,6 +690,11 @@ def main():
 
     args = parser.parse_args()
     work = Work(args.work)
+    # Compilers, the packer and the publisher write gigabytes of temporary files: keep them in the work folder on disk,
+    # not in /tmp, which is often a size-limited RAM disk.
+    if args.command != "clean":
+        (work.root / "tmp").mkdir(parents=True, exist_ok=True)
+        os.environ["TMPDIR"] = str(work.root / "tmp")
     {"build": build, "publish": publish, "install": install, "update": update, "all": everything,
      "clean": clean}[args.command](work, args)
 
