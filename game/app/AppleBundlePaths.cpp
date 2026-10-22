@@ -12,11 +12,24 @@ namespace OpenYAMM::Game
 {
 namespace
 {
-// Finder starts apps in "/", and a signed bundle must stay unmodified, so settings.ini, saves/ and the log live in a
-// per-user folder: ~/Library/Application Support/OpenYAMM. Empty when there is none to choose: a launch from a
-// directory with its own settings.ini, such as a development checkout, keeps using it.
+// Finder and the iOS home screen start apps in "/", and a signed bundle must stay unmodified, so settings.ini, saves/
+// and the log live in a per-user folder: ~/Library/Application Support/OpenYAMM on macOS. Empty when there is none to
+// choose: a launch from a directory with its own settings.ini, such as a development checkout, keeps using it.
 std::optional<std::filesystem::path> userDataDirectory()
 {
+#if defined(OPENYAMM_IOS)
+    // Finder and the Files app reach the Documents folder (UIFileSharingEnabled), so it also takes the packaged
+    // assets copied onto a device.
+    const char *pDocumentsPath = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
+
+    if (pDocumentsPath == nullptr)
+    {
+        std::cerr << "Could not locate the Documents folder: " << SDL_GetError() << '\n';
+        return std::nullopt;
+    }
+
+    return std::filesystem::path(pDocumentsPath);
+#else
     std::error_code error;
 
     if (std::filesystem::is_regular_file("settings.ini", error))
@@ -35,6 +48,7 @@ std::optional<std::filesystem::path> userDataDirectory()
     const std::filesystem::path path = pPreferencesPath;
     SDL_free(pPreferencesPath);
     return path;
+#endif
 }
 }
 

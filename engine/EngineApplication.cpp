@@ -200,6 +200,12 @@ uint64_t initialWindowFlagsForMode(WindowMode mode)
         flags |= SDL_WINDOW_RESIZABLE;
     }
 
+#if defined(OPENYAMM_IOS)
+    // Render in device pixels, as on Android. In UIKit points an iPhone screen is only about 400 high, too small for
+    // the 480-unit HUD canvases and their bitmap fonts.
+    flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
+#endif
+
     return flags;
 }
 
@@ -277,12 +283,15 @@ bool applyWindowMode(SDL_Window *pWindow, const ApplicationConfig &config)
 
     case WindowMode::Fullscreen:
     {
+#if !defined(OPENYAMM_IOS)
+        // iOS owns its display mode; a desktop resolution is not a valid UIKit mode.
         // A display without that mode (another monitor, Gamescope) starts at desktop resolution instead of quitting.
         if (!setExclusiveFullscreenMode(pWindow, config.windowWidth, config.windowHeight))
         {
             std::cerr << "No " << config.windowWidth << "x" << config.windowHeight
                       << " fullscreen mode (" << SDL_GetError() << "), using the desktop resolution\n";
         }
+#endif
 
         if (!SDL_SetWindowFullscreen(pWindow, true))
         {
@@ -349,7 +358,7 @@ int EngineApplication::run() const
         return 1;
     }
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(OPENYAMM_IOS)
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
 #endif
 
@@ -802,6 +811,19 @@ bool EngineApplication::applyDisplaySettings(WindowMode mode, int width, int hei
         error = "The display is not initialized.";
         return false;
     }
+#if defined(OPENYAMM_IOS)
+    // iOS windows always fill the screen; only the presentation settings apply.
+    static_cast<void>(mode);
+    static_cast<void>(width);
+    static_cast<void>(height);
+    m_config.verticalSync = verticalSync;
+    int pixelWidth = 0;
+    int pixelHeight = 0;
+    SDL_GetWindowSizeInPixels(m_pRunningWindow, &pixelWidth, &pixelHeight);
+    m_pRunningContext->setVerticalSync(verticalSync);
+    m_pRunningContext->resize(m_pRunningWindow, pixelWidth, pixelHeight);
+    return true;
+#else
     if (!SDL_SetWindowFullscreen(m_pRunningWindow, false) || !SDL_SetWindowFullscreenMode(m_pRunningWindow, nullptr) ||
         !SDL_SetWindowBordered(m_pRunningWindow, mode != WindowMode::WindowedFullscreen))
     {
@@ -836,6 +858,7 @@ bool EngineApplication::applyDisplaySettings(WindowMode mode, int width, int hei
     m_pRunningContext->setVerticalSync(verticalSync);
     m_pRunningContext->resize(m_pRunningWindow, pixelWidth, pixelHeight);
     return true;
+#endif
 }
 
 void EngineApplication::setMaxAnisotropy(uint8_t level)

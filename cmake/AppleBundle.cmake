@@ -17,6 +17,19 @@ function(openyamm_configure_apple_bundle target)
     )
 
     set(resourceLocation "Resources")
+    if (IOS)
+        # iOS bundles are flat: resources sit next to the executable.
+        set(resourceLocation ".")
+        # Info-iOS.plist.in is configured in the scope that creates the target.
+        if (CMAKE_OSX_SYSROOT MATCHES "[Ss]imulator")
+            set(OPENYAMM_IOS_BUNDLE_PLATFORM "iPhoneSimulator" PARENT_SCOPE)
+        else()
+            set(OPENYAMM_IOS_BUNDLE_PLATFORM "iPhoneOS" PARENT_SCOPE)
+        endif()
+        set_target_properties(${target} PROPERTIES
+            MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/packaging/apple/Info-iOS.plist.in"
+        )
+    endif()
 
     # Shaders are bundle resources rather than a post-build copy, so a shader-only change updates the app too.
     get_property(shaderOutputs GLOBAL PROPERTY OPENYAMM_RUNTIME_SHADER_OUTPUTS)
@@ -32,9 +45,36 @@ function(openyamm_configure_apple_bundle target)
     add_dependencies(${target} openyamm_runtime_shaders)
 
     # The icon is assembled from the exported Linux icon sizes (tools/generate_app_icons.py).
-    find_program(openyammIconutil iconutil REQUIRED)
     set(iconSourceDir "${CMAKE_SOURCE_DIR}/packaging/icons/hicolor")
     set(iconName "io.github.openyamm.OpenYAMM.png")
+    if (IOS)
+        find_program(openyammSips sips REQUIRED)
+        set(iconInput "${iconSourceDir}/256x256/apps/${iconName}")
+        set(iconFiles)
+        foreach(iconEntry IN ITEMS "AppIcon60x60@2x.png:120" "AppIcon60x60@3x.png:180"
+            "AppIcon76x76@2x~ipad.png:152" "AppIcon83.5x83.5@2x~ipad.png:167")
+            string(REPLACE ":" ";" iconEntry "${iconEntry}")
+            list(GET iconEntry 0 iconFileName)
+            list(GET iconEntry 1 iconSize)
+            set(iconFile "${CMAKE_CURRENT_BINARY_DIR}/apple-bundle/${iconFileName}")
+            add_custom_command(
+                OUTPUT "${iconFile}"
+                COMMAND "${openyammSips}" --resampleHeightWidth ${iconSize} ${iconSize} "${iconInput}"
+                    --out "${iconFile}"
+                DEPENDS "${iconInput}"
+                VERBATIM
+            )
+            list(APPEND iconFiles "${iconFile}")
+        endforeach()
+        set_source_files_properties(${iconFiles} PROPERTIES
+            GENERATED TRUE
+            MACOSX_PACKAGE_LOCATION "${resourceLocation}"
+        )
+        target_sources(${target} PRIVATE ${iconFiles})
+        return()
+    endif()
+
+    find_program(openyammIconutil iconutil REQUIRED)
     set(iconsetDir "${CMAKE_CURRENT_BINARY_DIR}/apple-bundle/OpenYAMM.iconset")
     set(iconFile "${CMAKE_CURRENT_BINARY_DIR}/apple-bundle/OpenYAMM.icns")
     set(iconsetCommands)

@@ -13,7 +13,8 @@ namespace OpenYAMM::Engine
 namespace
 {
 #if defined(__APPLE__)
-// An app bundle with packaged assets (Contents/Resources/assets) is self-contained; otherwise use the development tree.
+// An app bundle with packaged assets (Contents/Resources/assets, assets/ in an iOS bundle) is self-contained. Otherwise
+// iOS reads assets/ from its working directory, the Documents folder, and macOS uses the development tree.
 std::string defaultAppleAssetRoot()
 {
     if (const char *pBasePath = SDL_GetBasePath())
@@ -26,7 +27,11 @@ std::string defaultAppleAssetRoot()
         }
     }
 
+#if defined(OPENYAMM_IOS)
+    return "assets";
+#else
     return AssetPaths::getDevelopmentAssetRoot();
+#endif
 }
 #endif
 }

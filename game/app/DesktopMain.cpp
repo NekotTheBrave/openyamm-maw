@@ -7,6 +7,9 @@
 #endif
 
 #include <SDL3/SDL.h>
+#if defined(OPENYAMM_IOS)
+#include <SDL3/SDL_main.h>
+#endif
 
 int main(int argc, char **argv)
 {

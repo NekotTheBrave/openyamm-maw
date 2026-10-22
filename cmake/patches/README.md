@@ -101,3 +101,11 @@ Engine screenshots read the same back buffer, so they look correct once their al
 The fix was first applied by hand in a local `build/_deps/bgfx-src`, so the 1.9 CI build (NVIDIA, Wayland,
 2026-10-22) shipped without it while development builds looked correct. To check a build, take an engine screenshot
 outdoors with fog: its PNG alpha must be 255 everywhere.
+
+## Metal depth-stencil format on iOS
+
+`bgfx-metal-ios-depth-format.patch` asks `isDepth24Stencil8PixelFormatSupported` only on macOS. The pinned Metal
+renderer selects the D24S8 format with that query on every Apple platform, but the property is
+`API_UNAVAILABLE(ios)` in the iOS SDK, so an iPhone or iPad Metal device does not implement the selector the renderer
+sends. iOS keeps `Depth32Float_Stencil8`, the format the renderer already chose for it a few lines earlier; macOS
+behaviour is unchanged. The iOS Simulator does not show the problem: its Metal device is the Mac's GPU.
