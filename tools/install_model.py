@@ -2,12 +2,12 @@
 """Install an accepted 3D model (creature, attachment, decoration or prop) as a source, and its runtime copy.
 
 The accepted GLB goes to assets_source/<scope>/models/<name>.glb, the authoritative source (scope: worlds/<world> or
-engine). Decoration models of every world (<world>_deco_*.glb) are engine content and need --engine. A model matching COOKED_MODELS (decorations since 2026-10-12) is then cooked into assets_dev
+engine; --world-items uses engine/world_items). Decoration models of every world (<world>_deco_*.glb) are engine content and need --engine. A model matching COOKED_MODELS (decorations since 2026-10-12) is then cooked into assets_dev
 (tools/cook_models.py --only <path>). Any other model, until the switch to cooked models (ASSET_COOKING_PLAN.md
 section 12), gets an uncooked runtime copy at the same relative path in assets_dev, with hidden back faces culled
 (tools/model_backface_split.py).
 
-    tools/install_model.py <accepted.glb> [--world mm6 | --engine] [--name <file name>]
+    tools/install_model.py <accepted.glb> [--world mm6 | --engine | --world-items] [--name <file name>]
 
 Install the unprocessed export: never copy a runtime copy back over a project export or a source.
 Installs are serialised (an exclusive lock on assets_source/.cook-cache/install.lock): several sessions may install
@@ -48,6 +48,7 @@ def main():
     scope = parser.add_mutually_exclusive_group()
     scope.add_argument("--world", default="mm6", help="world package (default mm6)")
     scope.add_argument("--engine", action="store_true", help="the engine package (shared models such as satchels)")
+    scope.add_argument("--world-items", action="store_true", help="isolated WIP ground items (excluded from releases)")
     parser.add_argument("--name", help="installed file name (default: the model's file name)")
     args = parser.parse_args()
     model = args.model.resolve(strict=True)
@@ -56,7 +57,10 @@ def main():
     name = args.name or model.name
     if fnmatch.fnmatch(name, "mm*_deco_*.glb") and not args.engine:
         raise SystemExit(f"{name}: decoration models are engine content (any world binds them); use --engine")
-    relative = Path("engine" if args.engine else f"worlds/{args.world}") / "models" / name
+    if Path(name).name != name or Path(name).suffix.lower() != ".glb":
+        raise SystemExit("--name must be a GLB filename, without directories")
+    scope_path = "engine/world_items" if args.world_items else ("engine" if args.engine else f"worlds/{args.world}")
+    relative = Path(scope_path) / "models" / name
     source = ROOT / "assets_source" / relative
     runtime = ROOT / "assets_dev" / relative
     if model in (source, runtime):

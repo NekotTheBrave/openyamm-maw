@@ -79,11 +79,13 @@ void WeatherPresentation::update(const WeatherRules &rules, const WeatherSample 
     const float dt = std::max(realDeltaSeconds, 0.0f);
     const float rainTarget = target.precipitation == PrecipitationKind::Rain ? target.intensity : 0.0f;
     const float snowTarget = target.precipitation == PrecipitationKind::Snow ? target.intensity : 0.0f;
+    const float ashTarget = target.precipitation == PrecipitationKind::Ash ? target.intensity : 0.0f;
 
     if (m_snapPending)
     {
         m_rainLevel = rainTarget;
         m_snowLevel = snowTarget;
+        m_ashLevel = ashTarget;
         m_cloudCover = target.cloudCover;
         m_wetness = target.wetness;
         m_baseWindX = target.windX;
@@ -96,21 +98,29 @@ void WeatherPresentation::update(const WeatherRules &rules, const WeatherSample 
     }
     else
     {
-        // Rain and snow never overlap: the old kind fades out completely before the new one starts.
+        // Rain, snow and ash never overlap: the old kind fades out completely before the new one starts.
         const float step = rules.fadeSeconds > 0.0f ? dt / rules.fadeSeconds : 1.0f;
 
-        if (snowTarget > 0.0f && m_rainLevel > 0.0f)
+        if (snowTarget > 0.0f && (m_rainLevel > 0.0f || m_ashLevel > 0.0f))
         {
             m_rainLevel = approach(m_rainLevel, 0.0f, step);
+            m_ashLevel = approach(m_ashLevel, 0.0f, step);
         }
-        else if (rainTarget > 0.0f && m_snowLevel > 0.0f)
+        else if (rainTarget > 0.0f && (m_snowLevel > 0.0f || m_ashLevel > 0.0f))
         {
+            m_snowLevel = approach(m_snowLevel, 0.0f, step);
+            m_ashLevel = approach(m_ashLevel, 0.0f, step);
+        }
+        else if (ashTarget > 0.0f && (m_rainLevel > 0.0f || m_snowLevel > 0.0f))
+        {
+            m_rainLevel = approach(m_rainLevel, 0.0f, step);
             m_snowLevel = approach(m_snowLevel, 0.0f, step);
         }
         else
         {
             m_rainLevel = approach(m_rainLevel, rainTarget, step);
             m_snowLevel = approach(m_snowLevel, snowTarget, step);
+            m_ashLevel = approach(m_ashLevel, ashTarget, step);
         }
 
         m_cloudCover = follow(m_cloudCover, target.cloudCover, dt, CloudFollowSeconds);
@@ -189,6 +199,11 @@ float WeatherPresentation::rainLevel() const
 float WeatherPresentation::snowLevel() const
 {
     return m_snowLevel;
+}
+
+float WeatherPresentation::ashLevel() const
+{
+    return m_ashLevel;
 }
 
 float WeatherPresentation::cloudCover() const

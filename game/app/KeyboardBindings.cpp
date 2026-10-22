@@ -151,6 +151,26 @@ std::string normalizeBindingName(const std::string &value)
 
     return result;
 }
+
+// Parses "<prefix><number>" (e.g. "mousebutton5" or "mouse5") into an SDL mouse button index, or 0 when invalid.
+uint8_t parseMouseButtonNumber(const std::string &normalized, std::string_view prefix)
+{
+    if (normalized.size() <= prefix.size() || normalized.compare(0, prefix.size(), prefix) != 0)
+    {
+        return 0;
+    }
+
+    const std::string numeric = normalized.substr(prefix.size());
+    char *pEnd = nullptr;
+    const long parsed = std::strtol(numeric.c_str(), &pEnd, 10);
+
+    if (pEnd == nullptr || *pEnd != '\0' || parsed < 1 || parsed > MaxBindableMouseButton)
+    {
+        return 0;
+    }
+
+    return static_cast<uint8_t>(parsed);
+}
 }
 
 size_t keyboardActionIndex(KeyboardAction action)
@@ -181,6 +201,11 @@ InputBinding keyboardInputBinding(SDL_Scancode scancode)
 InputBinding mouseButtonInputBinding(uint8_t button)
 {
     return InputBinding{InputBindingKind::MouseButton, SDL_SCANCODE_UNKNOWN, button};
+}
+
+bool mouseButtonHeldInFlags(SDL_MouseButtonFlags flags, uint8_t button)
+{
+    return button >= 1 && button <= MaxBindableMouseButton && (flags & SDL_BUTTON_MASK(button)) != 0;
 }
 
 InputBinding mouseWheelInputBinding(float delta)
@@ -261,6 +286,19 @@ InputBinding parseInputBindingName(const std::string &name)
     if (normalized == "mousewheeldown" || normalized == "wheeldown")
     {
         return mouseWheelInputBinding(-1.0f);
+    }
+
+    // "MouseButton_N" is the saved form; "Mouse N" is the display form.
+    uint8_t mouseButton = parseMouseButtonNumber(normalized, "mousebutton");
+
+    if (mouseButton == 0)
+    {
+        mouseButton = parseMouseButtonNumber(normalized, "mouse");
+    }
+
+    if (mouseButton != 0)
+    {
+        return mouseButtonInputBinding(mouseButton);
     }
 
     const SDL_Scancode scancode = parseKeyboardBindingName(name);

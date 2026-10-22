@@ -1,6 +1,8 @@
 #pragma once
 
 #include "engine/models/ModelInstance.h"
+#include "game/fx/EffectRenderer.h"
+#include "game/fx/WorldFxRenderResources.h"
 
 #include <bgfx/bgfx.h>
 
@@ -12,6 +14,7 @@
 namespace OpenYAMM::Engine
 {
 class ModelRenderer;
+class AssetFileSystem;
 }
 
 namespace OpenYAMM::Game
@@ -31,7 +34,7 @@ public:
     // This frame's portrait of the actor for a square of pixelSize HUD pixels, or an invalid handle when the actor
     // has no model. The texture's rows run bottom-up when the renderer's origin is bottom-left.
     bgfx::TextureHandle render(const IGameplayWorldRuntime &world, size_t actorIndex, float pixelSize,
-        uint32_t animationTicks);
+        uint32_t animationTicks, const Engine::AssetFileSystem &assets);
     void shutdown();
 
 private:
@@ -51,5 +54,7 @@ private:
     std::array<float, 16> m_projection = {};
     std::array<float, 3> m_eye = {};
     bool m_failed = false;
+    EffectRenderer m_effectRenderer;
+    WorldFxRenderResources m_effectResources;
 };
 }

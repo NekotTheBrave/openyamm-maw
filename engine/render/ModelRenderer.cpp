@@ -46,9 +46,9 @@ constexpr float GlowFlameCardWeight = 0.8f;
 constexpr uint64_t DepthPrepassState = BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_MSAA;
 constexpr uint64_t PrepassedState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_EQUAL
     | BGFX_STATE_MSAA;
-// u_modelOutline in a creature depth prepass: fs_model returns right after the alpha test (vs_model and the hover
-// outline's 1 keep the surface where it is).
-constexpr float CreatureDepthOnly[4] = {0, 0, 0, 2};
+// u_modelOutline in a depth prepass: fs_model returns right after the alpha test (the vertex shaders inflate only the
+// hover outline's 1 and keep the surface where it is).
+constexpr float DepthOnlyOutline[4] = {0, 0, 0, 2};
 // The fire over a burning creature's burnt surface: premultiplied over what is behind it (added light would turn pale
 // over a bright sky), both faces, no depth written.
 constexpr uint64_t BurnFireState = BGFX_STATE_WRITE_RGB | BGFX_STATE_DEPTH_TEST_LEQUAL
@@ -436,6 +436,18 @@ ModelBounds transformedBounds(const ModelBounds &bounds, const ModelMatrix &matr
 
 }
 
+std::array<float, 3> spriteKeyLightDirection(const std::array<float, 3> &viewForward)
+{
+    // left = up x forward, then forward * -0.55 + left * 0.45 + up * 0.7.
+    const float leftLength = std::hypot(viewForward[0], viewForward[1]);
+    const float leftX = leftLength > 0.0f ? -viewForward[1] / leftLength : 0.0f;
+    const float leftY = leftLength > 0.0f ? viewForward[0] / leftLength : 0.0f;
+    const std::array<float, 3> key = {-0.55f * viewForward[0] + 0.45f * leftX,
+        -0.55f * viewForward[1] + 0.45f * leftY, -0.55f * viewForward[2] + 0.7f};
+    const float length = std::sqrt(key[0] * key[0] + key[1] * key[1] + key[2] * key[2]);
+    return {key[0] / length, key[1] / length, key[2] / length};
+}
+
 struct ModelRenderer::Draw
 {
     const PrimitiveResources *pPrimitive = nullptr;
@@ -671,7 +683,7 @@ void ModelRenderer::submit(const Draw &draw, uint16_t viewId, const ModelRenderL
     {
         // Only the base texture's alpha test runs: no lighting uniforms or other textures.
         bindStaticMaterial(*draw.pResources, material, draw.materialIndex, 0.0f, true);
-        bgfx::setUniform(m_outlineUniformHandle, CreatureDepthOnly);
+        bgfx::setUniform(m_outlineUniformHandle, DepthOnlyOutline);
         bgfx::setState(DepthPrepassState | colorCullState(material, *draw.pCullMatrix));
         bgfx::submit(viewId, m_programHandle);
         return;
@@ -859,7 +871,7 @@ void ModelRenderer::submitInstancedSkinned(const std::vector<SkinnedRun> &runs, 
     bgfx::setUniform(m_skinParamsHandle, skin);
     if (depthPass)
     {
-        bgfx::setUniform(m_outlineUniformHandle, CreatureDepthOnly);
+        bgfx::setUniform(m_outlineUniformHandle, DepthOnlyOutline);
         for (const SkinnedRun &run : runs)
         {
             if (!run.prepassed)
@@ -942,11 +954,13 @@ void ModelRenderer::collectAttachments(const ModelInstanceSystem &instances,
             std::make_move_iterator(m_attachmentOwners.begin() + ptrdiff_t(m_standInGroupCount)));
         standIns.assign(m_standInGroupCount, true);
     }
-    const auto groupFor = [&](const std::shared_ptr<const ModelAsset> &asset, uint32_t variant, bool standIn)
+    const auto groupFor = [&](const std::shared_ptr<const ModelAsset> &asset, uint32_t variant, bool standIn,
+        float minimumPixels)
     {
         size_t group = 0;
         while (group < groups.size()
-            && (groups[group].asset != asset || groups[group].variant != variant || standIns[group] != standIn))
+            && (groups[group].asset != asset || groups[group].variant != variant || standIns[group] != standIn
+                || groups[group].minimumPixels != minimumPixels))
         {
             ++group;
         }
@@ -955,6 +969,7 @@ void ModelRenderer::collectAttachments(const ModelInstanceSystem &instances,
             groups.push_back({asset, variant});
             owners.emplace_back();
             standIns.push_back(standIn);
+            groups.back().minimumPixels = minimumPixels;
             if (standIn)
             {
                 groups.back().lodPixels = ModelStandInLodPixels;
@@ -973,7 +988,8 @@ void ModelRenderer::collectAttachments(const ModelInstanceSystem &instances,
             {
                 continue;
             }
-            const size_t group = groupFor(standIn, instances.materialVariant(handle), true);
+            const size_t group = groupFor(standIn, instances.materialVariant(handle), true,
+                instances.staticStandInMinimumPixels(handle));
             ModelStaticPlacement placement;
             placement.matrix = composeModelTransform(*pRoot);
             placement.outlineColorAbgr = instances.outlineColor(handle);
@@ -1027,7 +1043,7 @@ void ModelRenderer::collectAttachments(const ModelInstanceSystem &instances,
                 radiusSquared += extent * extent;
             }
             carrierReach = std::max(carrierReach, std::sqrt(radiusSquared) * matrixScale(*pMatrix));
-            const size_t group = groupFor(attachment.asset, attachment.materialVariant, false);
+            const size_t group = groupFor(attachment.asset, attachment.materialVariant, false, 0.0f);
             ModelStaticPlacement placement;
             placement.matrix = *pMatrix;
             placement.outlineColorAbgr = instances.outlineColor(handle);
@@ -1124,6 +1140,15 @@ std::vector<ModelRenderer::StaticBatch> ModelRenderer::collectStaticBatches(
                 const uint8_t previous = level;
                 const float pixels = shadow ? modelBoundsDiameter(bounds) * view.orthographicPixelsPerUnit
                     : modelProjectedPixels(bounds, view.camera, view.focalPixels);
+                if (!shadow && view.focalPixels > 0 && pixels < group.minimumPixels)
+                {
+                    // Back in sight, it shows its level without a crossfade from the level it had before.
+                    if (!view.keepState)
+                    {
+                        group.fades[index].seen = false;
+                    }
+                    continue;
+                }
                 level = uint8_t(view.enabled && (shadow || view.focalPixels > 0)
                     ? modelLodLevel(pixels, level, count, shadow, group.lodPixels) : 0);
                 if (!shadow && group.placements[index].colorLevel >= 0)
@@ -1434,7 +1459,7 @@ void ModelRenderer::submitStatic(const std::vector<ModelStaticGroup> &groups, ui
         return materialIndex >= 0 && size_t(materialIndex) < asset.materials.size()
             ? asset.materials[materialIndex] : defaultMaterial;
     };
-    // Hover outlines first, without depth writes: the shell is pushed out along the normals (outline flag 2), and the
+    // Hover outlines first, without depth writes: the shell is pushed out along the normals (outline flag 1), and the
     // model drawn after it covers all but the rim.
     for (size_t index = 0; index < sorted.size() && !m_reflectionPass; ++index)
     {
@@ -1456,7 +1481,7 @@ void ModelRenderer::submitStatic(const std::vector<ModelStaticGroup> &groups, ui
             }
             const uint32_t color = placement.outlineColorAbgr;
             const float outline[4] = {float(color & 255) / 255, float((color >> 8) & 255) / 255,
-                float((color >> 16) & 255) / 255, 2.0f};
+                float((color >> 16) & 255) / 255, 1.0f};
             const MeshResources &mesh = batch.pResources->meshes[batch.meshIndex];
             for (size_t primitiveIndex = 0; primitiveIndex < mesh.primitives.size(); ++primitiveIndex)
             {
@@ -1488,8 +1513,7 @@ void ModelRenderer::submitStatic(const std::vector<ModelStaticGroup> &groups, ui
     // coverage the leaves' prepass writes the samples their sharpened alpha covers (same vertex shader, so the same
     // depths), and the equal-depth shaded pass fills exactly those samples.
     const bool leafCoverage = m_alphaToCoverage && bgfx::isValid(m_staticCoverageProgramHandle);
-    const float depthOnly[4] = {0, 0, 0, 1};
-    bgfx::setUniform(m_outlineUniformHandle, depthOnly);
+    bgfx::setUniform(m_outlineUniformHandle, DepthOnlyOutline);
     // The opaque parts of foliage models (inner crown shells, trunks) go into the prepass before the leaves, so the
     // leaf cards they hide are rejected by depth before their alpha test runs. Their shaded pass (less-equal depth)
     // then draws them at the same depth with the same program.

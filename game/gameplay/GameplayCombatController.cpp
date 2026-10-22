@@ -6,6 +6,7 @@
 #include "game/gameplay/GameplayScreenRuntime.h"
 #include "game/items/ItemEnchantRuntime.h"
 #include "game/mod/ModHooks.h"
+#include "game/items/ItemRuntime.h"
 #include "game/tables/ItemTable.h"
 
 #include <algorithm>
@@ -1121,12 +1122,15 @@ bool applyMonsterSpecialAttack(
     }
     else if (pBreakCandidate != nullptr)
     {
-        if (pBreakCandidate->pInventoryItem != nullptr)
+        // A hardened item stays a candidate, as in the original game; the attack just fails to break it.
+        if (pBreakCandidate->pInventoryItem != nullptr
+            && !ItemRuntime::isHardened(pBreakCandidate->pInventoryItem->hardened, *pBreakCandidate->pItemDefinition))
         {
             applied = !pBreakCandidate->pInventoryItem->broken;
             pBreakCandidate->pInventoryItem->broken = true;
         }
-        else if (pBreakCandidate->pEquippedRuntime != nullptr)
+        else if (pBreakCandidate->pEquippedRuntime != nullptr
+            && !ItemRuntime::isHardened(pBreakCandidate->pEquippedRuntime->hardened, *pBreakCandidate->pItemDefinition))
         {
             applied = !pBreakCandidate->pEquippedRuntime->broken;
             pBreakCandidate->pEquippedRuntime->broken = true;
@@ -1250,6 +1254,34 @@ GameplayCombatController::CombatEvent GameplayCombatController::buildPartyProjec
     return event;
 }
 
+bool GameplayCombatController::partyHitLands(int appliedDamage, bool stunsTarget)
+{
+    return appliedDamage > 0 || stunsTarget;
+}
+
+std::string GameplayCombatController::formatPartyProjectileActorImpactStatusText(
+    const std::string &sourceName,
+    const std::string &targetName,
+    const CombatEvent &event)
+{
+    if (!event.hit)
+    {
+        return {};
+    }
+
+    if (event.killed)
+    {
+        return sourceName + " inflicts " + std::to_string(event.damage) + " points killing " + targetName;
+    }
+
+    if (!partyHitLands(event.damage, false))
+    {
+        return {};
+    }
+
+    return sourceName + " shoots " + targetName + " for " + std::to_string(event.damage) + " points";
+}
+
 std::string GameplayCombatController::formatPartyAttackStatusText(
     const std::string &attackerName,
     const std::string &targetName,
@@ -1282,6 +1314,11 @@ std::string GameplayCombatController::formatPartyAttackStatusText(
     if (killed)
     {
         return attackerName + " inflicts " + std::to_string(statusDamage) + " points killing " + targetName;
+    }
+
+    if (!partyHitLands(statusDamage, attack.stunTarget))
+    {
+        return {};
     }
 
     if (attack.paralyzeTarget)
@@ -1369,11 +1406,6 @@ void GameplayCombatController::handlePartyAttackPresentation(
                     attack.memberIndex,
                     attack.attacked && attack.attack.hit ? FaceAnimationId::AttackHit : FaceAnimationId::AttackMiss);
                 playSpeechReaction(pRuntime, attack.memberIndex, speechId, false);
-
-                if (attack.killed && attack.attack.criticalDamage)
-                {
-                    playSpeechReaction(pRuntime, attack.memberIndex, SpeechId::DeathBlow, false);
-                }
             }
         }
         else
@@ -1427,7 +1459,7 @@ void GameplayCombatController::handlePendingCombatEvents(
                 gameplayCombatTraceWrite(out.str());
             });
 
-            if (!event.hit)
+            if (!event.hit || (!event.killed && !partyHitLands(event.damage, false)))
             {
                 triggerPortraitFaceAnimation(
                     context.pRuntime,
@@ -1451,10 +1483,6 @@ void GameplayCombatController::handlePendingCombatEvents(
                 }
 
                 playSpeechReaction(context.pRuntime, event.sourcePartyMemberIndex, speechId, false);
-
-                showHitStatus(
-                    context.pRuntime,
-                    sourceName + " inflicts " + std::to_string(event.damage) + " points killing " + targetName);
             }
             else
             {
@@ -1463,11 +1491,11 @@ void GameplayCombatController::handlePendingCombatEvents(
                     event.sourcePartyMemberIndex,
                     FaceAnimationId::AttackHit);
                 playSpeechReaction(context.pRuntime, event.sourcePartyMemberIndex, SpeechId::AttackHit, false);
-
-                showHitStatus(
-                    context.pRuntime,
-                    sourceName + " shoots " + targetName + " for " + std::to_string(event.damage) + " points");
             }
+
+            showHitStatus(
+                context.pRuntime,
+                formatPartyProjectileActorImpactStatusText(sourceName, targetName, event));
 
             if (event.hit
                 && event.damage > 0

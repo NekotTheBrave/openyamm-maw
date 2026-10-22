@@ -3,6 +3,17 @@
 `./tools/run_game.sh [game arguments...]` launches the normal `build/game/openyamm` from the repository root,
 using the current desktop display and normal settings/saves. It does not rebuild the executable or force a renderer.
 
+## Minimized by default
+
+Both forms start the game minimized (`OPENYAMM_START_MINIMIZED=1`), so agent runs do not cover the desktop. The
+minimized window keeps rendering at its full size: native screenshots, tours, logs and the timed exit are unchanged.
+It never has input focus, so relative mouse look stays off; scripted input still uses the normal input frame.
+
+Use `--visible` to show the window: as the first argument for plain runs (`./tools/run_game.sh --visible --world mm6`),
+anywhere after the name for isolated runs. Use it for FPS and performance comparisons: GNOME throttles a minimized
+window irregularly with VSync on (61–179 FPS versus a steady 155–190 visible in the 2026-10-18 check). `run.json`
+records the mode in `window`. `tools/profile_game.sh` ignores the variable and always shows the window.
+
 ## Isolated, repeatable runs
 
 ```sh
@@ -10,7 +21,7 @@ using the current desktop display and normal settings/saves. It does not rebuild
   --world mm6 --map oute3.odm \
   --position -9728 -11319 161 --yaw-radians 4.758 --pitch-degrees -6.274 \
   --set video.terrain_decorations=true --set video.vsync=false \
-  --warmup 3 --seconds 15
+  --warmup 3 --seconds 15 --visible
 ```
 
 `--isolated --help` lists the options. Map arguments are asset filenames, not display names; `oute3.odm` is
@@ -90,11 +101,32 @@ For repeatable camera-rotation profiling in modern controls, `look_rate: [-400, 
 motion in pixels per second during subsequent `wait` steps. `look_rate: [0, 0]` stops it. This uses ordinary
 gameplay mouse-look and leaves simulation running; begin after loading and any screenshot pose tour finishes.
 For walking, `action_down: forward`, followed by a `wait` and `action_up: forward`,
-holds and releases the configured gameplay action. Use these action steps for sustained gameplay input;
-raw `key_down`/`key_up` steps deliver screen keys after gameplay actions have already been resolved.
-With gameplay active, raw key steps enter the ordinary SDL event path, including the debug console. Use
-the backquote key, `text: "model pause 0"`, `key: Return`, and the backquote key again to issue a console command
-and close the console before a capture.
+holds and releases the configured gameplay action whatever key it is bound to. To test the bindings themselves
+(for example the classic scheme, `--set controls.control_scheme=classic`), hold the physical key instead:
+`key_down: PageDown`, a `wait`, then `key_up: PageDown` also holds every gameplay action bound to that key under the
+active settings, so it looks up in both schemes, while `key_down: Left` turns in classic and does nothing in modern.
+Raw key steps also enter the ordinary SDL event path, including the debug console.
+`console: loc` runs a debug console line directly and copies its output into the log as `Menu tour console:` lines;
+`loc` prints the party position, heading and pitch, so a tour can verify movement and camera changes numerically.
+Any console command works the same way, such as `console: event 104` to run a map event.
+
+```yaml
+output_dir: ../captures
+exit: true
+steps:
+  - wait: 2
+  - console: loc
+  - key_down: PageDown
+  - wait: 0.5
+  - key_up: PageDown
+  - key: Return            # Combat: enter turn-based mode
+  - wait: 1.5
+  - key_down: Left
+  - wait: 0.5
+  - key_up: Left
+  - console: loc           # expect a changed heading and an unchanged position in the classic scheme
+  - capture: turned
+```
 
 The tour waits for frame readback before exiting;
 `exit: false` returns control to normal input. Relative output directories resolve against the tour's directory.
@@ -243,7 +275,8 @@ It enables FPS/performance logging, but preserves other settings, including VSyn
 Assets are shared for reading, not duplicated. Startup scripts/simulation still run normally; this is not a frozen scene.
 
 For A/B comparisons, use the same save, pose, asset root, resolution, logging and warmup, changing only the intended
-setting. Keep the window focused, avoid input during measurement, and verify the renderer and loaded scene.
+setting. Pass `--visible`, keep the window focused, avoid input during measurement, and verify the renderer and
+loaded scene.
 The first/last per-second FPS samples may overlap the interval boundaries. These logs are frame-rate observations,
 not GPU timer measurements or CPU/GPU attribution. Detailed profiling tools remain separate work.
 

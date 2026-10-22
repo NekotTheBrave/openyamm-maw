@@ -130,6 +130,8 @@ public:
     OutdoorMovementEffects consumePendingEffects();
     void toggleRunning();
     void toggleFlying();
+    // Descends at fly-down speed until the party touches down, then ends flight; no fall damage.
+    void requestLanding();
     void toggleWaterWalk();
     void toggleFeatherFall();
     void setFlying(bool active);
@@ -157,6 +159,7 @@ private:
     OutdoorMovementEffects m_pendingEffects;
     bool m_jumpHeld = false;
     bool m_flyUpHeld = false;
+    bool m_landingRequested = false;
     float m_pendingFlyHeightDelta = 0.0f;
     bool m_pendingJumpPress = false;
     std::optional<float> m_pendingJumpVelocity;

@@ -1331,7 +1331,7 @@ IndoorLightingFrame IndoorLightingRuntime::buildFrame(const IndoorLightingFrameI
     if (input.pParty != nullptr)
     {
         if (const std::optional<GameplayTorchLight> torchLight =
-                resolveGameplayTorchLight(*input.pParty, false, true))
+                resolveGameplayTorchLight(*input.pParty, false, 1.0f, input.warmTorchLight))
         {
             IndoorRenderLight torch = {};
             torch.position = input.cameraPosition;

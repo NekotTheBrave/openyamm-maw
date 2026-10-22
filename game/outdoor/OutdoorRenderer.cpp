@@ -67,6 +67,8 @@ constexpr float ShownPrecipitationThreshold = 0.03f;
 // Matches the sky: a larger game-clock jump snaps the weather instead of fading it.
 constexpr double WeatherSnapGameMinutes = 30.0;
 constexpr float OutdoorFxLightRefreshIntervalSeconds = 1.0f / 60.0f;
+// Share of the sky (ambient) light that reaches creature models as a directional key light (fs_model.sc).
+constexpr float OutdoorCreatureKeyFraction = 0.4f;
 constexpr float OutdoorTerrainChunkWorldSize = 4096.0f;
 
 bool sameWorldFxLightEmitter(const WorldFxLightEmitter &left, const WorldFxLightEmitter &right)
@@ -425,7 +427,7 @@ uint32_t computeOutdoorSkyFogColorAbgr(const OutdoorWorldRuntime::AtmosphereStat
         return makeAbgr(UnderwaterFogRed, UnderwaterFogGreen, UnderwaterFogBlue);
     }
 
-    if ((atmosphereState.weatherFlags & MapWeatherFoggy) == 0)
+    if (!atmosphereState.shownFog().foggy)
     {
         return 0xff000000u;
     }
@@ -855,18 +857,21 @@ OutdoorFogParameters buildOutdoorWorldFogParameters(
         1.0f
     };
 
+    const OutdoorWorldRuntime::AtmosphereState::ShownFog shownFog =
+        pAtmosphereState != nullptr ? pAtmosphereState->shownFog() : OutdoorWorldRuntime::AtmosphereState::ShownFog{};
+
     if (pAtmosphereState != nullptr
-        && (pAtmosphereState->weatherFlags & MapWeatherFoggy) != 0
-        && pAtmosphereState->fogWeakDistance >= 0
-        && pAtmosphereState->fogStrongDistance > pAtmosphereState->fogWeakDistance)
+        && shownFog.foggy
+        && shownFog.weakDistance >= 0
+        && shownFog.strongDistance > shownFog.weakDistance)
     {
         const OutdoorFogProfile fogProfile = pAtmosphereState->directFog
             ? buildOutdoorDirectFogProfile(
-                pAtmosphereState->fogWeakDistance,
-                pAtmosphereState->fogStrongDistance)
+                shownFog.weakDistance,
+                shownFog.strongDistance)
             : buildOutdoorFogProfile(
-                pAtmosphereState->fogWeakDistance,
-                pAtmosphereState->fogStrongDistance,
+                shownFog.weakDistance,
+                shownFog.strongDistance,
                 clampedFarClipDistance,
                 OutdoorWorldFogNearOpacity,
                 OutdoorWorldFogStrongOpacity);
@@ -929,18 +934,21 @@ OutdoorFogParameters buildOutdoorSkyFogParameters(
         1.0f
     };
 
+    const OutdoorWorldRuntime::AtmosphereState::ShownFog shownFog =
+        pAtmosphereState != nullptr ? pAtmosphereState->shownFog() : OutdoorWorldRuntime::AtmosphereState::ShownFog{};
+
     if (pAtmosphereState != nullptr
-        && (pAtmosphereState->weatherFlags & MapWeatherFoggy) != 0
-        && pAtmosphereState->fogWeakDistance >= 0
-        && pAtmosphereState->fogStrongDistance > pAtmosphereState->fogWeakDistance)
+        && shownFog.foggy
+        && shownFog.weakDistance >= 0
+        && shownFog.strongDistance > shownFog.weakDistance)
     {
         const OutdoorFogProfile fogProfile = pAtmosphereState->directFog
             ? buildOutdoorDirectFogProfile(
-                pAtmosphereState->fogWeakDistance,
-                pAtmosphereState->fogStrongDistance)
+                shownFog.weakDistance,
+                shownFog.strongDistance)
             : buildOutdoorFogProfile(
-                pAtmosphereState->fogWeakDistance,
-                pAtmosphereState->fogStrongDistance,
+                shownFog.weakDistance,
+                shownFog.strongDistance,
                 clampedRenderDistance,
                 OutdoorSkyFogNearOpacity,
                 OutdoorSkyFogStrongOpacity);
@@ -1150,7 +1158,7 @@ void OutdoorRenderer::renderWeather(OutdoorGameView &view, uint16_t viewId,
 
     if (pAtmosphereState == nullptr || pAtmosphereState->underwater
         || view.m_gameSettings.weatherQuality == WeatherQuality::Off || !view.m_renderLayers.effects
-        || (weather.rainLevel() <= 0.0f && weather.snowLevel() <= 0.0f))
+        || (weather.rainLevel() <= 0.0f && weather.snowLevel() <= 0.0f && weather.ashLevel() <= 0.0f))
     {
         view.m_weatherRenderer.resetCamera();
         return;
@@ -1204,6 +1212,14 @@ void OutdoorRenderer::renderWeather(OutdoorGameView &view, uint16_t viewId,
     frame.deltaSeconds = view.m_weatherFrameSeconds;
     frame.rainLevel = weather.rainLevel();
     frame.snowLevel = weather.snowLevel();
+    frame.ashLevel = weather.ashLevel();
+
+    if (view.m_pOutdoorWorldRuntime != nullptr)
+    {
+        frame.snowLook = view.m_pOutdoorWorldRuntime->weatherRules().snowFlakes;
+        frame.ashLook = view.m_pOutdoorWorldRuntime->weatherRules().ashFlakes;
+    }
+
     frame.windX = weather.windX();
     frame.windY = weather.windY();
     frame.light = light;
@@ -1262,9 +1278,9 @@ void OutdoorRenderer::updateEnhancedSky(
     inputs.redFog = atmosphere.redFog;
     inputs.alwaysLight = atmosphere.alwaysLight;
     inputs.alwaysDark = atmosphere.alwaysDark;
-    inputs.foggy = (atmosphere.weatherFlags & MapWeatherFoggy) != 0
-        && atmosphere.fogStrongDistance > atmosphere.fogWeakDistance;
-    inputs.fogStrongDistance = static_cast<float>(atmosphere.fogStrongDistance);
+    const OutdoorWorldRuntime::AtmosphereState::ShownFog shownFog = atmosphere.shownFog();
+    inputs.foggy = shownFog.foggy && shownFog.strongDistance > shownFog.weakDistance;
+    inputs.fogStrongDistance = static_cast<float>(shownFog.strongDistance);
     // The sky follows the shown weather, which fades in step with the sky's own cross-fade.
     const WeatherPresentation &weather = view.m_weatherPresentation;
     inputs.raining = weather.rainLevel() > ShownPrecipitationThreshold;
@@ -1464,15 +1480,6 @@ void OutdoorRenderer::applyOutdoorFxLightUniforms(OutdoorGameView &view, const b
                   << " combined_depth_slices=" << spriteStats.combinedDepthSlices
                   << " combined_slice_texture_groups=" << spriteStats.combinedDepthSliceTextureGroups
                   << " combined_slice_items=" << spriteStats.combinedDepthSliceItems
-                  << " world_item_items=" << spriteStats.worldItemItems
-                  << " world_item_batch_submits=" << spriteStats.worldItemBatchSubmits
-                  << " world_item_batched=" << spriteStats.worldItemBatchedItems
-                  << " world_item_submits=" << spriteStats.worldItemSubmits
-                  << " world_item_outline_submits=" << spriteStats.worldItemOutlineSubmits
-                  << " world_item_texture_switches=" << spriteStats.worldItemTextureSwitches
-                  << " world_item_depth_slices=" << spriteStats.worldItemDepthSlices
-                  << " world_item_slice_texture_groups=" << spriteStats.worldItemDepthSliceTextureGroups
-                  << " world_item_slice_items=" << spriteStats.worldItemDepthSliceItems
                   << " projectile_items=" << spriteStats.runtimeProjectileItems
                   << " projectile_batch_submits=" << spriteStats.runtimeProjectileBatchSubmits
                   << " projectile_batched=" << spriteStats.runtimeProjectileBatchedItems
@@ -4002,8 +4009,9 @@ bool OutdoorRenderer::initializeWaterResources(OutdoorGameView &view, const Outd
         std::map<std::pair<int32_t, int32_t>, std::array<bx::Vec3, 2>> patches;
     };
     // Separate surfaces per liquid, so each draws as its own kind and only water takes a reflection.
-    std::map<std::pair<LiquidKind, float>, SurfaceBuild> planes;
-    std::map<LiquidKind, SurfaceBuild> sloped;
+    // A liquid that takes no reflection gets surfaces of its own.
+    std::map<std::tuple<LiquidKind, float, bool>, SurfaceBuild> planes;
+    std::map<std::pair<LiquidKind, bool>, SurfaceBuild> sloped;
     for (size_t index = 0; index + 6 <= vertices.size(); index += 6)
     {
         const OutdoorGameView::TexturedTerrainVertex &first = vertices[index];
@@ -4019,10 +4027,12 @@ bool OutdoorRenderer::initializeWaterResources(OutdoorGameView &view, const Outd
         }
         const OutdoorTerrainTile &tile = terrainTiles.tiles[size_t(first.flowUPerSecond)];
         const float liquid = liquidShaderValue(tile.liquid);
-        SurfaceBuild &surface = planar ? planes[{tile.liquid, first.z}] : sloped[tile.liquid];
+        SurfaceBuild &surface = planar ? planes[{tile.liquid, first.z, tile.liquidReflects}]
+            : sloped[{tile.liquid, tile.liquidReflects}];
         surface.geometry.height = first.z;
         surface.geometry.planar = planar;
         surface.geometry.liquid = tile.liquid;
+        surface.geometry.reflects = tile.liquidReflects;
         for (size_t offset = 0; offset < 6; ++offset)
         {
             const OutdoorGameView::TexturedTerrainVertex &vertex = vertices[index + offset];
@@ -4054,7 +4064,7 @@ bool OutdoorRenderer::initializeWaterResources(OutdoorGameView &view, const Outd
     {
         append(surface);
     }
-    for (auto &[liquid, surface] : sloped)
+    for (auto &[key, surface] : sloped)
     {
         append(surface);
     }
@@ -5298,7 +5308,7 @@ void OutdoorRenderer::renderWorldPasses(OutdoorGameView &view, uint16_t viewWidt
 
     if (view.m_showSpriteObjects)
     {
-        OutdoorBillboardRenderer::renderRuntimeWorldItems(view, transparentView, pViewMatrix, cameraPosition, frustum);
+        OutdoorBillboardRenderer::outlineRuntimeWorldItems(view, pViewMatrix);
         OutdoorBillboardRenderer::renderSpriteObjectBillboards(view, transparentView, pViewMatrix, cameraPosition);
     }
 
@@ -5328,6 +5338,11 @@ void OutdoorRenderer::renderWorldPasses(OutdoorGameView &view, uint16_t viewWidt
     }
 
     ModelSceneLighting modelScene = modelSceneLighting(view, pAtmosphereState, pLightingData, farClipDistance);
+    // Creatures take part of their sky light from a camera-side key, as indoors: without it the ambient, which lights
+    // every side alike, leaves their normal-map relief flat out of the sun.
+    modelScene.creatures.keyDirection =
+        Engine::spriteKeyLightDirection({cameraForward.x, cameraForward.y, cameraForward.z});
+    modelScene.creatures.keyFraction = OutdoorCreatureKeyFraction;
     // Terrain bushes keep no point lights: foliage has no specular to take from them.
     const Engine::ModelRenderLighting bushLighting = modelScene.decorations;
     modelScene.creatures.pLightGrid = &view.m_lightGrid;

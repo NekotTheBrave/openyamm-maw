@@ -166,6 +166,7 @@ bool WaterRenderer::updateGeometry(std::vector<WaterSurfaceGeometry> geometry, b
         surface.height = source.height;
         surface.planar = source.planar;
         surface.liquid = source.liquid;
+        surface.reflects = source.reflects;
         surface.sectorId = source.sectorId;
         surface.backSectorId = source.backSectorId;
         surface.vertexCount = uint32_t(source.vertices.size());
@@ -298,7 +299,8 @@ void WaterRenderer::prepare(const ViewFrustum &frustum, const bx::Vec3 &camera, 
         Surface *pNearest = nullptr;
         for (Surface &surface : m_surfaces)
         {
-            if (surface.visible && surface.planar && liquidReflects(surface.liquid) && surface.reflection < 0
+            if (surface.visible && surface.planar && surface.reflects && liquidReflects(surface.liquid)
+                && surface.reflection < 0
                 && camera.z > surface.height
                 && (pNearest == nullptr || surface.distanceSquared < pNearest->distanceSquared))
             {
@@ -357,7 +359,7 @@ void WaterRenderer::prepare(const ViewFrustum &frustum, const bx::Vec3 &camera, 
         }
         for (Surface &surface : m_surfaces)
         {
-            if (surface.visible && surface.planar && liquidReflects(surface.liquid)
+            if (surface.visible && surface.planar && surface.reflects && liquidReflects(surface.liquid)
                 && surface.height == target.height
                 && (reflectionSectorId >= 0 || surface.sectorId == target.sectorId))
             {

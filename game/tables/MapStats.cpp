@@ -229,26 +229,6 @@ std::optional<MapBoundaryEdge> parseMergedOutdoorTravelSide(const std::string &v
     return std::nullopt;
 }
 
-int boundaryTravelHeadingDegrees(MapBoundaryEdge edge)
-{
-    switch (edge)
-    {
-        case MapBoundaryEdge::North:
-            return 90;
-
-        case MapBoundaryEdge::South:
-            return 270;
-
-        case MapBoundaryEdge::East:
-            return 0;
-
-        case MapBoundaryEdge::West:
-            return 180;
-    }
-
-    return 0;
-}
-
 bool parseRequiredQBitsAny(const std::string &value, std::vector<uint32_t> &qbits)
 {
     qbits.clear();
@@ -507,11 +487,8 @@ bool applyMergedOutdoorTravelDirection(
     transition.travelDays = static_cast<int>(direction.days.value_or(0));
     transition.straightTravel = straightTravel;
     transition.straightTravelSide = straightTravel ? parseMergedOutdoorTravelSide(direction.side) : std::nullopt;
+    // Straight travel keeps the party's own heading, as MMerge does; the arrival is mirrored from the departure.
     transition.useMapStartPosition = !transition.straightTravelSide.has_value();
-    if (transition.straightTravelSide.has_value())
-    {
-        transition.directionDegrees = boundaryTravelHeadingDegrees(edge);
-    }
 
     std::string errorMessage;
 

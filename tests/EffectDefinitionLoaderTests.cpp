@@ -6,11 +6,11 @@
 #include "game/fx/EffectSystem.h"
 #include "game/fx/ParticleRecipes.h"
 #include "game/fx/ProjectileEffectBindings.h"
-#include "game/fx/ItemModelBindings.h"
 #include "game/fx/ProjectileModelBindings.h"
 #include "game/fx/SpellAuraEffectBindings.h"
 #include "game/fx/import/EffectDefinitionLoader.h"
 #include "game/fx/import/EffectResourceLibrary.h"
+#include "game/tables/ItemModelBindings.h"
 
 #include <doctest/doctest.h>
 
@@ -273,10 +273,11 @@ TEST_CASE("EffectDefinitionLoader composes authored showcase with MM9 for all le
         const auto definitions = loader.load("engine/effects/library.yml", error);
         INFO(world, ": ", error);
         REQUIRE(definitions.has_value());
-        // Seven authored recipes (three showcase, three creature hand/staff emitters, the behaviour ward sparks), the
-        // 122 generated projectile flight, settled, impact and aura effects, the 63 melee effects (nine blows, three
-        // misses, 18 element accents, eleven material contacts in three strengths) and the MM9 library.
-        REQUIRE_EQ(definitions->size(), 229);
+        // Twelve authored recipes (three showcase, three creature hand/staff emitters, the behaviour ward sparks, five
+        // ground item sparkles), the 122 generated projectile flight, settled, impact and aura effects, the 63 melee
+        // effects (nine blows, three misses, 18 element accents, eleven material contacts in three strengths), the
+        // MM8 wisp stars and the MM9 library.
+        REQUIRE_EQ(definitions->size(), 235);
         Game::EffectLibrary library;
         REQUIRE(library.replace(*definitions, error));
         REQUIRE(library.find("mm9:spell_reaver") != nullptr);
@@ -523,7 +524,8 @@ TEST_CASE("Projectile effect bindings name existing effects and resolve monster 
     for (const ProjectileRecipe recipe : {ProjectileRecipe::Implosion, ProjectileRecipe::Inferno,
              ProjectileRecipe::Immolation, ProjectileRecipe::MassDistortion, ProjectileRecipe::SpiritLash,
              ProjectileRecipe::PrismaticLight, ProjectileRecipe::Lifedrain, ProjectileRecipe::ShrinkingRay,
-             ProjectileRecipe::Armageddon})
+             ProjectileRecipe::Armageddon, ProjectileRecipe::FireTrap, ProjectileRecipe::ElecTrap,
+             ProjectileRecipe::ColdTrap, ProjectileRecipe::PoisonTrap})
     {
         INFO(Game::FxRecipes::projectileRecipeName(recipe));
         const Game::ProjectileEffectBinding *pBinding = bindings.find(recipe, "");
@@ -745,25 +747,39 @@ TEST_CASE("Item model bindings parse icons and name installed models")
     std::string error;
     Game::ItemModelBindings bindings;
     REQUIRE(Game::parseItemModelBindings("schema: openyamm.itemModels.v1\nitems:\n"
-        "  - {icon: LSword1, model: engine/models/item_lsword1.glb, length: 129}\n", "test", bindings, error));
+        "  - {icon: LSword1, model: engine/models/item_lsword1.glb, length: 129, bounds: [-9, -64.5, 0, 9, 64.5, 12]}\n",
+        "test", bindings, error));
     REQUIRE(bindings.contains("lsword1"));
     CHECK_EQ(bindings.at("lsword1").length, doctest::Approx(129.0f));
+    CHECK_EQ(bindings.at("lsword1").boundsMin[1], doctest::Approx(-64.5f));
+    CHECK_EQ(bindings.at("lsword1").boundsMax[2], doctest::Approx(12.0f));
     bindings.clear();
     CHECK_FALSE(Game::parseItemModelBindings("schema: openyamm.itemModels.v1\nitems:\n"
-        "  - {icon: a, model: a.glb, length: 1, tint: 2}\n", "test", bindings, error));
+        "  - {icon: a, model: a.glb, length: 1, bounds: [0, 0, 0, 1, 1, 1], tint: 2}\n", "test", bindings, error));
     bindings.clear();
     CHECK_FALSE(Game::parseItemModelBindings("schema: openyamm.itemModels.v1\nitems:\n"
-        "  - {icon: a, model: a.glb, length: 1}\n  - {icon: A, model: b.glb, length: 1}\n", "test", bindings, error));
+        "  - {icon: a, model: a.glb, length: 1}\n", "test", bindings, error));
+    CHECK(error.find("bounds") != std::string::npos);
+    bindings.clear();
+    CHECK_FALSE(Game::parseItemModelBindings("schema: openyamm.itemModels.v1\nitems:\n"
+        "  - {icon: a, model: a.glb, length: 1, bounds: [0, 0, 0, -1, 1, 1]}\n", "test", bindings, error));
+    bindings.clear();
+    CHECK_FALSE(Game::parseItemModelBindings("schema: openyamm.itemModels.v1\nitems:\n"
+        "  - {icon: a, model: a.glb, length: 1, bounds: [0, 0, 0, 1, 1, 1]}\n"
+        "  - {icon: A, model: b.glb, length: 1, bounds: [0, 0, 0, 1, 1, 1]}\n", "test", bindings, error));
     CHECK(error.find("bound twice") != std::string::npos);
 
     const std::filesystem::path sourceRoot = OPENYAMM_SOURCE_DIR;
     Engine::AssetFileSystem assetFileSystem;
     REQUIRE(assetFileSystem.initialize(sourceRoot, sourceRoot / "assets_dev", Engine::AssetScaleTier::X1, "mm6"));
+    bindings.clear();
+    CHECK_FALSE(Game::loadItemModelBindings(assetFileSystem, "engine/world_items/missing.yml", bindings, error));
     Game::ItemModelBindings installed;
-    REQUIRE_MESSAGE(Game::loadItemModelBindings(assetFileSystem, "engine/models/items.yml", installed, error), error);
+    REQUIRE_MESSAGE(Game::loadItemModelBindings(assetFileSystem, "engine/world_items/items.yml", installed, error), error);
     for (const auto &[icon, binding] : installed)
     {
         INFO(icon << ": " << binding.model);
         CHECK(assetFileSystem.exists(binding.model));
     }
+    CHECK(assetFileSystem.exists(Game::missingItemModelBinding().model));
 }

@@ -138,7 +138,6 @@ end, "House")
 
 RegisterEvent(65, "House", function()
     evt.EnterHouse(1406) -- House
-    evt.EnterHouse(1416) -- House
 end, "House")
 
 RegisterEvent(75, "Chest", function()

@@ -688,3 +688,206 @@ effects:
     emission_interval_seconds: 0.05
     wind_direction: [0, 0, 0]
     wind_amount: 1
+# Ground item sparkles, looped by WorldFxSystem over an item near the party (WorldItemSparkle): green from 1000 gold,
+# purple from 2500, gold with rising motes for artifacts, relics and named uniques, red for quest items, warm white for
+# coin heaps.
+- id: openyamm:fx/item_sparkle/valuable
+  display_name: Item sparkle, valuable
+  duration_seconds: 8
+  compatibility_profile: predictable
+  components:
+  - id: 1
+    type: sprite_system
+    start_seconds: 0
+    end_seconds: 8
+    sprite_resource: openyamm:effect-sprite/glint
+    particle_space: world
+    blend: additive
+    sprites_per_emission: 1
+    emission_interval_seconds: 0.16
+    particle_lifetime_seconds: 0.5
+    emission_shape: plane
+    radius: 3
+    plane_direction: [0, 0, 1]
+    velocity: 4
+    random_roll: true
+    spin_speed: 1.5
+    scale_keys:
+    - {time: 0, value: 0.044}
+    - {time: 0.3, value: 0.22}
+    - {time: 1, value: 0.033}
+    color_keys:
+    - {time: 0, rgb: [190, 255, 190], transparency: 255}
+    - {time: 0.3, rgb: [90, 235, 110], transparency: 25}
+    - {time: 1, rgb: [40, 190, 70], transparency: 255}
+    motion_keys: []
+- id: openyamm:fx/item_sparkle/precious
+  display_name: Item sparkle, precious
+  duration_seconds: 8
+  compatibility_profile: predictable
+  components:
+  - id: 1
+    type: sprite_system
+    start_seconds: 0
+    end_seconds: 8
+    sprite_resource: openyamm:effect-sprite/glint
+    particle_space: world
+    blend: additive
+    sprites_per_emission: 1
+    emission_interval_seconds: 0.12
+    particle_lifetime_seconds: 0.5
+    emission_shape: plane
+    radius: 3
+    plane_direction: [0, 0, 1]
+    velocity: 4
+    random_roll: true
+    spin_speed: 1.5
+    scale_keys:
+    - {time: 0, value: 0.050}
+    - {time: 0.3, value: 0.25}
+    - {time: 1, value: 0.037}
+    color_keys:
+    - {time: 0, rgb: [230, 190, 255], transparency: 255}
+    - {time: 0.3, rgb: [185, 110, 255], transparency: 25}
+    - {time: 1, rgb: [130, 60, 230], transparency: 255}
+    motion_keys: []
+- id: openyamm:fx/item_sparkle/artifact
+  display_name: Item sparkle, artifact
+  duration_seconds: 8
+  compatibility_profile: predictable
+  components:
+  - id: 1
+    type: sprite_system
+    start_seconds: 0
+    end_seconds: 8
+    sprite_resource: openyamm:effect-sprite/glint
+    particle_space: world
+    blend: additive
+    sprites_per_emission: 1
+    emission_interval_seconds: 0.08
+    particle_lifetime_seconds: 0.5
+    emission_shape: plane
+    radius: 3
+    plane_direction: [0, 0, 1]
+    velocity: 4
+    random_roll: true
+    spin_speed: 1.5
+    scale_keys:
+    - {time: 0, value: 0.056}
+    - {time: 0.3, value: 0.28}
+    - {time: 1, value: 0.042}
+    color_keys:
+    - {time: 0, rgb: [255, 235, 170], transparency: 255}
+    - {time: 0.3, rgb: [255, 205, 110], transparency: 25}
+    - {time: 1, rgb: [255, 170, 60], transparency: 255}
+    motion_keys: []
+  - id: 2
+    type: sprite_system
+    start_seconds: 0
+    end_seconds: 8
+    sprite_resource: openyamm:effect-sprite/glint
+    particle_space: world
+    blend: additive
+    sprites_per_emission: 1
+    emission_interval_seconds: 0.3
+    particle_lifetime_seconds: 1.4
+    emission_shape: plane
+    radius: 20
+    plane_direction: [0, 0, 1]
+    velocity: 2
+    wind_direction: [0, 0, 1]
+    wind_amount: 16
+    scale_keys:
+    - {time: 0, value: 0.01}
+    - {time: 0.2, value: 0.04}
+    - {time: 1, value: 0.01}
+    color_keys:
+    - {time: 0, rgb: [255, 220, 140], transparency: 255}
+    - {time: 0.2, rgb: [255, 210, 120], transparency: 70}
+    - {time: 1, rgb: [255, 180, 80], transparency: 255}
+    motion_keys: []
+- id: openyamm:fx/item_sparkle/quest
+  display_name: Item sparkle, quest item
+  duration_seconds: 8
+  compatibility_profile: predictable
+  components:
+  - id: 1
+    type: sprite_system
+    start_seconds: 0
+    end_seconds: 8
+    sprite_resource: openyamm:effect-sprite/glint
+    particle_space: world
+    blend: additive
+    sprites_per_emission: 1
+    emission_interval_seconds: 0.08
+    particle_lifetime_seconds: 0.5
+    emission_shape: plane
+    radius: 3
+    plane_direction: [0, 0, 1]
+    velocity: 4
+    random_roll: true
+    spin_speed: 1.5
+    scale_keys:
+    - {time: 0, value: 0.050}
+    - {time: 0.3, value: 0.28}
+    - {time: 1, value: 0.037}
+    color_keys:
+    - {time: 0, rgb: [255, 215, 200], transparency: 255}
+    - {time: 0.3, rgb: [255, 125, 105], transparency: 10}
+    - {time: 1, rgb: [230, 45, 35], transparency: 255}
+    motion_keys: []
+  - id: 2
+    type: sprite_system
+    start_seconds: 0
+    end_seconds: 8
+    sprite_resource: openyamm:effect-sprite/glint
+    particle_space: world
+    blend: additive
+    sprites_per_emission: 1
+    emission_interval_seconds: 0.3
+    particle_lifetime_seconds: 1.4
+    emission_shape: plane
+    radius: 20
+    plane_direction: [0, 0, 1]
+    velocity: 2
+    wind_direction: [0, 0, 1]
+    wind_amount: 16
+    scale_keys:
+    - {time: 0, value: 0.01}
+    - {time: 0.2, value: 0.04}
+    - {time: 1, value: 0.01}
+    color_keys:
+    - {time: 0, rgb: [255, 170, 150], transparency: 255}
+    - {time: 0.2, rgb: [255, 90, 70], transparency: 70}
+    - {time: 1, rgb: [190, 30, 25], transparency: 255}
+    motion_keys: []
+- id: openyamm:fx/item_sparkle/coins
+  display_name: Item sparkle, coins
+  duration_seconds: 8
+  compatibility_profile: predictable
+  components:
+  - id: 1
+    type: sprite_system
+    start_seconds: 0
+    end_seconds: 8
+    sprite_resource: openyamm:effect-sprite/glint
+    particle_space: world
+    blend: additive
+    sprites_per_emission: 1
+    emission_interval_seconds: 0.22
+    particle_lifetime_seconds: 0.5
+    emission_shape: plane
+    radius: 3
+    plane_direction: [0, 0, 1]
+    velocity: 4
+    random_roll: true
+    spin_speed: 1.5
+    scale_keys:
+    - {time: 0, value: 0.044}
+    - {time: 0.3, value: 0.18}
+    - {time: 1, value: 0.033}
+    color_keys:
+    - {time: 0, rgb: [255, 255, 245], transparency: 255}
+    - {time: 0.3, rgb: [255, 245, 215], transparency: 25}
+    - {time: 1, rgb: [240, 220, 170], transparency: 255}
+    motion_keys: []

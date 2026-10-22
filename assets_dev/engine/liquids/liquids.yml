@@ -4,6 +4,11 @@
 #   color: [red, green, blue] - water and tar: the lit body tint; lava: the glow of its cracks
 #   terrain_transition_overlay: terrain edge tiles over the liquid keep their overlay art, and its alpha is the
 #     liquid's coverage
+# Optional (none of the liquids below uses them):
+#   worlds: [world ids] - the liquid applies only to those worlds' maps, where it is matched before the shared ones
+#   depth: deep (default) or shallow - a shallow liquid's terrain cells are never deep water for gameplay: the party
+#     and monsters wade through them, no drowning, dropped items stay, whatever the tile table's water flag says
+#   reflections: true (default) or false - false: its surfaces never take a planar reflection (opaque, matte)
 # Water colours keep the tint of each world's original water tile (its mean colour, lit as before).
 liquids:
   - id: water_mm6

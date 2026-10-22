@@ -3036,56 +3036,71 @@ int GameMechanics::resolveShieldedPhysicalProjectileDamage(int damage)
     return damage / 2;
 }
 
-SkillMastery GameMechanics::resolveIdentifyMonsterMastery(const Character &character, int monsterLevel)
+IdentifyMonsterReveal GameMechanics::resolveIdentifyMonsterReveal(
+    int identifySkillLevel,
+    SkillMastery mastery,
+    int monsterLevel)
 {
-    const int level = skillLevel(character, "IdentifyMonster");
-    const SkillMastery mastery = skillMastery(character, "IdentifyMonster");
+    IdentifyMonsterReveal reveal = {};
 
-    if (level <= 0 || mastery == SkillMastery::None)
+    if (identifySkillLevel <= 0 || mastery == SkillMastery::None)
     {
-        return SkillMastery::None;
+        return reveal;
     }
 
-    bool success = false;
+    reveal.hasSkill = true;
 
+    // A mastery reveals its own sections and every lower one, but only if the monster is not too strong for it;
+    // a failed check reveals nothing (it does not fall back to a lower mastery).
     switch (mastery)
     {
         case SkillMastery::Normal:
-            success = level + 10 >= monsterLevel;
+            reveal.hitPointsAndArmorClass = identifySkillLevel + 10 >= monsterLevel;
             break;
 
         case SkillMastery::Expert:
-            success = 2 * level + 10 >= monsterLevel;
+            reveal.hitPointsAndArmorClass = 2 * identifySkillLevel + 10 >= monsterLevel;
+            reveal.attackAndDamage = reveal.hitPointsAndArmorClass;
             break;
 
         case SkillMastery::Master:
-            success = 3 * level + 10 >= monsterLevel;
+            reveal.hitPointsAndArmorClass = 3 * identifySkillLevel + 10 >= monsterLevel;
+            reveal.attackAndDamage = reveal.hitPointsAndArmorClass;
+            reveal.spellsAndEffects = reveal.hitPointsAndArmorClass;
             break;
 
         case SkillMastery::Grandmaster:
-            success = true;
+            reveal.hitPointsAndArmorClass = true;
+            reveal.attackAndDamage = true;
+            reveal.spellsAndEffects = true;
+            reveal.resistances = true;
             break;
 
         case SkillMastery::None:
             break;
     }
 
-    return success ? mastery : SkillMastery::None;
+    return reveal;
+}
+
+IdentifyMonsterReveal GameMechanics::resolveIdentifyMonsterReveal(const Character &character, int monsterLevel)
+{
+    return resolveIdentifyMonsterReveal(
+        skillLevel(character, "IdentifyMonster"),
+        skillMastery(character, "IdentifyMonster"),
+        monsterLevel);
 }
 
 SpeechId GameMechanics::resolveIdentifyMonsterSpeech(const Character &character, int monsterLevel)
 {
-    const int level = skillLevel(character, "IdentifyMonster");
-    const SkillMastery mastery = skillMastery(character, "IdentifyMonster");
+    const IdentifyMonsterReveal reveal = resolveIdentifyMonsterReveal(character, monsterLevel);
 
-    if (level <= 0 || mastery == SkillMastery::None)
+    if (!reveal.hasSkill)
     {
         return SpeechId::None;
     }
 
-    const bool success = resolveIdentifyMonsterMastery(character, monsterLevel) != SkillMastery::None;
-
-    if (!success)
+    if (!reveal.identified())
     {
         return SpeechId::IdentifyMonsterFail;
     }

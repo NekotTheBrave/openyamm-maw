@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/app/GameSettings.h"
+#include "game/outdoor/WeatherModel.h"
 
 #include <bgfx/bgfx.h>
 
@@ -22,9 +23,13 @@ struct WeatherDrawFrame
     std::array<float, 2> forward = {1.0f, 0.0f};
     WeatherGroundQuery groundHeight;
     float deltaSeconds = 0.0f;
-    // Shown rain and snow strength, 0-1; at most one is non-zero outside a short cross-fade.
+    // Shown rain, snow and ash strength, 0-1; at most one is non-zero outside a short cross-fade.
     float rainLevel = 0.0f;
     float snowLevel = 0.0f;
+    float ashLevel = 0.0f;
+    // How snow and ash flakes look and fall (weather.yml flakes).
+    WeatherFlakeLook snowLook = {};
+    WeatherFlakeLook ashLook = {};
     float windX = 0.0f;
     float windY = 0.0f;
     // Light on rain and snow (day/night, sky tint, lightning flash), multiplying their own colours.
@@ -34,7 +39,7 @@ struct WeatherDrawFrame
     WeatherQuality quality = WeatherQuality::High;
 };
 
-// GPU rain and snow: static buffers of seeded drops that wrap through camera-centred boxes, plus a distant rain
+// GPU rain, snow and ash: static buffers of seeded drops that wrap through camera-centred boxes, plus a distant rain
 // curtain. The CPU only advances a fall offset per layer; no particles are simulated.
 class WeatherRenderer
 {
@@ -67,6 +72,8 @@ private:
     void advanceLayer(Layer &layer, const std::array<float, 3> &velocity, const std::array<float, 3> &box,
         float deltaSeconds) const;
     void submitDrops(uint16_t viewId, bgfx::ProgramHandle program, uint32_t count, uint64_t state) const;
+    void submitFlakes(uint16_t viewId, const WeatherDrawFrame &frame, const WeatherFlakeLook &look, float level,
+        const Layer &nearLayer, const Layer &farLayer, uint32_t nearCount, uint32_t farCount, uint64_t state);
 
     bgfx::VertexBufferHandle m_dropVertices = BGFX_INVALID_HANDLE;
     bgfx::IndexBufferHandle m_dropIndices = BGFX_INVALID_HANDLE;
@@ -81,6 +88,8 @@ private:
     Layer m_farRain;
     Layer m_nearSnow;
     Layer m_farSnow;
+    Layer m_nearAsh;
+    Layer m_farAsh;
     float m_timeSeconds = 0.0f;
     float m_curtainPhase = 0.0f;
     bool m_hasCamera = false;

@@ -864,6 +864,7 @@ void ActorBehaviorRuntime::reset()
     m_scannedActorCount = 0;
     m_projectileWards.clear();
     m_wardDisplays.clear();
+    m_tacticAims.clear();
 }
 
 void ActorBehaviorRuntime::step(IGameplayWorldRuntime &world, float deltaSeconds)
@@ -1049,6 +1050,11 @@ void ActorBehaviorRuntime::applyFrameResult(IGameplayWorldRuntime &world, const 
 
 void ActorBehaviorRuntime::applyAiFacts(ActorAiFrameFacts &facts)
 {
+    if (m_pCatalog != nullptr && m_pCatalog->hasTactics())
+    {
+        applyTactics(facts);
+    }
+
     if (m_instances.empty())
     {
         return;
@@ -1107,6 +1113,54 @@ void ActorBehaviorRuntime::applyAiFacts(ActorAiFrameFacts &facts)
     }
 }
 
+void ActorBehaviorRuntime::applyTactics(ActorAiFrameFacts &facts)
+{
+    const auto applyToActor =
+        [this](ActorAiFacts &actor, bool active)
+        {
+            const ActorTacticsFacts *pTactics = m_pCatalog->tacticsForMonster(actor.identity.monsterId);
+
+            if (pTactics == nullptr)
+            {
+                return;
+            }
+
+            actor.tactics = *pTactics;
+
+            // Only an actor the map placed `immobile` holds a post; the same monster placed free wanders as usual.
+            // A post may leave its spot to fight unless its monster is Stationary (no wander radius).
+            if (!actor.movement.placedImmobile)
+            {
+                actor.tactics.holdPost = false;
+                actor.tactics.postLeashRadius = 0.0f;
+            }
+            else if (actor.tactics.holdPost && actor.movement.wanderRadius > 0.0f)
+            {
+                actor.movement.movementAllowed = true;
+            }
+
+            if (active && actor.target.currentKind != ActorAiTargetKind::None && actor.target.currentCanSense
+                && !actor.status.dead)
+            {
+                m_tacticAims[actor.actorIndex] = TacticAim{actor.actorId, actor.target.currentPosition};
+            }
+            else
+            {
+                m_tacticAims.erase(actor.actorIndex);
+            }
+        };
+
+    for (ActorAiFacts &actor : facts.activeActors)
+    {
+        applyToActor(actor, true);
+    }
+
+    for (ActorAiFacts &actor : facts.backgroundActors)
+    {
+        applyToActor(actor, false);
+    }
+}
+
 void ActorBehaviorRuntime::observeAiResult(const ActorAiFrameResult &result)
 {
     for (const ActorProjectileRequest &request : result.projectileRequests)
@@ -1123,6 +1177,19 @@ void ActorBehaviorRuntime::observeAiResult(const ActorAiFrameResult &result)
 
 void ActorBehaviorRuntime::applyPresentation(size_t actorIndex, GameplayRuntimeActorState &state) const
 {
+    if (!m_tacticAims.empty())
+    {
+        const auto aim = m_tacticAims.find(actorIndex);
+
+        if (aim != m_tacticAims.end() && aim->second.actorId == state.actorId && !state.isDead)
+        {
+            state.hasAimTarget = true;
+            state.aimTargetX = aim->second.point.x;
+            state.aimTargetY = aim->second.point.y;
+            state.aimTargetZ = aim->second.point.z;
+        }
+    }
+
     const auto iterator = m_instances.find(actorIndex);
 
     if (iterator == m_instances.end() || iterator->second.state.actorId != state.actorId)
@@ -1262,6 +1329,7 @@ void ActorBehaviorRuntime::restoreSnapshot(const Snapshot &snapshot)
     m_instances.clear();
     m_projectileWards.clear();
     m_wardDisplays.clear();
+    m_tacticAims.clear();
     m_scannedActorCount = snapshot.scannedActorCount;
 
     for (const ActorBehaviorInstanceState &state : snapshot.instances)

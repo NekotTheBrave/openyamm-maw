@@ -14,6 +14,11 @@
 
 namespace OpenYAMM::Game
 {
+// Integer vertex rounding tilts many vertical in-between facets slightly upward (one unit over a 256-unit cave wall
+// gives 0.004). Facets steeper than about 84 degrees have almost no floor footprint, so they are walls: they neither
+// define floor height nor act as steep floors.
+inline constexpr float IndoorMinimumSteepFloorNormalZ = 0.1f;
+
 enum class IndoorProjectionAxis : uint8_t
 {
     DropX = 0,

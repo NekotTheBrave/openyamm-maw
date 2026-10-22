@@ -94,6 +94,7 @@ function(openyamm_compile_bgfx_shader_for_target sourcePath shaderType outputNam
         DEPENDS
             "${sourcePath}"
             "${CMAKE_SOURCE_DIR}/game/shaders/varying.def.sc"
+            "${CMAKE_SOURCE_DIR}/game/shaders/common.sh"
             "${CMAKE_SOURCE_DIR}/game/shaders/billboard_lit.sh"
             "${CMAKE_SOURCE_DIR}/game/shaders/outdoor_textured_fog.sh"
             "${CMAKE_SOURCE_DIR}/game/shaders/outdoor_terrain_materials.sh"
@@ -111,7 +112,7 @@ function(openyamm_compile_bgfx_shader_for_target sourcePath shaderType outputNam
             "${CMAKE_SOURCE_DIR}/game/shaders/outdoor_lighting.sh"
             "${CMAKE_SOURCE_DIR}/game/shaders/sky_common.sh"
             "${CMAKE_SOURCE_DIR}/game/shaders/weather_wetness.sh"
-            "${OPENYAMM_BGFX_SOURCE_DIR}/examples/common/common.sh"
+            "${OPENYAMM_BGFX_SOURCE_DIR}/examples/common/shaderlib.sh"
             openyamm_shaderc
         VERBATIM
     )
@@ -235,6 +236,14 @@ function(openyamm_configure_bgfx_runtime)
             set(openyammBgfxOpenGlVersion 33)
             set(openyammBgfxOpenGlesVersion 0)
             set(openyammBgfxDebug "$<IF:$<CONFIG:Debug>,1,0>")
+        endif()
+        # Diagnostic builds: bgfx checks every GL call and stops at the first GL error with the call and source line.
+        if (OPENYAMM_BGFX_DEBUG)
+            set(openyammBgfxDebug 1)
+            # A failed check aborts, so the crash report shows the call that failed. Setting a uniform twice before
+            # one draw is legal (the last value wins), so that bookkeeping check stays off.
+            target_compile_definitions(openyamm_bgfx PUBLIC OPENYAMM_BGFX_ABORT_ON_CHECK=1
+                PRIVATE BGFX_CONFIG_DEBUG_UNIFORM=0)
         endif()
 
         target_compile_definitions(openyamm_bgfx

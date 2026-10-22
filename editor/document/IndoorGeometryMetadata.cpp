@@ -512,6 +512,11 @@ std::string serializeIndoorGeometryMetadata(const EditorIndoorGeometryMetadata &
             emitter << YAML::EndMap;
         }
 
+        if (surface.cogNumber != 0)
+        {
+            emitter << YAML::Key << "cog_number" << YAML::Value << surface.cogNumber;
+        }
+
         if (surface.runtimeFaceIndex)
         {
             emitter << YAML::Key << "runtime_face_index" << YAML::Value << *surface.runtimeFaceIndex;
@@ -658,6 +663,11 @@ std::string serializeIndoorGeometryMetadata(const EditorIndoorGeometryMetadata &
         emitter << YAML::Key << "event_id_primary" << YAML::Value << entity.eventIdPrimary;
         emitter << YAML::Key << "event_id_secondary" << YAML::Value << entity.eventIdSecondary;
 
+        if (entity.facing != 0)
+        {
+            emitter << YAML::Key << "facing" << YAML::Value << entity.facing;
+        }
+
         if (entity.runtimeEntityIndex)
         {
             emitter << YAML::Key << "runtime_entity_index" << YAML::Value << *entity.runtimeEntityIndex;
@@ -679,6 +689,11 @@ std::string serializeIndoorGeometryMetadata(const EditorIndoorGeometryMetadata &
         emitter << YAML::Key << "radius" << YAML::Value << light.radius;
         emitter << YAML::Key << "brightness" << YAML::Value << light.brightness;
         emitter << YAML::Key << "type" << YAML::Value << light.type;
+
+        if (light.group != 0)
+        {
+            emitter << YAML::Key << "group" << YAML::Value << light.group;
+        }
 
         if (light.runtimeLightIndex)
         {
@@ -1003,6 +1018,20 @@ std::optional<EditorIndoorGeometryMetadata> loadIndoorGeometryMetadataFromText(
                 surface.trigger = trigger;
             }
 
+            if (const YAML::Node cogNode = surfaceNode["cog_number"])
+            {
+                try
+                {
+                    surface.cogNumber = cogNode.as<uint16_t>();
+                }
+                catch (const std::exception &exception)
+                {
+                    errorMessage = std::string("invalid indoor geometry metadata field 'cog_number': ")
+                        + exception.what();
+                    return std::nullopt;
+                }
+            }
+
             metadata.surfaces.push_back(std::move(surface));
         }
     }
@@ -1131,6 +1160,19 @@ std::optional<EditorIndoorGeometryMetadata> loadIndoorGeometryMetadataFromText(
                 return std::nullopt;
             }
 
+            if (const YAML::Node facingNode = entityNode["facing"])
+            {
+                try
+                {
+                    entity.facing = facingNode.as<int>();
+                }
+                catch (const std::exception &exception)
+                {
+                    errorMessage = std::string("invalid indoor geometry metadata field 'facing': ") + exception.what();
+                    return std::nullopt;
+                }
+            }
+
             metadata.entities.push_back(std::move(entity));
         }
     }
@@ -1166,6 +1208,19 @@ std::optional<EditorIndoorGeometryMetadata> loadIndoorGeometryMetadataFromText(
                 || !readOptionalSizeNode(lightNode, "runtime_light_index", light.runtimeLightIndex, errorMessage))
             {
                 return std::nullopt;
+            }
+
+            if (const YAML::Node groupNode = lightNode["group"])
+            {
+                try
+                {
+                    light.group = groupNode.as<int32_t>();
+                }
+                catch (const std::exception &exception)
+                {
+                    errorMessage = std::string("invalid indoor geometry metadata field 'group': ") + exception.what();
+                    return std::nullopt;
+                }
             }
 
             metadata.lights.push_back(std::move(light));

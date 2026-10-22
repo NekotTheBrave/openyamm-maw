@@ -24,7 +24,7 @@ from mathutils import Matrix, Vector
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from bake_geometry import face_basis, pack_lightmap_charts, rle_bgra
-from bake_assets import bake_texture_paths, dependency_file
+from bake_assets import bake_texture_paths, dependency_file, source_roots, texture_logical_scale
 
 sys.path.insert(0, str(ROOT / 'util'))
 from map_export import parse_odm_file
@@ -76,7 +76,13 @@ def casting_faces_only(obj):
     return len(obj.data.polygons) > 0
 
 
-def decoration_model_casters(game_binary, profile, out, dependency):
+def terrain_tile_table_name(world):
+    """The engine's terrain tile table for a world (terrainTileDataFileNameForWorld): MM6 and MM7 have their own
+    merged tables; MM8 and every other world (Hesper borrows MM8's tiles) use the MM8 table."""
+    return {'mm6': 'terrain_tile_data_3.txt', 'mm7': 'terrain_tile_data_2.txt'}.get(world, 'terrain_tile_data.txt')
+
+
+def decoration_model_casters(game_binary, profile, out, dependency, assets, extra_sources):
     """Shadow-only copies of every 3D decoration placement; returns the objects and the decoration entity indices.
 
     The placements come from the game itself (openyamm --headless-export-decoration-models), so heights, height
@@ -85,12 +91,13 @@ def decoration_model_casters(game_binary, profile, out, dependency):
     Faces of blended or camera-facing materials (flame cards, foam) are removed first: the runtime shadows skip them
     too, since a camera-facing card has no fixed shadow and a flipbook card would cast its whole atlas."""
     export = out / 'decoration_models.json'
-    subprocess.check_call([str(game_binary), '--world', profile['world'], '--headless-export-decoration-models',
-                           profile['map'], str(export)], cwd=ROOT, stdout=subprocess.DEVNULL)
+    subprocess.check_call([str(game_binary), '--asset-root', str(assets), '--world', profile['world'],
+                           '--headless-export-decoration-models', profile['map'], str(export)], cwd=ROOT,
+                          stdout=subprocess.DEVNULL)
     placements = json.loads(export.read_text())
     # The engine manifest binds every world's decorations; a world may extend it with its own.
-    dependency(ROOT / 'assets_dev/engine/models/decorations.yml')
-    world_manifest = ROOT / 'assets_dev/worlds' / profile['world'] / 'models/decorations.yml'
+    dependency(assets / 'engine/models/decorations.yml')
+    world_manifest = assets / 'worlds' / profile['world'] / 'models/decorations.yml'
     if world_manifest.exists():
         dependency(world_manifest)
     to_bake = Matrix.Scale(1 / 128, 4)
@@ -99,7 +106,7 @@ def decoration_model_casters(game_binary, profile, out, dependency):
         if not model['placements']:
             continue
         # The model's source (assets_source): a cooked runtime copy references .oytex textures Blender cannot read.
-        path = dependency_file(ROOT / 'assets_dev', model['model'])
+        path = dependency_file(assets, model['model'], extra_sources)
         dependency(path)
         before = set(bpy.data.objects)
         bpy.ops.import_scene.gltf(filepath=str(path))
@@ -139,15 +146,18 @@ def main():
                         default=ROOT / ('build/game/openyamm.exe' if os.name == 'nt' else 'build/game/openyamm'),
                         help='OpenYAMM build that exports the 3D decoration placements')
     parser.add_argument('--preview-only', action='store_true')
-    # MAW port: a mod's own maps (mods/maw/assets) are baked from there; textures stay the game's.
-    parser.add_argument('--source-root', type=Path, default=ROOT / 'assets_dev',
-                        help='Asset tree that holds worlds/<world>/maps/<map> (a mod\'s assets folder)')
+    parser.add_argument('--assets', type=Path, default=ROOT / 'assets_dev',
+                        help='Runtime asset tree holding the map (default assets_dev; a staged world: its stage)')
+    parser.add_argument('--sources', type=Path, action='append', default=[],
+                        help='Extra source art root beside the sibling assets_source (a stage\'s gathered sources)')
     migration = parser.add_mutually_exclusive_group()
     migration.add_argument('--model-probes-only', type=Path,
                         help='Extend an installed v3 bake with model lighting; retain every surface and sprite sample')
     migration.add_argument('--sun-direct-only', type=Path,
                            help='Extend an installed v4 bake with direct-only surface pages for moving mesh shadows')
     args = parser.parse_args(sys.argv[sys.argv.index('--') + 1:])
+    assets = args.assets.resolve()
+    extra_sources = [path.resolve() for path in args.sources]
     profile = json.loads(args.profile.read_text())
     retained = None
     retained_path = args.model_probes_only or args.sun_direct_only
@@ -170,8 +180,7 @@ def main():
     if not isinstance(profile.get('decoration_shadows', False), bool):
         raise ValueError('decoration_shadows must be a boolean')
     world, map_name = profile['world'], profile['map']
-    source_root = args.source_root.resolve()
-    source = source_root / 'worlds' / world / 'maps' / map_name
+    source = assets / 'worlds' / world / 'maps' / map_name
     native = parse_odm_file(source)['payload']
     # Read the same scene metadata as runtime; Blender does not bundle PyYAML.
     metadata = json.loads(subprocess.check_output([
@@ -195,8 +204,7 @@ def main():
     deps = {}
     def dependency(path):
         # Recorded relative to the runtime tree; source art in assets_source keeps the same relative path.
-        base = (ROOT / 'assets_source' if path.is_relative_to(ROOT / 'assets_source')
-                else source_root if path.is_relative_to(source_root) else ROOT / 'assets_dev')
+        base = next((root for root in source_roots(assets, extra_sources) if path.is_relative_to(root)), assets)
         rel = path.relative_to(base).as_posix()  # the runtime reads forward slashes (Windows too)
         deps[rel] = fnv(path.read_bytes())
     dependency(source)
@@ -217,7 +225,7 @@ def main():
         recipe_data[stage+'_producer_sha256'] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
         recipe_data[stage+'_backend'] = bpy.app.version_string
     (out / recipe.name).write_text(json.dumps(recipe_data, sort_keys=True, indent=2)+'\n')
-    deps[recipe.relative_to(source_root).as_posix()] = fnv((out / recipe.name).read_bytes())
+    deps[recipe.relative_to(assets).as_posix()] = fnv((out / recipe.name).read_bytes())
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete(use_global=False)
     scene = bpy.context.scene
@@ -239,7 +247,7 @@ def main():
     toward_sun = Vector((math.cos(e)*math.cos(a), math.cos(e)*math.sin(a), math.sin(e)))
     sun.rotation_euler = (-toward_sun).to_track_quat('-Z', 'Y').to_euler()
     materials = {}
-    texture_paths, terrain_paths = bake_texture_paths(ROOT / 'assets_dev', world)
+    texture_paths, terrain_paths = bake_texture_paths(assets, world, extra_sources)
     def material(name, terrain=False):
         key = name.lower() + ('_terrain' if terrain else '')
         if key in materials:
@@ -276,7 +284,8 @@ def main():
         mat.node_tree.links.new(uv.outputs['UV'], tex.inputs['Vector'])
         mat.node_tree.links.new(tex.outputs['Color'], bsdf.inputs['Base Color'])
         mat.node_tree.links.new(tex.outputs['Alpha'], bsdf.inputs['Alpha'])
-        materials[key] = (mat, tuple(image.size))
+        scale = texture_logical_scale(path)
+        materials[key] = (mat, (image.size[0] // scale, image.size[1] // scale))
         return materials[key]
 
     page_size = profile['building_page_size']
@@ -355,9 +364,7 @@ def main():
         return obj, dimensions
 
     # Exact native diagonal and world coordinates. One world-space terrain atlas in the first proof.
-    table_name = {'mm6': 'terrain_tile_data_3.txt', 'mm7': 'terrain_tile_data_2.txt',
-                  'mm8': 'terrain_tile_data.txt'}[world]
-    table = ROOT / 'assets_dev/engine/data_tables' / table_name
+    table = assets / 'engine/data_tables' / terrain_tile_table_name(world)
     dependency(table)
     descriptors = list(csv.DictReader(table.open(), delimiter='\t'))
     entries = []
@@ -387,11 +394,13 @@ def main():
         effective_profile.write_text(json.dumps(profile, indent=2) + '\n')
         decoration_report = json.loads(subprocess.check_output([
             YAML_PYTHON, str(Path(__file__).with_name('bake_decorations.py')),
-            '--profile', str(effective_profile), '--output', str(out / 'decoration_masks')], text=True))
+            '--profile', str(effective_profile), '--output', str(out / 'decoration_masks'), '--assets', str(assets)],
+            text=True))
         for path in decoration_report['dependencies']:
-            dependency(ROOT / 'assets_dev' / path)
+            dependency(assets / path)
         # Decorations the game draws as 3D models cast with their meshes, placed exactly as the game places them.
-        model_casters, modelled = decoration_model_casters(args.game_binary, profile, out, dependency)
+        model_casters, modelled = decoration_model_casters(args.game_binary, profile, out, dependency, assets,
+                                                           extra_sources)
         decoration_report['cards'] = [card for card in decoration_report['cards'] if card['index'] not in modelled]
         decoration_report['model_casters'] = {'decorations': len(modelled), 'objects': len(model_casters)}
         card_materials = {}
@@ -587,15 +596,14 @@ def main():
             cursor += length
             if name.startswith('worlds/') and '/events/maps/' in name and name.endswith('.lua'):
                 continue
-            path = dependency_file(ROOT / 'assets_dev', name)
+            path = dependency_file(assets, name, extra_sources)
             if fnv(path.read_bytes()) != digest:
                 raise ValueError('Stale installed bake dependency: ' + name)
             old_dependencies[name] = digest
         if cursor != len(retained):
             raise ValueError('Invalid installed extension length')
         # The atlas bake keeps its provenance. Only the recipe hash and model probes change.
-        old_dependencies[recipe.relative_to(source_root).as_posix()] = deps[
-            recipe.relative_to(source_root).as_posix()]
+        old_dependencies[recipe.relative_to(assets).as_posix()] = deps[recipe.relative_to(assets).as_posix()]
         deps = old_dependencies
     faces = b''.join(struct.pack('<QIIHHI', (r['model']<<32)|r['face'], r['model'],r['face'],r['page'],
                                 int(r['page'] != 65535), sum(len(q['uvs']) for q in records[:i]))

@@ -671,13 +671,15 @@ bool IndoorSceneRuntime::advanceSimulation(float deltaMilliseconds)
     if (activation)
     {
         stateChanged = true;
-        if (!activation->pTransition->askPlayer)
-        {
-            applyTravelDaysSideEffects(
+        if (!activation->pTransition->askPlayer
+            && applyTravelDaysSideEffects(
                 m_partyRuntime.party(),
                 &m_worldRuntime,
                 activation->pTransition->travelDays,
-                std::max(0, activation->pTransition->travelDays));
+                std::max(0, activation->pTransition->travelDays))
+            && m_eventRuntimeState->pendingMapMove)
+        {
+            m_eventRuntimeState->pendingMapMove->travelTimeApplied = true;
         }
     }
 

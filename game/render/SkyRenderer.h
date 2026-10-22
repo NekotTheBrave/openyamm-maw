@@ -39,6 +39,15 @@ struct SkySurroundings
 // Packs the shared sky-fog uniform; a null frame gives the Classic (flat fog) values.
 SkyFogUniformValues packSkyFogUniform(const SkyFrameState *pFrame, const SkySurroundings &surroundings = {});
 
+constexpr uint16_t SkyOrbitUniformVectors = 4 + MaxSkyOrbitLights;
+// u_skyOrbit values for fs_sky's orbit ring and its lights; all zero (nothing drawn) while the ring is off.
+using SkyOrbitUniformValues = std::array<std::array<float, 4>, SkyOrbitUniformVectors>;
+
+// Packs the orbit ring: [0] moon angle round the ring, ring height (the moon path's constant y);
+// [1] colour, opacity; [2] half width (radians), fragments, light count, light radius; [3] light colour,
+// brightness; [4 + i] light i's direction.
+SkyOrbitUniformValues packSkyOrbitUniform(const SkyFrameState &frame);
+
 // Linear sky-reflection colour for 3D models (1 = Classic noon), from the sky's zenith and horizon.
 std::array<float, 3> skyEnvironmentTint(const SkyFrameState &frame);
 
@@ -96,6 +105,7 @@ private:
     bgfx::UniformHandle m_rayUniform = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_paramsUniform = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle m_cloudsUniform = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle m_orbitUniform = BGFX_INVALID_HANDLE;
     std::array<bgfx::UniformHandle, 7> m_samplers;
     bgfx::TextureHandle m_emptyTexture = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle m_moonFallbackTexture = BGFX_INVALID_HANDLE;

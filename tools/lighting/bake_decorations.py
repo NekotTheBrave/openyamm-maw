@@ -80,8 +80,8 @@ def intersect_states(states):
     return result, width, height
 
 
-def export_cards(profile, output):
-    assets = ROOT / 'assets_dev'
+def export_cards(profile, output, assets=None):
+    assets = assets or ROOT / 'assets_dev'
     world = assets / 'worlds' / profile['world']
     source = world / 'maps' / profile['map']
     dependencies = set()
@@ -162,6 +162,10 @@ def export_cards(profile, output):
         if reason:
             return None, reason
         frame = group['frames'][0]
+        if 'palette_id' not in frame and frame['texture_name'].lower() == 'pending':
+            # A staged world's 3D decoration (the Hesper stage): one placeholder frame and no art. Its model casts
+            # through the model casters instead.
+            return None, 'placeholder_sprite'
         frame_flags = frame['flags']
         if 'Fidget' in frame_flags:
             raise ValueError('Unsupported decoration fidget texture selection: ' + name)
@@ -254,6 +258,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--profile', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--assets', type=Path, default=ROOT / 'assets_dev', help='Runtime asset tree holding the map')
     args = parser.parse_args()
-    result = export_cards(json.loads(args.profile.read_text()), args.output)
+    result = export_cards(json.loads(args.profile.read_text()), args.output, args.assets.resolve())
     print(json.dumps(result))

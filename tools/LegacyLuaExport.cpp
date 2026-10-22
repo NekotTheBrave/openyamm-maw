@@ -4,6 +4,7 @@
 #include "game/tables/PortraitEnums.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdlib>
 #include <cstdint>
@@ -2325,9 +2326,22 @@ std::vector<LegacyLuaEvent> decodeEvents(
         LegacyLuaEvent decodedEvent = {};
         decodedEvent.eventId = event.eventId;
         decodedEvent.instructions.reserve(event.instructions.size());
+        std::array<bool, 256> stepHasAction = {};
 
         for (const EvtInstruction &instruction : event.instructions)
         {
+            // The original interpreter runs only the first record it finds for a step, so a later record that
+            // repeats the step number (OUTC3 event 68, OUT06 event 303) is unreachable.
+            if (!isIgnoredSourceNormalOpcode(instruction.opcode))
+            {
+                if (stepHasAction[instruction.step])
+                {
+                    continue;
+                }
+
+                stepHasAction[instruction.step] = true;
+            }
+
             decodedEvent.instructions.push_back(
                 decodeInstruction(event.eventId, instruction, strTable, lookups, version));
         }

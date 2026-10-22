@@ -448,6 +448,11 @@ TEST_CASE("Normal-sprite projectile families do not get particle-only recipes")
         {static_cast<int>(SpellId::PrismaticLight), "Prismatic Light", "spell84", ProjectileRecipe::PrismaticLight},
         {static_cast<int>(SpellId::ShrinkingRay), "Shrinking Ray", "spell92", ProjectileRecipe::ShrinkingRay},
         {static_cast<int>(SpellId::Lifedrain), "LifeDrain", "spell107", ProjectileRecipe::Lifedrain},
+        // Chest traps share the monster missiles' sprites.
+        {0, "FireTrap", "spell103", ProjectileRecipe::FireTrap},
+        {0, "ElecTrap", "spell101", ProjectileRecipe::ElecTrap},
+        {0, "ColdTrap", "spell104", ProjectileRecipe::ColdTrap},
+        {0, "PoisonTrap", "spell105", ProjectileRecipe::PoisonTrap},
     };
 
     for (const Fixture &fixture : fixtures)

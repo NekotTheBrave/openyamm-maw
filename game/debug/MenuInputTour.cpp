@@ -21,10 +21,26 @@ SDL_Window *tourWindow()
     SDL_free(ppWindows);
     return pWindow;
 }
+
+// Gameplay actions resolve from the real keyboard before the tour runs, so scripted keys apply their bindings here.
+void holdActionsBoundToKey(GameplayInputFrame &input, const std::array<InputBinding, KeyboardActionCount> &bindings,
+                           SDL_Scancode code, bool pressed)
+{
+    for (size_t actionIndex = 0; actionIndex < bindings.size(); ++actionIndex)
+    {
+        if (bindings[actionIndex].kind == InputBindingKind::Keyboard && bindings[actionIndex].scancode == code)
+        {
+            input.actions[actionIndex].held = true;
+            input.actions[actionIndex].pressed = input.actions[actionIndex].pressed || pressed;
+        }
+    }
+}
 } // namespace
 
 void MenuInputTour::update(const std::string &path, GameplayInputFrame &input, IScreen *pScreen,
-                           ScreenshotCaptureService &captures)
+                           ScreenshotCaptureService &captures,
+                           const std::array<InputBinding, KeyboardActionCount> &bindings,
+                           const ConsoleLineRunner &runConsoleLine)
 {
     if (path.empty() ||
         (m_loaded && m_index == m_steps.size() && !m_release && !m_exit && m_releaseKey == SDL_SCANCODE_UNKNOWN))
@@ -81,7 +97,8 @@ void MenuInputTour::update(const std::string &path, GameplayInputFrame &input, I
                 step.seconds = value.as<float>();
             }
             else if (kind == "key" || kind == "key_down" || kind == "key_up" || kind == "text" || kind == "capture" ||
-                     kind == "expect" || kind == "action" || kind == "action_down" || kind == "action_up")
+                     kind == "expect" || kind == "action" || kind == "action_down" || kind == "action_up" ||
+                     kind == "console")
             {
                 step.text = value.as<std::string>();
             }
@@ -102,6 +119,11 @@ void MenuInputTour::update(const std::string &path, GameplayInputFrame &input, I
     for (size_t key = 0; key < m_heldKeys.size(); ++key)
     {
         input.keyboardHeld[key] = input.keyboardHeld[key] || m_heldKeys[key];
+
+        if (m_heldKeys[key])
+        {
+            holdActionsBoundToKey(input, bindings, static_cast<SDL_Scancode>(key), false);
+        }
     }
     for (size_t actionIndex = 0; actionIndex < m_heldActions.size(); ++actionIndex)
     {
@@ -187,6 +209,10 @@ void MenuInputTour::update(const std::string &path, GameplayInputFrame &input, I
         }
         input.actions[actionIndex] = {down, down, !down};
     }
+    else if (step.kind == "console")
+    {
+        runConsoleLine(step.text);
+    }
     else if (step.kind == "wheel")
     {
         SDL_Event event = {};
@@ -245,6 +271,10 @@ void MenuInputTour::update(const std::string &path, GameplayInputFrame &input, I
             const bool down = step.kind != "key_up";
             input.keyboardHeld[code] = down;
             input.keyboardPressCounts[code] = down ? 1 : 0;
+            if (down)
+            {
+                holdActionsBoundToKey(input, bindings, code, true);
+            }
             m_heldKeys[code] = step.kind == "key_down";
             if (step.kind == "key")
             {

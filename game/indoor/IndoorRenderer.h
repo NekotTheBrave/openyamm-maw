@@ -128,6 +128,10 @@ public:
     bool isWaterSupportFace(size_t faceIndex) const;
     WorldFxSystem &worldFxSystem();
     const WorldFxSystem &worldFxSystem() const;
+    // Sprite frames of a monster the map did not preload (a summon by id), into the renderer's actor frames, which the
+    // runtime and the actor models share.
+    bool ensureMonsterVisualResources(int16_t monsterId);
+    const SpriteFrameTable *actorSpriteFrameTable() const;
     Engine::ModelRenderer &modelRenderer() { return m_modelRenderer; }
     EffectRenderer &effectRenderer() { return m_effectRenderer; }
     const EffectRenderer::Diagnostics &effectRenderDiagnostics() const;
@@ -345,6 +349,8 @@ private:
         uint16_t objectSpriteId = 0;
         int32_t spellId = 0;
         bool hasContainingItem = false;
+        // The item an object carries (0 for none).
+        uint32_t containedItemId = 0;
         uint32_t doorAttributes = 0;
         uint32_t doorId = 0;
         uint16_t doorState = 0;

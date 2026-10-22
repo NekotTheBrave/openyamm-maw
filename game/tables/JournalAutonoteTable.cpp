@@ -9,8 +9,6 @@ namespace OpenYAMM::Game
 {
 namespace
 {
-constexpr uint32_t AutoNoteVariableTag = 0x00E1u;
-
 std::string getCell(const std::vector<std::string> &row, size_t index)
 {
     return index < row.size() ? row[index] : "";
@@ -69,7 +67,7 @@ bool JournalAutonoteTable::loadFromRows(const std::vector<std::vector<std::strin
         }
 
         JournalAutonoteEntry entry = {};
-        entry.noteBit = (static_cast<uint32_t>(parsedId) << 16) | AutoNoteVariableTag;
+        entry.id = static_cast<uint32_t>(parsedId);
         entry.text = getCell(row, 1);
         entry.category = parseCategory(getCell(row, 2));
 
@@ -86,7 +84,7 @@ bool JournalAutonoteTable::loadFromRows(const std::vector<std::vector<std::strin
         m_entries.end(),
         [](const JournalAutonoteEntry &left, const JournalAutonoteEntry &right)
         {
-            return left.noteBit < right.noteBit;
+            return left.id < right.id;
         });
 
     return !m_entries.empty();

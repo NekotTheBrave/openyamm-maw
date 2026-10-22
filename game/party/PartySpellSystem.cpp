@@ -1,10 +1,13 @@
 #include "game/party/PartySpellSystem.h"
 
+#include "game/gameplay/CorpseLootRuntime.h"
 #include "game/gameplay/GameMechanics.h"
+#include "game/gameplay/PartyHostileAlert.h"
 #include "game/items/ItemEnchantRuntime.h"
 #include "game/items/ItemEnchantTables.h"
 #include "game/items/InventoryItemMixingRuntime.h"
 #include "game/mod/ModHooks.h"
+#include "game/items/ItemRuntime.h"
 #include "game/party/LloydsBeaconRuntime.h"
 #include "game/party/SpellSchool.h"
 #include "game/party/SpellIds.h"
@@ -151,26 +154,6 @@ const ItemDefinition *resolveTargetItemDefinition(
     return nullptr;
 }
 
-uint16_t findSpecialEnchantId(const SpecialItemEnchantTable *pTable, SpecialItemEnchantKind kind)
-{
-    if (pTable == nullptr)
-    {
-        return 0;
-    }
-
-    const std::vector<SpecialItemEnchantEntry> &entries = pTable->entries();
-
-    for (size_t index = 0; index < entries.size(); ++index)
-    {
-        if (entries[index].kind == kind)
-        {
-            return static_cast<uint16_t>(index + 1);
-        }
-    }
-
-    return 0;
-}
-
 bool canApplySpellWeaponEnchant(
     const ItemDefinition &itemDefinition,
     const InventoryItem *pInventoryItem,
@@ -216,25 +199,6 @@ bool canApplyEnchantItemSpell(const ItemDefinition &itemDefinition, const Invent
         && item.standardEnchantId == 0
         && item.standardEnchantPower == 0
         && item.artifactId == 0;
-}
-
-bool hasNearbyHostileActor(const IGameplayWorldRuntime &worldRuntime)
-{
-    for (size_t actorIndex = 0; actorIndex < worldRuntime.mapActorCount(); ++actorIndex)
-    {
-        GameplayRuntimeActorState actor = {};
-
-        if (worldRuntime.actorRuntimeState(actorIndex, actor)
-            && !actor.isDead
-            && !actor.isInvisible
-            && actor.hostileToParty
-            && actor.hasDetectedParty)
-        {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 bool isSummonWispMonsterId(int16_t monsterId)
@@ -390,6 +354,16 @@ bool isActorPointInsideSpellView(
 bool areaSpellAffectsVisibleCreatures(SpellId spellId)
 {
     return spellId == SpellId::Fear
+        || spellId == SpellId::Inferno
+        || spellId == SpellId::PrismaticLight
+        || spellId == SpellId::SoulDrinker;
+}
+
+// OpenEnroth casts these on every creature in sight and spends the mana even when none is there.
+bool areaSpellSucceedsWithoutTargets(SpellId spellId)
+{
+    return spellId == SpellId::TurnUndead
+        || spellId == SpellId::MassFear
         || spellId == SpellId::Inferno
         || spellId == SpellId::PrismaticLight
         || spellId == SpellId::SoulDrinker;
@@ -843,7 +817,7 @@ std::optional<BackendSpellRule> resolveBackendSpellRule(uint32_t spellId, SkillM
         case SpellId::Resurrection:
             return makeBackendSpellRule(spellId, PartySpellCastTargetKind::Character, PartySpellCastEffectKind::CharacterRestore, SkillMastery::Grandmaster, {}, {}, PartyBuffId::TorchLight);
         case SpellId::Telepathy:
-            return makeBackendSpellRule(spellId, PartySpellCastTargetKind::UtilityUi, PartySpellCastEffectKind::UtilityUi, SkillMastery::Normal, {1, 1, 1, 1}, {90, 90, 90, 90}, PartyBuffId::TorchLight);
+            return makeBackendSpellRule(spellId, PartySpellCastTargetKind::Actor, PartySpellCastEffectKind::ActorEffect, SkillMastery::Normal, {1, 1, 1, 1}, {90, 90, 90, 90}, PartyBuffId::TorchLight);
         case SpellId::RemoveFear:
             return makeBackendSpellRule(spellId, PartySpellCastTargetKind::Character, PartySpellCastEffectKind::CharacterRestore, SkillMastery::Normal, {}, {}, PartyBuffId::TorchLight);
         case SpellId::MindResistance:
@@ -1838,7 +1812,7 @@ PartySpellCastResult PartySpellSystem::castSpell(
         if (spellId == SpellId::TownPortal)
         {
             if (skillMastery < SkillMastery::Grandmaster
-                && hasNearbyHostileActor(worldRuntime))
+                && partyHasYellowAlert(worldRuntime))
             {
                 return makeFailureWithRecovery(
                     PartySpellCastStatus::Failed,
@@ -1938,7 +1912,7 @@ PartySpellCastResult PartySpellSystem::castSpell(
 
     if (rule->effectKind == PartySpellCastEffectKind::PartyBuff)
     {
-        if (spellId == SpellId::Invisibility && hasNearbyHostileActor(worldRuntime))
+        if (spellId == SpellId::Invisibility && partyHasYellowAlert(worldRuntime))
         {
             return makeFailureWithRecovery(
                 PartySpellCastStatus::Failed,
@@ -2281,7 +2255,9 @@ PartySpellCastResult PartySpellSystem::castSpell(
                             ? SpecialItemEnchantKind::Flame
                             : SpecialItemEnchantKind::Infernos
                         : SpecialItemEnchantKind::Vampiric;
-                const uint16_t enchantId = findSpecialEnchantId(party.specialItemEnchantTable(), enchantKind);
+                const uint16_t enchantId = party.specialItemEnchantTable() != nullptr
+                    ? party.specialItemEnchantTable()->findId(enchantKind)
+                    : 0;
 
                 if (enchantId == 0)
                 {
@@ -2388,9 +2364,12 @@ PartySpellCastResult PartySpellSystem::castSpell(
                     || enchantCategory == ItemEnchantCategory::Missile;
                 const int qualityThreshold = isWeapon ? 250 : 450;
 
+                // A failed enchantment breaks the item unless it is hardened.
+                const bool canBreak = !ItemRuntime::isHardened(pMutableInventoryItem->hardened, *pTargetItemDefinition);
+
                 if (itemValue < qualityThreshold)
                 {
-                    pMutableInventoryItem->broken = true;
+                    pMutableInventoryItem->broken = canBreak;
                     return makeFailureWithRecovery(
                         PartySpellCastStatus::Failed,
                         rule->targetKind,
@@ -2403,7 +2382,7 @@ PartySpellCastResult PartySpellSystem::castSpell(
 
                 if (roll > successChancePercent)
                 {
-                    pMutableInventoryItem->broken = true;
+                    pMutableInventoryItem->broken = canBreak;
                     return makeFailureWithRecovery(
                         PartySpellCastStatus::Failed,
                         rule->targetKind,
@@ -2677,7 +2656,24 @@ PartySpellCastResult PartySpellSystem::castSpell(
                 SpellFailedText);
         }
 
-        if (request.targetActorIndex)
+        if (request.targetActorIndex && spellId == SpellId::Telepathy)
+        {
+            const std::optional<GameplayCorpseViewState> loot =
+                worldRuntime.revealActorLoot(*request.targetActorIndex);
+
+            if (!loot)
+            {
+                return makeFailureWithRecovery(
+                    PartySpellCastStatus::Failed,
+                    rule->targetKind,
+                    rule->effectKind,
+                    SpellFailedText);
+            }
+
+            result.statusText = telepathyLootStatusText(*loot, party.itemTable());
+            castSucceeded = true;
+        }
+        else if (request.targetActorIndex)
         {
             GameplayActorInspectState targetBefore = {};
             const bool hasDrainTarget = spellId == SpellId::Lifedrain
@@ -2950,6 +2946,8 @@ PartySpellCastResult PartySpellSystem::castSpell(
                 }
             }
 
+            castSucceeded = castSucceeded || areaSpellSucceedsWithoutTargets(spellId);
+
             if (spellId == SpellId::SoulDrinker && castSucceeded)
             {
                 std::vector<size_t> recipientIndices;
@@ -3023,7 +3021,6 @@ PartySpellCastResult PartySpellSystem::castSpell(
             }
             else if (spellId == SpellId::DispelMagic)
             {
-                party.clearDispellableBuffs();
                 castSucceeded = true;
             }
 

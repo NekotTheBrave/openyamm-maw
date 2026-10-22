@@ -2542,6 +2542,7 @@ bool loadBitmapTextureSize(
     int &width,
     int &height)
 {
+    // The size the game measures the face's UVs in: a cooked or scaled texture's native size, not its file's pixels.
     const std::string canonicalName = canonicalBitmapTextureName(bitmapTextureNames, textureName);
 
     if (canonicalName.empty())
@@ -2549,32 +2550,19 @@ bool loadBitmapTextureSize(
         return false;
     }
 
-    std::optional<std::vector<uint8_t>> bitmapBytes =
-        assetFileSystem.readBinaryFile("Data/bitmaps/" + canonicalName + ".png");
-    std::string virtualPath = "Data/bitmaps/" + canonicalName + ".png";
+    Engine::DirectoryAssetPathCache directoryAssetPathsByPath;
+    Engine::AssetPathLookupCache assetPathByKey;
+    const std::optional<std::array<int, 2>> size = Engine::findSurfaceTextureLogicalSize(
+        assetFileSystem, canonicalName, directoryAssetPathsByPath, assetPathByKey);
 
-    if (!bitmapBytes || bitmapBytes->empty())
-    {
-        virtualPath = "Data/bitmaps/" + canonicalName + ".bmp";
-        bitmapBytes = assetFileSystem.readBinaryFile(virtualPath);
-    }
-
-    if (!bitmapBytes || bitmapBytes->empty())
+    if (!size)
     {
         return false;
     }
 
-    const std::optional<Engine::ImagePixelsBgra> image =
-        Engine::decodeImagePixelsBgra(*bitmapBytes, virtualPath);
-
-    if (!image)
-    {
-        return false;
-    }
-
-    width = image->width;
-    height = image->height;
-    return width > 0 && height > 0;
+    width = (*size)[0];
+    height = (*size)[1];
+    return true;
 }
 
 uint8_t classifyImportedPolygonType(

@@ -367,7 +367,6 @@ end)
 
 RegisterEvent(303, nil, function()
     evt.MoveToMap(3000, 17248, 1600, 512, 0, 0, 0, 0)
-    evt.MoveToMap(-14208, -6992, 1344, 1024, 0, 0, 0, 0)
 end)
 
 RegisterEvent(304, nil, function()

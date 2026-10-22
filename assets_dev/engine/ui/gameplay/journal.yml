@@ -471,6 +471,24 @@ elements:
       parser only supports left/center/right, so align_x stays parseable until native justification is added. See
       design/theme.yml body_alignment. Use the 360-logical-wide text block and 28-logical gap to submenu controls
       from reference 2105. Preserve original font/scale, native pagination and tintable Autonote.'
+  - id: JournalNotesSearch
+    anchor: top_left
+    offset_x: 109.333333
+    offset_y: 30
+    width: 339.2
+    height: 20
+    z_index: 25
+    interactive: true
+    text:
+      value: '{search}'
+      font: Lucida
+      color: '#e5dcc7'
+      align_x: left
+      align_y: middle
+      scale: 0.7
+      pad_x: 5
+    notes: 'Notes view only: case-insensitive filter over the selected category; typing goes through managed text
+      input, so Android shows its keyboard.'
   - id: JournalNotesPotionButton
     anchor: top_left
     offset_x: 489.066667

@@ -57,7 +57,8 @@ public:
     bool update(Party *pParty, IGameplayWorldRuntime *pWorldRuntime, float deltaSeconds);
 
     // Movement-stage input spends the movement budget by walking time (one point per 1/128 s held).
-    bool noteMovementInput(GameplayInputFrame &input, float deltaSeconds);
+    // In the classic scheme Left/Right turn the party, which is free in every turn-based stage like the original.
+    bool noteMovementInput(GameplayInputFrame &input, float deltaSeconds, bool classicTurnKeys = false);
     float movementDeltaSecondsForFrame(float fallbackDeltaSeconds) const;
     float consumePendingGameTimeAdvanceMinutes();
     void clearMovementInput(GameplayInputFrame &input) const;
@@ -77,6 +78,13 @@ public:
 private:
     static constexpr size_t MaximumTrackedMembers = 5;
 
+    bool noteMovementInputHeld(
+        GameplayInputFrame &input,
+        float deltaSeconds,
+        bool forwardHeld,
+        bool backwardHeld,
+        bool leftHeld,
+        bool rightHeld);
     void rebuildInitialQueue(Party &party, const IGameplayWorldRuntime *pWorldRuntime);
     void addArrivedCombatants(const Party &party, const IGameplayWorldRuntime *pWorldRuntime);
     void removeInvalidActorEntries(const IGameplayWorldRuntime *pWorldRuntime);

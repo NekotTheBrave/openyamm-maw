@@ -738,6 +738,44 @@ void appendMonsterSpriteFamilies(
     }
 }
 
+// A tier sized from another tier's standing sprite (actors.yml scale_reference) needs that tier's frames too, even when
+// only it is on the map (the MM7 dragon lair places ADragon B and C): the model scale reads both frame scales.
+void appendScaleReferenceSpriteFamilies(
+    std::unordered_set<std::string> &families,
+    std::unordered_set<std::string> &worldPrefixedSpriteNames,
+    const MonsterTable &monsterTable,
+    const ActorModelManifest *pActorModels)
+{
+    if (pActorModels == nullptr)
+    {
+        return;
+    }
+
+    for (const auto &[descriptor, entry] : pActorModels->entries())
+    {
+        const YAML::Node reference = entry.node["scale_reference"];
+        const MonsterEntry *pMonsterEntry = reference ? monsterTable.findByInternalName(descriptor) : nullptr;
+
+        if (pMonsterEntry == nullptr || pMonsterEntry->spriteNames[0].empty())
+        {
+            continue;
+        }
+
+        const std::string &standing = pMonsterEntry->spriteNames[0];
+        const std::optional<std::string> familyRoot = monsterSpriteFamilyRoot(standing);
+        const bool needed = familyRoot ? families.contains(*familyRoot)
+                                       : worldPrefixedSpriteNames.contains(toLowerCopy(standing));
+
+        if (needed)
+        {
+            appendMonsterSpriteFamilies(
+                families,
+                worldPrefixedSpriteNames,
+                monsterTable.findByInternalName(reference.as<std::string>()));
+        }
+    }
+}
+
 void collectSummonMonsterSpriteFamilies(
     std::unordered_set<std::string> &neededMonsterFamilies,
     std::unordered_set<std::string> &neededWorldPrefixedMonsterSpriteNames,
@@ -2140,12 +2178,6 @@ std::optional<DecorationBillboardSet> buildDecorationBillboardSet(
             continue;
         }
         pumpMapLoadProgress(progressPump);
-        if (std::optional<OutdoorBitmapTexture> restored = loadRestoredDecorationTexture(
-                assetFileSystem, textureRequest.textureName, textureRequest.paletteId))
-        {
-            billboardSet.textures.push_back(std::move(*restored));
-            continue;
-        }
         int textureWidth = 0;
         int textureHeight = 0;
         std::optional<std::vector<uint8_t>> pixels =
@@ -2489,7 +2521,6 @@ std::optional<SpriteObjectBillboardSet> buildSpriteObjectBillboardSet(
     const Engine::AssetFileSystem &assetFileSystem,
     const ObjectTable &objectTable,
     const std::optional<MapDeltaData> &mapDeltaData,
-    bool preloadAllObjectSprites,
     const std::string &worldId,
     BitmapLoadCache &bitmapLoadCache,
     const MapLoadProgressPump &progressPump,
@@ -2508,22 +2539,9 @@ std::optional<SpriteObjectBillboardSet> buildSpriteObjectBillboardSet(
 
     billboardSet.spriteFrameTable = *spriteFrameTable;
 
+    // Only placed objects that draw a sprite need one. Items on the ground are models and spell missiles and impacts
+    // are models and effects, so nothing is preloaded for objects the map might spawn later.
     std::vector<BitmapTextureRequest> textureRequests;
-
-    // OE initializes every object descriptor once at startup, not only objects already placed in the current map.
-    // Do the equivalent for items before gameplay, so a dropped item cannot trigger bitmap decoding and GPU upload on
-    // its first rendered frame. Unpickable objects (spell missiles, impacts) never draw their sprite: models and
-    // effects present them.
-    if (preloadAllObjectSprites)
-    {
-        for (const ObjectEntry &objectEntry : objectTable.entries())
-        {
-            if ((objectEntry.flags & ObjectDescUnpickable) == 0)
-            {
-                appendSpriteFrameTextures(textureRequests, billboardSet.spriteFrameTable, objectEntry.spriteId);
-            }
-        }
-    }
 
     if (mapDeltaData)
     {
@@ -3231,6 +3249,12 @@ std::optional<ActorPreviewBillboardSet> buildActorPreviewBillboardSet(
         }
     }
 
+    appendScaleReferenceSpriteFamilies(
+        neededMonsterFamilies,
+        neededWorldPrefixedMonsterSpriteNames,
+        monsterTable,
+        billboardSet.actorModels.get());
+
     const std::optional<SpriteFrameTable> spriteFrameTable =
         loadSpriteFrameTable(
             assetFileSystem,
@@ -3255,7 +3279,10 @@ std::optional<ActorPreviewBillboardSet> buildActorPreviewBillboardSet(
     appendSpawnActors(billboardSet, textureRequests, map, monsterTable, spawns, pOutdoorMapData);
     appendSummonableMonsters(textureRequests, billboardSet, map, monsterTable);
 
-    if (billboardSet.billboards.empty() && textureRequests.empty() && !map.arena)
+    // A map without placed actors keeps the set while its encounter monsters (models now, no sprites) can be summoned:
+    // their models build with the map and their tier scales read its sprite-frame table.
+    if (billboardSet.billboards.empty() && textureRequests.empty() && billboardSet.modelDescriptors.empty()
+        && !map.arena)
     {
         return std::nullopt;
     }
@@ -3332,9 +3359,65 @@ std::optional<ActorPreviewBillboardSet> buildActorPreviewBillboardSet(
     return billboardSet;
 }
 
+// Per raw tile id: whether the tile is a shallow liquid (liquids.yml depth: shallow), waded through rather than deep
+// water. All false when the world has no shallow liquid.
+std::array<bool, 256> shallowLiquidTiles(
+    const std::vector<TerrainTileDescriptor> &tileDescriptors,
+    const LiquidTable *pLiquidTable)
+{
+    std::array<bool, 256> shallow = {};
+
+    if (pLiquidTable == nullptr || !pLiquidTable->hasShallowLiquids())
+    {
+        return shallow;
+    }
+
+    for (size_t tileIndex = 0; tileIndex < shallow.size() && tileIndex < tileDescriptors.size(); ++tileIndex)
+    {
+        const LiquidDefinition *pLiquid =
+            findTerrainLiquidForDescriptor(tileDescriptors[tileIndex], tileDescriptors, pLiquidTable, nullptr);
+        shallow[tileIndex] = pLiquid != nullptr && pLiquid->shallow;
+    }
+
+    return shallow;
+}
+
+// A shallow liquid's cells are never deep water: the party wades through them instead of drowning.
+void applyShallowLiquidTerrainAttributes(
+    const Engine::AssetFileSystem &assetFileSystem,
+    OutdoorMapData &outdoorMapData,
+    const LiquidTable *pLiquidTable)
+{
+    if (pLiquidTable == nullptr || !pLiquidTable->hasShallowLiquids())
+    {
+        return;
+    }
+
+    const std::optional<std::vector<TerrainTileDescriptor>> tileDescriptors =
+        loadTerrainTileDescriptors(assetFileSystem, outdoorMapData);
+
+    if (!tileDescriptors)
+    {
+        return;
+    }
+
+    const std::array<bool, 256> shallow = shallowLiquidTiles(*tileDescriptors, pLiquidTable);
+    const size_t cellCount = std::min(outdoorMapData.attributeMap.size(), outdoorMapData.tileMap.size());
+
+    for (size_t cellIndex = 0; cellIndex < cellCount; ++cellIndex)
+    {
+        if (shallow[outdoorMapData.tileMap[cellIndex]])
+        {
+            outdoorMapData.attributeMap[cellIndex] =
+                static_cast<uint8_t>(outdoorMapData.attributeMap[cellIndex] & ~TerrainTileFlagWater);
+        }
+    }
+}
+
 std::optional<std::vector<uint8_t>> buildOutdoorLandMask(
     const Engine::AssetFileSystem &assetFileSystem,
-    const OutdoorMapData &outdoorMapData
+    const OutdoorMapData &outdoorMapData,
+    const LiquidTable *pLiquidTable
 )
 {
     const std::optional<std::vector<TerrainTileDescriptor>> tileDescriptors =
@@ -3344,6 +3427,8 @@ std::optional<std::vector<uint8_t>> buildOutdoorLandMask(
     {
         return std::nullopt;
     }
+
+    const std::array<bool, 256> shallow = shallowLiquidTiles(*tileDescriptors, pLiquidTable);
 
     std::vector<uint8_t> landMask(
         static_cast<size_t>(OutdoorMapData::TerrainWidth - 1) * static_cast<size_t>(OutdoorMapData::TerrainHeight - 1),
@@ -3358,7 +3443,7 @@ std::optional<std::vector<uint8_t>> buildOutdoorLandMask(
                 static_cast<size_t>(gridY * OutdoorMapData::TerrainWidth + gridX);
             const uint8_t rawTileId = outdoorMapData.tileMap[tileMapIndex];
             const bool isWaterTile =
-                hasTerrainTileFlag((*tileDescriptors)[rawTileId], TerrainTileFlagWater);
+                hasTerrainTileFlag((*tileDescriptors)[rawTileId], TerrainTileFlagWater) && !shallow[rawTileId];
             landMask[static_cast<size_t>(gridY * (OutdoorMapData::TerrainWidth - 1) + gridX)] = isWaterTile ? 0 : 1;
         }
     }
@@ -3451,6 +3536,7 @@ std::optional<OutdoorTerrainTiles> buildOutdoorTerrainTiles(
         tile.transitionOverlay = liquidEdge;
         tile.liquid = pLiquid != nullptr ? pLiquid->kind : LiquidKind::None;
         tile.waterColorAbgr = pLiquid != nullptr ? pLiquid->colorAbgr : 0;
+        tile.liquidReflects = pLiquid == nullptr || pLiquid->reflects;
 
         if (liquidEdge)
         {
@@ -3805,7 +3891,8 @@ bool ensureMonsterSpriteFramesLoaded(
     const Engine::AssetFileSystem &assetFileSystem,
     const MonsterTable &monsterTable,
     int16_t monsterId,
-    SpriteFrameTable &spriteFrameTable)
+    SpriteFrameTable &spriteFrameTable,
+    const ActorModelManifest *pActorModels)
 {
     const MonsterEntry *pMonsterEntry = monsterTable.findById(monsterId);
 
@@ -3814,21 +3901,52 @@ bool ensureMonsterSpriteFramesLoaded(
         return false;
     }
 
-    for (const std::string &spriteName : pMonsterEntry->spriteNames)
+    // The monster, and the tier its model is sized from (actors.yml scale_reference). A family already in the table
+    // (one of its sprites is there) is not loaded again: the table rejects a family loaded twice, which stopped the
+    // load of a second tier sized from the same reference (MM7 Harpy C summoned after Harpy B).
+    std::vector<const MonsterEntry *> monsterEntries = {pMonsterEntry};
+    const ActorModelManifest::Entry *pModel =
+        pActorModels != nullptr ? pActorModels->find(pMonsterEntry->internalName) : nullptr;
+
+    if (pModel != nullptr && pModel->node["scale_reference"])
     {
-        if (!spriteName.empty() && spriteFrameTable.findFrameIndexBySpriteName(spriteName))
-        {
-            return true;
-        }
+        monsterEntries.push_back(monsterTable.findByInternalName(pModel->node["scale_reference"].as<std::string>()));
     }
 
     std::unordered_set<std::string> monsterFamilies;
+    std::unordered_set<std::string> loadedFamilies;
     std::unordered_set<std::string> worldPrefixedMonsterSpriteNames;
-    appendMonsterSpriteFamilies(monsterFamilies, worldPrefixedMonsterSpriteNames, pMonsterEntry);
+
+    for (const MonsterEntry *pEntry : monsterEntries)
+    {
+        if (pEntry == nullptr)
+        {
+            continue;
+        }
+
+        for (const std::string &spriteName : pEntry->spriteNames)
+        {
+            const bool present = spriteFrameTable.findFrameIndexBySpriteName(spriteName).has_value();
+
+            if (const std::optional<std::string> familyRoot = monsterSpriteFamilyRoot(spriteName))
+            {
+                (present ? loadedFamilies : monsterFamilies).insert(*familyRoot);
+            }
+            else if (!present && isWorldPrefixedMonsterSpriteName(spriteName))
+            {
+                worldPrefixedMonsterSpriteNames.insert(toLowerCopy(spriteName));
+            }
+        }
+    }
+
+    for (const std::string &familyRoot : loadedFamilies)
+    {
+        monsterFamilies.erase(familyRoot);
+    }
 
     if (monsterFamilies.empty() && worldPrefixedMonsterSpriteNames.empty())
     {
-        return false;
+        return spriteFrameTable.findFrameIndexBySpriteName(pMonsterEntry->spriteNames[0]).has_value();
     }
 
     if (!appendMonsterSpriteFrameFamilies(
@@ -4237,9 +4355,18 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
     {
         textureFrameTable = loadTextureFrameTable(assetFileSystem, pSharedCache);
         logStageComplete("texture frame table loaded");
-        liquidTable = loadLiquidTable(assetFileSystem, pSharedCache);
-        logStageComplete("liquids loaded");
     }
+
+    // Liquids decide how liquid tiles and faces look and, for every load, which liquid terrain is only waded
+    // through. The map's world sees its own liquids before the shared ones.
+    liquidTable = loadLiquidTable(assetFileSystem, pSharedCache);
+
+    if (liquidTable)
+    {
+        liquidTable = liquidTable->forWorld(map.worldId);
+    }
+
+    logStageComplete("liquids loaded");
 
     const std::string normalizedFileName = toLowerCopy(map.fileName);
 
@@ -4462,6 +4589,9 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
                 std::cerr << "Failed to apply outdoor terrain tile flags for " << map.fileName << '\n';
             }
 
+            applyShallowLiquidTerrainAttributes(
+                assetFileSystem, *assetInfo.outdoorMapData, liquidTable ? &*liquidTable : nullptr);
+
             if (assetInfo.outdoorMapDeltaData)
             {
                 uint32_t mapExtraBitsRaw = 0;
@@ -4492,7 +4622,8 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
 
             if (loadRenderSurfaces)
             {
-                assetInfo.outdoorLandMask = buildOutdoorLandMask(assetFileSystem, *assetInfo.outdoorMapData);
+                assetInfo.outdoorLandMask = buildOutdoorLandMask(
+                    assetFileSystem, *assetInfo.outdoorMapData, liquidTable ? &*liquidTable : nullptr);
                 logStageComplete("outdoor land mask built");
                 assetInfo.outdoorTileColors = buildOutdoorTileColors(assetFileSystem, *assetInfo.outdoorMapData);
                 logStageComplete("outdoor tile colors built");
@@ -4564,7 +4695,6 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
                         assetFileSystem,
                         objectTable,
                         assetInfo.outdoorMapDeltaData,
-                        purpose == MapLoadPurpose::FullGameplay,
                         map.worldId,
                         bitmapLoadCache,
                         progressPump,
@@ -4760,7 +4890,6 @@ std::optional<MapAssetInfo> MapAssetLoader::load(
                         assetFileSystem,
                         objectTable,
                         assetInfo.indoorMapDeltaData,
-                        purpose == MapLoadPurpose::FullGameplay,
                         map.worldId,
                         bitmapLoadCache,
                         progressPump,

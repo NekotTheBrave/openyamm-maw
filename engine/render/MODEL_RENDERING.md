@@ -71,7 +71,12 @@ per creature, which is what instancing (section 4) batches.
   held time on the first corpse: every mesh node with its colour and shadow LOD chains skinned and morphed into
   asset space on identity nodes, with the source's materials and images (so GPU textures are shared). A baked node
   must carry an identity `matrix`, because poses read `node.matrix`, not the TRS.
-- **Loot satchels (default `gameplay.corpses=satchel`).** Once a slain creature's body is at rest (model: its baked
+  An optional third argument, `minimumPixels`, hides the stand-in in colour views wherever its projected bounds are
+  smaller than that on screen. Ground items use 8: in a dump of every item (save ITEMS_1, about 900 items in view to
+  the horizon), it took 1407 draws to 1039 and 300 to about 410 FPS at 1600x900, losing only part of the band of
+  items along the horizon under the fog. Their models have no LOD chain, so the items that remain drawn still cost
+  full detail. Corpses, satchels and projectiles draw at every size.
+- **Loot satchels (always on).** Once a slain creature's body is at rest (model: its baked
   stand-in is shown; sprite: its dead frame), `WorldFxSystem::syncCorpseSatchels` waits 0.1 s, then the body dissolves
   (`ModelInstanceSystem::setCoverage`, screen-door dither on the stand-in and attachment placements) while it sinks by
   its height over 0.9 s (a sprite is only lowered, through `actorCorpseSinkDepth`). The satchel
@@ -86,7 +91,7 @@ per creature, which is what instancing (section 4) batches.
   empty corpse dissolves and leaves nothing. The loot is rolled at death (`ensureMapActorCorpseView`), and for older
   saves on the first actor update after loading. Once the body is gone, hover outlines and picking go through the
   satchel; a sunk empty corpse reports empty bounds and is not picked. Corpses seen already at rest (a loaded map)
-  show their satchels at once. `corpses=keep` leaves the bodies as before.
+  show their satchels at once.
 - **Projectile models (2026-10-16).** `engine/models/projectiles.yml` binds a model to a projectile object id
   (`object_list.txt` ObjectId) with its length in world units and an optional spin about the model's forward, up or
   side axis; the model points along glTF +Z with its origin at the projectile's centre.
@@ -106,6 +111,14 @@ per creature, which is what instancing (section 4) batches.
   (`ActorPortraitView`, ordered before the HUD view), without sun shadows, hover outlines or a change of the world's sky
   environment and LOD state. The copy is released on the first frame after the popup closes; actors without a model
   keep their sprite.
+- **Ambient particle effects.** An actor binding can set `ambient_effect: {id: mm8:fx/wisp_stars, radius: 48}`.
+  The named effect follows the model origin at the tier's relative scale while alive, visible and within 4096 world
+  units. It repeats its emission cycle while the previous cycle's particles drain; death, hiding and removal stop
+  emission, and teleporting clears the active cycle. The radius is the full particle extent in reference-tier world
+  units for portrait framing. Inspect portraits simulate the same effect on their own clock and draw it into their
+  target, separately from world particles. Additive stars sharing a texture batch across creatures in `EffectRenderer`;
+  each star is a camera-facing quad, with an additional glow pass when bloom is active. Wisp's bounded-count, pause,
+  repeat, hidden/death drain and portrait coverage is in `mm8_wisp_actor_models_keep_sizes_effects_and_empty_corpse`.
 
 ```yaml
 - descriptor: Necromancer A                # monster table name
@@ -157,7 +170,10 @@ body origin. The charge colour comes from the projectile the action releases:
 - a missile token through `monster_projectiles.txt` and its object (an Energy robot's blaster);
 - with the enhanced projectile style, the flight light of that monster's projectile binding.
 
-`color` overrides it, and `glow_scale` sizes the glow. A physical missile (arrow, rock) charges only when it has a
+`color` overrides it, and `glow_scale` sizes the glow. A melee attack event may also name `glow` sockets (with
+`glow_scale`; no `release`): the blow charges there during its wind-up and goes out with sparks as it lands. It launches
+nothing, so its glow is drawn only in its own `color`, which the loader requires (`attack_melee: {impact: 0.7,
+glow: [fist], color: [255, 120, 40]}`). A physical missile (arrow, rock) charges only when it has a
 `color`. On a ranged attack, `effects` maps a missile element to a named effect drawn at the glow sockets instead of the
 glow. The sockets are placed in `level_generation/creatures/timing_review/`. Regressions:
 `mm6_cleric_actor_marked_attack_fits_the_action_and_follows_through`,
@@ -364,8 +380,10 @@ A variant needs no new mesh: give it a tier ramp, a scale and attachments, plus 
    the bone axis, the crystal centred on `Socket_Staff_Head`), link its LODs, install it.
 3. Bind it in `actors.yml` (example above). Items of the same model batch across all carriers; a different item
    adds one draw per LOD in view.
-4. Test: `actor spawn 307 1 <x> <y> <z>` (Necromancer A, not placed on any MM6 map) with
-   `debug.actor_models=true debug.immortal=true`. Regression: `mm6_pmn2_actor_models_bind_free_haven_mages` checks
+4. Test: spawn the bound descriptor with `actor spawn <id> 1 <x> <y> <z>` and
+   `debug.actor_models=true debug.immortal=true`. The boss mage demo above (Necromancer A, 307) was unbound on
+   2026-10-21: that descriptor is MM7's own Necromancer, and the tier, artifact staff and `bosses/necro_mage`
+   behaviour are kept for a future boss. Regression: `mm6_pmn2_actor_models_bind_free_haven_mages` checks
    the four tiers of one skin and that every mage carries its staff on the Staff bone.
 
 ## 6. Profiling switches and measured state
@@ -455,6 +473,11 @@ indoor maps have no bake. A binding without `maps` applies to every map of its k
   lists them with positions).
 - `swing: [degrees, seconds]` swings the model about the asset x axis through the top of its bounds,
   `DecorationModelSet::animate` on the CPU, each placement out of step.
+- `turn_in: [degrees, seconds]` makes a switched-to model turn into its pose: when an event's `SetSprite` moves a
+  placed decoration to this binding during play, `DecorationModelSet::animate` turns it from `-degrees` back to its
+  own pose about the asset z axis (its front axis: a valve wheel's axle) through the centre of its bounds, easing in
+  and out. A decoration placed at load, or switched before the first update (a map's load event restoring its state),
+  stands in the pose at once. Hesper's valves use it (`hes_valve_wheel_turned`).
 - `still: true` records that a natively animated sprite is drawn by a still model. The regression
   `mm6_decoration_models_keep_native_animation` fails for an animated sprite whose model has no flipbook, uv scroll,
   flutter, wind, pulse or swing.

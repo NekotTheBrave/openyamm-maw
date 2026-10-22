@@ -193,6 +193,7 @@ public:
     ActorBehaviorFrameResult update(const ActorBehaviorFrameFacts &facts);
     static void applyFrameResult(IGameplayWorldRuntime &world, const ActorBehaviorFrameResult &result);
 
+    // Applies script directives to scripted actors and the catalogue's tactics to every actor of a monster with them.
     void applyAiFacts(ActorAiFrameFacts &facts);
     void observeAiResult(const ActorAiFrameResult &result);
     void applyPresentation(size_t actorIndex, GameplayRuntimeActorState &state) const;
@@ -273,6 +274,7 @@ private:
         const ActorBehaviorFrameFacts &facts,
         ActorBehaviorFrameResult &result);
     void rebuildProjectileWards(const ActorBehaviorFrameFacts &facts);
+    void applyTactics(ActorAiFrameFacts &facts);
     void reportScriptError(InstanceRecord &record, const std::string &message);
 
     const ActorBehaviorCatalog *m_pCatalog = nullptr;
@@ -281,6 +283,14 @@ private:
     uint32_t m_scannedActorCount = 0;
     std::vector<GameplayProjectileService::ProjectileWardFacts> m_projectileWards;
     std::vector<ActorBehaviorWardDisplay> m_wardDisplays;
+    // The target each actor with tactics engaged at the last AI step, for its model's aim (presentation only, never
+    // saved: the next step after a load fills it again).
+    struct TacticAim
+    {
+        uint32_t actorId = 0;
+        GameplayWorldPoint point;
+    };
+    std::unordered_map<size_t, TacticAim> m_tacticAims;
 
     std::optional<Engine::LuaStateOwner> m_lua;
     bool m_luaFailed = false;

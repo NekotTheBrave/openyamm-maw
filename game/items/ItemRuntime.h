@@ -18,6 +18,9 @@ public:
     static int identifyRepairDifficulty(const ItemDefinition &itemDefinition);
     static bool isRareItem(const ItemDefinition &itemDefinition);
     static bool isUniquelyGeneratedRareItem(const ItemDefinition &itemDefinition);
+    static bool isArtifact(const ItemDefinition &itemDefinition);
+    // Items hardened by the potion and all artifacts never break (GrayFace's HardenArtifacts), except on eradication.
+    static bool isHardened(bool hardenedFlag, const ItemDefinition &itemDefinition);
     static std::optional<std::string> classRestriction(const ItemDefinition &itemDefinition);
     static std::optional<std::string> raceRestriction(const ItemDefinition &itemDefinition);
     static bool characterMeetsClassRestriction(const Character &character, const ItemDefinition &itemDefinition);
@@ -26,6 +29,8 @@ public:
     static bool canCharacterRepairItem(const Character &character, const ItemDefinition &itemDefinition);
     static bool canDrop(const ItemDefinition &itemDefinition);
     static std::string displayName(const InventoryItem &item, const ItemDefinition &itemDefinition);
+    // Generic item-class name used by "You found an item (...)" messages, never revealing an unidentified item.
+    static std::string foundItemName(const ItemDefinition &itemDefinition);
     static std::string displayName(
         const InventoryItem &item,
         const ItemDefinition &itemDefinition,

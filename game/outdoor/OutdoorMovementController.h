@@ -15,6 +15,20 @@
 
 namespace OpenYAMM::Game
 {
+// Sweeps a sphere from position along a unit direction by up to currentMoveDistance against an outdoor face (its plane,
+// then its edges and corners). On contact, moveDistance is the distance to it and collisionPoint the contact. A
+// one-sided face only stops a sphere moving against its normal.
+bool collideSphereWithFace(
+    const OutdoorFaceGeometryData &geometry,
+    const bx::Vec3 &position,
+    float radius,
+    const bx::Vec3 &direction,
+    float currentMoveDistance,
+    bool doubleSidedFace,
+    float &moveDistance,
+    bx::Vec3 &collisionPoint
+);
+
 enum class OutdoorSupportKind
 {
     None,

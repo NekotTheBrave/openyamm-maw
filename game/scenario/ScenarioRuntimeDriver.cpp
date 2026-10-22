@@ -660,19 +660,19 @@ bool ScenarioRuntimeDriver::openMapTransitionPrompt(uint32_t sourceId, std::stri
     EventRuntimeState::PendingDialogueContext context = {};
     context.kind = DialogueContextKind::MapTransition;
     context.sourceId = sourceId;
+    context.boundaryTravel = true;
+    std::optional<EventRuntimeState::PendingMapMove> move;
 
     if (pTransition != nullptr && pTransition->has_value())
     {
-        EventRuntimeState::PendingMapMove move = {};
-        move.mapName = (*pTransition)->destinationMapFileName;
-        move.useMapStartPosition = (*pTransition)->useMapStartPosition;
-        move.x = (*pTransition)->arrivalX.value_or(0);
-        move.y = (*pTransition)->arrivalY.value_or(0);
-        move.z = (*pTransition)->arrivalZ.value_or(0);
-        move.directionDegrees = (*pTransition)->directionDegrees;
-        move.traceSourceKind = "map_boundary";
-        move.traceSourceId = sourceId;
-        move.traceDestinationName = (*pTransition)->destinationMapFileName;
+        const IGameplayWorldRuntime *pWorld = worldRuntime();
+        move = buildBoundaryTravelMapMove(
+            **pTransition,
+            edge,
+            pWorld->partyX(),
+            pWorld->partyY(),
+            pWorld->partyFootZ(),
+            pWorld->gameplayCameraYawRadians());
         context.transitionMapMove = move;
     }
 
@@ -699,11 +699,11 @@ bool ScenarioRuntimeDriver::openMapTransitionPrompt(uint32_t sourceId, std::stri
         trace.destinationMap = (*pTransition)->destinationMapFileName;
         trace.destinationName = (*pTransition)->destinationMapFileName;
         trace.travelDays = static_cast<uint32_t>(std::max(0, (*pTransition)->travelDays));
-        trace.useStartPosition = (*pTransition)->useMapStartPosition;
-        trace.x = (*pTransition)->arrivalX.value_or(0);
-        trace.y = (*pTransition)->arrivalY.value_or(0);
-        trace.z = (*pTransition)->arrivalZ.value_or(0);
-        trace.directionDegrees = (*pTransition)->directionDegrees;
+        trace.useStartPosition = move->useMapStartPosition;
+        trace.x = move->x;
+        trace.y = move->y;
+        trace.z = move->z;
+        trace.directionDegrees = move->directionDegrees;
         pEventRuntimeState->lastMapTransitionRequested = std::move(trace);
     }
 
@@ -1060,6 +1060,30 @@ bool ScenarioRuntimeDriver::actorInspectState(
     }
 
     hasRuntimeState = pWorldRuntime->actorRuntimeState(actorIndex, runtimeState);
+    return true;
+}
+
+bool ScenarioRuntimeDriver::damageActor(size_t actorIndex, int amount, std::string &failure)
+{
+    IGameplayWorldRuntime *pWorldRuntime = worldRuntime();
+    GameplayRuntimeActorState state = {};
+
+    if (pWorldRuntime == nullptr || amount <= 0 || !pWorldRuntime->actorRuntimeState(actorIndex, state)
+        || state.isDead)
+    {
+        failure = "damage_actor needs an active map, a living actor " + std::to_string(actorIndex)
+            + " and a positive amount";
+        return false;
+    }
+
+    const ScenarioPose pose = currentPose();
+
+    if (!pWorldRuntime->applyPartyAttackMeleeDamage(actorIndex, amount, GameplayWorldPoint{pose.x, pose.y, pose.z}))
+    {
+        failure = "damage_actor could not damage actor " + std::to_string(actorIndex);
+        return false;
+    }
+
     return true;
 }
 

@@ -344,6 +344,33 @@ std::optional<std::array<float, 3>> actorCenterPosition(GameSession &session, si
         actorState.preciseZ + static_cast<float>(actorState.height) * 0.5f
     };
 }
+
+void syncAmbientEffect(EffectSystem &effects, const EffectLibrary &library, const std::string &id,
+    EffectHandle &handle, const EffectSpawnParams &params, bool emitting)
+{
+    if (!emitting)
+    {
+        effects.stop(handle, EffectStopMode::Drain);
+        handle = {};
+        return;
+    }
+    const EffectDefinition *pDefinition = library.find(id);
+    if (pDefinition == nullptr)
+    {
+        return; // Model-only headless checks do not load the effect library.
+    }
+    // Start the next emission cycle while the previous cycle's last particles finish fading.
+    if (effects.elapsedSeconds(handle) >= pDefinition->durationSeconds)
+    {
+        effects.stop(handle, EffectStopMode::Drain);
+        handle = {};
+    }
+    if (!effects.contains(handle))
+    {
+        handle = effects.spawn(id, params);
+    }
+    effects.setTransform(handle, params.position, params.rotation, params.scale);
+}
 }
 
 WorldFxSystem::WorldFxSystem()
@@ -387,7 +414,8 @@ void WorldFxSystem::reset()
     m_projectileModelBindings.clear();
     m_itemModels.clear();
     m_loadedItemModels.clear();
-    m_itemModelBindings.clear();
+    m_missingItemModel = {};
+    m_reportedMissingItemIcons.clear();
     m_models.clear();
     m_modelAssets.clear();
     m_glowBillboards.clear();
@@ -490,6 +518,20 @@ bool WorldFxSystem::buildActorModelBinding(const std::string &descriptor, std::s
         }
         ActorModelBinding binding;
         binding.asset = loaded.asset;
+        if (const YAML::Node ambient = entry["ambient_effect"])
+        {
+            binding.ambientEffect = ambient["id"].as<std::string>();
+            binding.ambientRadius = ambient["radius"].as<float>();
+            if (binding.ambientEffect.empty() || !std::isfinite(binding.ambientRadius)
+                || binding.ambientRadius <= 0.0f)
+            {
+                throw std::runtime_error("actor ambient effect needs an id and positive radius: " + descriptor);
+            }
+            if (m_namedEffectLibrary.size() != 0 && m_namedEffectLibrary.find(binding.ambientEffect) == nullptr)
+            {
+                throw std::runtime_error("actor ambient effect not found: " + binding.ambientEffect);
+            }
+        }
         if (entry["skin"])
         {
             const std::string skin = entry["skin"].as<std::string>();
@@ -746,9 +788,25 @@ bool WorldFxSystem::buildActorModelBinding(const std::string &descriptor, std::s
                 binding.lookHeadHeight = rest.globalMatrices[binding.lookNodes.back()][13];
                 binding.lookMaxYaw = look["max_yaw_degrees"].as<float>() * Degrees;
                 binding.lookMaxPitch = look["max_pitch_degrees"].as<float>() * Degrees;
+                binding.lookMinPitch = look["min_pitch_degrees"]
+                    ? look["min_pitch_degrees"].as<float>() * Degrees : -binding.lookMaxPitch;
+                const std::string lookTarget = look["target"].as<std::string>("party");
+                binding.lookAtCombatTarget = lookTarget == "combat";
+                if (look["hold_clip"])
+                {
+                    const std::optional<uint32_t> clip = binding.asset->findClip(look["hold_clip"].as<std::string>());
+                    if (!clip)
+                    {
+                        throw std::runtime_error("actor look hold_clip not found: " + descriptor);
+                    }
+                    binding.lookHoldClip = *clip;
+                }
                 if (binding.lookNodes.empty() || !std::isfinite(binding.lookMaxYaw)
                     || !std::isfinite(binding.lookMaxPitch) || binding.lookMaxYaw < 0.0f
-                    || binding.lookMaxYaw > 1.6f || binding.lookMaxPitch < 0.0f || binding.lookMaxPitch > 1.0f)
+                    || binding.lookMaxYaw > 1.6f || binding.lookMaxPitch < 0.0f || binding.lookMaxPitch > 1.0f
+                    || !std::isfinite(binding.lookMinPitch) || binding.lookMinPitch < -1.0f
+                    || binding.lookMinPitch > binding.lookMaxPitch || (lookTarget != "party" && lookTarget != "combat")
+                    || (binding.lookHoldClip != UINT32_MAX && !binding.lookAtCombatTarget))
                 {
                     throw std::runtime_error("invalid actor look: " + descriptor);
                 }
@@ -760,6 +818,26 @@ bool WorldFxSystem::buildActorModelBinding(const std::string &descriptor, std::s
                 || !std::isfinite(binding.runStrideLength) || binding.runStrideLength <= 0.0f)
             {
                 throw std::runtime_error("invalid actor animation stride: " + descriptor);
+            }
+            const float walkSeconds =
+                binding.asset->clips[binding.clips[size_t(ActorAiAnimationState::Walking)]].durationSeconds;
+            const float runSeconds = binding.asset->clips[binding.runClip].durationSeconds;
+            binding.walkSpeed = walkSeconds > 0.0f ? binding.strideLength / walkSeconds : 0.0f;
+            binding.runSpeed = runSeconds > 0.0f ? binding.runStrideLength / runSeconds : 0.0f;
+            if (const YAML::Node gaitRate = animation["gait_rate"])
+            {
+                if (!gaitRate.IsSequence() || gaitRate.size() != 2)
+                {
+                    throw std::runtime_error("actor animation gait_rate needs [min, max]: " + descriptor);
+                }
+                binding.minGaitRate = gaitRate[0].as<float>();
+                binding.maxGaitRate = gaitRate[1].as<float>();
+                if (!std::isfinite(binding.minGaitRate)
+                    || !std::isfinite(binding.maxGaitRate) || binding.minGaitRate < 0.0f || binding.maxGaitRate < 0.0f
+                    || (binding.maxGaitRate > 0.0f && binding.maxGaitRate < binding.minGaitRate))
+                {
+                    throw std::runtime_error("invalid actor animation gait_rate: " + descriptor);
+                }
             }
             binding.blendSeconds = animation["blend_seconds"].as<float>(-1.0f);
             binding.deathBlendSeconds = animation["death_blend_seconds"].as<float>(0.0f);
@@ -858,8 +936,9 @@ bool WorldFxSystem::buildActorModelBinding(const std::string &descriptor, std::s
                 for (const auto &key : event.second)
                 {
                     const std::string name = key.first.as<std::string>();
-                    if (name != "impact" && (roleIndex == 0 || (name != "glow" && name != "release"
-                            && name != "glow_scale" && name != "color" && (roleIndex != 1 || name != "effects"))))
+                    // A melee blow launches nothing: it may glow (glow, glow_scale, color) but has no release.
+                    if (name != "impact" && name != "glow" && name != "glow_scale" && name != "color"
+                        && (roleIndex == 0 || (name != "release" && (roleIndex != 1 || name != "effects"))))
                     {
                         throw std::runtime_error("unknown actor animation event key: " + descriptor + " " + role + " "
                             + name);
@@ -896,6 +975,10 @@ bool WorldFxSystem::buildActorModelBinding(const std::string &descriptor, std::s
                             + descriptor + " " + role);
                     }
                     actionEvent.colorAbgr = makeAbgr(uint8_t(color[0]), uint8_t(color[1]), uint8_t(color[2]), 255);
+                }
+                if (roleIndex == 0 && actionEvent.glowCount > 0 && actionEvent.colorAbgr == 0)
+                {
+                    throw std::runtime_error("actor melee glow requires a color: " + descriptor);
                 }
                 // A ranged attack's named effects, per element, replace the glow while its missile winds up.
                 if (const YAML::Node effects = event.second["effects"])
@@ -934,11 +1017,10 @@ bool WorldFxSystem::buildActorModelBinding(const std::string &descriptor, std::s
                 }
             }
         }
-        if (pStats != nullptr && (pStats->hasSpell1 || pStats->hasSpell2)
-            && (binding.castClip == UINT32_MAX || binding.castClip == binding.clips[2]
-                || binding.castClip == binding.clips[3]))
+        // A spellcaster names its cast clip; it may name its attack clip to cast with the attack gesture.
+        if (pStats != nullptr && (pStats->hasSpell1 || pStats->hasSpell2) && binding.castClip == UINT32_MAX)
         {
-            throw std::runtime_error("spellcasting actor model requires a distinct cast clip: " + descriptor);
+            throw std::runtime_error("spellcasting actor model requires a cast clip: " + descriptor);
         }
         // The standing pose's top, in model units above the feet: anchors health bars and quest markers.
         Engine::ModelPose standing;
@@ -993,13 +1075,14 @@ std::optional<std::array<float, 3>> WorldFxSystem::actorSocketPoint(const ActorM
 void WorldFxSystem::resolveActorCharge(ActorModelInstance &model) const
 {
     // The projectile the charge releases: the spell's, or the ranged attack's missile object.
+    // A melee blow has none: it glows only in its event's colour.
     FxRecipes::ProjectileRecipe recipe = FxRecipes::ProjectileRecipe::None;
-    if (model.chargeRole == 2)
+    if (model.chargeRole == ActorCharge::Cast)
     {
         recipe = FxRecipes::classifyProjectileRecipe(int(model.chargeSpellId), "", "", 0);
     }
-    else if (m_pProjectileMonsterTable != nullptr && m_pMonsterProjectileTable != nullptr
-        && m_pProjectileObjectTable != nullptr)
+    else if (model.chargeRole == ActorCharge::Ranged && m_pProjectileMonsterTable != nullptr
+        && m_pMonsterProjectileTable != nullptr && m_pProjectileObjectTable != nullptr)
     {
         const MonsterTable::MonsterStatsEntry *pStats = m_pProjectileMonsterTable->findStatsById(model.monsterId);
         const MonsterProjectileEntry *pMissile = pStats == nullptr ? nullptr
@@ -1013,12 +1096,12 @@ void WorldFxSystem::resolveActorCharge(ActorModelInstance &model) const
                 pObject->flags);
         }
     }
-    const ActorModelBinding::ActionEvent &event = model.pBinding->actionEvents[model.chargeRole];
+    const ActorModelBinding::ActionEvent &event = model.pBinding->actionEvents[size_t(model.chargeRole) - 1];
     model.chargeResolved = true;
-    model.chargeEffect = model.chargeRole == 1 ? event.effects[model.secondaryAttack] : std::string();
+    model.chargeEffect = model.chargeRole == ActorCharge::Ranged ? event.effects[model.secondaryAttack] : std::string();
     // A spell always charges (white without an element); a physical missile (an arrow, a rock) only in an authored
     // colour.
-    model.chargeGlows = model.chargeEffect.empty() && (model.chargeRole == 2 || event.colorAbgr != 0
+    model.chargeGlows = model.chargeEffect.empty() && (model.chargeRole == ActorCharge::Cast || event.colorAbgr != 0
         || (recipe != FxRecipes::ProjectileRecipe::None && recipe != FxRecipes::ProjectileRecipe::Arrow
             && recipe != FxRecipes::ProjectileRecipe::FireArrow && recipe != FxRecipes::ProjectileRecipe::Cannonball));
     // The colour of the projectile's flight light when the enhanced style gives it one (a robot's plasma bolt, a
@@ -1055,16 +1138,19 @@ void WorldFxSystem::updateActorLook(ActorModelInstance &model, const GameplayRun
     model.lookClock = 0.0f;
     float targetYaw = 0.0f;
     float targetPitch = 0.0f;
-    if (canLook && partyDistance < LookRange)
+    // The party's eyes within LookRange, or (`target: combat`) the combat target at any distance.
+    const bool hasLookTarget = binding.lookAtCombatTarget ? state.hasAimTarget : partyDistance < LookRange;
+    if (canLook && hasLookTarget)
     {
-        const float dx = world.partyX() - state.preciseX;
-        const float dy = world.partyY() - state.preciseY;
-        const float dz = world.partyEyeZ() - (state.preciseZ + binding.zOffset + scale * binding.lookHeadHeight);
+        const float dx = (binding.lookAtCombatTarget ? state.aimTargetX : world.partyX()) - state.preciseX;
+        const float dy = (binding.lookAtCombatTarget ? state.aimTargetY : world.partyY()) - state.preciseY;
+        const float dz = (binding.lookAtCombatTarget ? state.aimTargetZ : world.partyEyeZ())
+            - (state.preciseZ + binding.zOffset + scale * binding.lookHeadHeight);
         const float yaw = std::remainder(std::atan2(dy, dx) - model.yaw, 2.0f * std::numbers::pi_v<float>);
         if (std::abs(yaw) <= binding.lookMaxYaw + BehindMargin)
         {
             targetYaw = std::clamp(yaw, -binding.lookMaxYaw, binding.lookMaxYaw);
-            targetPitch = std::clamp(std::atan2(dz, std::hypot(dx, dy)), -binding.lookMaxPitch, binding.lookMaxPitch);
+            targetPitch = std::clamp(std::atan2(dz, std::hypot(dx, dy)), binding.lookMinPitch, binding.lookMaxPitch);
         }
     }
     if (targetYaw == 0.0f && targetPitch == 0.0f && model.lookYaw == 0.0f && model.lookPitch == 0.0f)
@@ -1163,6 +1249,7 @@ void WorldFxSystem::syncActorModels(const IGameplayWorldRuntime &world, float wo
             && (instance->second.actorId != state.actorId || instance->second.monsterId != state.monsterId))
         {
             stopActorChargeFx(instance->second, EffectStopMode::Drain);
+            m_namedEffects.stop(instance->second.ambientEffect, EffectStopMode::Immediate);
             m_models.destroy(instance->second.handle);
             m_actorModels.erase(instance);
             instance = m_actorModels.end();
@@ -1190,6 +1277,7 @@ void WorldFxSystem::syncActorModels(const IGameplayWorldRuntime &world, float wo
         const float distance = std::hypot(state.preciseX - model.previousX, state.preciseY - model.previousY);
         const bool teleported = model.initialized && distance > std::max(256.0f, scale * 8.0f);
         const float speed = std::hypot(state.velocityX, state.velocityY);
+        const float gaitSpeed = actorModelGaitSpeed(speed, state.intendedSpeed);
         if (binding.fixedYaw)
         {
             model.yaw = *binding.fixedYaw;
@@ -1197,18 +1285,35 @@ void WorldFxSystem::syncActorModels(const IGameplayWorldRuntime &world, float wo
         if (!model.initialized || teleported)
         {
             stopActorChargeFx(model, EffectStopMode::Immediate);
+            m_namedEffects.stop(model.ambientEffect, EffectStopMode::Immediate);
+            model.ambientEffect = {};
             model.yaw = binding.fixedYaw.value_or(state.yawRadians);
             model.gaitPhase = 0.0f;
         }
         else if (!model.dying && state.animationState != ActorAiAnimationState::Dead && !binding.fixedYaw)
         {
             // Visual facing only. Collision, LOS, paths and projectile aiming retain the AI's exact yaw.
-            model.yaw = advanceActorModelYaw(model.yaw, state.yawRadians, deltaSeconds,
-                3.0f * std::numbers::pi_v<float>);
+            model.facingMovement = state.animationState == ActorAiAnimationState::Walking && speed > 4.0f
+                && actorModelFacesMovement(state.yawRadians, state.velocityX, state.velocityY, model.facingMovement);
+            const float targetYaw =
+                model.facingMovement ? std::atan2(state.velocityY, state.velocityX) : state.yawRadians;
+            model.yaw = advanceActorModelYaw(model.yaw, targetYaw, deltaSeconds, 3.0f * std::numbers::pi_v<float>);
             if (binding.strideLength > 0.0f && deltaSeconds > 0.0f)
             {
-                const float stride = speed > scale * 2.4f ? binding.runStrideLength : binding.strideLength;
-                model.gaitPhase = advanceActorModelGait(model.gaitPhase, distance, stride * scale);
+                if (gaitSpeed > 4.0f)
+                {
+                    model.running = actorModelRuns(gaitSpeed / scale, binding.walkSpeed, binding.runSpeed,
+                        state.hurrying, model.running);
+                }
+                const float stride = model.running ? binding.runStrideLength : binding.strideLength;
+                const uint32_t gaitClip =
+                    model.running ? binding.runClip : binding.clips[size_t(ActorAiAnimationState::Walking)];
+                // A body slowed by collision keeps part of its intended gait (actorModelGaitSpeed).
+                const float gaitDistance =
+                    std::max(distance, ActorModelHinderedGaitShare * state.intendedSpeed * deltaSeconds);
+                model.gaitPhase = advanceActorModelGait(model.gaitPhase, actorModelGaitDistance(gaitDistance,
+                    stride * scale, deltaSeconds, binding.asset->clips[gaitClip].durationSeconds,
+                    gaitSpeed > 4.0f ? binding.minGaitRate : 0.0f, binding.maxGaitRate), stride * scale);
             }
         }
         const bool moving = speed > 4.0f && !teleported;
@@ -1220,14 +1325,17 @@ void WorldFxSystem::syncActorModels(const IGameplayWorldRuntime &world, float wo
             ? binding.scriptClips.end() : binding.scriptClips.find(state.scriptedClip);
         const bool scripted = scriptClip != binding.scriptClips.end();
         const bool casting = !scripted && attacking && state.castingSpell && binding.castClip != UINT32_MAX;
-        // A ranged attack or spell charges at its glow sockets while it winds up (ActionEvent).
-        const size_t chargeRole = casting ? 2
-            : !scripted && state.animationState == ActorAiAnimationState::AttackRanged && !state.castingSpell ? 1 : 0;
+        // A blow, ranged attack or spell charges at its glow sockets while it winds up (ActionEvent).
+        const ActorCharge chargeRole = casting ? ActorCharge::Cast
+            : scripted || state.castingSpell ? ActorCharge::None
+            : state.animationState == ActorAiAnimationState::AttackRanged ? ActorCharge::Ranged
+            : state.animationState == ActorAiAnimationState::AttackMelee && binding.actionEvents[0].glowCount > 0
+                ? ActorCharge::Melee : ActorCharge::None;
         const bool restart = model.initialized && (model.previousState != animationIndex
             || model.casting != casting || model.scripted != scripted
             || (attacking && state.animationTimeTicks + 0.01f < model.previousTime));
         const float elapsed = std::max(state.animationTimeTicks, 0.0f) / 128.0f;
-        if (chargeRole != 0 && (chargeRole != model.chargeRole || restart
+        if (chargeRole != ActorCharge::None && (chargeRole != model.chargeRole || restart
                 || model.secondaryAttack != state.secondaryAttack))
         {
             // The charge builds until the action releases: its end, or its sprite's contact frame.
@@ -1239,10 +1347,11 @@ void WorldFxSystem::syncActorModels(const IGameplayWorldRuntime &world, float wo
             model.pendingRelease = false;
         }
         // The release may come as the action ends: the charge that was showing goes out then.
-        const bool charged = chargeRole != 0 || model.chargeRole != 0;
+        const bool charged = chargeRole != ActorCharge::None || model.chargeRole != ActorCharge::None;
         model.chargeRole = chargeRole;
         model.secondaryAttack = state.secondaryAttack;
-        model.chargeProgress = chargeRole != 0 ? std::clamp(elapsed / model.chargeDuration, 0.0f, 1.0f) : 0.0f;
+        model.chargeProgress = chargeRole != ActorCharge::None
+            ? std::clamp(elapsed / model.chargeDuration, 0.0f, 1.0f) : 0.0f;
         if (charged && state.attackImpactTriggered && !model.previousImpact)
         {
             model.pendingRelease = model.hasChargeOrigin && model.chargeOriginAge < 0.15f;
@@ -1395,11 +1504,8 @@ void WorldFxSystem::syncActorModels(const IGameplayWorldRuntime &world, float wo
             && (state.animationState == ActorAiAnimationState::Walking || (moving && attacking));
         if (locomoting)
         {
-            uint32_t locomotion = binding.clips[size_t(ActorAiAnimationState::Walking)];
-            if (speed > scale * 2.4f)
-            {
-                locomotion = binding.runClip;
-            }
+            const uint32_t locomotion =
+                model.running ? binding.runClip : binding.clips[size_t(ActorAiAnimationState::Walking)];
             const bool backwards = state.velocityX * std::cos(model.yaw)
                 + state.velocityY * std::sin(model.yaw) < (model.backwards ? -0.15f : -0.35f) * speed;
             backwardsChanged = backwards != model.backwards;
@@ -1437,6 +1543,14 @@ void WorldFxSystem::syncActorModels(const IGameplayWorldRuntime &world, float wo
                 time = model.followTime;
                 continuingFollow = true;
             }
+        }
+        // `look.hold_clip`: an actor tracking its combat target holds still instead of playing its idle (a turret's
+        // scan would swing the guns off the target).
+        if (binding.lookHoldClip != UINT32_MAX && state.hasAimTarget && !scripted && !continuingFollow
+            && state.animationState == ActorAiAnimationState::Standing)
+        {
+            clip = binding.lookHoldClip;
+            time = 0.0f;
         }
         // Animation LOD: actors sample their clips at most 240 times a second, at 60 Hz beyond ~7 m, 15 Hz beyond
         // ~14 m and the native sprite rate (8 Hz) beyond ~28 m. Pose evaluation was a third of the main thread with a
@@ -1514,6 +1628,7 @@ void WorldFxSystem::syncActorModels(const IGameplayWorldRuntime &world, float wo
         if (iterator->second.syncPass != syncPass)
         {
             stopActorChargeFx(iterator->second, EffectStopMode::Drain);
+            m_namedEffects.stop(iterator->second.ambientEffect, EffectStopMode::Drain);
             m_models.destroy(iterator->second.handle);
             iterator = m_actorModels.erase(iterator);
         }
@@ -1724,20 +1839,6 @@ bool WorldFxSystem::configureCorpseSatchels(const Engine::AssetFileSystem &asset
     return true;
 }
 
-void WorldFxSystem::setCorpseSatchels(bool enabled)
-{
-    if (enabled == m_corpseSatchels)
-    {
-        return;
-    }
-    m_corpseSatchels = enabled;
-    for (const auto &[index, corpse] : m_corpseSatchelStates)
-    {
-        m_models.destroy(corpse.handle);
-    }
-    m_corpseSatchelStates.clear();
-}
-
 void WorldFxSystem::syncShieldDomes(const IGameplayWorldRuntime &world, float deltaSeconds)
 {
     constexpr float GrowSeconds = 0.35f;
@@ -1816,7 +1917,7 @@ void WorldFxSystem::syncShieldDomes(const IGameplayWorldRuntime &world, float de
 
 void WorldFxSystem::syncCorpseSatchels(const IGameplayWorldRuntime &world, float deltaSeconds)
 {
-    if (!m_corpseSatchels || m_satchelAssets[0] == nullptr)
+    if (m_satchelAssets[0] == nullptr)
     {
         return;
     }
@@ -1999,6 +2100,15 @@ const WorldFxSystem::InspectPortrait *WorldFxSystem::syncInspectPortrait(const I
         // of each skin joint's vertex box at each pose (a close outline of the body, unlike one box around a long
         // creature seen from an angle) and, outside the attack, of each carried item's box.
         std::vector<std::array<float, 3>> &points = portrait.portrait.framePoints;
+        if (!binding.ambientEffect.empty())
+        {
+            const float radius = binding.ambientRadius * binding.scale / binding.fxReferenceScale;
+            for (int corner = 0; corner < 8; ++corner)
+            {
+                points.push_back({(corner & 1) ? radius : -radius, (corner & 2) ? radius : -radius,
+                    (corner & 4) ? radius : -radius});
+            }
+        }
         const auto addBox = [&](const Engine::ModelBounds &box, const Engine::ModelMatrix &m)
         {
             for (int corner = 0; box.valid && corner < 8; ++corner)
@@ -2057,7 +2167,11 @@ const WorldFxSystem::InspectPortrait *WorldFxSystem::syncInspectPortrait(const I
         portrait.animation = ActorAiAnimationState::Bored;
         portrait.lengthSeconds = durationFor(portrait.animation);
         portrait.lastTicks = animationTicks;
-        m_inspectPortrait = portrait;
+        m_inspectPortrait = std::move(portrait);
+        if (!binding.ambientEffect.empty())
+        {
+            m_inspectPortrait->portrait.effects.emplace(&m_namedEffectLibrary);
+        }
     }
 
     InspectPortraitState &portrait = *m_inspectPortrait;
@@ -2095,6 +2209,13 @@ const WorldFxSystem::InspectPortrait *WorldFxSystem::syncInspectPortrait(const I
         : std::min(portrait.timeSeconds, duration);
     m_models.sampleBlended(portrait.portrait.handle, clipFor(portrait.animation), time, transform, deltaSeconds,
         portrait.started ? 0.15f : 0.0f, {}, restart || !portrait.started);
+    if (portrait.portrait.effects)
+    {
+        EffectSystem &effects = *portrait.portrait.effects;
+        const EffectSpawnParams params = {.scale = binding.scale / binding.fxReferenceScale, .seed = state.actorId};
+        syncAmbientEffect(effects, m_namedEffectLibrary, binding.ambientEffect, portrait.ambientEffect, params, true);
+        effects.update(deltaSeconds);
+    }
     portrait.started = true;
     return &portrait.portrait;
 }
@@ -2117,8 +2238,26 @@ void WorldFxSystem::syncActorModelFx(const IGameplayWorldRuntime &world, float d
     };
     std::array<Candidate, 8> candidates = {};
     size_t count = 0;
-    for (const auto &[index, model] : m_actorModels)
+    for (auto &[index, model] : m_actorModels)
     {
+        if (model.pBinding != nullptr && !model.pBinding->ambientEffect.empty())
+        {
+            const float dx = model.previousX - world.partyX();
+            const float dy = model.previousY - world.partyY();
+            const bool emitting = !model.dying && model.previousState != uint8_t(ActorAiAnimationState::Dead)
+                && m_models.isVisible(model.handle) && dx * dx + dy * dy < 4096.0f * 4096.0f;
+            const EffectSpawnParams params = {.position = model.transform.translation,
+                .scale = model.fxScale, .seed = model.actorId};
+            if (deltaSeconds > 0.0f || !emitting)
+            {
+                syncAmbientEffect(m_namedEffects, m_namedEffectLibrary, model.pBinding->ambientEffect,
+                    model.ambientEffect, params, emitting);
+            }
+            else
+            {
+                m_namedEffects.setTransform(model.ambientEffect, params.position, params.rotation, params.scale);
+            }
+        }
         // A burning body's fire light: it swells as the burn takes hold and dies with the last flames.
         const std::optional<Engine::ModelBurn> burn = refreshSpatialFx ? actorBurn(model) : std::nullopt;
         const Engine::ModelBounds *pBounds = burn ? m_models.cullingBounds(model.handle) : nullptr;
@@ -2152,7 +2291,7 @@ void WorldFxSystem::syncActorModelFx(const IGameplayWorldRuntime &world, float d
             && dx * forwardX + dy * forwardY > 0.4f * std::sqrt(distanceSquared) - 160.0f;
         if (!near || model.dying || model.previousState == uint8_t(ActorAiAnimationState::Dead)
             || model.pBinding == nullptr
-            || (model.pBinding->eyeColorAbgr == 0 && model.chargeRole == 0 && !model.pendingRelease))
+            || (model.pBinding->eyeColorAbgr == 0 && model.chargeRole == ActorCharge::None && !model.pendingRelease))
         {
             model.pendingRelease = false;
             model.hasChargeOrigin = false;
@@ -2176,7 +2315,7 @@ void WorldFxSystem::syncActorModelFx(const IGameplayWorldRuntime &world, float d
     for (auto &[index, model] : m_actorModels)
     {
         // A charge's named effects last until its release, while the actor stays among the nearest.
-        if (model.chargeRole == 0 || model.previousImpact || std::none_of(candidates.begin(),
+        if (model.chargeRole == ActorCharge::None || model.previousImpact || std::none_of(candidates.begin(),
             candidates.begin() + count, [&](const Candidate &candidate) { return candidate.pModel == &model; }))
         {
             stopActorChargeFx(model, EffectStopMode::Drain);
@@ -2186,15 +2325,15 @@ void WorldFxSystem::syncActorModelFx(const IGameplayWorldRuntime &world, float d
     {
         ActorModelInstance &model = *candidates[i].pModel;
         const ActorModelBinding &binding = *model.pBinding;
-        const bool charging = model.chargeRole != 0 && !model.previousImpact
-            && binding.actionEvents[model.chargeRole].glowCount > 0;
+        const bool charging = model.chargeRole != ActorCharge::None && !model.previousImpact
+            && binding.actionEvents[size_t(model.chargeRole) - 1].glowCount > 0;
         if (charging)
         {
             if (!model.chargeResolved)
             {
                 resolveActorCharge(model);
             }
-            const ActorModelBinding::ActionEvent &event = binding.actionEvents[model.chargeRole];
+            const ActorModelBinding::ActionEvent &event = binding.actionEvents[size_t(model.chargeRole) - 1];
             model.chargeOriginCount = 0;
             for (size_t socket = 0; socket < event.glowCount; ++socket)
             {
@@ -2226,7 +2365,8 @@ void WorldFxSystem::syncActorModelFx(const IGameplayWorldRuntime &world, float d
         const float charge = charging && model.chargeGlows
             ? std::clamp((model.chargeProgress - 0.25f) / 0.5f, 0.0f, 1.0f) : 0.0f;
         const float chargeFxScale = 2.0f * model.fxScale
-            * (model.chargeRole != 0 ? binding.actionEvents[model.chargeRole].glowScale : 1.0f);
+            * (model.chargeRole != ActorCharge::None ? binding.actionEvents[size_t(model.chargeRole) - 1].glowScale
+                : 1.0f);
         if (refreshSpatialFx && model.hasChargeOrigin && charge > 0.0f)
         {
             const uint32_t coreColor = makeAbgr(
@@ -2541,6 +2681,14 @@ bool WorldFxSystem::loadNamedEffectLibrary(
     {
         return false;
     }
+    for (const auto &[descriptor, binding] : m_actorModelBindings)
+    {
+        if (!binding.ambientEffect.empty() && library.find(binding.ambientEffect) == nullptr)
+        {
+            error = "actor ambient effect not found: " + descriptor + " " + binding.ambientEffect;
+            return false;
+        }
+    }
     m_namedEffects.clear();
     m_projectileFlightEffects.clear();
     m_spellVisualFlights.clear();
@@ -2720,145 +2868,221 @@ void WorldFxSystem::setObjectModelVisibility(const std::function<bool(int16_t se
 
 bool WorldFxSystem::loadItemModels(const Engine::AssetFileSystem &assets, std::string &error)
 {
-    ItemModelBindings bindings;
-    if (!loadItemModelBindings(assets, "engine/models/items.yml", bindings, error))
-    {
-        return false;
-    }
     for (const auto &[key, model] : m_itemModels)
     {
         m_models.destroy(model.handle);
+        m_namedEffects.stop(model.sparkle, EffectStopMode::Immediate);
     }
     m_itemModels.clear();
     m_loadedItemModels.clear();
-    m_itemModelBindings = std::move(bindings);
+    m_reportedMissingItemIcons.clear();
     m_pItemModelAssets = &assets;
+    const ItemModelBinding &placeholder = missingItemModelBinding();
+    const Engine::ModelLoadResult result = m_modelAssets.load(assets, placeholder.model);
+    const Engine::ModelBounds *pBounds = result ? &result.asset->staticBounds : nullptr;
+    const float extent = pBounds != nullptr && pBounds->valid
+        ? std::max(pBounds->max[0] - pBounds->min[0], pBounds->max[2] - pBounds->min[2]) : 0.0f;
+    if (!result || extent <= 1.0e-4f)
+    {
+        error = "Missing-item placeholder " + placeholder.model + " failed to load: "
+            + (result ? std::string("no horizontal extent") : result.error);
+        m_missingItemModel = {};
+        return false;
+    }
+    m_missingItemModel = {result.asset, placeholder.length / extent};
+    error.clear();
     return true;
 }
 
-const ItemModelBinding *WorldFxSystem::itemModelBinding(uint32_t itemId, std::string *pIcon) const
+const WorldFxSystem::LoadedItemModel &WorldFxSystem::loadedItemModel(
+    const GameplayWorldItemPresentationState &item, bool &placeholder)
 {
-    const ItemDefinition *pItem =
-        m_itemModelBindings.empty() || m_pItemTable == nullptr ? nullptr : m_pItemTable->get(itemId);
-    if (pItem == nullptr)
+    placeholder = true;
+    const uint32_t itemId = item.itemId;
+    const ItemDefinition *pItem = m_pItemTable != nullptr ? m_pItemTable->get(itemId) : nullptr;
+    if (m_pItemTable == nullptr || m_pItemModelAssets == nullptr)
     {
-        return nullptr;
+        return m_missingItemModel;
     }
-    const std::string icon = toLowerCopy(pItem->iconName);
-    const auto found = m_itemModelBindings.find(icon);
-    if (found == m_itemModelBindings.end())
+    const std::string icon = item.lootBag ? std::string("loot bag")
+        : pItem != nullptr ? toLowerCopy(pItem->iconName) : std::string();
+    if (!item.lootBag && !m_pItemTable->hasGroundModel(itemId))
     {
-        return nullptr;
+        if (m_reportedMissingItemIcons.insert(icon).second)
+        {
+            std::cerr << "Ground item " << itemId << " \"" << (pItem != nullptr ? pItem->name : std::string())
+                      << "\" (icon " << (icon.empty() ? std::string("none") : icon)
+                      << ") has no 3D model; drawing the placeholder\n";
+        }
+        return m_missingItemModel;
     }
-    if (pIcon != nullptr)
-    {
-        *pIcon = icon;
-    }
-    return &found->second;
-}
-
-bool WorldFxSystem::hasItemModel(uint32_t itemId) const
-{
-    std::string icon;
-    if (itemModelBinding(itemId, &icon) == nullptr)
-    {
-        return false;
-    }
-    const auto loaded = m_loadedItemModels.find(icon);
-    return loaded == m_loadedItemModels.end() || loaded->second.asset != nullptr;
-}
-
-const WorldFxSystem::LoadedItemModel *WorldFxSystem::loadedItemModel(uint32_t itemId)
-{
-    std::string icon;
-    const ItemModelBinding *pBinding = itemModelBinding(itemId, &icon);
-    if (pBinding == nullptr || m_pItemModelAssets == nullptr)
-    {
-        return nullptr;
-    }
-    auto [found, inserted] = m_loadedItemModels.try_emplace(icon);
+    const ItemModelBinding &binding = item.lootBag ? lootBagModelBinding() : m_pItemTable->groundModel(itemId);
+    auto [found, inserted] = m_loadedItemModels.try_emplace(binding.model);
     if (inserted)
     {
-        const Engine::ModelLoadResult result = m_modelAssets.load(*m_pItemModelAssets, pBinding->model);
+        const Engine::ModelLoadResult result = m_modelAssets.load(*m_pItemModelAssets, binding.model);
         const Engine::ModelBounds *pBounds = result ? &result.asset->staticBounds : nullptr;
         // The longest horizontal side (glTF X and Z) takes the binding's length.
         const float extent = pBounds != nullptr && pBounds->valid
             ? std::max(pBounds->max[0] - pBounds->min[0], pBounds->max[2] - pBounds->min[2]) : 0.0f;
         if (!result || extent <= 1.0e-4f)
         {
-            std::cerr << "Item model " << pBinding->model << " failed to load: "
-                      << (result ? std::string("no horizontal extent") : result.error) << '\n';
+            std::cerr << "Ground item model " << binding.model << " (icon " << icon << ") failed to load: "
+                      << (result ? std::string("no horizontal extent") : result.error)
+                      << "; drawing the placeholder\n";
         }
         else
         {
-            found->second = {result.asset, pBinding->length / extent};
+            found->second = {result.asset, binding.length / extent};
         }
     }
-    return found->second.asset != nullptr ? &found->second : nullptr;
+    if (found->second.asset == nullptr)
+    {
+        return m_missingItemModel;
+    }
+    placeholder = false;
+    return found->second;
 }
 
-void WorldFxSystem::syncItemModels(GameSession &session)
+void WorldFxSystem::syncItemModels(GameSession &session, float deltaSeconds)
 {
+    // The placeholder turns once every four seconds.
+    constexpr float PlaceholderTurnRadiansPerSecond = std::numbers::pi_v<float> * 0.5f;
+    // Raised a hair over the ground so the underside's rim does not flicker into it.
+    constexpr float GroundLift = 0.5f;
+    // Sparkles are a few pixels across beyond this, and cost nothing there.
+    constexpr float SparkleRange = 3072.0f;
+    constexpr float SparkleJumpsPerSecond = 12.0f;
+    // Items smaller on screen than this are not drawn: a field of them to the horizon cost a full model each.
+    constexpr float MinimumPixels = 8.0f;
+    // By WorldItemSparkle.
+    static const std::array<std::string, WorldItemSparkleCount> SparkleEffects = {"",
+        "openyamm:fx/item_sparkle/valuable", "openyamm:fx/item_sparkle/precious", "openyamm:fx/item_sparkle/artifact",
+        "openyamm:fx/item_sparkle/quest", "openyamm:fx/item_sparkle/coins"};
     m_pItemTable = &session.data().itemTable();
-    if (m_itemModelBindings.empty() && m_itemModels.empty())
-    {
-        return;
-    }
+    m_itemModelSeconds = std::fmod(m_itemModelSeconds + deltaSeconds, 3600.0f);
     for (auto &[key, model] : m_itemModels)
     {
         model.seen = false;
     }
     std::vector<GameplayWorldItemPresentationState> items;
-    if (const IGameplayWorldRuntime *pWorld = session.activeWorldRuntime())
+    const IGameplayWorldRuntime *pWorld = session.activeWorldRuntime();
+    if (pWorld != nullptr)
     {
         pWorld->collectWorldItemPresentationStates(items);
     }
     for (const GameplayWorldItemPresentationState &item : items)
     {
-        const LoadedItemModel *pModel = loadedItemModel(item.itemId);
-        if (pModel == nullptr)
+        bool placeholder = false;
+        const LoadedItemModel &loaded = loadedItemModel(item, placeholder);
+        if (loaded.asset == nullptr)
         {
             continue;
         }
         auto [found, inserted] = m_itemModels.try_emplace(item.key);
         ItemModel &model = found->second;
-        if (!inserted && model.itemId != item.itemId)
+        if (!inserted && (model.itemId != item.itemId || model.placeholder != placeholder))
         {
             m_models.destroy(model.handle);
+            m_namedEffects.stop(model.sparkle, EffectStopMode::Immediate);
             inserted = true;
         }
         if (inserted)
         {
-            model.handle = m_models.create(pModel->asset);
-            m_models.setStaticStandIn(model.handle, pModel->asset);
+            model = {};
+            model.handle = m_models.create(loaded.asset);
+            m_models.setStaticStandIn(model.handle, loaded.asset, MinimumPixels);
             model.itemId = item.itemId;
+            model.placeholder = placeholder;
         }
         model.seen = true;
         model.sectorId = item.sectorId;
-        // Lying flat with a yaw of its own, from its key, so neighbouring items do not all point the same way; on the
-        // drawn ground, tilted to its slope and raised onto it.
-        const float halfYaw =
-            float((item.key * 2654435761u) >> 8) / float(1u << 24) * std::numbers::pi_v<float>;
-        std::array<float, 4> rotation = {0.0f, 0.0f, std::sin(halfYaw), std::cos(halfYaw)};
-        float z = item.z;
-        if (const std::optional<ItemGround> ground =
-                m_itemGroundSampler ? m_itemGroundSampler(item.x, item.y, item.z) : std::nullopt)
+
+        const ItemModelBinding &binding = placeholder ? missingItemModelBinding()
+            : item.lootBag ? lootBagModelBinding() : m_pItemTable->groundModel(item.itemId);
+        float yaw = worldItemYawRadians(item.key);
+        if (placeholder)
         {
-            // Raised a hair over the ground so the underside's rim does not flicker into it.
-            z = ground->z + 0.5f;
-            // Shortest arc from up to the normal, then the yaw about the tilted up.
-            const std::array<float, 3> &n = ground->normal;
-            const float w = 1.0f + n[2];
-            const float length = std::sqrt(n[1] * n[1] + n[0] * n[0] + w * w);
-            const std::array<float, 4> tilt = {-n[1] / length, n[0] / length, 0.0f, w / length};
-            const std::array<float, 4> yaw = rotation;
-            rotation = {tilt[3] * yaw[0] + tilt[0] * yaw[3] + tilt[1] * yaw[2] - tilt[2] * yaw[1],
-                tilt[3] * yaw[1] - tilt[0] * yaw[2] + tilt[1] * yaw[3] + tilt[2] * yaw[0],
-                tilt[3] * yaw[2] + tilt[0] * yaw[1] - tilt[1] * yaw[0] + tilt[2] * yaw[3],
-                tilt[3] * yaw[3] - tilt[0] * yaw[0] - tilt[1] * yaw[1] - tilt[2] * yaw[2]};
+            yaw += m_itemModelSeconds * PlaceholderTurnRadiansPerSecond;
         }
-        m_models.setTransform(model.handle,
-            Engine::gltfModelPlacement({item.x, item.y, z}, rotation, pModel->scale));
+        std::array<float, 3> position = {item.x, item.y, item.z};
+        std::array<float, 3> up = {0.0f, 0.0f, 1.0f};
+        if (item.moving || item.floating)
+        {
+            // In flight: flat at its simulated height, fitted to nothing.
+            model.restPosition.reset();
+        }
+        else
+        {
+            // At rest: fitted once to the drawn ground under its footprint (the placeholder only sits on it).
+            const std::array<float, 3> simulated = {item.x, item.y, item.z};
+            if (!model.restPosition || *model.restPosition != simulated)
+            {
+                std::array<std::optional<float>, WorldItemFootprintSampleCount> heights = {};
+                if (m_itemGroundSampler)
+                {
+                    const WorldItemFootprint footprint =
+                        placeholder ? WorldItemFootprint{} : worldItemFootprintOffsets(binding, yaw);
+                    for (size_t index = 0; index < WorldItemFootprintSampleCount; ++index)
+                    {
+                        heights[index] =
+                            m_itemGroundSampler(item.x + footprint[index][0], item.y + footprint[index][1], item.z);
+                    }
+                }
+                model.restPose = fitWorldItemRestingPose(binding, placeholder ? 0.0f : yaw, heights, item.z);
+                model.restPosition = simulated;
+            }
+            position[2] = model.restPose.z + GroundLift;
+            up = model.restPose.normal;
+        }
+
+        // Shortest arc from up to the ground normal, then the yaw about the tilted up.
+        const float halfYaw = yaw * 0.5f;
+        const std::array<float, 4> yawRotation = {0.0f, 0.0f, std::sin(halfYaw), std::cos(halfYaw)};
+        const float w = 1.0f + up[2];
+        const float length = std::sqrt(up[1] * up[1] + up[0] * up[0] + w * w);
+        const std::array<float, 4> tilt = {-up[1] / length, up[0] / length, 0.0f, w / length};
+        const std::array<float, 4> rotation = {
+            tilt[3] * yawRotation[0] + tilt[0] * yawRotation[3] + tilt[1] * yawRotation[2] - tilt[2] * yawRotation[1],
+            tilt[3] * yawRotation[1] - tilt[0] * yawRotation[2] + tilt[1] * yawRotation[3] + tilt[2] * yawRotation[0],
+            tilt[3] * yawRotation[2] + tilt[0] * yawRotation[1] - tilt[1] * yawRotation[0] + tilt[2] * yawRotation[3],
+            tilt[3] * yawRotation[3] - tilt[0] * yawRotation[0] - tilt[1] * yawRotation[1] - tilt[2] * yawRotation[2]};
+        m_models.setTransform(model.handle, Engine::gltfModelPlacement(position, rotation, loaded.scale));
+
+        const float dx = item.x - pWorld->partyX();
+        const float dy = item.y - pWorld->partyY();
+        const bool sparkling = item.sparkle != WorldItemSparkle::None && m_models.isVisible(model.handle)
+            && dx * dx + dy * dy < SparkleRange * SparkleRange;
+        if (sparkling || model.sparkle != EffectHandle {})
+        {
+            // The emitter jumps between random points over the item's top, SparkleJumpsPerSecond times a second; its
+            // glints stay where they were shed, so a long blade or a breastplate glitters all over.
+            const uint32_t jump = uint32_t(m_itemModelSeconds * SparkleJumpsPerSecond);
+            uint32_t hash = (item.key * 2654435761u) ^ (jump * 0x9e3779b9u);
+            hash ^= hash >> 15;
+            hash *= 0x2c1b3c6du;
+            hash ^= hash >> 12;
+            const float u = 0.15f + 0.7f * float(hash & 0xffffu) / 65535.0f;
+            const float v = 0.15f + 0.7f * float(hash >> 16) / 65535.0f;
+            const float localX = binding.boundsMin[0] + u * (binding.boundsMax[0] - binding.boundsMin[0]);
+            const float localY = binding.boundsMin[1] + v * (binding.boundsMax[1] - binding.boundsMin[1]);
+            const float offsetX = localX * std::cos(yaw) - localY * std::sin(yaw);
+            const float offsetY = localX * std::sin(yaw) + localY * std::cos(yaw);
+            // On the tilted resting plane, most of the way up the item.
+            const float top = 0.7f * binding.boundsMax[2];
+            const std::string &effect = SparkleEffects[size_t(item.sparkle)];
+            const EffectSpawnParams params = {.position = {position[0] + offsetX + up[0] * top,
+                position[1] + offsetY + up[1] * top,
+                position[2] - (up[0] * offsetX + up[1] * offsetY) / up[2] + up[2] * top}, .seed = item.key};
+            if (deltaSeconds > 0.0f || !sparkling)
+            {
+                syncAmbientEffect(m_namedEffects, m_namedEffectLibrary, effect, model.sparkle, params, sparkling);
+            }
+            else
+            {
+                m_namedEffects.setTransform(model.sparkle, params.position, params.rotation, params.scale);
+            }
+        }
     }
     for (auto iterator = m_itemModels.begin(); iterator != m_itemModels.end();)
     {
@@ -2868,6 +3092,7 @@ void WorldFxSystem::syncItemModels(GameSession &session)
             continue;
         }
         m_models.destroy(iterator->second.handle);
+        m_namedEffects.stop(iterator->second.sparkle, EffectStopMode::Drain);
         iterator = m_itemModels.erase(iterator);
     }
 }
@@ -2945,6 +3170,13 @@ std::vector<std::string> WorldFxSystem::projectileEffectSpriteResources() const
     std::vector<std::string> effectIds = m_projectileEffectBindings.effectIds();
     const std::vector<std::string> auraIds = m_spellAuraEffectBindings.effectIds();
     effectIds.insert(effectIds.end(), auraIds.begin(), auraIds.end());
+    for (const auto &[descriptor, binding] : m_actorModelBindings)
+    {
+        if (!binding.ambientEffect.empty())
+        {
+            effectIds.push_back(binding.ambientEffect);
+        }
+    }
     for (const std::string &id : effectIds)
     {
         const EffectDefinition *pDefinition = m_namedEffectLibrary.find(id);
@@ -3190,7 +3422,7 @@ void WorldFxSystem::syncProjectileFx(GameSession &session, float deltaSeconds, b
     m_pMonsterProjectileTable = &session.data().monsterProjectileTable();
     m_pProjectileObjectTable = &session.data().objectTable();
     syncProjectileModels(session);
-    syncItemModels(session);
+    syncItemModels(session, deltaSeconds);
     if (const IGameplayWorldRuntime *pWorld = session.activeWorldRuntime())
     {
         syncActorModelFx(*pWorld, deltaSeconds, refreshSpatialFx);

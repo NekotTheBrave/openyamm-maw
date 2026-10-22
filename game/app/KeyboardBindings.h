@@ -59,6 +59,9 @@ enum class KeyboardAction : uint8_t
 
 constexpr size_t KeyboardActionCount = static_cast<size_t>(KeyboardAction::Count);
 
+// SDL reports mouse button state as a 32-bit mask, so button indices 1..32 can be bound.
+constexpr uint8_t MaxBindableMouseButton = 32;
+
 enum class InputBindingKind : uint8_t
 {
     None = 0,
@@ -92,6 +95,8 @@ const std::array<KeyboardBindingDefinition, KeyboardActionCount> &keyboardBindin
 const KeyboardBindingDefinition &keyboardBindingDefinition(KeyboardAction action);
 InputBinding keyboardInputBinding(SDL_Scancode scancode);
 InputBinding mouseButtonInputBinding(uint8_t button);
+// True when the SDL mouse button state flags report the given button (1-based SDL index, including X1/X2) held.
+bool mouseButtonHeldInFlags(SDL_MouseButtonFlags flags, uint8_t button);
 InputBinding mouseWheelInputBinding(float delta);
 std::array<InputBinding, KeyboardActionCount> createDefaultKeyboardBindings();
 SDL_Scancode parseKeyboardBindingName(const std::string &name);

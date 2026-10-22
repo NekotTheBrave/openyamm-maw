@@ -22,7 +22,10 @@
 #include "game/gameplay/NpcFollowerRuntime.h"
 #include "game/gameplay/ReputationRuntime.h"
 #include "game/gameplay/StealingRuntime.h"
+#include "game/items/ItemEnchantRuntime.h"
 #include "game/items/ItemGenerator.h"
+#include "game/items/ItemRuntime.h"
+#include "game/items/WorldItemShape.h"
 #include "game/mm9/Mm9RudeDialogue.h"
 #include "game/mm9/Mm9BarrelRuntime.h"
 #include "game/gameplay/TreasureRuntime.h"
@@ -832,8 +835,7 @@ constexpr float ChestTrapCenterSpriteZOffset = 32.0f;
 constexpr float OeTurnAwayFromWaterAngleRadians = Pi / 32.0f;
 constexpr int DaggerWoundIslandMapId = 1;
 constexpr uint32_t EventSpellSourceId = std::numeric_limits<uint32_t>::max();
-constexpr uint32_t GoldHeapSmallItemId = 187;
-constexpr uint32_t GoldHeapLargeItemId = 189;
+constexpr float ProjectileFacePlaneEpsilon = 0.0001f;
 constexpr float WorldItemThrowPitchRadians = Pi * 2.0f * (184.0f / 2048.0f);
 constexpr float WorldItemThrowSpeed = 200.0f;
 constexpr int MonsterDeathDropMinThrowSpeed = 200;
@@ -1287,11 +1289,6 @@ bool readInt32FromBytes(const std::vector<uint8_t> &bytes, size_t offset, int32_
 
     std::memcpy(&value, bytes.data() + offset, sizeof(value));
     return true;
-}
-
-bool isGoldHeapItemId(uint32_t itemId)
-{
-    return itemId >= GoldHeapSmallItemId && itemId <= GoldHeapLargeItemId;
 }
 
 std::string debugStringOrNone(const std::string &value)
@@ -4880,8 +4877,9 @@ void OutdoorWorldRuntime::spawnChestTrapVisual(
 
     const std::optional<uint16_t> objectDescriptionId =
         m_pObjectTable->findDescriptionIdByObjectId(static_cast<int16_t>(trapResult.trapObjectId));
+    const ObjectEntry *pTrapObject = m_pObjectTable->findByObjectId(static_cast<int16_t>(trapResult.trapObjectId));
 
-    if (!objectDescriptionId)
+    if (!objectDescriptionId || pTrapObject == nullptr)
     {
         return;
     }
@@ -4889,6 +4887,9 @@ void OutdoorWorldRuntime::spawnChestTrapVisual(
     ProjectileState projectile = {};
     projectile.sourceKind = ProjectileState::SourceKind::Event;
     projectile.sourceId = EventSpellSourceId;
+    // The trap is the burst's source, so it plays the trap's named effect (engine/effects/projectiles.yml).
+    projectile.objectName = pTrapObject->internalName;
+    projectile.objectSpriteName = pTrapObject->spriteName;
     projectile.impactObjectDescriptionId = *objectDescriptionId;
     projectile.impactSoundIdOverride = static_cast<uint32_t>(SoundId::Fireball);
     projectile.sourceX = point.x;
@@ -4955,6 +4956,7 @@ void OutdoorWorldRuntime::initialize(
     m_mm9GuardActorIndices.clear();
     m_spawnPoints.clear();
     m_mapActorCorpseViews.clear();
+    m_mapActorRevealedLoot.clear();
     m_activeCorpseView.reset();
     m_actorCorpsePhysicsActorIndices.clear();
     m_pendingAudioEvents.clear();
@@ -5135,6 +5137,7 @@ void OutdoorWorldRuntime::initialize(
 
         m_mapActors.reserve(outdoorMapDeltaData->actors.size());
         m_mapActorCorpseViews.assign(outdoorMapDeltaData->actors.size(), std::nullopt);
+        m_mapActorRevealedLoot.clear();
         m_corpseLootPending = true;
 
         for (size_t actorIndex = 0; actorIndex < outdoorMapDeltaData->actors.size(); ++actorIndex)
@@ -5450,7 +5453,7 @@ bool OutdoorWorldRuntime::materializeTreasureSpawnFromSpawnPoint(size_t spawnPoi
     worldItem.worldItemId = m_nextWorldItemId++;
     worldItem.item = treasure->item;
     worldItem.goldAmount = treasure->goldAmount;
-    worldItem.isGold = treasure->isGold && isGoldHeapItemId(treasure->item.objectDescriptionId);
+    worldItem.isGold = treasure->isGold;
     worldItem.objectDescriptionId = objectDescriptionId;
     worldItem.objectSpriteId = objectSpriteId;
     worldItem.objectSpriteFrameIndex = objectSpriteFrameIndex;
@@ -5476,6 +5479,8 @@ void OutdoorWorldRuntime::materializeMapDeltaWorldItems()
     {
         return;
     }
+
+    std::mt19937 rng(std::random_device{}());
 
     for (const MapDeltaSpriteObject &spriteObject : m_pOutdoorMapDeltaData->spriteObjects)
     {
@@ -5537,10 +5542,9 @@ void OutdoorWorldRuntime::materializeMapDeltaWorldItems()
         worldItem.item.quantity = 1;
         worldItem.item.width = pItemDefinition->inventoryWidth;
         worldItem.item.height = pItemDefinition->inventoryHeight;
-        worldItem.goldAmount = isGoldHeapItemId(worldItem.item.objectDescriptionId)
-            ? static_cast<uint32_t>(std::max(0, rawGoldAmount))
-            : 0;
-        worldItem.isGold = worldItem.goldAmount > 0 && isGoldHeapItemId(worldItem.item.objectDescriptionId);
+        ItemGenerator::assignPlacedPotionPower(worldItem.item, *m_pItemTable, rng);
+        worldItem.goldAmount = pItemDefinition->isGold() ? static_cast<uint32_t>(std::max(0, rawGoldAmount)) : 0;
+        worldItem.isGold = worldItem.goldAmount > 0;
         worldItem.objectDescriptionId = objectDescriptionId;
         worldItem.objectSpriteId = objectSpriteId;
         worldItem.objectSpriteFrameIndex = objectSpriteFrameIndex;
@@ -5885,14 +5889,18 @@ void OutdoorWorldRuntime::spawnMonsterDeathDropsForActor(size_t actorIndex, cons
 
     if (!leaveCorpse && actor.specialItemId != 0)
     {
-        const InventoryItem item =
+        const uint32_t seed =
+            m_sessionChestSeed ^ actor.actorId * 2654435761u ^ actor.specialItemId * 3266489917u ^ timeSeed;
+        InventoryItem item =
             ItemGenerator::makeInventoryItem(actor.specialItemId, *m_pItemTable, ItemGenerationMode::Generic);
+        std::mt19937 potionRng(seed);
+        ItemGenerator::assignMonsterPotionPower(item, *m_pItemTable, potionRng);
         spawnMonsterDeathDropWorldItem(
             item,
             dropX,
             dropY,
             dropZ,
-            m_sessionChestSeed ^ actor.actorId * 2654435761u ^ actor.specialItemId * 3266489917u ^ timeSeed);
+            seed);
     }
 
     for (size_t dropIndex = 0; dropIndex < drops.size(); ++dropIndex)
@@ -5929,8 +5937,9 @@ void OutdoorWorldRuntime::spawnMonsterDeathDropsForActor(size_t actorIndex, cons
                 + gameplayDebugTraceItemSummary(drop.itemId, m_pItemTable));
         }
 
-        const InventoryItem item =
+        InventoryItem item =
             ItemGenerator::makeInventoryItem(drop.itemId, *m_pItemTable, ItemGenerationMode::Generic);
+        ItemGenerator::assignMonsterPotionPower(item, *m_pItemTable, rng);
         spawnMonsterDeathDropWorldItem(
             item,
             dropX,
@@ -6134,8 +6143,26 @@ void OutdoorWorldRuntime::collectWorldItemPresentationStates(
         state.x = pWorldItem->x;
         state.y = pWorldItem->y;
         state.z = pWorldItem->z;
+        state.moving = pWorldItem->velocityX != 0.0f || pWorldItem->velocityY != 0.0f || pWorldItem->velocityZ != 0.0f;
+        state.floating = (pWorldItem->objectFlags & ObjectDescNoGravity) != 0;
+        state.lootBag = pWorldItem->semanticLootContainer;
+        const ItemDefinition *pItemDefinition =
+            m_pItemTable != nullptr ? m_pItemTable->get(pWorldItem->item.objectDescriptionId) : nullptr;
+        if (pItemDefinition != nullptr)
+        {
+            state.sparkle = worldItemSparkle(pWorldItem->item, *pItemDefinition, ItemEnchantRuntime::itemValue(
+                pWorldItem->item, *pItemDefinition, m_pParty != nullptr ? m_pParty->standardItemEnchantTable() : nullptr,
+                m_pParty != nullptr ? m_pParty->specialItemEnchantTable() : nullptr));
+        }
         items.push_back(state);
     }
+}
+
+const ItemModelBinding &OutdoorWorldRuntime::worldItemModel(const ItemTable &itemTable, const WorldItemState &worldItem)
+{
+    return worldItem.semanticLootContainer
+        ? lootBagModelBinding()
+        : itemTable.groundModel(worldItem.item.objectDescriptionId);
 }
 
 void OutdoorWorldRuntime::collectFireSpikeTrapPresentationStates(
@@ -6224,12 +6251,18 @@ std::optional<float> OutdoorWorldRuntime::sampleBModelWorldItemFloorHeight(
 
 void OutdoorWorldRuntime::updateWorldItems(float deltaSeconds)
 {
+    // Moving items advance in sub-steps no longer than the indoor world's, so a fast throw cannot pass a wall.
+    constexpr float MaxStepSeconds = 1.0f / 128.0f;
+    constexpr int MaxSteps = 16;
+
     if (deltaSeconds <= 0.0f || m_pOutdoorMapData == nullptr)
     {
         return;
     }
 
     std::vector<size_t> candidateFaceIndices;
+    const int stepCount = std::clamp(int(std::ceil(deltaSeconds / MaxStepSeconds)), 1, MaxSteps);
+    const float stepSeconds = deltaSeconds / float(stepCount);
 
     for (WorldItemState &worldItem : m_worldItems)
     {
@@ -6251,86 +6284,24 @@ void OutdoorWorldRuntime::updateWorldItems(float deltaSeconds)
             continue;
         }
 
-        if ((worldItem.objectFlags & ObjectDescNoGravity) == 0)
+        // An item collides with walls as its model's sphere chain, not as a point (GROUND_ITEMS_3D_BEHAVIOUR.md).
+        std::optional<WorldItemSphereChain> chain;
+
+        if (!worldItem.semanticLootContainer && m_pItemTable != nullptr)
         {
-            worldItem.velocityZ -= WorldItemGravity * deltaSeconds;
+            chain = worldItemSphereChain(
+                m_pItemTable->groundModel(worldItem.item.objectDescriptionId),
+                worldItemYawRadians(worldItem.worldItemId));
         }
 
-        const float previousZ = worldItem.z;
-        worldItem.x += worldItem.velocityX * deltaSeconds;
-        worldItem.y += worldItem.velocityY * deltaSeconds;
-        worldItem.z += worldItem.velocityZ * deltaSeconds;
-
-        if (isOutdoorTerrainWater(*m_pOutdoorMapData, worldItem.x, worldItem.y))
+        for (int step = 0; step < stepCount && !worldItem.isExpired; ++step)
         {
-            worldItem.isExpired = true;
-            continue;
-        }
-
-        float floorZ = 0.0f;
-        bool hasFloor = false;
-
-        if (m_usesBModelGround)
-        {
-            // B-model worlds have no terrain floor. Use the pre-step height so falling items cannot skip a floor,
-            // while upward-moving items do not snap to a higher deck that they have not crossed.
-            const std::optional<float> supportFloorHeight = sampleBModelWorldItemFloorHeight(
-                worldItem.x,
-                worldItem.y,
-                previousZ + WorldItemGroundClearance,
-                candidateFaceIndices);
-
-            if (supportFloorHeight)
+            if (worldItem.velocityX == 0.0f && worldItem.velocityY == 0.0f && worldItem.velocityZ == 0.0f)
             {
-                floorZ = *supportFloorHeight + WorldItemGroundClearance;
-                hasFloor = true;
-            }
-        }
-        else
-        {
-            const float terrainFloorZ = sampleOutdoorRenderedTerrainHeight(
-                *m_pOutdoorMapData,
-                worldItem.x,
-                worldItem.y) + WorldItemGroundClearance;
-            floorZ = terrainFloorZ;
-            hasFloor = true;
-
-            if (worldItem.z <= terrainFloorZ + WorldItemSupportFloorProbeHeight)
-            {
-                const float supportFloorZ = sampleOutdoorSupportFloorHeight(
-                    *m_pOutdoorMapData,
-                    worldItem.x,
-                    worldItem.y,
-                    worldItem.z) + WorldItemGroundClearance;
-                floorZ = std::max(floorZ, supportFloorZ);
-            }
-        }
-
-        if (hasFloor && worldItem.z <= floorZ)
-        {
-            worldItem.z = floorZ;
-
-            if ((worldItem.objectFlags & ObjectDescBounce) != 0
-                && std::abs(worldItem.velocityZ) >= WorldItemBounceStopVelocity)
-            {
-                worldItem.velocityZ = -worldItem.velocityZ * WorldItemBounceFactor;
-            }
-            else
-            {
-                worldItem.velocityZ = 0.0f;
+                break;
             }
 
-            worldItem.velocityX *= WorldItemGroundDamping;
-            worldItem.velocityY *= WorldItemGroundDamping;
-
-            const float horizontalSpeedSquared =
-                worldItem.velocityX * worldItem.velocityX + worldItem.velocityY * worldItem.velocityY;
-
-            if (horizontalSpeedSquared < WorldItemRestingHorizontalSpeedSquared)
-            {
-                worldItem.velocityX = 0.0f;
-                worldItem.velocityY = 0.0f;
-            }
+            stepWorldItem(worldItem, stepSeconds, chain ? &*chain : nullptr, candidateFaceIndices);
         }
     }
 
@@ -6343,6 +6314,219 @@ void OutdoorWorldRuntime::updateWorldItems(float deltaSeconds)
                 return worldItem.isExpired;
             }),
         m_worldItems.end());
+}
+
+void OutdoorWorldRuntime::stepWorldItem(
+    WorldItemState &worldItem,
+    float deltaSeconds,
+    const WorldItemSphereChain *pChain,
+    std::vector<size_t> &candidateFaceIndices)
+{
+    if ((worldItem.objectFlags & ObjectDescNoGravity) == 0)
+    {
+        worldItem.velocityZ -= WorldItemGravity * deltaSeconds;
+    }
+
+    const float previousZ = worldItem.z;
+    const bx::Vec3 start = {worldItem.x, worldItem.y, worldItem.z};
+    const bx::Vec3 end = {
+        worldItem.x + worldItem.velocityX * deltaSeconds,
+        worldItem.y + worldItem.velocityY * deltaSeconds,
+        worldItem.z + worldItem.velocityZ * deltaSeconds
+    };
+    const std::optional<std::pair<float, bx::Vec3>> wallHit =
+        pChain != nullptr ? sweepWorldItemAgainstWalls(*pChain, start, end, candidateFaceIndices) : std::nullopt;
+
+    if (wallHit)
+    {
+        const float moveDistance = std::sqrt(
+            (end.x - start.x) * (end.x - start.x)
+            + (end.y - start.y) * (end.y - start.y)
+            + (end.z - start.z) * (end.z - start.z));
+        const float travelled = moveDistance > 0.0f ? wallHit->first / moveDistance : 0.0f;
+        worldItem.x = start.x + (end.x - start.x) * travelled;
+        worldItem.y = start.y + (end.y - start.y) * travelled;
+        worldItem.z = start.z + (end.z - start.z) * travelled;
+        const std::array<float, 3> reflected = reflectWorldItemVelocity(
+            {worldItem.velocityX, worldItem.velocityY, worldItem.velocityZ},
+            {wallHit->second.x, wallHit->second.y, wallHit->second.z});
+        worldItem.velocityX = reflected[0] * WorldItemGroundDamping;
+        worldItem.velocityY = reflected[1] * WorldItemGroundDamping;
+        worldItem.velocityZ = reflected[2] * WorldItemGroundDamping;
+    }
+    else
+    {
+        worldItem.x = end.x;
+        worldItem.y = end.y;
+        worldItem.z = end.z;
+    }
+
+    if (isOutdoorTerrainWater(*m_pOutdoorMapData, worldItem.x, worldItem.y))
+    {
+        worldItem.isExpired = true;
+        return;
+    }
+
+    float floorZ = 0.0f;
+    bool hasFloor = false;
+
+    if (m_usesBModelGround)
+    {
+        // B-model worlds have no terrain floor. Use the pre-step height so falling items cannot skip a floor,
+        // while upward-moving items do not snap to a higher deck that they have not crossed.
+        const std::optional<float> supportFloorHeight = sampleBModelWorldItemFloorHeight(
+            worldItem.x,
+            worldItem.y,
+            previousZ + WorldItemGroundClearance,
+            candidateFaceIndices);
+
+        if (supportFloorHeight)
+        {
+            floorZ = *supportFloorHeight + WorldItemGroundClearance;
+            hasFloor = true;
+        }
+    }
+    else
+    {
+        const float terrainFloorZ = sampleOutdoorRenderedTerrainHeight(
+            *m_pOutdoorMapData,
+            worldItem.x,
+            worldItem.y) + WorldItemGroundClearance;
+        floorZ = terrainFloorZ;
+        hasFloor = true;
+
+        if (worldItem.z <= terrainFloorZ + WorldItemSupportFloorProbeHeight)
+        {
+            const float supportFloorZ = sampleOutdoorSupportFloorHeight(
+                *m_pOutdoorMapData,
+                worldItem.x,
+                worldItem.y,
+                worldItem.z) + WorldItemGroundClearance;
+            floorZ = std::max(floorZ, supportFloorZ);
+        }
+    }
+
+    if (hasFloor && worldItem.z <= floorZ)
+    {
+        worldItem.z = floorZ;
+
+        if ((worldItem.objectFlags & ObjectDescBounce) != 0
+            && std::abs(worldItem.velocityZ) >= WorldItemBounceStopVelocity)
+        {
+            worldItem.velocityZ = -worldItem.velocityZ * WorldItemBounceFactor;
+        }
+        else
+        {
+            worldItem.velocityZ = 0.0f;
+        }
+
+        worldItem.velocityX *= WorldItemGroundDamping;
+        worldItem.velocityY *= WorldItemGroundDamping;
+
+        const float horizontalSpeedSquared =
+            worldItem.velocityX * worldItem.velocityX + worldItem.velocityY * worldItem.velocityY;
+
+        if (horizontalSpeedSquared < WorldItemRestingHorizontalSpeedSquared)
+        {
+            worldItem.velocityX = 0.0f;
+            worldItem.velocityY = 0.0f;
+        }
+    }
+}
+
+std::optional<std::pair<float, bx::Vec3>> OutdoorWorldRuntime::sweepWorldItemAgainstWalls(
+    const WorldItemSphereChain &chain,
+    const bx::Vec3 &start,
+    const bx::Vec3 &end,
+    std::vector<size_t> &candidateFaceIndices) const
+{
+    // Stop a hair short of the wall so the next step does not start touching it.
+    constexpr float WallBackoff = 1.0f;
+    const bx::Vec3 move = {end.x - start.x, end.y - start.y, end.z - start.z};
+    const float moveDistance = std::sqrt(move.x * move.x + move.y * move.y + move.z * move.z);
+
+    if (moveDistance <= 0.001f || chain.count == 0)
+    {
+        return std::nullopt;
+    }
+
+    const bx::Vec3 direction = {move.x / moveDistance, move.y / moveDistance, move.z / moveDistance};
+    float reach = chain.radius;
+
+    for (size_t index = 0; index < chain.count; ++index)
+    {
+        const std::array<float, 3> &offset = chain.offsets[index];
+        reach = std::max(reach, std::sqrt(offset[0] * offset[0] + offset[1] * offset[1]) + chain.radius);
+    }
+
+    collectOutdoorFaceCandidates(
+        std::min(start.x, end.x) - reach,
+        std::min(start.y, end.y) - reach,
+        std::max(start.x, end.x) + reach,
+        std::max(start.y, end.y) + reach,
+        candidateFaceIndices);
+    std::optional<std::pair<float, bx::Vec3>> bestHit;
+
+    for (size_t faceIndex : candidateFaceIndices)
+    {
+        if (faceIndex >= m_outdoorFaces.size())
+        {
+            continue;
+        }
+
+        const OutdoorFaceGeometryData &face = m_outdoorFaces[faceIndex];
+
+        if (!outdoorFaceBlocksMovement(face)
+            || !face.hasPlane
+            || face.isWalkable
+            || face.vertices.empty()
+            || !segmentMayTouchFaceBounds(start, end, face, reach))
+        {
+            continue;
+        }
+
+        for (size_t index = 0; index < chain.count; ++index)
+        {
+            const bx::Vec3 center = {
+                start.x + chain.offsets[index][0],
+                start.y + chain.offsets[index][1],
+                start.z + chain.offsets[index][2]
+            };
+            const float centerDistance =
+                (center.x - face.vertices[0].x) * face.normal.x
+                + (center.y - face.vertices[0].y) * face.normal.y
+                + (center.z - face.vertices[0].z) * face.normal.z;
+
+            // A BModel wall stops only what is in front of it.
+            if (centerDistance <= 0.0f)
+            {
+                continue;
+            }
+
+            float hitDistance = 0.0f;
+            bx::Vec3 contact = {0.0f, 0.0f, 0.0f};
+
+            if (collideSphereWithFace(
+                    face,
+                    center,
+                    chain.radius,
+                    direction,
+                    moveDistance,
+                    false,
+                    hitDistance,
+                    contact))
+            {
+                const float travelled = std::max(hitDistance - WallBackoff, 0.0f);
+
+                if (!bestHit || travelled < bestHit->first)
+                {
+                    bestHit = std::make_pair(travelled, face.normal);
+                }
+            }
+        }
+    }
+
+    return bestHit;
 }
 
 void OutdoorWorldRuntime::updateFireSpikeTraps(float deltaSeconds, float partyX, float partyY, float partyZ)
@@ -7414,6 +7598,7 @@ OutdoorWorldRuntime::Snapshot OutdoorWorldRuntime::snapshot() const
     snapshot.sessionChestSeed = m_sessionChestSeed;
     snapshot.nextActorId = m_nextActorId;
     snapshot.mapActorCorpseViews = m_mapActorCorpseViews;
+    snapshot.mapActorRevealedLoot = m_mapActorRevealedLoot;
     snapshot.activeCorpseView = m_activeCorpseView;
     snapshot.worldItems = m_worldItems;
     snapshot.nextWorldItemId = m_nextWorldItemId;
@@ -7509,6 +7694,7 @@ void OutdoorWorldRuntime::restoreSnapshot(const Snapshot &snapshot)
     m_sessionChestSeed = snapshot.sessionChestSeed;
     m_nextActorId = snapshot.nextActorId;
     m_mapActorCorpseViews = snapshot.mapActorCorpseViews;
+    m_mapActorRevealedLoot = snapshot.mapActorRevealedLoot;
     m_corpseLootPending = true;
     m_activeCorpseView = snapshot.activeCorpseView;
     m_worldItems = snapshot.worldItems;
@@ -7750,9 +7936,16 @@ WeatherMapSettings OutdoorWorldRuntime::weatherMapSettings() const
         return m_outdoorWeatherProfile->weatherMap;
     }
 
-    // No rolled rain or snow, but the map still has a daily calm wind.
+    // No rolled rain or snow, but the map still has a daily calm wind, and ash where weather.yml gives it.
     WeatherMapSettings settings;
     settings.mapId = static_cast<uint32_t>(std::max(m_mapId, 0));
+
+    if (m_outdoorWeatherProfile.has_value())
+    {
+        settings.ashEnabled = m_outdoorWeatherProfile->weatherMap.ashEnabled;
+        settings.ashChancePercent = m_outdoorWeatherProfile->weatherMap.ashChancePercent;
+    }
+
     return settings;
 }
 
@@ -7892,6 +8085,11 @@ void OutdoorWorldRuntime::advanceGameMinutesInternal(float minutes)
         resetDailySpellCounters();
         applyDailyWeatherRollover(currentWeatherDay);
     }
+
+    if (m_pParty != nullptr)
+    {
+        m_pParty->updateDaysWithoutRest(m_gameMinutes);
+    }
 }
 
 void OutdoorWorldRuntime::applyInitialWeatherProfile()
@@ -7980,6 +8178,9 @@ void OutdoorWorldRuntime::applyPrecipitationState(const WeatherSample &sample)
     m_atmosphereState.windY = sample.windY;
     m_atmosphereState.storm = sample.storm;
     m_atmosphereState.wetness = sample.wetness;
+    const WeatherFogDistances haze = weatherPrecipitationHaze(weatherRules(), sample);
+    m_atmosphereState.hazeWeakDistance = haze.foggy ? haze.weakDistance : 0;
+    m_atmosphereState.hazeStrongDistance = haze.foggy ? haze.strongDistance : 0;
     m_atmosphereState.weatherFlags &= ~(MapWeatherSnowing | MapWeatherRaining);
 
     if (sample.precipitation == PrecipitationKind::Snow)
@@ -8950,6 +9151,17 @@ std::optional<ActorAiFacts> OutdoorWorldRuntime::collectOutdoorActorAiFacts(
         pStats->movementType != MonsterTable::MonsterMovementType::Stationary
         && (!actor.immobile || actor.mm9FleeingFromParty);
     facts.movement.movementBlocked = false;
+
+    // The placement (posts and their facing) for tactics; actors spawned at runtime have none.
+    if (!actor.spawnedAtRuntime && m_pOutdoorMapDeltaData != nullptr
+        && actorIndex < m_pOutdoorMapDeltaData->actors.size())
+    {
+        const MapDeltaActor &placement = m_pOutdoorMapDeltaData->actors[actorIndex];
+        facts.movement.placedImmobile = placement.immobile;
+        facts.movement.hasHomeYaw = true;
+        facts.movement.homeYawRadians =
+            static_cast<float>(placement.initialYawUnits % 2048u) * (Pi * 2.0f / 2048.0f);
+    }
     {
         const GameplayActorService *pActorService = m_pGameplayActorService;
         GameplayActorService fallbackActorService = {};
@@ -9471,6 +9683,8 @@ void OutdoorWorldRuntime::applyOutdoorActorMovementIntent(
         }
     }
 
+    actor.intendedSpeed = 0.0f;
+
     if (!movementIntent.applyMovement || pStats == nullptr)
     {
         return;
@@ -9499,6 +9713,12 @@ void OutdoorWorldRuntime::applyOutdoorActorMovementIntent(
         nextAnimation,
         desiredMoveX,
         desiredMoveY);
+
+    // Outdoors a moving actor turns to its movement; a tactics back-off keeps facing its target.
+    if (movementIntent.keepYawWhileMoving && movementIntent.updateYaw)
+    {
+        actor.yawRadians = movementIntent.yawRadians;
+    }
 }
 
 void OutdoorWorldRuntime::applyOutdoorActorAttackRequest(
@@ -10249,6 +10469,7 @@ void OutdoorWorldRuntime::applyOutdoorActorMovementIntegration(
 
     actor.velocityX = desiredMoveX * moveSpeed;
     actor.velocityY = desiredMoveY * moveSpeed;
+    actor.intendedSpeed = length2d(actor.velocityX, actor.velocityY);
     if (pStats->canFly)
     {
         actor.velocityZ = effectiveDesiredMoveZ * moveSpeed;
@@ -13128,6 +13349,19 @@ OutdoorWorldRuntime::ProjectileCollisionFacts OutdoorWorldRuntime::buildProjecti
             continue;
         }
 
+        // As in the original engine (and the indoor path), projectiles never hit a face from behind: event
+        // spells start inside invisible collision boxes, e.g. the Emerald Island cannon fires from inside its
+        // B0x_W blocker and must leave through the box's wall.
+        const float segmentDotNormal =
+            (segmentEnd.x - segmentStart.x) * face.normal.x
+            + (segmentEnd.y - segmentStart.y) * face.normal.y
+            + (segmentEnd.z - segmentStart.z) * face.normal.z;
+
+        if (segmentDotNormal >= -ProjectileFacePlaneEpsilon)
+        {
+            continue;
+        }
+
         float factor = 0.0f;
         bx::Vec3 point = {0.0f, 0.0f, 0.0f};
 
@@ -14519,6 +14753,8 @@ bool OutdoorWorldRuntime::actorRuntimeState(size_t actorIndex, GameplayRuntimeAc
     state.actionSeconds = pActor->actionSeconds;
     state.velocityX = pActor->velocityX;
     state.velocityY = pActor->velocityY;
+    state.intendedSpeed = pActor->intendedSpeed;
+    state.hurrying = pActor->aiState == ActorAiState::Pursuing || pActor->aiState == ActorAiState::Fleeing;
     state.castingSpell = pActor->queuedAttackAbility == MonsterAttackAbility::Spell1
         || pActor->queuedAttackAbility == MonsterAttackAbility::Spell2;
     state.secondaryAttack = pActor->queuedAttackAbility == MonsterAttackAbility::Attack2;
@@ -15038,9 +15274,10 @@ bool OutdoorWorldRuntime::tryStealFromActor(size_t actorIndex, uint32_t successR
 
     if (m_pInteractionView != nullptr)
     {
-        const ItemDefinition *pDefinition = m_pItemTable != nullptr ? m_pItemTable->get(stolenItem.itemId) : nullptr;
+        const ItemDefinition *pDefinition =
+            m_pItemTable != nullptr ? m_pItemTable->get(inventoryItem.objectDescriptionId) : nullptr;
         const std::string itemName =
-            pDefinition != nullptr && !pDefinition->name.empty() ? pDefinition->name : "item";
+            pDefinition != nullptr ? ItemRuntime::foundItemName(*pDefinition) : "item";
         m_pInteractionView->setStatusBarEvent("You found an item (" + itemName + ")!");
     }
 
@@ -17729,28 +17966,16 @@ bool OutdoorWorldRuntime::ensureMapActorCorpseView(size_t actorIndex)
         return false;
     }
 
-    std::vector<uint32_t> guaranteedItemIds;
-    if (actor.specialItemId != 0)
+    CorpseViewState corpse = {};
+
+    if (actorIndex < m_mapActorRevealedLoot.size() && m_mapActorRevealedLoot[actorIndex])
     {
-        guaranteedItemIds.push_back(actor.specialItemId);
+        corpse = std::move(*m_mapActorRevealedLoot[actorIndex]);
+        m_mapActorRevealedLoot[actorIndex].reset();
     }
-
-    if (m_eventRuntimeState)
+    else
     {
-        const auto extraItemIterator =
-            m_eventRuntimeState->actorExtraItemOverrides.find(static_cast<uint32_t>(actorIndex));
-
-        if (extraItemIterator != m_eventRuntimeState->actorExtraItemOverrides.end())
-        {
-            guaranteedItemIds.insert(
-                guaranteedItemIds.end(),
-                extraItemIterator->second.begin(),
-                extraItemIterator->second.end());
-        }
-    }
-
-    CorpseViewState corpse =
-        buildMonsterCorpseView(
+        corpse = rollMonsterCarriedLoot(
             actor.displayName,
             actor.proceduralDeathLoot
                 ? modCorpseLoot(
@@ -17759,8 +17984,10 @@ bool OutdoorWorldRuntime::ensureMapActorCorpseView(size_t actorIndex)
                 : MonsterTable::LootPrototype {},
             m_pItemTable,
             m_pParty,
-            m_map.worldId,
-            guaranteedItemIds);
+            m_map.worldId);
+    }
+
+    addGuaranteedCorpseItems(corpse, m_pItemTable, mapActorGuaranteedItemIds(actorIndex));
 
     for (const GameplayChestItemState &item : corpse.items)
     {
@@ -17784,6 +18011,82 @@ bool OutdoorWorldRuntime::ensureMapActorCorpseView(size_t actorIndex)
     corpse.sourceIndex = static_cast<uint32_t>(actorIndex);
     m_mapActorCorpseViews[actorIndex] = std::move(corpse);
     return true;
+}
+
+std::vector<uint32_t> OutdoorWorldRuntime::mapActorGuaranteedItemIds(size_t actorIndex) const
+{
+    std::vector<uint32_t> guaranteedItemIds;
+
+    if (actorIndex >= m_mapActors.size())
+    {
+        return guaranteedItemIds;
+    }
+
+    if (m_mapActors[actorIndex].specialItemId != 0)
+    {
+        guaranteedItemIds.push_back(m_mapActors[actorIndex].specialItemId);
+    }
+
+    if (m_eventRuntimeState)
+    {
+        const auto extraItemIterator =
+            m_eventRuntimeState->actorExtraItemOverrides.find(static_cast<uint32_t>(actorIndex));
+
+        if (extraItemIterator != m_eventRuntimeState->actorExtraItemOverrides.end())
+        {
+            guaranteedItemIds.insert(
+                guaranteedItemIds.end(),
+                extraItemIterator->second.begin(),
+                extraItemIterator->second.end());
+        }
+    }
+
+    return guaranteedItemIds;
+}
+
+std::optional<OutdoorWorldRuntime::CorpseViewState> OutdoorWorldRuntime::revealActorLoot(size_t actorIndex)
+{
+    if (actorIndex >= m_mapActors.size() || m_pMonsterTable == nullptr)
+    {
+        return std::nullopt;
+    }
+
+    const MapActorState &actor = m_mapActors[actorIndex];
+    const MonsterTable::MonsterStatsEntry *pStats = m_pMonsterTable->findStatsById(actor.monsterId);
+
+    if (pStats == nullptr || actor.isDead || actor.isInvisible)
+    {
+        return std::nullopt;
+    }
+
+    // An actor that leaves no corpse drops only its carried item.
+    if (!actorShouldLeaveCorpse(m_pMonsterTable, actor))
+    {
+        CorpseViewState loot = {};
+        addGuaranteedCorpseItems(loot, m_pItemTable, {actor.specialItemId});
+        return loot;
+    }
+
+    if (actorIndex >= m_mapActorRevealedLoot.size())
+    {
+        m_mapActorRevealedLoot.resize(actorIndex + 1);
+    }
+
+    if (!m_mapActorRevealedLoot[actorIndex])
+    {
+        m_mapActorRevealedLoot[actorIndex] = rollMonsterCarriedLoot(
+            actor.displayName,
+            actor.proceduralDeathLoot
+                ? gameplayBolsterLootPrototype(pStats->loot, pStats->hitPoints, actor.bolsterRewardMultiplier)
+                : MonsterTable::LootPrototype {},
+            m_pItemTable,
+            m_pParty,
+            m_map.worldId);
+    }
+
+    CorpseViewState loot = *m_mapActorRevealedLoot[actorIndex];
+    addGuaranteedCorpseItems(loot, m_pItemTable, mapActorGuaranteedItemIds(actorIndex));
+    return loot;
 }
 
 void OutdoorWorldRuntime::rollPendingCorpseLoot()
@@ -18778,8 +19081,8 @@ bool OutdoorWorldRuntime::summonEventPayload(
             worldItem.item.quantity = 1;
             worldItem.item.width = pItemDefinition->inventoryWidth;
             worldItem.item.height = pItemDefinition->inventoryHeight;
-            worldItem.goldAmount = isGoldHeapItemId(worldItem.item.objectDescriptionId) ? 1u : 0u;
-            worldItem.isGold = worldItem.goldAmount > 0 && isGoldHeapItemId(worldItem.item.objectDescriptionId);
+            worldItem.goldAmount = pItemDefinition->isGold() ? 1u : 0u;
+            worldItem.isGold = worldItem.goldAmount > 0;
         }
 
         if (speed > 0)
@@ -19616,6 +19919,19 @@ bool OutdoorWorldRuntime::castEventSpell(
         request.targetX = static_cast<float>(toX);
         request.targetY = static_cast<float>(toY);
         request.targetZ = static_cast<float>(toZ);
+    }
+
+    if (isSpellId(spellId, SpellId::DeathBlossom))
+    {
+        // The original event cast aims only Death Blossom's yaw at the target and always launches it at 45 degrees.
+        const float deltaX = request.targetX - request.sourceX;
+        const float deltaY = request.targetY - request.sourceY;
+        const float horizontalDistance = std::sqrt(deltaX * deltaX + deltaY * deltaY);
+
+        if (horizontalDistance > 1.0f)
+        {
+            request.targetZ = request.sourceZ + horizontalDistance;
+        }
     }
 
     return castSpell(request);

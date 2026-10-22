@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Create release ZIPs with exactly one validated native sprite texture profile."""
+"""Create the release content packs (index.json and packs/) with exactly one validated native sprite texture
+profile; tools/packaging/packs.yml decides how packages split into packs."""
 import argparse
 import json
 import os
@@ -7,8 +8,14 @@ from pathlib import Path
 import re
 import subprocess
 import struct
-import tempfile
+import sys
 import zipfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from runtime_packs import PackConfig, build_packs, report, write_index, write_zip  # noqa: E402
+
+# Bumped whenever a binary needs new content or content needs a new binary (packaging/UPDATER_PLAN.md, 7.1).
+CONTENT_FORMAT = 1
 
 
 def outdoor_lighting_dependencies(path):
@@ -91,6 +98,17 @@ def lighting_archive_dependencies(assets_root):
     return entries
 
 
+def sparse_files(root):
+    """Files below root that a sparse checkout leaves out (git's skip-worktree entries), relative to root. The android
+    content job checks out none of the desktop-only textures; their names still define what the profile replaces."""
+    try:
+        listing = subprocess.run(["git", "-C", str(root), "ls-files", "-t", "-z", "--", "."], capture_output=True,
+                                 check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return set()
+    return {item[2:].decode("utf-8") for item in listing.split(b"\0") if item.startswith(b"S ")}
+
+
 def overlay_model_textures(entries, source, overlay):
     """Replace every packaged cooked model texture (models/textures/*.oytex), terrain material
     (terrain_materials/<id>/*.oytex), effect atlas (effects/authored/textures/*.oytex), sky texture
@@ -103,10 +121,12 @@ def overlay_model_textures(entries, source, overlay):
                 or "rendering/sky" in path.parent.as_posix()
                 or (path.parent.name == "icons_x2" and path.name.startswith(("obsidian_", "faces_"))))
 
-    def cooked(root):
-        return {path.relative_to(root).as_posix() for path in root.rglob("*.oytex")
-                if profiled(path)} if root.is_dir() else set()
-    expected, available = cooked(source), cooked(overlay)
+    def cooked(root, sparse=frozenset()):
+        if not root.is_dir():
+            return set()
+        names = {path.relative_to(root).as_posix() for path in root.rglob("*.oytex")} | sparse
+        return {name for name in names if name.endswith(".oytex") and profiled(Path(name))}
+    expected, available = cooked(source, sparse_files(source)), cooked(overlay)
     if expected != available:
         missing, stale = sorted(expected - available), sorted(available - expected)
         raise ValueError(f"Profile textures in {overlay} do not match the cooked textures in {source} "
@@ -139,10 +159,10 @@ def verify_surface_cook(assets_root, profile):
     if not (sources / "worlds").is_dir():
         print(f"No surface texture sources in {sources}: packaging the committed {profile} cook", flush=True)
         return
-    from cook_surface_textures import verify
+    from cook_surface_textures import WORLDS, verify
     output = assets_root if profile == "desktop" else assets_root.parent / "assets_cooked" / profile
     cooker = assets_root.parent / "build/game/openyamm_model_texture_cook"
-    if verify(sources, output, profile, cooker, None, require_sources=True):
+    if verify(sources, output, profile, cooker, None, WORLDS, require_sources=True):
         raise ValueError(f"Cooked {profile} surface textures are missing or stale; "
                          f"run tools/cook_surface_textures.py --profile {profile}")
 
@@ -150,9 +170,6 @@ def verify_surface_cook(assets_root, profile):
 # The model manifests the game reads (ActorModelManifest, DecorationModelManifest, DecorationModelSet). Review and
 # stress-test manifests selected through debug.actor_models_manifest stay out.
 RUNTIME_MODEL_MANIFESTS = {"actors.yml", "decorations.yml", "indoor_decorations.yml", "decoration_overlays.yml"}
-# World packages whose 3D models are work in progress: releases leave their models/ out, so those monsters keep their
-# sprites. Development runs still load them from assets_dev.
-UNRELEASED_MODEL_WORLDS = {"mm8"}
 
 
 def release_model_file(relative):
@@ -165,23 +182,27 @@ def release_model_file(relative):
     return relative.parts[1] == "textures"
 
 
-def package(source, output, *, sprites=None, profile=None, dependencies=None, model_textures=None, surface_profile=None,
-            surface_overlay=None, models=True):
+def collect_entries(source, *, sprites=None, profile=None, dependencies=None, model_textures=None,
+                    surface_profile=None, surface_overlay=None):
+    """The files one package (engine or a world) ships: {name inside the package: source path or bytes}."""
     if not source.is_dir():
         raise ValueError(f"Missing asset package: {source}")
     entries = {}
-    for path in sorted(source.rglob("*")):
+    # A sparse checkout's left-out files stay entries: a profile overlay or surface tier replaces them below, and any
+    # other one fails when its pack is written.
+    sparse = sparse_files(source)
+    for path in sorted(set(source.rglob("*")) | {source / name for name in sparse}):
         relative = path.relative_to(source)
         if any(".cook-" in part or part.endswith(".previous") for part in relative.parts):
             raise ValueError(f"Finish/recover the sprite deployment before packaging: {path}")
         # Development model files, render fixtures and archived sources stay outside release bundles.
-        if (not release_model_file(relative) or (not models and relative.parts[0] == "models")
+        if (not release_model_file(relative)
                 or "_legacy" in relative.parts
                 or (sprites is not None and relative.parts[0] == "sprites_new")):
             continue
         if path.is_symlink():
             raise ValueError(f"Resolve asset symlinks before packaging: {path}")
-        if path.is_file():
+        if path.is_file() or relative.as_posix() in sparse:
             entries[relative.as_posix()] = path
     if sprites is not None:
         for path in sorted(sprites.rglob("*")):
@@ -199,28 +220,12 @@ def package(source, output, *, sprites=None, profile=None, dependencies=None, mo
         if name in entries and entries[name] != path:
             raise ValueError(f"Conflicting runtime dependency: {name}")
         entries[name] = path
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(prefix=output.name + ".", suffix=".tmp", dir=output.parent, delete=False) as stream:
-        temporary = Path(stream.name)
-    try:
-        with zipfile.ZipFile(temporary, "w", allowZip64=True) as archive:
-            for name, source_file in sorted(entries.items()):
-                info = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
-                info.external_attr = 0o100644 << 16
-                # Cooked GPU pages and textures already contain Zstandard; avoid a second decompression layer.
-                info.compress_type = (zipfile.ZIP_STORED if name.endswith((".oyatlas", ".oytex", ".ogv"))
-                                      else zipfile.ZIP_DEFLATED)
-                with archive.open(info, "w", force_zip64=True) as target:
-                    if isinstance(source_file, bytes):
-                        target.write(source_file)
-                    else:
-                        with source_file.open("rb") as source_stream:
-                            while block := source_stream.read(1024 * 1024):
-                                target.write(block)
-        temporary.chmod(0o644)
-        temporary.replace(output)
-    finally:
-        temporary.unlink(missing_ok=True)
+    return entries
+
+
+def package(source, output, **options):
+    """One zip of a whole package; tests and tools that inspect a package's selection use it."""
+    write_zip(collect_entries(source, **options), output)
     print(f"Packaged {output}: {output.stat().st_size:,} bytes", flush=True)
 
 
@@ -259,16 +264,40 @@ def verify_sprite_profiles(installed, selected, profile, cooker):
                         raise ValueError(f"Sprite profile palette lookup differs: {name}/{lookup}")
 
 
+def published_packs(manifest, store):
+    """{content_id: published pack file} from an earlier index or manifest and the folder holding its packs."""
+    if manifest is None:
+        return {}
+    document = json.loads(Path(manifest).read_text(encoding="utf-8"))
+    reuse = {}
+    for record in document["packs"]:
+        for candidate in (Path(store) / f"{record['sha256']}.zip", Path(store) / record["file"]):
+            if candidate.is_file():
+                reuse[record["content_id"]] = candidate
+                break
+    return reuse
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--assets-root", type=Path, default=Path("assets_dev"))
-    parser.add_argument("--output", type=Path, default=Path("assets"))
+    parser.add_argument("--output", type=Path, default=Path("assets"),
+                        help="Folder receiving index.json and packs/ (the packaged asset root)")
     parser.add_argument("--profile", choices=("desktop", "android"), required=True)
     parser.add_argument("--sprites", type=Path, help="Cooked profile override; replaces the entire sprites_new directory")
     parser.add_argument("--cooker", type=Path, default=Path("build/game/openyamm_sprite_atlas_cook" + (".exe" if os.name == "nt" else "")))
     parser.add_argument("--engine-only", action="store_true")
-    parser.add_argument("--world", action="append", help="Include selected worlds (default: all installed worlds)")
+    parser.add_argument("--world", action="append", help="Include selected worlds (default: the worlds packs.yml ships)")
+    parser.add_argument("--packs-config", type=Path, default=Path(__file__).resolve().parent / "packaging/packs.yml")
+    parser.add_argument("--release", default="dev", help="Release name recorded in index.json")
+    parser.add_argument("--build", default="dev", help="Build name recorded in index.json")
+    parser.add_argument("--content-format", type=int, default=CONTENT_FORMAT)
+    parser.add_argument("--reuse-manifest", type=Path,
+                        help="Published index or manifest whose unchanged packs are reused byte for byte")
+    parser.add_argument("--reuse-store", type=Path, help="Folder holding the packs of --reuse-manifest")
+    parser.add_argument("--report", action="store_true", help="Print every pack's size")
     args = parser.parse_args()
+    config = PackConfig.load(args.packs_config)
     installed = args.assets_root / "engine/sprites_new"
     sprites = args.sprites or (args.assets_root.parent / "assets_cooked/android/sprites_new"
                               if args.profile == "android" else installed)
@@ -278,20 +307,27 @@ def main():
         verify_surface_cook(args.assets_root.resolve(), args.profile)
     # Desktop packages use the textures cooked into assets_dev; other profiles overlay their own encodings.
     profile_root = None if args.profile == "desktop" else args.assets_root.parent / "assets_cooked" / args.profile
-    package(args.assets_root / "engine", args.output / "engine.zip", sprites=sprites, profile=args.profile,
-            dependencies=dependencies, model_textures=profile_root / "engine" if profile_root else None,
-            surface_profile=args.profile)
+    packages = {"engine": collect_entries(
+        args.assets_root / "engine", sprites=sprites, profile=args.profile, dependencies=dependencies,
+        model_textures=profile_root / "engine" if profile_root else None, surface_profile=args.profile)}
     if not args.engine_only:
         worlds = args.assets_root / "worlds"
-        selected = args.world or sorted(p.name for p in worlds.iterdir() if p.is_dir())
-        for name in selected:
+        for name in args.world or config.worlds:
             if not name or Path(name).name != name or name in (".", ".."):
                 raise ValueError(f"Invalid world package: {name}")
-            package(worlds / name, args.output / "worlds" / f"{name}.zip",
-                    model_textures=profile_root / "worlds" / name if profile_root else None,
-                    surface_profile=args.profile,
-                    surface_overlay=args.assets_root.parent / "assets_cooked" / args.profile / "worlds" / name,
-                    models=name not in UNRELEASED_MODEL_WORLDS)
+            packages[name] = collect_entries(
+                worlds / name, model_textures=profile_root / "worlds" / name if profile_root else None,
+                surface_profile=args.profile,
+                surface_overlay=args.assets_root.parent / "assets_cooked" / args.profile / "worlds" / name)
+    reuse = published_packs(args.reuse_manifest, args.reuse_store or Path("."))
+    records = build_packs(packages, config, args.profile, args.output, reuse)
+    write_index(args.output, records, profile=args.profile, release=args.release, build=args.build,
+                content_format=args.content_format)
+    reused = sum(1 for record in records if record["content_id"] in reuse)
+    total = sum(record["size"] for record in records)
+    print(f"Packaged {len(records)} packs ({total:,} bytes, {reused} reused) into {args.output}", flush=True)
+    if args.report:
+        print(report(records, config), flush=True)
 
 
 if __name__ == "__main__":

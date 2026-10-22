@@ -31,6 +31,7 @@ constexpr float IndoorMovementSubstepDistance = 24.0f;
 constexpr int MaxIndoorMovementSubsteps = 64;
 constexpr float WallOverlapRecoveryMinVelocity = 480.0f;
 constexpr float BlockedWallMinimumUsefulResponseDistance = 0.25f;
+constexpr uint8_t StuckAirborneRecoveryRetrySteps = 32;
 
 bool hasCylinderCollisionHorizontalComponent(float x, float y)
 {
@@ -122,7 +123,7 @@ bool indoorFloorTooSteepForUphillStep(
 
 bool indoorFaceIsSteepFloorCollisionSurface(const IndoorFaceGeometryData &geometry)
 {
-    if (geometry.normal.z <= 0.0f || geometry.normal.z >= MaximumUphillSlopeNormalZ)
+    if (geometry.normal.z < IndoorMinimumSteepFloorNormalZ || geometry.normal.z >= MaximumUphillSlopeNormalZ)
     {
         return false;
     }
@@ -2742,6 +2743,120 @@ IndoorMoveState IndoorMovementController::resolveMoveSingleStep(
         return std::nullopt;
     };
 
+    // An airborne body that no move or slide can leave would hang forever: its feet below a steep slope it cannot
+    // climb, or wedged between converging walls. Settle it at the nearest reachable valid position so it falls again.
+    const auto tryRecoverStuckAirborne = [&](const IndoorMoveState &baseState) -> std::optional<IndoorMoveState>
+    {
+        // A body that cannot move sideways still falls: resolve the step again without the horizontal input.
+        // That step runs this search itself when it cannot move either.
+        if (stepX * stepX + stepY * stepY > 0.0001f)
+        {
+            return resolveMoveSingleStep(
+                state,
+                body,
+                0.0f,
+                0.0f,
+                false,
+                deltaSeconds,
+                pContactedActorIndices,
+                ignoredActorIndex,
+                blockActorSlide,
+                pDebugInfo,
+                flyingActive,
+                ignoreActorCollisions,
+                jumpVelocity,
+                jumpLift,
+                lockVerticalPosition,
+                preventGroundActorLedgeDrop,
+                allowUnsupportedPathRecovery,
+                allowBlockedWallRecovery,
+                requireWalkableSupport,
+                gravityPerSecond);
+        }
+
+        constexpr std::array<float, 6> RecoveryDistances = {{4.0f, 8.0f, 16.0f, 32.0f, 48.0f, 64.0f}};
+        constexpr std::array<float, 2> RecoveryLifts = {{0.0f, GroundSnapSlack * 2.0f}};
+        constexpr int RecoveryDirectionCount = 8;
+
+        for (float distance : RecoveryDistances)
+        {
+            for (float lift : RecoveryLifts)
+            {
+                for (int directionIndex = 0; directionIndex < RecoveryDirectionCount; ++directionIndex)
+                {
+                    const float angle =
+                        static_cast<float>(directionIndex) * bx::kPi2 / static_cast<float>(RecoveryDirectionCount);
+                    const float candidateX = baseState.x + std::cos(angle) * distance;
+                    const float candidateY = baseState.y + std::sin(angle) * distance;
+
+                    if (recoveryTraceBlockedByFace(baseState, candidateX, candidateY))
+                    {
+                        continue;
+                    }
+
+                    IndoorMoveState recoveredState = {};
+
+                    if (tryResolvePosition(
+                            baseState.x,
+                            baseState.y,
+                            candidateX,
+                            candidateY,
+                            baseState.footZ + lift,
+                            0.0f,
+                            recoveredState,
+                            true,
+                            nullptr,
+                            nullptr))
+                    {
+                        if (pDebugInfo != nullptr)
+                        {
+                            pDebugInfo->collisionResponseTried = true;
+                            pDebugInfo->collisionResponseSucceeded = true;
+                            pDebugInfo->responseStep = {
+                                recoveredState.x - baseState.x,
+                                recoveredState.y - baseState.y,
+                                recoveredState.footZ - baseState.footZ
+                            };
+                        }
+
+                        return recoveredState;
+                    }
+                }
+            }
+        }
+
+        return std::nullopt;
+    };
+
+    // Swept responses can converge to no movement at all; an airborne body must not stay there. A failed search
+    // waits before it repeats, so a body stuck where no position is valid does not search every step.
+    const auto finalizeSweptState = [&](const IndoorMoveState &result) -> IndoorMoveState
+    {
+        if (result.grounded
+            || flying
+            || lockVerticalPosition
+            || movementDistance(result.x - state.x, result.y - state.y, result.footZ - state.footZ) > 0.0001f)
+        {
+            return finalizeFallState(result);
+        }
+
+        IndoorMoveState stuckState = result;
+
+        if (stuckState.stuckRecoveryCooldownSteps > 0)
+        {
+            --stuckState.stuckRecoveryCooldownSteps;
+            return finalizeFallState(stuckState);
+        }
+
+        if (const std::optional<IndoorMoveState> recoveredState = tryRecoverStuckAirborne(result))
+        {
+            return finalizeFallState(*recoveredState);
+        }
+
+        stuckState.stuckRecoveryCooldownSteps = StuckAirborneRecoveryRetrySteps;
+        return finalizeFallState(stuckState);
+    };
+
     if (!state.grounded
         && state.supportFaceIndex != static_cast<size_t>(-1)
         && std::fabs(state.verticalVelocity) >= WallOverlapRecoveryMinVelocity)
@@ -2970,7 +3085,7 @@ IndoorMoveState IndoorMovementController::resolveMoveSingleStep(
             return finalizeFallState(stationaryState);
         }
 
-        return state;
+        return finalizeSweptState(state);
     }
 
     for (int iteration = 0; iteration < MaxSweptIterations; ++iteration)
@@ -2984,7 +3099,7 @@ IndoorMoveState IndoorMovementController::resolveMoveSingleStep(
                 pDebugInfo->collisionResponseSucceeded = true;
             }
 
-            return finalizeFallState(iterativeState);
+            return finalizeSweptState(iterativeState);
         }
 
         const bx::Vec3 remainingDirection =
@@ -3318,7 +3433,7 @@ IndoorMoveState IndoorMovementController::resolveMoveSingleStep(
                 pDebugInfo->collisionResponseSucceeded = true;
             }
 
-            return finalizeFallState(iterativeState);
+            return finalizeSweptState(iterativeState);
         }
 
         const bx::Vec3 leftoverStep = {
@@ -3405,7 +3520,7 @@ IndoorMoveState IndoorMovementController::resolveMoveSingleStep(
             pDebugInfo->collisionResponseSucceeded = true;
         }
 
-        return finalizeFallState(iterativeState);
+        return finalizeSweptState(iterativeState);
     }
 
     if (fullMoveWallCollision.hit)
@@ -3446,7 +3561,7 @@ IndoorMoveState IndoorMovementController::resolveMoveSingleStep(
     }
 
     writePrimaryBlockDebug();
-    return finalizeFallState(iterativeState);
+    return finalizeSweptState(iterativeState);
 }
 
 IndoorCollisionTraceInfo IndoorMovementController::traceCollisionIssues(

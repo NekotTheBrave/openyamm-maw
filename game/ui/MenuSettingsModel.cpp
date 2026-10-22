@@ -9,7 +9,7 @@ namespace OpenYAMM::Game
 {
 namespace
 {
-// Low is the Android profile, Medium the desktop release profile and High the best quality. Presets own these menu
+// Low is the Android default, High the desktop default and the best quality, Medium in between. Presets own these menu
 // options and three INI-only terrain and sky fields; display, taste and gameplay-feel options stay the player's.
 constexpr std::array<std::string_view, 3> GraphicsQualityPresets = {"low", "medium", "high"};
 
@@ -21,7 +21,7 @@ struct GraphicsQualityOption
 
 constexpr GraphicsQualityOption GraphicsQualityOptions[] = {
     {"antialiasing", {"off", "off", "4x"}},
-    {"ambient_occlusion", {"false", "false", "false"}},
+    {"ambient_occlusion", {"false", "false", "true"}},
     {"bloom", {"false", "true", "true"}},
     {"model_shadow_quality", {"0", "0", "2"}},
     {"terrain_decorations", {"false", "true", "true"}},
@@ -68,6 +68,10 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
     {
         return settings.questMarkers ? "true" : "false";
     }
+    if (id == "party_frame")
+    {
+        return settings.partyFrame ? "true" : "false";
+    }
     if (id == "combat_text")
     {
         return settings.combatText ? "true" : "false";
@@ -103,6 +107,10 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
     if (id == "vsync")
     {
         return settings.verticalSync ? "true" : "false";
+    }
+    if (id == "check_for_updates")
+    {
+        return settings.updateCheck;
     }
     if (id == "antialiasing")
     {
@@ -200,6 +208,10 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
     {
         return settings.coloredLights ? "true" : "false";
     }
+    if (id == "warm_torch_light")
+    {
+        return settings.warmTorchLight ? "true" : "false";
+    }
     if (id == "tinting")
     {
         return settings.tinting ? "true" : "false";
@@ -231,10 +243,6 @@ std::string menuSettingValue(const GameSettings &settings, std::string_view id)
     if (id == "melee_camera_kick")
     {
         return settings.meleeCameraKick ? "true" : "false";
-    }
-    if (id == "corpses")
-    {
-        return corpseStyleValue(settings.corpseStyle);
     }
     if (id == "sound_volume")
     {
@@ -364,6 +372,15 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
         settings.questMarkers = value == "true";
         return true;
     }
+    if (id == "party_frame")
+    {
+        if (value != "true" && value != "false")
+        {
+            return false;
+        }
+        settings.partyFrame = value == "true";
+        return true;
+    }
     if (id == "combat_text")
     {
         if (value != "true" && value != "false")
@@ -443,6 +460,15 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
             return false;
         }
         settings.verticalSync = value == "true";
+        return true;
+    }
+    if (id == "check_for_updates")
+    {
+        if (value != "ask" && value != "auto" && value != "off")
+        {
+            return false;
+        }
+        settings.updateCheck = value;
         return true;
     }
     if (id == "antialiasing")
@@ -644,6 +670,15 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
         settings.coloredLights = value == "true";
         return true;
     }
+    if (id == "warm_torch_light")
+    {
+        if (value != "true" && value != "false")
+        {
+            return false;
+        }
+        settings.warmTorchLight = value == "true";
+        return true;
+    }
     if (id == "tinting")
     {
         if (value != "true" && value != "false")
@@ -715,10 +750,6 @@ bool setMenuSettingValue(GameSettings &settings, std::string_view id, const std:
         }
         settings.meleeCameraKick = value == "true";
         return true;
-    }
-    if (id == "corpses")
-    {
-        return (value == "satchel" || value == "keep") && parseCorpseStyleValue(value, settings.corpseStyle);
     }
     if (id == "sound_volume")
     {

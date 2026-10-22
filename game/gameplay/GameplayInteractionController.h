@@ -174,7 +174,9 @@ public:
     static HeldItemWorldInteractionResult updateHeldItemWorldInteraction(
         GameplayScreenState::WorldInteractionInputState &state,
         const HeldItemWorldInteractionInput &input);
-    static std::optional<std::string> resolveHoverStatusText(const GameplayHoverStatusPayload &payload);
+    static std::optional<std::string> resolveHoverStatusText(
+        const GameplayHoverStatusPayload &payload,
+        bool heldItemActive);
     static WorldInteractionPointerPolicy resolveWorldInteractionPointerPolicy(
         const WorldInteractionPointerPolicyInput &input);
     static WorldInteractionFrameResult updateWorldInteractionFrame(

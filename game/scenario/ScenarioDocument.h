@@ -36,6 +36,7 @@ enum class ScenarioStepKind
     Assert,
     AssertMechanism,
     CombatLoot,
+    DamageActor,
     SetupShortcut,
     SaveCheckpoint,
     LoadCheckpoint,

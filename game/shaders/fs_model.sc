@@ -242,7 +242,7 @@ void main()
 #endif
     if (u_modelOutline.w > 1.5 && u_modelOutline.w < 2.5)
     {
-        // Creature depth prepass: depth and the alpha test above are all it needs.
+        // Depth prepass (creatures, static foliage): depth and the alpha test above are all it needs.
         gl_FragColor = vec4_splat(0.0);
         return;
     }

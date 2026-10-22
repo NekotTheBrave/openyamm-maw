@@ -340,6 +340,9 @@ public:
         size_t questPage = 0;
         size_t storyPage = 0;
         size_t notesPage = 0;
+        // Case-insensitive filter over the notes of the selected category; typing goes to it while active.
+        std::string notesSearch;
+        bool notesSearchActive = false;
         float mapCenterX = 0.0f;
         float mapCenterY = 0.0f;
         int mapZoomStep = 0;
@@ -433,6 +436,7 @@ public:
     static bool characterScreenSupportsInspection(const CharacterScreenState &screen);
     // Typing goes to the alchemy bench's recipe search instead of hotkeys.
     static bool alchemyBenchSearchActive(const CharacterScreenState &screen);
+    static bool journalSearchActive(const JournalScreenState &screen);
 
     struct InventoryNestedOverlayState
     {

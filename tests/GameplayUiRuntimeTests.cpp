@@ -1,6 +1,9 @@
 #include "engine/AssetFileSystem.h"
 #include "engine/ImageAssetLoader.h"
+#include "game/app/GameSession.h"
 #include "game/data/GameDataLoader.h"
+#include "game/gameplay/GameplayInputFrame.h"
+#include "game/gameplay/GameplayOverlayInputController.h"
 #include "game/ui/GameplayUiRuntime.h"
 
 #include <doctest/doctest.h>
@@ -64,4 +67,31 @@ TEST_CASE("dimensional travel uses original artwork and matching continent hover
         CHECK_EQ(icon->height, entry.iconHeight);
         CHECK(icon->assetScaleTier == Engine::AssetScaleTier::X1);
     }
+}
+
+TEST_CASE("the press that opens a chest or dialogue is consumed before the overlay reacts to it")
+{
+    using namespace OpenYAMM;
+    Game::GameSession session;
+    Game::GameplayScreenRuntime &runtime = session.gameplayScreenRuntime();
+    Game::GameplayOverlayInteractionState &state = runtime.interactionState();
+    state.chestClickLatch = false;
+    state.chestItemClickLatch = false;
+    state.lootChestItemLatch = false;
+    state.dialogueClickLatch = false;
+
+    // A frame without a loot view or dialogue: the button that is about to open one is still held.
+    Game::GameplayInputFrame input;
+    input.leftMouseButton.held = true;
+    Game::GameplayOverlayInputController::handleLootOverlayInput(runtime, input, false);
+    runtime.resetDialogueOverlayInteractionState();
+
+    // The overlay's first frame sees these latches set, so it neither grabs the item under the cursor nor arms a
+    // button or topic for the release; each latch clears once the button is up.
+    CHECK(state.chestClickLatch);
+    CHECK(state.chestItemClickLatch);
+    CHECK(state.lootChestItemLatch);
+    CHECK(state.chestPressedTarget.type == Game::GameplayChestPointerTargetType::None);
+    CHECK(state.dialogueClickLatch);
+    CHECK(state.dialoguePressedTarget.type == Game::GameplayDialoguePointerTargetType::None);
 }

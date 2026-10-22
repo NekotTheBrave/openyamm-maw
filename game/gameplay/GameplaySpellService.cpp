@@ -109,32 +109,35 @@ GameplaySpellService::QuickSpellStartResolution GameplaySpellService::tryStartQu
         return resolution;
     }
 
-    // In the original a quick spell the character cannot pay for is a normal attack instead, so pressing the key
-    // keeps a party going through its turns when the casters run dry; MAW counts on it (its own heals call the
-    // attack themselves when short of spell points). Held to whenever a mod runtime is present; with mods off the
-    // engine is as upstream, where the cast fails and the turn stays with the caster.
-    if (activeModHooks() != nullptr)
-    {
-        const std::optional<uint32_t> manaCost = PartySpellSystem::spellManaCost(
-            *pParty,
-            *pSpellTable,
-            pParty->activeMemberIndex(),
-            uint32_t(pSpellEntry->id));
+    const size_t casterMemberIndex = pParty->activeMemberIndex();
+    const uint32_t spellId = uint32_t(pSpellEntry->id);
 
-        if (manaCost && !pParty->canSpendSpellPoints(pParty->activeMemberIndex(), static_cast<int>(*manaCost)))
-        {
-            resolution.disposition = QuickSpellStartDisposition::AttackFallback;
-            return resolution;
-        }
+    if (!pCaster->knowsSpell(spellId))
+    {
+        runtime.setStatusBarEvent("Spell not learned");
+        return resolution;
     }
 
-    if (tryCastSpellFromMember(
-            runtime,
-            pParty->activeMemberIndex(),
-            uint32_t(pSpellEntry->id),
-            pSpellEntry->name,
-            true,
-            &targetQueries))
+    // A caster without the mana or a target for the quick spell attacks instead, so the character is never stuck.
+    const std::optional<uint32_t> manaCost = PartySpellSystem::manaCost(*pCaster, *pSpellTable, spellId);
+
+    if (manaCost && !pParty->canSpendSpellPoints(casterMemberIndex, int(*manaCost)))
+    {
+        resolution.disposition = QuickSpellStartDisposition::AttackFallback;
+        return resolution;
+    }
+
+    PartySpellCastRequest request = {};
+    request.casterMemberIndex = casterMemberIndex;
+    request.spellId = spellId;
+
+    if (!tryPrepareQuickCastRequest(runtime, request, pSpellEntry->name, targetQueries))
+    {
+        resolution.disposition = QuickSpellStartDisposition::AttackFallback;
+        return resolution;
+    }
+
+    if (runtime.tryCastSpellRequest(request, pSpellEntry->name))
     {
         resolution.disposition = QuickSpellStartDisposition::CastStarted;
     }
@@ -172,6 +175,7 @@ GameplaySpellService::MemberSpellCastResolution GameplaySpellService::castSpellF
         && pTargetQueries != nullptr
         && !tryPrepareQuickCastRequest(runtime, request, spellName, *pTargetQueries))
     {
+        runtime.setStatusBarEvent("No valid target exists!", 3.0f);
         return resolution;
     }
 
@@ -219,13 +223,7 @@ bool GameplaySpellService::tryPrepareQuickCastRequest(
             PartySpellCastEffectKind::ActorEffect
         };
 
-        if (tryResolveQuickCastRequest(runtime, request, fearTargetDescriptor, targetQueries))
-        {
-            return true;
-        }
-
-        runtime.setStatusBarEvent("No valid target exists!", 3.0f);
-        return false;
+        return tryResolveQuickCastRequest(runtime, request, fearTargetDescriptor, targetQueries);
     }
 
     const std::optional<PartySpellDescriptor> descriptor = PartySpellSystem::describeSpell(request.spellId);
@@ -236,14 +234,7 @@ bool GameplaySpellService::tryPrepareQuickCastRequest(
     }
 
     request.quickCast = true;
-
-    if (tryResolveQuickCastRequest(runtime, request, *descriptor, targetQueries))
-    {
-        return true;
-    }
-
-    runtime.setStatusBarEvent("No valid target exists!", 3.0f);
-    return false;
+    return tryResolveQuickCastRequest(runtime, request, *descriptor, targetQueries);
 }
 
 bool GameplaySpellService::tryResolveQuickCastRequest(
@@ -875,10 +866,27 @@ void GameplaySpellService::applySuccessFeedback(
         }
     }
 
-    if (!spellName.empty() && result.effectKind != PartySpellCastEffectKind::Telekinesis)
+    const std::string statusText = successStatusText(spellName, result);
+
+    if (!statusText.empty())
     {
-        runtime.setStatusBarEvent("Cast " + spellName);
+        runtime.setStatusBarEvent(statusText);
     }
+}
+
+std::string GameplaySpellService::successStatusText(const std::string &spellName, const PartySpellCastResult &result)
+{
+    if (!result.statusText.empty())
+    {
+        return result.statusText;
+    }
+
+    if (spellName.empty() || result.effectKind == PartySpellCastEffectKind::Telekinesis)
+    {
+        return {};
+    }
+
+    return "Cast " + spellName;
 }
 
 void GameplaySpellService::applyFailureFeedback(

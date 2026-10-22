@@ -1128,30 +1128,12 @@ void GameplayHudOverlaySupport::updateCharacterDetailOverlay(
     overlay.quickSpellText = summary.quickSpellText;
     overlay.activeSpells.clear();
 
-    struct CharacterBuffInspectLine
-    {
-        const char *pLabel;
-        CharacterBuffId buffId;
-    };
-
-    static constexpr CharacterBuffInspectLine CharacterBuffLines[] = {
-        {"Bless", CharacterBuffId::Bless},
-        {"Fate", CharacterBuffId::Fate},
-        {"Preservation", CharacterBuffId::Preservation},
-        {"Regeneration", CharacterBuffId::Regeneration},
-        {"Hammerhands", CharacterBuffId::Hammerhands},
-        {"Pain Reflection", CharacterBuffId::PainReflection},
-        {"Fire Aura", CharacterBuffId::FireAura},
-        {"Vampiric Weapon", CharacterBuffId::VampiricWeapon},
-        {"Mistform", CharacterBuffId::Mistform},
-        {"Glamour", CharacterBuffId::Glamour},
-    };
-
     if (memberIndex)
     {
-        for (const CharacterBuffInspectLine &buffLine : CharacterBuffLines)
+        for (size_t buffIndex = 0; buffIndex < CharacterBuffCount; ++buffIndex)
         {
-            const CharacterBuffState *pBuff = party.characterBuff(*memberIndex, buffLine.buffId);
+            const CharacterBuffState *pBuff =
+                party.characterBuff(*memberIndex, static_cast<CharacterBuffId>(buffIndex));
 
             if (pBuff == nullptr)
             {
@@ -1159,7 +1141,7 @@ void GameplayHudOverlaySupport::updateCharacterDetailOverlay(
             }
 
             GameplayUiController::CharacterDetailOverlayState::ActiveSpellLine line = {};
-            line.name = buffLine.pLabel;
+            line.name = GameplayPersonalBuffNames[buffIndex];
             line.duration = formatCharacterDetailDuration(pBuff->remainingSeconds);
             overlay.activeSpells.push_back(std::move(line));
         }

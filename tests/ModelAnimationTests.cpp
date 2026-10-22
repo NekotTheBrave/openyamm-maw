@@ -1,4 +1,5 @@
 #include "engine/AssetFileSystem.h"
+#include "tests/ContentPackTestSupport.h"
 #include "engine/AssetScaleTier.h"
 #include "engine/ImageMipmaps.h"
 #include "engine/models/GltfModelLoader.h"
@@ -19,6 +20,158 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+TEST_CASE("ModelAnimation mm8 Ogre peasant keeps civilian motion and a grounded corpse")
+{
+    using namespace OpenYAMM::Engine;
+    const std::filesystem::path sourceRoot = OPENYAMM_SOURCE_DIR;
+    AssetFileSystem assets;
+    REQUIRE(assets.initialize(sourceRoot, sourceRoot / "assets_dev", AssetScaleTier::X1));
+    const ModelLoadResult loaded = GltfModelLoader().load(assets, "worlds/mm8/models/mm8_m436.glb");
+    REQUIRE_MESSAGE(loaded, loaded.error);
+    const ModelAsset &asset = *loaded.asset;
+    CHECK_EQ(asset.materialVariants, std::vector<std::string>{"m436_a", "m436_b", "m436_c"});
+    for (const char *pClip : {"Standing", "Walking", "Running", "Hit", "Death", "Dead", "Fidget"})
+    {
+        REQUIRE_MESSAGE(asset.findClip(pClip).has_value(), pClip);
+    }
+    CHECK_FALSE(asset.findClip("Attack").has_value());
+    CHECK_FALSE(asset.findClip("Cast").has_value());
+    for (const char *pSocket : {"Socket_Palm_Left", "Socket_Palm_Right", "Socket_Eye_Left", "Socket_Eye_Right"})
+    {
+        REQUIRE_MESSAGE(asset.findNode(pSocket).has_value(), pSocket);
+    }
+    ModelInstanceSystem instances;
+    const ModelInstanceHandle handle = instances.create(loaded.asset);
+    const uint32_t death = *asset.findClip("Death");
+    REQUIRE(instances.sample(handle, death, asset.clips[death].durationSeconds, {}));
+    const ModelMatrix fallen = *instances.nodeMatrix(handle, "B_Pelvis");
+    for (const float time : {0.0f, 0.5f, 1.0f})
+    {
+        REQUIRE(instances.sample(handle, *asset.findClip("Dead"), time, {}));
+        const ModelMatrix held = *instances.nodeMatrix(handle, "B_Pelvis");
+        for (size_t component = 0; component < 16; ++component)
+        {
+            CHECK(held[component] == doctest::Approx(fallen[component]).epsilon(1.0e-4));
+        }
+    }
+}
+
+TEST_CASE("ModelAnimation mm8 Ogre keeps club motion and recovery in the cooked asset")
+{
+    using namespace OpenYAMM::Engine;
+    const std::filesystem::path sourceRoot = OPENYAMM_SOURCE_DIR;
+    AssetFileSystem assets;
+    REQUIRE(assets.initialize(sourceRoot, sourceRoot / "assets_dev", AssetScaleTier::X1));
+    const ModelLoadResult body = GltfModelLoader().load(assets, "worlds/mm8/models/mm8_m440.glb");
+    const ModelLoadResult club = GltfModelLoader().load(assets, "worlds/mm8/models/mm8_m440_club.glb");
+    REQUIRE_MESSAGE(body, body.error);
+    REQUIRE_MESSAGE(club, club.error);
+    const ModelAsset &asset = *body.asset;
+    CHECK_EQ(asset.materialVariants, std::vector<std::string>{"m440_a", "m440_b", "m440_c"});
+    for (const char *pClip : {"Standing", "Walking", "Running", "Attack", "Hit", "Death", "Dead", "Fidget"})
+    {
+        CHECK_MESSAGE(asset.findClip(pClip).has_value(), pClip);
+    }
+    const std::optional<uint32_t> attachment = asset.findNode("Club");
+    const std::optional<uint32_t> attack = asset.findClip("Attack");
+    const std::optional<uint32_t> death = asset.findClip("Death");
+    const std::optional<uint32_t> dead = asset.findClip("Dead");
+    REQUIRE(attachment);
+    REQUIRE(attack);
+    REQUIRE(death);
+    REQUIRE(dead);
+    // The fastest tier has 0.5 s left after the native one-second attack wind-up.
+    constexpr float Impact = 26.0f / 30.0f;
+    CHECK(asset.clips[*attack].durationSeconds - Impact == doctest::Approx(0.5f));
+    ModelInstanceSystem instances;
+    const ModelInstanceHandle handle = instances.create(body.asset);
+    REQUIRE(instances.sample(handle, *attack, 0, {}));
+    const ModelMatrix initial = *instances.nodeMatrix(handle, "Club");
+    REQUIRE(instances.sample(handle, *attack, Impact, {}));
+    const ModelMatrix impact = *instances.nodeMatrix(handle, "Club");
+    float distanceSquared = 0;
+    for (size_t axis = 12; axis < 15; ++axis)
+    {
+        distanceSquared += (impact[axis] - initial[axis]) * (impact[axis] - initial[axis]);
+    }
+    CHECK_GT(distanceSquared, 0.16f);
+    REQUIRE(instances.sample(handle, *death, asset.clips[*death].durationSeconds, {}));
+    const ModelMatrix fallen = *instances.nodeMatrix(handle, "Club");
+    REQUIRE(instances.sample(handle, *dead, 0, {}));
+    const ModelMatrix held = *instances.nodeMatrix(handle, "Club");
+    for (size_t component = 0; component < 16; ++component)
+    {
+        CHECK(held[component] == doctest::Approx(fallen[component]).epsilon(1.0e-4));
+    }
+}
+
+TEST_CASE("ModelAnimation mm8 Vampire keeps claw, jaw, palm sockets and a held corpse")
+{
+    using namespace OpenYAMM::Engine;
+    const std::filesystem::path sourceRoot = OPENYAMM_SOURCE_DIR;
+    AssetFileSystem assets;
+    REQUIRE(assets.initialize(sourceRoot, sourceRoot / "assets_dev", AssetScaleTier::X1));
+    const ModelLoadResult loaded = GltfModelLoader().load(assets, "worlds/mm8/models/mm8_m468.glb");
+    REQUIRE_MESSAGE(loaded, loaded.error);
+    const ModelAsset &asset = *loaded.asset;
+    CHECK_EQ(asset.materialVariants, std::vector<std::string>{"m468_a", "m468_b", "m468_c"});
+    for (const char *pClip : {"Standing", "Walking", "Running", "Attack", "Cast", "Hit", "Death", "Dead", "Fidget"})
+    {
+        REQUIRE_MESSAGE(asset.findClip(pClip).has_value(), pClip);
+    }
+    for (const char *pNode : {"B_Jaw", "Socket_Palm_Left", "Socket_Palm_Right", "Socket_Eye_Left", "Socket_Eye_Right"})
+    {
+        REQUIRE_MESSAGE(asset.findNode(pNode).has_value(), pNode);
+    }
+    ModelInstanceSystem instances;
+    const ModelInstanceHandle handle = instances.create(loaded.asset);
+    const uint32_t attack = *asset.findClip("Attack");
+    constexpr float Impact = 77.0f / 60.0f;
+    CHECK(asset.clips[attack].durationSeconds - Impact == doctest::Approx(43.0f / 60.0f));
+    REQUIRE(instances.sample(handle, attack, 0, {}));
+    const ModelMatrix initial = *instances.nodeMatrix(handle, "Socket_Palm_Right");
+    REQUIRE(instances.sample(handle, attack, Impact, {}));
+    const ModelMatrix impact = *instances.nodeMatrix(handle, "Socket_Palm_Right");
+    float distanceSquared = 0;
+    for (size_t axis = 12; axis < 15; ++axis)
+    {
+        distanceSquared += (impact[axis] - initial[axis]) * (impact[axis] - initial[axis]);
+    }
+    CHECK_GT(distanceSquared, 0.16f);
+    REQUIRE(instances.sample(handle, *asset.findClip("Cast"), 35.0f / 30.0f, {}));
+    const ModelMatrix left = *instances.nodeMatrix(handle, "Socket_Palm_Left");
+    const ModelMatrix right = *instances.nodeMatrix(handle, "Socket_Palm_Right");
+    CHECK_GT(std::abs(left[12] - right[12]), 0.3f);
+    CHECK_LT(std::abs(left[13] - right[13]), 0.1f);
+    const uint32_t cast = *asset.findClip("Cast");
+    REQUIRE(instances.sample(handle, cast, 13.0f / 48.0f, {}));
+    ModelMatrix previousPalm = *instances.nodeMatrix(handle, "Socket_Palm_Left");
+    for (int frame = 14; frame <= 44; ++frame)
+    {
+        REQUIRE(instances.sample(handle, cast, frame / 48.0f, {}));
+        const ModelMatrix palm = *instances.nodeMatrix(handle, "Socket_Palm_Left");
+        float stepSquared = 0;
+        for (size_t axis = 12; axis < 15; ++axis)
+        {
+            stepSquared += (palm[axis] - previousPalm[axis]) * (palm[axis] - previousPalm[axis]);
+        }
+        CHECK_GT(stepSquared, 1.0e-8f);
+        previousPalm = palm;
+    }
+    const uint32_t death = *asset.findClip("Death");
+    REQUIRE(instances.sample(handle, death, asset.clips[death].durationSeconds, {}));
+    const ModelMatrix fallen = *instances.nodeMatrix(handle, "B_Pelvis");
+    for (const float time : {0.0f, 0.5f, 1.0f})
+    {
+        REQUIRE(instances.sample(handle, *asset.findClip("Dead"), time, {}));
+        const ModelMatrix held = *instances.nodeMatrix(handle, "B_Pelvis");
+        for (size_t component = 0; component < 16; ++component)
+        {
+            CHECK(held[component] == doctest::Approx(fallen[component]).epsilon(1.0e-4));
+        }
+    }
+}
 
 namespace
 {
@@ -117,6 +270,53 @@ TEST_CASE("Actor model yaw wraps smoothly and gait follows travelled distance")
     CHECK(advanceActorModelYaw(1, 2, 0, 540 * Degrees) == 1);
     CHECK(advanceActorModelGait(.9f, 30, 100) == doctest::Approx(.2f));
     CHECK(advanceActorModelGait(.4f, 0, 100) == doctest::Approx(.4f));
+}
+
+TEST_CASE("Actor model locomotion prefers walking to wander and running to chase, within each clip's authored speed")
+{
+    using namespace OpenYAMM::Game;
+    // MM8 Necromancer: walk 0.93 m/s, run 1.16 m/s authored; it wanders at 1.77 and chases at 3.54.
+    CHECK_FALSE(actorModelRuns(1.77f, .93f, 1.16f, false, false));
+    CHECK(actorModelRuns(3.54f, .93f, 1.16f, true, false));
+    // Pirate Mage chasing at 1.01 m/s: its 5.44 m/s run would crawl at a fifth of its rate, so it walks.
+    CHECK_FALSE(actorModelRuns(1.01f, 1.77f, 5.44f, true, false));
+    // Pirate Warrior chasing at 3.15 m/s: a 1.59 m/s walk at 2x beats a 5.29 m/s sprint in slow motion at 0.6x.
+    CHECK_FALSE(actorModelRuns(3.15f, 1.59f, 5.29f, true, false));
+    CHECK(actorModelRuns(3.15f, 1.59f, 3.5f, true, false));
+    // Dire Wolf wandering at 1.16 m/s: its 0.34 m/s walk would scurry at 3.4x, so it trots its 0.77 m/s run.
+    CHECK(actorModelRuns(1.16f, .34f, .77f, false, false));
+    // Near the boundary (1.357 m/s for these clips, wandering) the clip playing now holds; without speeds the hurry
+    // decides.
+    CHECK(actorModelRuns(1.36f, .5f, 2.0f, false, true));
+    CHECK_FALSE(actorModelRuns(1.36f, .5f, 2.0f, false, false));
+    CHECK(actorModelRuns(0, 1, 2, true, false));
+    // By default the gait advances by the distance travelled, however fast, so the feet do not slide.
+    CHECK(actorModelGaitDistance(5, 50, .1f, 1) == doctest::Approx(5));
+    CHECK(actorModelGaitDistance(100, 50, .1f, 1) == doctest::Approx(100));
+    // A flier drifting slowly keeps beating at its minimum rate and glides past its maximum.
+    CHECK(actorModelGaitDistance(1, 50, .1f, 1, .8f, 1.5f) == doctest::Approx(4));
+    CHECK(actorModelGaitDistance(100, 50, .1f, 1, .8f, 1.5f) == doctest::Approx(7.5f));
+}
+
+TEST_CASE("Actor model gait keeps pace and turns along a wall that slows its body")
+{
+    using namespace OpenYAMM::Game;
+    constexpr float Degrees = std::numbers::pi_v<float> / 180.0f;
+    // Unhindered, or hindered a little, the gait follows the body; pushing nearly head-on it keeps 60 % of its pace.
+    CHECK(actorModelGaitSpeed(200, 200) == doctest::Approx(200));
+    CHECK(actorModelGaitSpeed(150, 200) == doctest::Approx(150));
+    CHECK(actorModelGaitSpeed(30, 200) == doctest::Approx(120));
+    CHECK(actorModelGaitSpeed(0, 200) == doctest::Approx(120));
+    // Knocked back or drifting without trying to move, it follows the body alone.
+    CHECK(actorModelGaitSpeed(50, 0) == doctest::Approx(50));
+    // Sliding sideways along a wall it faces the slide; backing away it keeps the AI's yaw, with a margin.
+    CHECK(actorModelFacesMovement(0, std::cos(90 * Degrees), std::sin(90 * Degrees), false));
+    CHECK(actorModelFacesMovement(0, std::cos(95 * Degrees), std::sin(95 * Degrees), false));
+    CHECK_FALSE(actorModelFacesMovement(0, std::cos(100 * Degrees), std::sin(100 * Degrees), false));
+    CHECK(actorModelFacesMovement(0, std::cos(105 * Degrees), std::sin(105 * Degrees), true));
+    CHECK_FALSE(actorModelFacesMovement(0, std::cos(115 * Degrees), std::sin(115 * Degrees), true));
+    CHECK_FALSE(actorModelFacesMovement(0, -1, 0, true));
+    CHECK_FALSE(actorModelFacesMovement(0, 0, 0, true));
 }
 
 TEST_CASE("Loot satchel tiers follow the corpse's loot value, and the satchel appears as the body dissolves")
@@ -478,6 +678,50 @@ TEST_CASE("ModelAnimation instances have independent clocks and generation-check
     CHECK_NE(replacement.generation, first.generation);
 }
 
+TEST_CASE("ModelAnimation recycled instances drop the previous model's node rotations")
+{
+    using namespace OpenYAMM::Engine;
+    const std::shared_ptr<ModelAsset> asset = makeAnimatedAsset();
+    ModelInstanceSystem instances;
+    const ModelInstanceHandle looking = instances.create(asset);
+    const float half = std::numbers::sqrt2_v<float> * 0.5f;
+    REQUIRE(instances.setNodeRotations(looking, {{1, {0.0f, 0.0f, half, half}}}));
+    REQUIRE(instances.nodeMatrix(looking, "child") != nullptr);
+    CHECK((*instances.nodeMatrix(looking, "child"))[13] == doctest::Approx(1.0f));
+    REQUIRE(instances.destroy(looking));
+
+    // The look-at of a destroyed actor must not carry over to the model that reuses its slot.
+    const ModelInstanceHandle replacement = instances.create(asset);
+    REQUIRE_EQ(replacement.index, looking.index);
+    REQUIRE(instances.nodeMatrix(replacement, "child") != nullptr);
+    CHECK((*instances.nodeMatrix(replacement, "child"))[12] == doctest::Approx(1.0f));
+    CHECK((*instances.nodeMatrix(replacement, "child"))[13] == doctest::Approx(0.0f));
+}
+
+TEST_CASE("ModelAnimation stand-in minimum size changes the stand-in revision and resets with the slot")
+{
+    using namespace OpenYAMM::Engine;
+    const std::shared_ptr<ModelAsset> asset = makeAnimatedAsset();
+    ModelInstanceSystem instances;
+    const ModelInstanceHandle item = instances.create(asset);
+    REQUIRE(instances.setStaticStandIn(item, asset, 8.0f));
+    CHECK(instances.staticStandInMinimumPixels(item) == doctest::Approx(8.0f));
+
+    // Renderers keep their stand-in groups while the revision holds, so a new minimum must change it.
+    const uint64_t revision = instances.standInRevision();
+    REQUIRE(instances.setStaticStandIn(item, asset, 8.0f));
+    CHECK_EQ(instances.standInRevision(), revision);
+    REQUIRE(instances.setStaticStandIn(item, asset, 4.0f));
+    CHECK_NE(instances.standInRevision(), revision);
+    CHECK(instances.staticStandInMinimumPixels(item) == doctest::Approx(4.0f));
+
+    REQUIRE(instances.destroy(item));
+    const ModelInstanceHandle corpse = instances.create(asset);
+    REQUIRE_EQ(corpse.index, item.index);
+    REQUIRE(instances.setStaticStandIn(corpse, asset));
+    CHECK(instances.staticStandInMinimumPixels(corpse) == doctest::Approx(0.0f));
+}
+
 TEST_CASE("ModelAnimation loader reads external glTF buffers through AssetFileSystem")
 {
     using namespace OpenYAMM::Engine;
@@ -627,11 +871,12 @@ TEST_CASE("ModelAnimation loader reads GLB and packaged external buffers")
     const std::filesystem::path packagedAssets = temporaryRoot / "assets";
     const std::string gltf = fixtureGltf();
     writeZipFile(
-        packagedAssets / "engine.zip",
+        packagedAssets / "packs/engine.core.zip",
         {
             {"models/fixture.gltf", std::vector<uint8_t>(gltf.begin(), gltf.end())},
             {"models/fixture.bin", fixtureBuffer()},
         });
+    writeCorePackIndex(packagedAssets, {"engine"});
     {
         AssetFileSystem assetFileSystem;
         REQUIRE(assetFileSystem.initialize(temporaryRoot, packagedAssets, AssetScaleTier::X1));
@@ -848,7 +1093,7 @@ TEST_CASE("ModelAnimation skinning applies inverse bind, all influences, morphs 
     CHECK(conservative.max[0] >= exact.max[0]);
 }
 
-TEST_CASE("ModelAnimation MM6 demon loads all native clips and resets death visibility")
+TEST_CASE("ModelAnimation MM6 demon loads all native clips and keeps its body for the death burn")
 {
     using namespace OpenYAMM::Engine;
     const std::filesystem::path sourceRoot = OPENYAMM_SOURCE_DIR;
@@ -876,8 +1121,9 @@ TEST_CASE("ModelAnimation MM6 demon loads all native clips and resets death visi
     }
     ModelInstanceSystem instances;
     const ModelInstanceHandle handle = instances.create(loaded.asset);
+    REQUIRE(loaded.asset->findNode("Demon_Native_Mesh"));
+    REQUIRE(loaded.asset->findNode("Demon_Death_Plume"));
     const uint32_t body = *loaded.asset->findNode("Demon_Native_Mesh");
-    const uint32_t ash = *loaded.asset->findNode("Demon_Ash_Remains");
     const uint32_t plume = *loaded.asset->findNode("Demon_Death_Plume");
     REQUIRE_EQ(loaded.asset->materialVariants, std::vector<std::string>{"demon_a", "demon_b", "demon_c"});
     const std::array<std::array<uint8_t, 3>, 3> eyeColors = {{{231, 156, 156}, {250, 102, 102}, {250, 176, 62}}};
@@ -912,15 +1158,18 @@ TEST_CASE("ModelAnimation MM6 demon loads all native clips and resets death visi
             CHECK(primitive.morphTargets.empty());
         }
     }
-    const std::array<std::pair<const char *, float>, 7> nativeClips = {{{"Standing", .125f}, {"Walk_Native", 1.125f},
-        {"Attack", .75f}, {"Hit", .75f}, {"Fidget", .625f}, {"Death", 1.25f}, {"Cast_FireBolt", 1.0f}}};
+    // The death is 25 % slower than the native one (level_generation/creatures/mm6_demon_reduce_claude).
+    const std::array<std::pair<const char *, float>, 8> nativeClips = {{{"Standing", .125f}, {"Walk_Native", 1.125f},
+        {"Attack", .75f}, {"Hit", .75f}, {"Fidget", .625f}, {"Death", 1.5625f}, {"Dead", 1.0f},
+        {"Cast_FireBolt", 1.0f}}};
     for (const auto &[name, duration] : nativeClips)
     {
+        REQUIRE_MESSAGE(loaded.asset->findClip(name), name);
         const uint32_t clip = *loaded.asset->findClip(name);
         CHECK(loaded.asset->clips[clip].durationSeconds == doctest::Approx(duration));
         REQUIRE(instances.sample(handle, clip, duration * .5f, gltfModelPlacement({1, 2, 3}, 0, 100)));
-        // After 375 ms the body is hidden; runtime particles do not contribute to pick bounds.
-        CHECK(instances.bounds(handle)->valid == (std::string(name) != "Death"));
+        // The engine burn (actors.yml death_effect) consumes the body, so no clip hides it.
+        CHECK(instances.bounds(handle)->valid);
         for (const auto &node : instances.pose(handle)->deformedVertices)
         {
             for (const auto &primitive : node)
@@ -936,12 +1185,17 @@ TEST_CASE("ModelAnimation MM6 demon loads all native clips and resets death visi
             }
         }
     }
-    REQUIRE(instances.sample(handle, *loaded.asset->findClip("Ash_Remains"), 0, {}));
-    CHECK_FALSE(modelMatrixVisible(*instances.nodeMatrix(handle, body)));
-    CHECK(modelMatrixVisible(*instances.nodeMatrix(handle, ash)));
+    // Only the death clips scale the plume marker on; leaving them restores it to zero.
+    for (const char *name : {"Death", "Dead"})
+    {
+        REQUIRE(instances.sample(handle, *loaded.asset->findClip(name), 0, {}));
+        REQUIRE(instances.nodeMatrix(handle, plume) != nullptr);
+        CHECK(modelMatrixVisible(*instances.nodeMatrix(handle, body)));
+        CHECK(modelMatrixVisible(*instances.nodeMatrix(handle, plume)));
+    }
     REQUIRE(instances.sample(handle, *loaded.asset->findClip("Standing"), 0, {}));
     CHECK(modelMatrixVisible(*instances.nodeMatrix(handle, body)));
-    CHECK_FALSE(modelMatrixVisible(*instances.nodeMatrix(handle, ash)));
+    CHECK_FALSE(modelMatrixVisible(*instances.nodeMatrix(handle, plume)));
     for (float weight : instances.pose(handle)->morphWeights[plume])
     {
         CHECK(weight == 0.0f);
@@ -949,7 +1203,7 @@ TEST_CASE("ModelAnimation MM6 demon loads all native clips and resets death visi
     CHECK(instances.bounds(handle)->max[1] == doctest::Approx(1.707f).epsilon(.01));
     REQUIRE(instances.sample(handle, *loaded.asset->findClip("Cast_FireBolt"), .65f, {}));
     CHECK(modelMatrixVisible(*instances.nodeMatrix(handle, body)));
-    CHECK_FALSE(modelMatrixVisible(*instances.nodeMatrix(handle, ash)));
+    CHECK_FALSE(modelMatrixVisible(*instances.nodeMatrix(handle, plume)));
     for (const char *socket : {"Socket_Eye_Left", "Socket_Eye_Right", "Socket_Palm_Left", "Socket_Palm_Right"})
     {
         CHECK(instances.nodeMatrix(handle, socket) != nullptr);
@@ -1036,7 +1290,8 @@ TEST_CASE("ModelAnimation demon LOD meshes share the rig and retain posed bounds
     const ModelMesh &mesh = asset.meshes[asset.nodes[nodeIndex].meshIndex];
     REQUIRE(mesh.lodMeshes.size() == 3);
     REQUIRE(mesh.shadowMeshes.size() == 4);
-    const std::array<size_t, 4> triangles = {16474, 8237, 2980, 1019};
+    // The installed 55 % reduction (level_generation/creatures/mm6_demon_reduce_claude).
+    const std::array<size_t, 4> triangles = {9060, 4512, 1623, 552};
     for (size_t level = 0; level < 4; ++level)
     {
         const uint32_t meshIndex = level == 0 ? uint32_t(asset.nodes[nodeIndex].meshIndex) : mesh.lodMeshes[level - 1];

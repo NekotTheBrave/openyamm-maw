@@ -53,6 +53,10 @@ struct ModelRenderLighting
     std::array<std::array<float, 4>, ModelSkyFogVectors> skyFog = {};
 };
 
+// Key light direction (unit, towards the light) from above, in front of and left of the camera, like the painted light
+// on the original sprites; viewForward is the camera's unit look direction. Used with ModelRenderLighting::keyFraction.
+std::array<float, 3> spriteKeyLightDirection(const std::array<float, 3> &viewForward);
+
 // One placement of a static (unskinned, unanimated) model, such as a map decoration.
 struct ModelStaticPlacement
 {
@@ -91,6 +95,8 @@ struct ModelStaticGroup
     uint32_t variant = 0;
     // Colour LOD switch sizes; a foliage model can switch to its impostor earlier than a creature.
     std::array<float, 3> lodPixels = ModelLodPixels;
+    // Placements smaller on screen than this are not drawn in colour views (ground items far away); 0 draws all.
+    float minimumPixels = 0.0f;
     std::vector<ModelStaticPlacement> placements;
     // World bounds per placement (placementBounds), including the wind sway; kept aligned with placements.
     std::vector<ModelBounds> bounds;

@@ -222,9 +222,9 @@ TEST_CASE("menu headings fit their layout at the intended font size across displ
 {
     FontFixture fixture;
     Game::UiLayoutManager layouts;
-    for (const char *pLayout : {"settings_gameplay", "settings_video", "settings_audio", "settings_controls",
-                               "settings_keyboard", "continent_selection", "character_creation", "load_game",
-                               "save_game"})
+    for (const char *pLayout : {"settings_gameplay", "settings_interface", "settings_video", "settings_audio",
+                               "settings_controls", "settings_keyboard", "continent_selection", "character_creation",
+                               "load_game", "save_game"})
     {
         const std::filesystem::path path = std::filesystem::path(OPENYAMM_SOURCE_DIR) /
                                            "assets_dev/engine/ui/gameplay" / (std::string(pLayout) + ".yml");

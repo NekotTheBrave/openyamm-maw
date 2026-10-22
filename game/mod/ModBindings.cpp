@@ -4012,6 +4012,18 @@ int nativeEventCall(lua_State *pLuaState)
         return lua_error(pLuaState);
     }
 
+    // A move a script asks for loads the map even when it is the one the party is on, as in the original.
+    if (std::string_view(pPath).ends_with("MoveToMap"))
+    {
+        IGameplayWorldRuntime *pWorld = worldFromHost(pLuaState);
+        EventRuntimeState *pState = pWorld != nullptr ? pWorld->eventRuntimeState() : nullptr;
+
+        if (pState != nullptr && pState->pendingMapMove)
+        {
+            pState->pendingMapMove->reloadSameMap = true;
+        }
+    }
+
     (void)top;
     return resultCount;
 }

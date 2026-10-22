@@ -6,18 +6,69 @@
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
+#include <iterator>
 #include <sstream>
+#include <string_view>
+#include <system_error>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace OpenYAMM::Game
 {
 namespace
 {
+#include "game/app/SettingsShippedDefaults.inc"
+
 constexpr float MinimumViewDistance = 1024.0f;
 constexpr float UnlimitedViewDistance = 200000.0f;
 
 using IniSection = std::unordered_map<std::string, std::string>;
-using IniDocument = std::unordered_map<std::string, IniSection>;
+
+struct IniDocument
+{
+    std::unordered_map<std::string, IniSection> sections;
+    // Every key in file order, for the keys the loader never asks for.
+    std::vector<SettingsEntry> entries;
+    // "section.key" of every key the loader asked for, present or not.
+    mutable std::unordered_set<std::string> consulted;
+};
+
+// Values the game remembers rather than choices with a default: always written, never compared with defaults.
+bool isRememberedState(const std::string &name)
+{
+    return name == "debug.start_world";
+}
+
+const char *boolValue(bool value)
+{
+    return value ? "true" : "false";
+}
+
+class SettingsSerializer
+{
+  public:
+    void section(const char *pName)
+    {
+        m_section = pName;
+    }
+
+    template <typename... Values>
+    void add(std::string_view key, const Values &...values)
+    {
+        std::ostringstream value;
+        (value << ... << values);
+        m_entries.push_back({m_section, std::string(key), value.str()});
+    }
+
+    std::vector<SettingsEntry> takeEntries()
+    {
+        return std::move(m_entries);
+    }
+
+  private:
+    std::string m_section;
+    std::vector<SettingsEntry> m_entries;
+};
 
 std::string trimCopy(const std::string &value)
 {
@@ -192,9 +243,10 @@ bool parseFloatValue(const std::string &value, float &result)
 
 std::optional<std::string> getIniValue(const IniDocument &document, const std::string &section, const std::string &key)
 {
-    const auto sectionIt = document.find(section);
+    document.consulted.insert(section + '.' + key);
+    const auto sectionIt = document.sections.find(section);
 
-    if (sectionIt == document.end())
+    if (sectionIt == document.sections.end())
     {
         return std::nullopt;
     }
@@ -243,7 +295,8 @@ IniDocument parseIniDocument(const std::string &text)
 
         if (!key.empty())
         {
-            document[currentSection][key] = value;
+            document.sections[currentSection][key] = value;
+            document.entries.push_back({currentSection, key, value});
         }
     }
 
@@ -399,25 +452,84 @@ void parseAssetScaleProfileValue(
 GameSettings GameSettings::createDefault()
 {
     GameSettings settings;
+#if defined(__ANDROID__)
+    settings.settingsProfileName = "android";
+#else
+    settings.settingsProfileName = "desktop";
+#endif
+    settings.settingsProfileVersion = CurrentSettingsProfileVersion;
     settings.keyboard.restoreDefaults(settings.controlScheme);
-    // The surface texture tier the development tree and packages carry: one cooked tier per platform
+    settings.assetScaleProfile.decorations = Engine::AssetScaleTier::X2;
+    settings.assetScaleProfile.preferRestoredIcons = true;
+    // These are the only defaults: release packages ship no settings file, and a player's settings.ini holds only
+    // their own choices. The surface texture tier is the one cooked tier the packages carry per platform
     // (tools/cook_surface_textures.py), x4 on desktop and x2 on Android.
 #if defined(__ANDROID__)
     settings.assetScaleProfile.textures = Engine::AssetScaleTier::X2;
+    settings.soundVolume = 2;
+    settings.voiceVolume = 2;
+    settings.bolsterMonsters = true;
+    settings.resolutionWidth = 1280;
+    settings.resolutionHeight = 720;
     settings.lightGrid = LightGridQuality::Low;
+    settings.weatherQuality = WeatherQuality::Medium;
     settings.terrainSpecular = false;
+    settings.terrainSubdivision = 2;
+    settings.terrainAntiTiling = false;
+    settings.terrainAnisotropy = "2x";
+    settings.skyResolutionScale = 0.5f;
+    settings.waterReflectionSize = 256;
     settings.bloom = false;
+    settings.cinematicGrading = false;
 #else
     settings.assetScaleProfile.textures = Engine::AssetScaleTier::X4;
+    settings.windowMode = WindowMode::WindowedFullscreen;
+    settings.terrainAnisotropy = "8x";
+    settings.terrainDecorations = true;
+    settings.waterSpriteReflections = true;
+    settings.shadows = true;
+    settings.ambientOcclusion = true;
+    settings.ambientOcclusionStrength = 50;
+    settings.antialiasing = 4;
+    settings.sharpening = 50;
+    settings.debugConsole = false;
+    settings.startWorldId = "mm6";
 #endif
     return settings;
+}
+
+bool migrateGameSettings(GameSettings &settings)
+{
+    constexpr uint32_t PlayerChoicesSettingsProfileVersion = 5;
+    static_assert(CurrentSettingsProfileVersion == PlayerChoicesSettingsProfileVersion);
+
+    if (settings.settingsProfileVersion > CurrentSettingsProfileVersion)
+    {
+        return false;
+    }
+
+#if defined(__ANDROID__)
+    bool migrated = migrateLegacyAndroidSettings(settings);
+#else
+    bool migrated = migrateLegacyDesktopSettings(settings);
+#endif
+
+    // loadGameSettingsFromText already dropped the shipped defaults of an older full file.
+    if (settings.settingsProfileVersion < PlayerChoicesSettingsProfileVersion)
+    {
+        settings.settingsProfileVersion = PlayerChoicesSettingsProfileVersion;
+        migrated = true;
+    }
+
+    return migrated;
 }
 
 bool migrateLegacyAndroidSettings(GameSettings &settings)
 {
     constexpr uint32_t InitialAndroidSettingsProfileVersion = 1;
     constexpr uint32_t CharacterCreationAndroidSettingsProfileVersion = 2;
-    constexpr uint32_t CurrentAndroidSettingsProfileVersion = 3;
+    constexpr uint32_t PhoneTerrainAndroidSettingsProfileVersion = 3;
+    constexpr uint32_t CurrentAndroidSettingsProfileVersion = 4;
 
     if (settings.settingsProfileName == "android"
         && settings.settingsProfileVersion >= CurrentAndroidSettingsProfileVersion)
@@ -463,7 +575,7 @@ bool migrateLegacyAndroidSettings(GameSettings &settings)
         settings.settingsProfileVersion = CharacterCreationAndroidSettingsProfileVersion;
     }
 
-    if (settings.settingsProfileVersion < CurrentAndroidSettingsProfileVersion)
+    if (settings.settingsProfileVersion < PhoneTerrainAndroidSettingsProfileVersion)
     {
         // The ground materials terrain is the only one: on phones it takes lighter anisotropic filtering and smaller
         // water reflections (which redraw it). Values a player changed from the earlier defaults stay.
@@ -475,7 +587,52 @@ bool migrateLegacyAndroidSettings(GameSettings &settings)
         {
             settings.waterReflectionSize = 256;
         }
+        settings.settingsProfileVersion = PhoneTerrainAndroidSettingsProfileVersion;
+    }
+
+    if (settings.settingsProfileVersion < CurrentAndroidSettingsProfileVersion)
+    {
+        // Releases up to 1.3 wrote actor_models=false; MM6 creatures exist only as models since then.
+        settings.actorModels = true;
         settings.settingsProfileVersion = CurrentAndroidSettingsProfileVersion;
+    }
+
+    return true;
+}
+
+bool migrateLegacyDesktopSettings(GameSettings &settings)
+{
+    constexpr uint32_t InitialDesktopSettingsProfileVersion = 1;
+    constexpr uint32_t UserDataDesktopSettingsProfileVersion = 2;
+    constexpr uint32_t CurrentDesktopSettingsProfileVersion = UserDataDesktopSettingsProfileVersion;
+
+    if (settings.settingsProfileName == "desktop"
+        && settings.settingsProfileVersion >= CurrentDesktopSettingsProfileVersion)
+    {
+        return false;
+    }
+
+    if (settings.settingsProfileName != "desktop"
+        || settings.settingsProfileVersion < InitialDesktopSettingsProfileVersion)
+    {
+        // Desktop settings carried no profile before version 1. Releases up to 1.3 wrote actor_models=false, which
+        // the old Flatpak package kept across updates; MM6 creatures exist only as models since then.
+        settings.settingsProfileName = "desktop";
+        settings.actorModels = true;
+        settings.settingsProfileVersion = InitialDesktopSettingsProfileVersion;
+    }
+
+    if (settings.settingsProfileVersion < UserDataDesktopSettingsProfileVersion)
+    {
+        // Release packages wrote their installation's asset root into the player's file. The game now finds the
+        // installed assets itself (app/<version>/index.json), where the relative "assets" no longer points. A
+        // developer's own asset root stays.
+        if (settings.assetRoot == "assets" || settings.assetRoot == "/app/share/openyamm/assets")
+        {
+            settings.assetRoot.clear();
+        }
+
+        settings.settingsProfileVersion = UserDataDesktopSettingsProfileVersion;
     }
 
     return true;
@@ -583,30 +740,6 @@ bool setBakedLightingSetting(
     return false;
 }
 
-bool parseCorpseStyleValue(const std::string &value, CorpseStyle &result)
-{
-    const std::string normalized = toLowerCopy(trimCopy(value));
-
-    if (normalized == "satchel")
-    {
-        result = CorpseStyle::Satchel;
-        return true;
-    }
-
-    if (normalized == "keep")
-    {
-        result = CorpseStyle::Keep;
-        return true;
-    }
-
-    return false;
-}
-
-std::string corpseStyleValue(CorpseStyle style)
-{
-    return style == CorpseStyle::Keep ? "keep" : "satchel";
-}
-
 bool parseWeatherQualityValue(const std::string &value, WeatherQuality &result)
 {
     static const std::array<std::pair<const char *, WeatherQuality>, 4> Values = {{
@@ -686,8 +819,17 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
 
     std::ostringstream buffer;
     buffer << input.rdbuf();
-    const IniDocument document = parseIniDocument(buffer.str());
+    return loadGameSettingsFromText(buffer.str(), error);
+}
+
+namespace
+{
+std::optional<GameSettings> parseGameSettingsDocument(const IniDocument &document, std::string &error)
+{
     GameSettings settings = GameSettings::createDefault();
+    // A file without a profile predates profiles; the migrations decide what it needs.
+    settings.settingsProfileName.clear();
+    settings.settingsProfileVersion = 0;
     for (const char *pName : {"baked_sun_strength", "baked_sky_strength", "baked_sun_color", "baked_sky_color"})
     {
         if (const std::optional<std::string> value = getIniValue(document, "video", pName))
@@ -927,6 +1069,11 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         }
     }
 
+    if (const std::optional<std::string> value = getIniValue(document, "gameplay", "party_frame"))
+    {
+        parseBoolValue(*value, settings.partyFrame);
+    }
+
     if (const std::optional<std::string> value = getIniValue(document, "gameplay", "melee_hit_blood_effects"))
     {
         bool parsed = settings.meleeHitBloodEffects;
@@ -987,11 +1134,6 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         }
     }
 
-    if (const std::optional<std::string> value = getIniValue(document, "gameplay", "corpses"))
-    {
-        parseCorpseStyleValue(*value, settings.corpseStyle);
-    }
-
     if (const std::optional<std::string> value = getIniValue(document, "video", "blood_splats"))
     {
         bool parsed = settings.bloodSplats;
@@ -1010,6 +1152,11 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         {
             settings.coloredLights = parsed;
         }
+    }
+
+    if (const std::optional<std::string> value = getIniValue(document, "video", "warm_torch_light"))
+    {
+        parseBoolValue(*value, settings.warmTorchLight);
     }
 
     if (const std::optional<std::string> value = getIniValue(document, "video", "tinting"))
@@ -1585,6 +1732,26 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         }
     }
 
+    if (const std::optional<std::string> value = getIniValue(document, "updates", "check_for_updates"))
+    {
+        const std::string mode = toLowerCopy(trimCopy(*value));
+
+        if (mode == "ask" || mode == "auto" || mode == "off")
+        {
+            settings.updateCheck = mode;
+        }
+    }
+
+    if (const std::optional<std::string> value = getIniValue(document, "updates", "url"))
+    {
+        const std::string url = trimCopy(*value);
+
+        if (url.starts_with("https://") || url.starts_with("http://"))
+        {
+            settings.updateUrl = url;
+        }
+    }
+
     if (const std::optional<std::string> value = getIniValue(document, "debug", "start_world"))
     {
         const std::string trimmed = toLowerCopy(trimCopy(*value));
@@ -1921,187 +2088,440 @@ std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, 
         }
     }
 
+    // Keys the loader asked for are the player's stored choices; the writer drops the ones it no longer writes
+    // (retired keys and launch-only directives). Everything else is kept verbatim for a newer version or a mod.
+    for (const SettingsEntry &entry : document.entries)
+    {
+        const std::string name = entry.section + '.' + entry.key;
+
+        if (document.consulted.contains(name))
+        {
+            settings.fileState.storedKeys.insert(name);
+        }
+        else
+        {
+            settings.fileState.unknownEntries.push_back(entry);
+        }
+    }
+
     error.clear();
     return settings;
 }
 
-bool saveGameSettings(const std::filesystem::path &path, const GameSettings &settings, std::string &error)
+IniDocument documentWithEntries(const std::vector<SettingsEntry> &entries)
 {
-    std::ofstream output(path);
+    IniDocument document;
 
-    if (!output)
+    for (const SettingsEntry &entry : entries)
     {
-        error = "Unable to write settings file";
-        return false;
+        document.sections[entry.section][entry.key] = entry.value;
+        document.entries.push_back(entry);
     }
 
-    output
-        << "; OpenYAMM settings\n"
-        << "; Volumes use the original-style 0..9 scale.\n\n";
+    return document;
+}
 
-    if (!settings.settingsProfileName.empty() || settings.settingsProfileVersion != 0)
+// The value a key takes once this version has loaded and written it, or nothing for a key it does not write.
+std::optional<std::string> normalizedSettingsValue(const SettingsEntry &entry)
+{
+    std::string error;
+    const std::optional<GameSettings> loaded = parseGameSettingsDocument(documentWithEntries({entry}), error);
+
+    if (!loaded)
     {
-        output
-            << "[profile]\n"
-            << "name=" << settings.settingsProfileName << '\n'
-            << "version=" << settings.settingsProfileVersion << "\n\n";
+        return std::nullopt;
     }
 
+    for (SettingsEntry &serialized : serializeGameSettings(*loaded))
+    {
+        if (serialized.section == entry.section && serialized.key == entry.key)
+        {
+            return std::move(serialized.value);
+        }
+    }
 
-    output
-        << "[assets]\n"
-        << "root=" << settings.assetRoot << "\n\n"
-        << "[audio]\n"
-        << "sound_volume=" << std::clamp(settings.soundVolume, 0, 9) << '\n'
-        << "music_volume=" << std::clamp(settings.musicVolume, 0, 9) << '\n'
-        << "voice_volume=" << std::clamp(settings.voiceVolume, 0, 9) << "\n\n"
-        << "[controls]\n"
-        << "turn_rate=" << turnRateModeString(settings.turnRate) << '\n'
-        << "control_scheme=" << controlSchemeString(settings.controlScheme) << '\n'
-        << "walksound=" << (settings.walksound ? "true" : "false") << '\n'
-        << "show_hits=" << (settings.showHits ? "true" : "false") << '\n'
-        << "always_run=" << (settings.alwaysRun ? "true" : "false") << '\n'
-        << "flip_on_exit=" << (settings.flipOnExit ? "true" : "false") << '\n'
-        << "mouse_sensitivity=" << std::clamp(settings.mouseSensitivity, 0, 100) << '\n'
-        << "invert_mouse_y=" << (settings.invertMouseY ? "true" : "false") << "\n\n"
-        << "[gameplay]\n"
-        << "keyboard_interaction_depth=" << std::clamp(settings.keyboardInteractionDepth, 32, 4096) << '\n'
-        << "mouse_interaction_depth=" << std::clamp(settings.mouseInteractionDepth, 32, 4096) << '\n'
-        << "combat_text=" << (settings.combatText ? "true" : "false") << '\n'
-        << "enemy_health_bars=" << settings.enemyHealthBarMode << '\n'
-        << "enemy_health_bar_values=" << settings.enemyHealthBarValues << '\n'
-        << "enemy_health_bar_damage_trail=" << (settings.enemyHealthBarDamageTrail ? "true" : "false") << '\n'
-        << "quest_markers=" << (settings.questMarkers ? "true" : "false") << '\n'
-        << "melee_hit_blood_effects=" << (settings.meleeHitBloodEffects ? "true" : "false") << '\n'
-        << "melee_hit_feedback=" << (settings.meleeHitFeedback ? "true" : "false") << '\n'
-        << "melee_hit_effects=" << (settings.meleeHitEffects ? "true" : "false") << '\n'
-        << "sword_swings=" << (settings.swordSwings ? "true" : "false") << '\n'
-        << "melee_hit_flash=" << (settings.meleeHitFlash ? "true" : "false") << '\n'
-        << "melee_camera_kick=" << (settings.meleeCameraKick ? "true" : "false") << '\n'
-        << "corpses=" << corpseStyleValue(settings.corpseStyle) << '\n'
-        << "context_action_popup=" << (settings.contextActionPopup ? "true" : "false") << '\n'
-        << "click_to_interact=" << (settings.clickToInteract ? "true" : "false") << "\n\n"
-        << "[startup]\n"
-        << "start_in_main_menu=" << (settings.startInMainMenu ? "true" : "false") << '\n'
-        << "save_file=" << settings.startupSaveFile << "\n\n"
-        << "[features]\n"
-        << "bolster_monsters=" << (settings.bolsterMonsters ? "true" : "false") << '\n'
-        << "homing_projectiles=" << (settings.homingProjectiles ? "true" : "false") << '\n'
-        << "mm6_monster_missiles=" << (settings.mm6MonsterMissiles ? "true" : "false") << '\n'
-        << "difficulty=" << settings.difficulty << '\n'
-        << "indoor_pathfinding=" << (settings.indoorPathfinding ? "true" : "false") << '\n'
-        << "outdoor_pathfinding=" << (settings.outdoorPathfinding ? "true" : "false") << '\n'
-        << "blaster_skill_scaling=" << blasterSkillScalingValue(settings.blasterSkillScaling) << '\n'
-        << "blaster_min_recovery=" << blasterMinimumRecoveryTicksValue(settings.blasterMinimumRecoveryTicks) << "\n\n"
-        << "[logging]\n"
-        << "indoor_visibility=" << (settings.logIndoorVisibility ? "true" : "false") << '\n'
-        << "indoor_pathfinding=" << (settings.logIndoorPathfinding ? "true" : "false") << '\n'
-        << "outdoor_pathfinding=" << (settings.logOutdoorPathfinding ? "true" : "false") << '\n'
-        << "fps_trace=" << (settings.fpsTrace ? "true" : "false") << '\n'
-        << "performance_trace=" << (settings.performanceTrace ? "true" : "false") << '\n'
-        << "hitch_trace=" << (settings.hitchTrace ? "true" : "false") << '\n'
-        << "collision_trace=" << (settings.collisionTrace ? "true" : "false") << '\n'
-        << "gameplay_trace=" << (settings.gameplayTrace ? "true" : "false") << '\n'
-        << "gameplay_trace_file=" << settings.gameplayTraceFile << '\n'
-        << "gameplay_trace_append=" << (settings.gameplayTraceAppend ? "true" : "false") << '\n'
-        << "combat_trace=" << (settings.combatTrace ? "true" : "false") << '\n'
-        << "combat_trace_file=" << settings.combatTraceFile << '\n'
-        << "combat_trace_append=" << (settings.combatTraceAppend ? "true" : "false") << '\n'
-        << "hitch_threshold_ms=" << std::clamp(settings.hitchThresholdMilliseconds, 0.1f, 1000.0f) << "\n\n"
-        << "[input]\n";
+    return std::nullopt;
+}
+
+uint32_t documentProfileVersion(const IniDocument &document)
+{
+    uint32_t version = 0;
+    const std::optional<std::string> value = getIniValue(document, "profile", "version");
+    return value && parseUInt32Value(*value, version) ? version : 0;
+}
+
+// The one-time conversion of a full settings file, written before files held only choices (profile version 5), into
+// the player's choices. A key whose value equals a default its platform shipped (a current default or a value of
+// a release's settings template) is dropped, so it follows the defaults from now on; so is a key our releases wrote
+// that this version no longer reads. A player who deliberately picked a value equal to an old default gets the new
+// default once.
+IniDocument withoutShippedDefaults(const IniDocument &document)
+{
+#if defined(__ANDROID__)
+    const std::string_view platform = "android";
+#else
+    const std::string_view platform = "desktop";
+#endif
+    std::unordered_map<std::string, std::unordered_set<std::string>> shippedValues;
+
+    for (const ShippedSettingsValue &shipped : ShippedSettingsValues)
+    {
+        if (shipped.pPlatform == platform)
+        {
+            const SettingsEntry entry = {shipped.pSection, shipped.pKey, shipped.pValue};
+            std::unordered_set<std::string> &values = shippedValues[entry.section + '.' + entry.key];
+
+            if (std::optional<std::string> value = normalizedSettingsValue(entry))
+            {
+                values.insert(std::move(*value));
+            }
+        }
+    }
+
+    GameSettings presetDefaults = GameSettings::createDefault();
+
+    if (const std::optional<std::string> scheme = getIniValue(document, "controls", "control_scheme"))
+    {
+        presetDefaults.keyboard.restoreDefaults(parseControlScheme(*scheme));
+    }
+
+    for (const GameSettings &defaults : {GameSettings::createDefault(), presetDefaults})
+    {
+        for (const SettingsEntry &entry : serializeGameSettings(defaults))
+        {
+            shippedValues[entry.section + '.' + entry.key].insert(entry.value);
+        }
+    }
+
+    // Which keys this version reads at all.
+    std::string error;
+    parseGameSettingsDocument(document, error);
+    std::vector<SettingsEntry> kept;
+
+    for (const SettingsEntry &entry : document.entries)
+    {
+        const std::string name = entry.section + '.' + entry.key;
+        const auto shipped = shippedValues.find(name);
+
+        // Release packages wrote their installation's asset root; the game now finds installed assets itself.
+        if (name == "assets.root")
+        {
+            if (!entry.value.empty() && entry.value != "assets" && entry.value != "/app/share/openyamm/assets")
+            {
+                kept.push_back(entry);
+            }
+            continue;
+        }
+
+        if (entry.section == "profile" || isRememberedState(name) || shipped == shippedValues.end())
+        {
+            kept.push_back(entry);
+            continue;
+        }
+
+        if (!document.consulted.contains(name))
+        {
+            continue;
+        }
+
+        const std::optional<std::string> value = normalizedSettingsValue(entry);
+
+        if (!value || !shipped->second.contains(*value))
+        {
+            kept.push_back(entry);
+        }
+    }
+
+    return documentWithEntries(kept);
+}
+}
+
+std::optional<GameSettings> loadGameSettingsFromText(const std::string &text, std::string &error)
+{
+    constexpr uint32_t PlayerChoicesSettingsProfileVersion = 5;
+    const IniDocument document = parseIniDocument(text);
+
+    if (documentProfileVersion(document) < PlayerChoicesSettingsProfileVersion)
+    {
+        return parseGameSettingsDocument(withoutShippedDefaults(document), error);
+    }
+
+    return parseGameSettingsDocument(document, error);
+}
+
+std::vector<SettingsEntry> serializeGameSettings(const GameSettings &settings)
+{
+    SettingsSerializer serializer;
+    serializer.section("assets");
+    serializer.add("root", settings.assetRoot);
+    serializer.section("audio");
+    serializer.add("sound_volume", std::clamp(settings.soundVolume, 0, 9));
+    serializer.add("music_volume", std::clamp(settings.musicVolume, 0, 9));
+    serializer.add("voice_volume", std::clamp(settings.voiceVolume, 0, 9));
+    serializer.section("controls");
+    serializer.add("turn_rate", turnRateModeString(settings.turnRate));
+    serializer.add("control_scheme", controlSchemeString(settings.controlScheme));
+    serializer.add("walksound", boolValue(settings.walksound));
+    serializer.add("show_hits", boolValue(settings.showHits));
+    serializer.add("always_run", boolValue(settings.alwaysRun));
+    serializer.add("flip_on_exit", boolValue(settings.flipOnExit));
+    serializer.add("mouse_sensitivity", std::clamp(settings.mouseSensitivity, 0, 100));
+    serializer.add("invert_mouse_y", boolValue(settings.invertMouseY));
+    serializer.section("gameplay");
+    serializer.add("keyboard_interaction_depth", std::clamp(settings.keyboardInteractionDepth, 32, 4096));
+    serializer.add("mouse_interaction_depth", std::clamp(settings.mouseInteractionDepth, 32, 4096));
+    serializer.add("combat_text", boolValue(settings.combatText));
+    serializer.add("enemy_health_bars", settings.enemyHealthBarMode);
+    serializer.add("enemy_health_bar_values", settings.enemyHealthBarValues);
+    serializer.add("enemy_health_bar_damage_trail", boolValue(settings.enemyHealthBarDamageTrail));
+    serializer.add("quest_markers", boolValue(settings.questMarkers));
+    serializer.add("party_frame", boolValue(settings.partyFrame));
+    serializer.add("melee_hit_blood_effects", boolValue(settings.meleeHitBloodEffects));
+    serializer.add("melee_hit_feedback", boolValue(settings.meleeHitFeedback));
+    serializer.add("melee_hit_effects", boolValue(settings.meleeHitEffects));
+    serializer.add("sword_swings", boolValue(settings.swordSwings));
+    serializer.add("melee_hit_flash", boolValue(settings.meleeHitFlash));
+    serializer.add("melee_camera_kick", boolValue(settings.meleeCameraKick));
+    serializer.add("context_action_popup", boolValue(settings.contextActionPopup));
+    serializer.add("click_to_interact", boolValue(settings.clickToInteract));
+    serializer.section("startup");
+    serializer.add("start_in_main_menu", boolValue(settings.startInMainMenu));
+    serializer.add("save_file", settings.startupSaveFile);
+    serializer.section("features");
+    serializer.add("bolster_monsters", boolValue(settings.bolsterMonsters));
+    serializer.add("homing_projectiles", boolValue(settings.homingProjectiles));
+    serializer.add("mm6_monster_missiles", boolValue(settings.mm6MonsterMissiles));
+    serializer.add("difficulty", settings.difficulty);
+    serializer.add("indoor_pathfinding", boolValue(settings.indoorPathfinding));
+    serializer.add("outdoor_pathfinding", boolValue(settings.outdoorPathfinding));
+    serializer.add("blaster_skill_scaling", blasterSkillScalingValue(settings.blasterSkillScaling));
+    serializer.add("blaster_min_recovery", blasterMinimumRecoveryTicksValue(settings.blasterMinimumRecoveryTicks));
+    serializer.section("logging");
+    serializer.add("indoor_visibility", boolValue(settings.logIndoorVisibility));
+    serializer.add("indoor_pathfinding", boolValue(settings.logIndoorPathfinding));
+    serializer.add("outdoor_pathfinding", boolValue(settings.logOutdoorPathfinding));
+    serializer.add("fps_trace", boolValue(settings.fpsTrace));
+    serializer.add("performance_trace", boolValue(settings.performanceTrace));
+    serializer.add("hitch_trace", boolValue(settings.hitchTrace));
+    serializer.add("collision_trace", boolValue(settings.collisionTrace));
+    serializer.add("gameplay_trace", boolValue(settings.gameplayTrace));
+    serializer.add("gameplay_trace_file", settings.gameplayTraceFile);
+    serializer.add("gameplay_trace_append", boolValue(settings.gameplayTraceAppend));
+    serializer.add("combat_trace", boolValue(settings.combatTrace));
+    serializer.add("combat_trace_file", settings.combatTraceFile);
+    serializer.add("combat_trace_append", boolValue(settings.combatTraceAppend));
+    serializer.add("hitch_threshold_ms", std::clamp(settings.hitchThresholdMilliseconds, 0.1f, 1000.0f));
+    serializer.section("input");
 
     for (const KeyboardBindingDefinition &definition : keyboardBindingDefinitions())
     {
-        output << definition.iniKey << '=' << inputBindingName(settings.keyboard.binding(definition.action)) << '\n';
+        serializer.add(definition.iniKey, inputBindingName(settings.keyboard.binding(definition.action)));
     }
 
-    output
-        << '\n'
-        << "[video]\n"
-        << "blood_splats=" << (settings.bloodSplats ? "true" : "false") << '\n'
-        << "colored_lights=" << (settings.coloredLights ? "true" : "false") << '\n'
-        << "tinting=" << (settings.tinting ? "true" : "false") << '\n'
-        << "shadows=" << (settings.shadows ? "true" : "false") << '\n'
-        << "model_shadow_quality=" << std::clamp(settings.modelShadowQuality, 0, 3) << '\n'
-        << "model_lods=" << (settings.modelLods ? "true" : "false") << '\n'
-        << "creature_outlines=" << (settings.creatureOutlines ? "true" : "false") << '\n'
-        << "sprite_outline=" << (settings.spriteOutline ? "true" : "false") << '\n'
-        << "texture_filtering=" << (settings.textureFiltering ? "true" : "false") << '\n'
-        << "ambient_occlusion=" << (settings.ambientOcclusion ? "true" : "false") << '\n'
-        << "ambient_occlusion_strength=" << settings.ambientOcclusionStrength << '\n'
-        << "bloom=" << (settings.bloom ? "true" : "false") << '\n'
-        << "bloom_strength=" << settings.bloomStrength << '\n'
-        << "cinematic_grading=" << (settings.cinematicGrading ? "true" : "false") << '\n'
-        << "cinematic_strength=" << settings.cinematicStrength << '\n'
-        << "sharpening=" << settings.sharpening << '\n'
-        << "antialiasing=" << antialiasingValue(settings.antialiasing) << '\n'
-        << "lightmaps=" << (settings.lightmaps ? "true" : "false") << '\n'
-        << "baked_sun_strength=" << *getBakedLightingSetting(settings, "baked_sun_strength") << '\n'
-        << "baked_sky_strength=" << *getBakedLightingSetting(settings, "baked_sky_strength") << '\n'
-        << "baked_sun_color=" << *getBakedLightingSetting(settings, "baked_sun_color") << '\n'
-        << "baked_sky_color=" << *getBakedLightingSetting(settings, "baked_sky_color") << '\n'
-        << "terrain_decorations=" << (settings.terrainDecorations ? "true" : "false") << '\n'
-        << "water_reflections=" << (settings.waterReflections ? "true" : "false") << '\n'
-        << "water_movement_ripples=" << (settings.waterMovementRipples ? "true" : "false") << '\n'
-        << "water_sprite_reflections=" << (settings.waterSpriteReflections ? "true" : "false") << '\n'
-        << "water_reflection_size=" << std::clamp(settings.waterReflectionSize, 128, 2048) << '\n'
-        << "terrain_subdivision=" << settings.terrainSubdivision << '\n'
-        << "terrain_antitiling=" << (settings.terrainAntiTiling ? "true" : "false") << '\n'
-        << "sky_resolution_scale=" << std::clamp(settings.skyResolutionScale, 0.25f, 1.0f) << '\n'
-        << "weather_quality=" << weatherQualityValue(settings.weatherQuality) << '\n'
-        << "light_grid=" << lightGridQualityValue(settings.lightGrid) << '\n'
-        << "rain_ripples=" << (settings.rainRipples ? "true" : "false") << '\n'
-        << "wet_surfaces=" << (settings.wetSurfaces ? "true" : "false") << '\n'
-        << "terrain_specular=" << (settings.terrainSpecular ? "true" : "false") << '\n'
-        << "terrain_filtering=" << settings.terrainFiltering << '\n'
-        << "terrain_anisotropy=" << settings.terrainAnisotropy << '\n'
-        << "bmodel_filtering=" << settings.bmodelFiltering << '\n'
-        << "billboard_filtering=" << settings.billboardFiltering << '\n'
-        << "ui_filtering=" << settings.uiFiltering << '\n'
-        << "text_filtering=" << settings.textFiltering << '\n'
-        << "minimap_filtering=" << settings.minimapFiltering << '\n'
-        << "view_distance=" << settings.viewDistance << '\n'
-        << "outdoor_billboard_depth_slice="
-        << std::clamp(settings.outdoorBillboardDepthSlice, 0.0f, 8192.0f) << '\n'
-        << "skip_event_cutscenes=" << (settings.skipEventCutscenes ? "true" : "false") << '\n'
-        << "wait_for_level_sprites=" << (settings.waitForLevelSprites ? "true" : "false") << '\n'
-        << "window_mode=" << windowModeString(settings.windowMode) << '\n'
-        << "resolution=" << std::clamp(settings.resolutionWidth, 320, 16384)
-        << 'x' << std::clamp(settings.resolutionHeight, 200, 16384) << '\n'
-        << "vsync=" << (settings.verticalSync ? "true" : "false") << '\n'
-        << '\n'
-        << "[video_quality]\n"
-        << "sky=" << Engine::assetScaleTierToString(settings.assetScaleProfile.sky) << '\n'
-        << "decorations=" << Engine::assetScaleTierToString(settings.assetScaleProfile.decorations) << '\n'
-        << "prefer_restored_icons=" << (settings.assetScaleProfile.preferRestoredIcons ? "true" : "false") << '\n'
-        << "icons=" << Engine::assetScaleTierToString(settings.assetScaleProfile.icons) << "\n\n"
-        << "[debug]\n"
-        << "preseed_party=" << (settings.preseedParty ? "true" : "false") << '\n'
-        << "party_seed_roster_id=" << settings.partySeedRosterId << '\n'
-        << "start_world=" << settings.startWorldId << '\n'
-        << "start_map_file=" << settings.startMapFile << '\n'
-        << "override_start_position=" << (settings.overrideStartPosition ? "true" : "false") << '\n'
-        << "start_x=" << settings.startX << '\n'
-        << "start_y=" << settings.startY << '\n'
-        << "start_z=" << settings.startZ << '\n'
-        << "start_flying=" << (settings.startFlying ? "true" : "false") << '\n'
-        << "movement_speed_multiplier=" << settings.movementSpeedMultiplier << '\n'
-        << "turbo_movement=" << (settings.turboMovementEnabled ? "true" : "false") << '\n'
-        << "immortal=" << (settings.immortal ? "true" : "false") << '\n'
-        << "unlimited_mana=" << (settings.unlimitedMana ? "true" : "false") << '\n'
-        << "new_game_god_lich=" << (settings.newGameGodLich ? "true" : "false") << '\n'
-        << "allow_incomplete_character_creation="
-        << (settings.allowIncompleteCharacterCreation ? "true" : "false") << '\n'
-        << "console=" << (settings.debugConsole ? "true" : "false") << '\n'
-        << "actor_models=" << (settings.actorModels ? "true" : "false") << '\n';
+    serializer.section("video");
+    serializer.add("blood_splats", boolValue(settings.bloodSplats));
+    serializer.add("colored_lights", boolValue(settings.coloredLights));
+    serializer.add("warm_torch_light", boolValue(settings.warmTorchLight));
+    serializer.add("tinting", boolValue(settings.tinting));
+    serializer.add("shadows", boolValue(settings.shadows));
+    serializer.add("model_shadow_quality", std::clamp(settings.modelShadowQuality, 0, 3));
+    serializer.add("model_lods", boolValue(settings.modelLods));
+    serializer.add("creature_outlines", boolValue(settings.creatureOutlines));
+    serializer.add("sprite_outline", boolValue(settings.spriteOutline));
+    serializer.add("texture_filtering", boolValue(settings.textureFiltering));
+    serializer.add("ambient_occlusion", boolValue(settings.ambientOcclusion));
+    serializer.add("ambient_occlusion_strength", settings.ambientOcclusionStrength);
+    serializer.add("bloom", boolValue(settings.bloom));
+    serializer.add("bloom_strength", settings.bloomStrength);
+    serializer.add("cinematic_grading", boolValue(settings.cinematicGrading));
+    serializer.add("cinematic_strength", settings.cinematicStrength);
+    serializer.add("sharpening", settings.sharpening);
+    serializer.add("antialiasing", antialiasingValue(settings.antialiasing));
+    serializer.add("lightmaps", boolValue(settings.lightmaps));
+    serializer.add("baked_sun_strength", *getBakedLightingSetting(settings, "baked_sun_strength"));
+    serializer.add("baked_sky_strength", *getBakedLightingSetting(settings, "baked_sky_strength"));
+    serializer.add("baked_sun_color", *getBakedLightingSetting(settings, "baked_sun_color"));
+    serializer.add("baked_sky_color", *getBakedLightingSetting(settings, "baked_sky_color"));
+    serializer.add("terrain_decorations", boolValue(settings.terrainDecorations));
+    serializer.add("water_reflections", boolValue(settings.waterReflections));
+    serializer.add("water_movement_ripples", boolValue(settings.waterMovementRipples));
+    serializer.add("water_sprite_reflections", boolValue(settings.waterSpriteReflections));
+    serializer.add("water_reflection_size", std::clamp(settings.waterReflectionSize, 128, 2048));
+    serializer.add("terrain_subdivision", settings.terrainSubdivision);
+    serializer.add("terrain_antitiling", boolValue(settings.terrainAntiTiling));
+    serializer.add("sky_resolution_scale", std::clamp(settings.skyResolutionScale, 0.25f, 1.0f));
+    serializer.add("weather_quality", weatherQualityValue(settings.weatherQuality));
+    serializer.add("light_grid", lightGridQualityValue(settings.lightGrid));
+    serializer.add("rain_ripples", boolValue(settings.rainRipples));
+    serializer.add("wet_surfaces", boolValue(settings.wetSurfaces));
+    serializer.add("terrain_specular", boolValue(settings.terrainSpecular));
+    serializer.add("terrain_filtering", settings.terrainFiltering);
+    serializer.add("terrain_anisotropy", settings.terrainAnisotropy);
+    serializer.add("bmodel_filtering", settings.bmodelFiltering);
+    serializer.add("billboard_filtering", settings.billboardFiltering);
+    serializer.add("ui_filtering", settings.uiFiltering);
+    serializer.add("text_filtering", settings.textFiltering);
+    serializer.add("minimap_filtering", settings.minimapFiltering);
+    serializer.add("view_distance", settings.viewDistance);
+    serializer.add("outdoor_billboard_depth_slice", std::clamp(settings.outdoorBillboardDepthSlice, 0.0f, 8192.0f));
+    serializer.add("skip_event_cutscenes", boolValue(settings.skipEventCutscenes));
+    serializer.add("wait_for_level_sprites", boolValue(settings.waitForLevelSprites));
+    serializer.add("window_mode", windowModeString(settings.windowMode));
+    serializer.add(
+        "resolution",
+        std::clamp(settings.resolutionWidth, 320, 16384),
+        'x',
+        std::clamp(settings.resolutionHeight, 200, 16384));
+    serializer.add("vsync", boolValue(settings.verticalSync));
+    serializer.section("video_quality");
+    serializer.add("sky", Engine::assetScaleTierToString(settings.assetScaleProfile.sky));
+    serializer.add("decorations", Engine::assetScaleTierToString(settings.assetScaleProfile.decorations));
+    serializer.add("prefer_restored_icons", boolValue(settings.assetScaleProfile.preferRestoredIcons));
+    serializer.add("icons", Engine::assetScaleTierToString(settings.assetScaleProfile.icons));
+    serializer.section("updates");
+    serializer.add("check_for_updates", settings.updateCheck);
+    serializer.add("url", settings.updateUrl);
+    serializer.section("debug");
+    serializer.add("preseed_party", boolValue(settings.preseedParty));
+    serializer.add("party_seed_roster_id", settings.partySeedRosterId);
+    serializer.add("start_world", settings.startWorldId);
+    serializer.add("start_map_file", settings.startMapFile);
+    serializer.add("override_start_position", boolValue(settings.overrideStartPosition));
+    serializer.add("start_x", settings.startX);
+    serializer.add("start_y", settings.startY);
+    serializer.add("start_z", settings.startZ);
+    serializer.add("start_flying", boolValue(settings.startFlying));
+    serializer.add("movement_speed_multiplier", settings.movementSpeedMultiplier);
+    serializer.add("turbo_movement", boolValue(settings.turboMovementEnabled));
+    serializer.add("immortal", boolValue(settings.immortal));
+    serializer.add("unlimited_mana", boolValue(settings.unlimitedMana));
+    serializer.add("new_game_god_lich", boolValue(settings.newGameGodLich));
+    serializer.add("allow_incomplete_character_creation", boolValue(settings.allowIncompleteCharacterCreation));
+    serializer.add("console", boolValue(settings.debugConsole));
+    serializer.add("actor_models", boolValue(settings.actorModels));
+    return serializer.takeEntries();
+}
 
-    if (!output.good())
+std::vector<SettingsEntry> settingsEntriesToSave(const GameSettings &settings)
+{
+    const std::vector<SettingsEntry> entries = serializeGameSettings(settings);
+    const std::vector<SettingsEntry> defaults = serializeGameSettings(GameSettings::createDefault());
+    // Key bindings follow the defaults of the player's control preset, as the loader restores them.
+    GameSettings presetDefaults = GameSettings::createDefault();
+    presetDefaults.controlScheme = settings.controlScheme;
+    presetDefaults.keyboard.restoreDefaults(settings.controlScheme);
+    const std::vector<SettingsEntry> presetDefaultEntries = serializeGameSettings(presetDefaults);
+    std::vector<SettingsEntry> selected;
+
+    // The writer only writes the current format; a newer file keeps its version.
+    const GameSettings platformDefaults = GameSettings::createDefault();
+    selected.push_back({"profile", "name",
+                        settings.settingsProfileName.empty() ? platformDefaults.settingsProfileName
+                                                             : settings.settingsProfileName});
+    selected.push_back(
+        {"profile", "version",
+         std::to_string(std::max(settings.settingsProfileVersion, CurrentSettingsProfileVersion))});
+
+    for (size_t index = 0; index < entries.size(); ++index)
     {
-        error = "Failed while writing settings file";
+        const SettingsEntry &entry = entries[index];
+        const SettingsEntry &defaultEntry = entry.section == "input" ? presetDefaultEntries[index] : defaults[index];
+        const std::string name = entry.section + '.' + entry.key;
+
+        if (isRememberedState(name) || settings.fileState.storedKeys.contains(name)
+            || entry.value != defaultEntry.value)
+        {
+            selected.push_back(entry);
+        }
+    }
+
+    // Unknown keys go after the known keys of their section; unknown sections follow at the end.
+    for (const SettingsEntry &unknown : settings.fileState.unknownEntries)
+    {
+        auto insertAt = selected.end();
+
+        for (auto it = selected.begin(); it != selected.end(); ++it)
+        {
+            if (it->section == unknown.section)
+            {
+                insertAt = std::next(it);
+            }
+        }
+
+        selected.insert(insertAt, unknown);
+    }
+
+    return selected;
+}
+
+bool saveGameSettings(const std::filesystem::path &path, const GameSettings &settings, std::string &error)
+{
+    std::ostringstream output;
+    output
+        << "; OpenYAMM settings: only the values you changed. Everything else follows the game's defaults.\n"
+        << "; Volumes use the original-style 0..9 scale.\n";
+    std::string currentSection;
+
+    for (const SettingsEntry &entry : settingsEntriesToSave(settings))
+    {
+        if (entry.section != currentSection)
+        {
+            output << "\n[" << entry.section << "]\n";
+            currentSection = entry.section;
+        }
+
+        output << entry.key << '=' << entry.value << '\n';
+    }
+
+    const std::filesystem::path temporaryPath = path.string() + ".tmp";
+    const std::filesystem::path backupPath = path.string() + ".bak";
+    {
+        std::ofstream file(temporaryPath, std::ios::binary | std::ios::trunc);
+        file << output.str();
+        file.close();
+
+        if (!file)
+        {
+            std::error_code removeError;
+            std::filesystem::remove(temporaryPath, removeError);
+            error = "Unable to write settings file";
+            return false;
+        }
+    }
+
+    std::error_code fileError;
+
+    if (std::filesystem::exists(path, fileError))
+    {
+        std::filesystem::copy_file(path, backupPath, std::filesystem::copy_options::overwrite_existing, fileError);
+    }
+
+    std::filesystem::rename(temporaryPath, path, fileError);
+
+    if (fileError)
+    {
+        error = "Unable to replace settings file: " + fileError.message();
         return false;
     }
 
     error.clear();
     return true;
+}
+
+void releaseStoredSettings(GameSettings &settings, const std::vector<std::string> &names)
+{
+    std::erase_if(
+        settings.fileState.storedKeys,
+        [&names](const std::string &storedKey)
+        {
+            const size_t separator = storedKey.find('.');
+            const std::string section = storedKey.substr(0, separator + 1);
+            const std::string key = storedKey.substr(separator + 1);
+            return std::find_if(
+                       names.begin(),
+                       names.end(),
+                       [&](const std::string &name) { return name == key || name == section; })
+                != names.end();
+        });
 }
 }

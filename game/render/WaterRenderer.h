@@ -45,6 +45,8 @@ struct WaterSurfaceGeometry
     float height = 0.0f;
     bool planar = true;
     LiquidKind liquid = LiquidKind::Water;
+    // False for a liquid that never takes a planar reflection (liquids.yml reflections: false).
+    bool reflects = true;
     int16_t sectorId = -1;
     int16_t backSectorId = -1;
 };
@@ -110,6 +112,7 @@ private:
         float distanceSquared = 0.0f;
         bool planar = true;
         LiquidKind liquid = LiquidKind::Water;
+        bool reflects = true;
         bool visible = false;
         bool building = false;
         int reflection = -1;

@@ -51,7 +51,7 @@ class GenerateMm9DestructibleBrushInventoryTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[2]
         expected = generate_mm9_destructible_brush_inventory.generate_document(
             root / "assets_dev/worlds/mm9/maps")
-        actual = (root / "MM9_DESTRUCTIBLE_BRUSH_INVENTORY.md").read_text(encoding="utf-8")
+        actual = (root / "devdocs/mm9/MM9_DESTRUCTIBLE_BRUSH_INVENTORY.md").read_text(encoding="utf-8")
         self.assertEqual(actual, expected)
         self.assertIn("## Map coverage", actual)
         self.assertIn("OpenYAMM position", actual)

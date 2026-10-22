@@ -1752,10 +1752,10 @@ void GameplayUiRuntime::renderActorInspectPreview(const IGameplayWorldRuntime &w
     {
         return;
     }
-    if (m_pActorModelPreview != nullptr)
+    if (m_pActorModelPreview != nullptr && m_pAssetFileSystem != nullptr)
     {
         const bgfx::TextureHandle portrait =
-            m_pActorModelPreview->render(world, actorIndex, rect.width, animationTicks);
+            m_pActorModelPreview->render(world, actorIndex, rect.width, animationTicks, *m_pAssetFileSystem);
         if (bgfx::isValid(portrait))
         {
             const bool bottomUp = bgfx::getCaps()->originBottomLeft;

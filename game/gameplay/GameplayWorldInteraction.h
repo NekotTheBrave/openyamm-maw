@@ -92,6 +92,8 @@ struct GameplayWorldItemTargetHit
     uint16_t objectSpriteId = 0;
     bx::Vec3 hitPoint = {0.0f, 0.0f, 0.0f};
     float distance = 0.0f;
+    // The item, when it draws the missing-model placeholder (its icon has no ground model); 0 otherwise.
+    uint32_t missingGroundModelItemId = 0;
 };
 
 struct GameplayContainerTargetHit

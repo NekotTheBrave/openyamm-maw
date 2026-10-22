@@ -120,8 +120,17 @@ bool ItemRuntime::isRareItem(const ItemDefinition &itemDefinition)
 
 bool ItemRuntime::isUniquelyGeneratedRareItem(const ItemDefinition &itemDefinition)
 {
-    return (itemDefinition.rarity == ItemRarity::Artifact || itemDefinition.rarity == ItemRarity::Relic)
-        && itemDefinition.value > 0;
+    return isArtifact(itemDefinition) && itemDefinition.value > 0;
+}
+
+bool ItemRuntime::isArtifact(const ItemDefinition &itemDefinition)
+{
+    return itemDefinition.rarity == ItemRarity::Artifact || itemDefinition.rarity == ItemRarity::Relic;
+}
+
+bool ItemRuntime::isHardened(bool hardenedFlag, const ItemDefinition &itemDefinition)
+{
+    return hardenedFlag || isArtifact(itemDefinition);
 }
 
 std::optional<std::string> ItemRuntime::classRestriction(const ItemDefinition &itemDefinition)
@@ -277,6 +286,16 @@ bool ItemRuntime::canCharacterRepairItem(const Character &character, const ItemD
 bool ItemRuntime::canDrop(const ItemDefinition &itemDefinition)
 {
     return !itemDefinition.hasContentFlag("NoDrop");
+}
+
+std::string ItemRuntime::foundItemName(const ItemDefinition &itemDefinition)
+{
+    if (hasMeaningfulUnidentifiedName(itemDefinition))
+    {
+        return itemDefinition.unidentifiedName;
+    }
+
+    return !itemDefinition.name.empty() ? itemDefinition.name : "item";
 }
 
 std::string ItemRuntime::displayName(const InventoryItem &item, const ItemDefinition &itemDefinition)

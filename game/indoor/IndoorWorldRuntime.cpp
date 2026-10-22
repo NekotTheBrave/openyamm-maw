@@ -31,6 +31,7 @@
 #include "game/gameplay/StealingRuntime.h"
 #include "game/gameplay/TreasureRuntime.h"
 #include "game/indoor/IndoorActorActivation.h"
+#include "game/indoor/IndoorCollisionPrimitives.h"
 #include "game/indoor/IndoorRenderer.h"
 #include "game/indoor/IndoorGameView.h"
 #include "game/indoor/IndoorGeometryUtils.h"
@@ -38,8 +39,10 @@
 #include "game/indoor/IndoorPartyRuntime.h"
 #include "game/indoor/IndoorPathfindingBuilder.h"
 #include "game/indoor/IndoorPortalVisibility.h"
+#include "game/items/ItemEnchantRuntime.h"
 #include "game/items/ItemGenerator.h"
 #include "game/items/ItemRuntime.h"
+#include "game/items/WorldItemShape.h"
 #include "game/maps/MapAssetLoader.h"
 #include "game/mm9/Mm9BarrelRuntime.h"
 #include "game/party/EventSpellBuffs.h"
@@ -2504,7 +2507,9 @@ std::optional<IndoorProjectileCollisionCandidate> findProjectileIndoorFaceHit(
 
         const float denominator = dotProduct(segment, pGeometry->normal);
 
-        if (std::fabs(denominator) <= PlaneEpsilon)
+        // As in the original engine, projectiles never hit a face from behind: event traps spawn them above
+        // ceiling openings (MM8 Smuggler's Cove) and they must drop through the opening's ceiling face.
+        if (denominator >= -PlaneEpsilon)
         {
             continue;
         }
@@ -2536,14 +2541,9 @@ std::optional<IndoorProjectileCollisionCandidate> findProjectileIndoorFaceHit(
         collision.kind = GameplayProjectileService::ProjectileFrameCollisionKind::World;
         collision.point = {impactPoint.x, impactPoint.y, impactPoint.z};
         collision.faceIndex = faceIndex;
-        bx::Vec3 collisionNormal = pGeometry->normal;
-        if (dotProduct(collisionNormal, segment) > 0.0f)
-        {
-            collisionNormal = {-collisionNormal.x, -collisionNormal.y, -collisionNormal.z};
-        }
-        collision.normalX = collisionNormal.x;
-        collision.normalY = collisionNormal.y;
-        collision.normalZ = collisionNormal.z;
+        collision.normalX = pGeometry->normal.x;
+        collision.normalY = pGeometry->normal.y;
+        collision.normalZ = pGeometry->normal.z;
         collision.requiresDownwardVelocityToBounce = pGeometry->kind == IndoorFaceKind::Floor;
         collision.progress = progress;
         collision.distanceSquared =
@@ -2558,6 +2558,107 @@ std::optional<IndoorProjectileCollisionCandidate> findProjectileIndoorFaceHit(
     }
 
     return bestCollision;
+}
+
+struct WorldItemIndoorWallHit
+{
+    size_t faceIndex = 0;
+    float moveDistance = 0.0f;
+    bx::Vec3 normal = {0.0f, 0.0f, 1.0f};
+};
+
+// The nearest wall or ceiling an airborne item's sphere chain meets along a move (GROUND_ITEMS_3D_BEHAVIOUR.md
+// section 4). Floors are left to the item's segment and floor tests.
+std::optional<WorldItemIndoorWallHit> findWorldItemIndoorWallHit(
+    const IndoorMapData &indoorMapData,
+    const MapDeltaData *pMapDeltaData,
+    const EventRuntimeState *pEventRuntimeState,
+    const std::vector<IndoorVertex> &vertices,
+    IndoorFaceGeometryCache &geometryCache,
+    const WorldItemSphereChain &chain,
+    const GameplayWorldPoint &segmentStart,
+    const GameplayWorldPoint &segmentEnd,
+    std::optional<int16_t> sourceSectorId)
+{
+    const bx::Vec3 move = {
+        segmentEnd.x - segmentStart.x,
+        segmentEnd.y - segmentStart.y,
+        segmentEnd.z - segmentStart.z
+    };
+    const float moveDistance = length3d(move);
+
+    if (moveDistance <= 0.001f || chain.count == 0)
+    {
+        return std::nullopt;
+    }
+
+    const bx::Vec3 direction = {move.x / moveDistance, move.y / moveDistance, move.z / moveDistance};
+    float reach = chain.radius;
+
+    for (size_t index = 0; index < chain.count; ++index)
+    {
+        const std::array<float, 3> &offset = chain.offsets[index];
+        reach = std::max(reach, std::sqrt(offset[0] * offset[0] + offset[1] * offset[1]) + chain.radius);
+    }
+
+    const std::vector<size_t> candidateFaceIndices =
+        collectProjectileIndoorFaceCandidates(
+            indoorMapData,
+            vertices,
+            geometryCache,
+            segmentStart,
+            segmentEnd,
+            reach + 8.0f,
+            sourceSectorId);
+    std::optional<WorldItemIndoorWallHit> bestHit;
+
+    for (size_t faceIndex : candidateFaceIndices)
+    {
+        if (faceIndex >= indoorMapData.faces.size())
+        {
+            continue;
+        }
+
+        const IndoorFace &face = indoorMapData.faces[faceIndex];
+        const uint32_t effectiveAttributes = effectiveIndoorFaceAttributes(face, pMapDeltaData, faceIndex);
+
+        if (face.isPortal
+            || hasFaceAttribute(effectiveAttributes, FaceAttribute::IsPortal)
+            || hasFaceAttribute(effectiveAttributes, FaceAttribute::Invisible)
+            || hasFaceAttribute(effectiveAttributes, FaceAttribute::Untouchable)
+            || indoorFaceHasInvisibleOverride(faceIndex, pEventRuntimeState))
+        {
+            continue;
+        }
+
+        const IndoorFaceGeometryData *pGeometry = geometryCache.geometryForFace(indoorMapData, vertices, faceIndex);
+
+        if (pGeometry == nullptr || !pGeometry->hasPlane || pGeometry->isPortal
+            || pGeometry->kind == IndoorFaceKind::Floor)
+        {
+            continue;
+        }
+
+        for (size_t index = 0; index < chain.count; ++index)
+        {
+            IndoorSweptSphere sphere = {};
+            sphere.center = {
+                segmentStart.x + chain.offsets[index][0],
+                segmentStart.y + chain.offsets[index][1],
+                segmentStart.z + chain.offsets[index][2]
+            };
+            sphere.radius = chain.radius;
+            const std::optional<IndoorSweptFaceHit> hit =
+                sweepIndoorSphereAgainstFace(sphere, direction, moveDistance, *pGeometry);
+
+            if (hit && hit->hit && (!bestHit || hit->adjustedMoveDistance < bestHit->moveDistance))
+            {
+                bestHit = WorldItemIndoorWallHit{faceIndex, hit->adjustedMoveDistance, hit->normal};
+            }
+        }
+    }
+
+    return bestHit;
 }
 
 std::vector<size_t> collectIndoorCombatLineFaceCandidates(
@@ -3423,6 +3524,12 @@ void writeIndoorHeldItemPayload(std::vector<uint8_t> &bytes, const InventoryItem
         bytes[0x18] = static_cast<uint8_t>(item.rarity);
     }
 
+    // 0x1b is padding in the original item record, so map-authored items never read as hardened.
+    if (bytes.size() > 0x1b)
+    {
+        bytes[0x1b] = item.hardened ? 0x01 : 0x00;
+    }
+
     if (bytes.size() >= 0x20)
     {
         std::memcpy(bytes.data() + 0x1c, &item.temporaryBonusRemainingSeconds, sizeof(float));
@@ -3458,6 +3565,11 @@ bool readIndoorHeldItemPayload(
         item.stolen = (bytes[0x08] & 0x04) != 0;
     }
 
+    if (bytes.size() > 0x1b)
+    {
+        item.hardened = (bytes[0x1b] & 0x01) != 0;
+    }
+
     readRawItemUInt16(bytes, 0x10, item.standardEnchantId);
     readRawItemUInt16(bytes, 0x12, item.standardEnchantPower);
     readRawItemUInt16(bytes, 0x14, item.specialEnchantId);
@@ -3482,6 +3594,37 @@ bool readIndoorHeldItemPayload(
     }
 
     return true;
+}
+
+// Potions placed on the map without a power get one when it loads, as MM8 does.
+void assignPlacedIndoorPotionPowers(std::optional<MapDeltaData> *pMapDeltaData, const ItemTable &itemTable)
+{
+    if (pMapDeltaData == nullptr || !pMapDeltaData->has_value())
+    {
+        return;
+    }
+
+    std::mt19937 rng(std::random_device{}());
+
+    for (MapDeltaSpriteObject &spriteObject : (*pMapDeltaData)->spriteObjects)
+    {
+        InventoryItem item = {};
+
+        if (spriteObject.semanticLootContainer
+            || !hasContainingItemPayload(spriteObject.rawContainingItem)
+            || !readIndoorHeldItemPayload(spriteObject.rawContainingItem, &itemTable, item))
+        {
+            continue;
+        }
+
+        const uint16_t previousPower = item.standardEnchantPower;
+        ItemGenerator::assignPlacedPotionPower(item, itemTable, rng);
+
+        if (item.standardEnchantPower != previousPower)
+        {
+            writeRawItemUInt16(spriteObject.rawContainingItem, 0x12, item.standardEnchantPower);
+        }
+    }
 }
 
 std::optional<uint16_t> resolveIndoorItemObjectDescriptionId(
@@ -3796,10 +3939,12 @@ void IndoorWorldRuntime::initialize(
         m_pItemTable,
         m_pChestTable,
         m_pMapDeltaData);
+    assignPlacedIndoorPotionPowers(m_pMapDeltaData, itemTable);
     materializeSemanticWorldItems();
     m_materializedChestViews.clear();
     m_activeChestView.reset();
     m_mapActorCorpseViews.clear();
+    m_mapActorRevealedLoot.clear();
     m_corpseLootPending = true;
     m_activeCorpseView.reset();
     m_mapActorAiStates.clear();
@@ -3890,10 +4035,12 @@ void IndoorWorldRuntime::initialize(
         m_pItemTable,
         m_pChestTable,
         m_pMapDeltaData);
+    assignPlacedIndoorPotionPowers(m_pMapDeltaData, itemTable);
     materializeSemanticWorldItems();
     m_materializedChestViews.clear();
     m_activeChestView.reset();
     m_mapActorCorpseViews.clear();
+    m_mapActorRevealedLoot.clear();
     m_corpseLootPending = true;
     m_activeCorpseView.reset();
     m_mapActorAiStates.clear();
@@ -3924,6 +4071,11 @@ void IndoorWorldRuntime::initialize(
 void IndoorWorldRuntime::bindRenderer(IndoorRenderer *pRenderer)
 {
     m_pRenderer = pRenderer;
+    // The renderer's actor frames gain the frames of summoned monsters the map did not preload; use them from now on.
+    if (pRenderer != nullptr && pRenderer->actorSpriteFrameTable() != nullptr)
+    {
+        m_pActorSpriteFrameTable = pRenderer->actorSpriteFrameTable();
+    }
 }
 
 void IndoorWorldRuntime::bindGameplayView(IndoorGameView *pView)
@@ -5493,6 +5645,8 @@ std::vector<bool> IndoorWorldRuntime::applyIndoorActorAiFrameResult(
                 aiState.velocityZ = 0.0f;
             }
         }
+
+        aiState.intendedSpeed = 0.0f;
 
         if (update.movementIntent.applyMovement)
         {
@@ -8112,8 +8266,9 @@ bool IndoorWorldRuntime::updateWorldItemsStep(
 
     bool changed = false;
 
-    for (MapDeltaSpriteObject &spriteObject : pMapDeltaData->spriteObjects)
+    for (size_t objectIndex = 0; objectIndex < pMapDeltaData->spriteObjects.size(); ++objectIndex)
     {
+        MapDeltaSpriteObject &spriteObject = pMapDeltaData->spriteObjects[objectIndex];
         const ObjectEntry *pObjectEntry = m_pObjectTable->get(spriteObject.objectDescriptionId);
 
         if (pObjectEntry == nullptr
@@ -8151,72 +8306,103 @@ bool IndoorWorldRuntime::updateWorldItemsStep(
         };
         GameplayWorldPoint resolvedPoint = segmentEnd;
 
-        GameplayProjectileService::ProjectileState probe = {};
-        probe.radius = static_cast<uint16_t>(std::max<uint16_t>(pObjectEntry->radius, 1));
-        probe.height = static_cast<uint16_t>(std::max<uint16_t>(pObjectEntry->height, 1));
-
-        const std::optional<IndoorProjectileCollisionCandidate> faceHit =
-            findProjectileIndoorFaceHit(
+        // An item collides with walls and ceilings as its model's sphere chain, not as a point; floors stay with the
+        // segment and floor tests below.
+        const uint32_t containedItemId =
+            spriteObject.semanticLootContainer ? 0 : spriteObjectContainedItemId(spriteObject.rawContainingItem);
+        const std::optional<WorldItemIndoorWallHit> wallHit = containedItemId != 0 && m_pItemTable != nullptr
+            ? findWorldItemIndoorWallHit(
                 *m_pIndoorMapData,
                 pMapDeltaData,
                 eventRuntimeState(),
                 vertices,
                 geometryCache,
-                probe,
+                worldItemSphereChain(
+                    m_pItemTable->groundModel(containedItemId),
+                    worldItemYawRadians(uint32_t(objectIndex))),
                 segmentStart,
                 segmentEnd,
-                spriteObject.sectorId);
+                spriteObject.sectorId)
+            : std::nullopt;
 
-        if (faceHit && faceHit->faceIndex < m_pIndoorMapData->faces.size())
+        if (wallHit)
         {
-            executeFaceTriggeredEvent(faceHit->faceIndex, FaceAttribute::TriggerByObject, false);
-            resolvedPoint = faceHit->point;
-            const IndoorFaceGeometryData *pGeometry =
-                geometryCache.geometryForFace(*m_pIndoorMapData, vertices, faceHit->faceIndex);
+            executeFaceTriggeredEvent(wallHit->faceIndex, FaceAttribute::TriggerByObject, false);
+            const float moveDistance = length3d({
+                segmentEnd.x - segmentStart.x,
+                segmentEnd.y - segmentStart.y,
+                segmentEnd.z - segmentStart.z});
+            const float travelled = std::max(wallHit->moveDistance, 0.0f) / moveDistance;
+            resolvedPoint = {
+                segmentStart.x + (segmentEnd.x - segmentStart.x) * travelled,
+                segmentStart.y + (segmentEnd.y - segmentStart.y) * travelled,
+                segmentStart.z + (segmentEnd.z - segmentStart.z) * travelled
+            };
+            const std::array<float, 3> reflected = reflectWorldItemVelocity(
+                {velocity.x, velocity.y, velocity.z},
+                {wallHit->normal.x, wallHit->normal.y, wallHit->normal.z});
+            velocity = {
+                reflected[0] * IndoorWorldItemGroundDamping,
+                reflected[1] * IndoorWorldItemGroundDamping,
+                reflected[2] * IndoorWorldItemGroundDamping
+            };
+        }
+        else
+        {
+            GameplayProjectileService::ProjectileState probe = {};
+            probe.radius = static_cast<uint16_t>(std::max<uint16_t>(pObjectEntry->radius, 1));
+            probe.height = static_cast<uint16_t>(std::max<uint16_t>(pObjectEntry->height, 1));
 
-            if (pGeometry != nullptr)
+            const std::optional<IndoorProjectileCollisionCandidate> faceHit =
+                findProjectileIndoorFaceHit(
+                    *m_pIndoorMapData,
+                    pMapDeltaData,
+                    eventRuntimeState(),
+                    vertices,
+                    geometryCache,
+                    probe,
+                    segmentStart,
+                    segmentEnd,
+                    spriteObject.sectorId);
+
+            if (faceHit && faceHit->faceIndex < m_pIndoorMapData->faces.size())
             {
-                if (pGeometry->kind == IndoorFaceKind::Floor)
-                {
-                    resolvedPoint.z = calculateIndoorFaceHeight(*pGeometry, resolvedPoint.x, resolvedPoint.y)
-                        + IndoorWorldItemGroundClearance;
+                executeFaceTriggeredEvent(faceHit->faceIndex, FaceAttribute::TriggerByObject, false);
+                resolvedPoint = faceHit->point;
+                const IndoorFaceGeometryData *pGeometry =
+                    geometryCache.geometryForFace(*m_pIndoorMapData, vertices, faceHit->faceIndex);
 
-                    if ((pObjectEntry->flags & ObjectDescBounce) != 0
-                        && std::abs(velocity.z) >= IndoorWorldItemBounceStopVelocity)
+                if (pGeometry != nullptr)
+                {
+                    if (pGeometry->kind == IndoorFaceKind::Floor)
                     {
-                        velocity.z = -velocity.z * IndoorWorldItemBounceFactor;
+                        resolvedPoint.z = calculateIndoorFaceHeight(*pGeometry, resolvedPoint.x, resolvedPoint.y)
+                            + IndoorWorldItemGroundClearance;
+
+                        if ((pObjectEntry->flags & ObjectDescBounce) != 0
+                            && std::abs(velocity.z) >= IndoorWorldItemBounceStopVelocity)
+                        {
+                            velocity.z = -velocity.z * IndoorWorldItemBounceFactor;
+                        }
+                        else
+                        {
+                            velocity.z = 0.0f;
+                        }
                     }
                     else
                     {
-                        velocity.z = 0.0f;
+                        const std::array<float, 3> reflected = reflectWorldItemVelocity(
+                            {velocity.x, velocity.y, velocity.z},
+                            {pGeometry->normal.x, pGeometry->normal.y, pGeometry->normal.z});
+                        velocity = {reflected[0], reflected[1], reflected[2]};
                     }
+
+                    velocity.x *= IndoorWorldItemGroundDamping;
+                    velocity.y *= IndoorWorldItemGroundDamping;
+                    velocity.z *= IndoorWorldItemGroundDamping;
                 }
-                else
-                {
-                    const float speed = length3d(velocity);
-                    const float dotFix = std::max(std::abs(dotProduct(pGeometry->normal, velocity)), speed / 8.0f);
-                    velocity.x += 2.0f * dotFix * pGeometry->normal.x;
-                    velocity.y += 2.0f * dotFix * pGeometry->normal.y;
-
-                    float zFix = dotFix * pGeometry->normal.z;
-
-                    if (pGeometry->normal.z <= 0.48828125f)
-                    {
-                        zFix *= 2.0f;
-                    }
-                    else
-                    {
-                        velocity.z += zFix;
-                        zFix *= 0.48828125f;
-                    }
-
-                    velocity.z += zFix;
-                }
-
-                velocity.x *= IndoorWorldItemGroundDamping;
-                velocity.y *= IndoorWorldItemGroundDamping;
-                velocity.z *= IndoorWorldItemGroundDamping;
             }
+
         }
 
         const IndoorFloorSample floorSample =
@@ -8876,6 +9062,7 @@ void IndoorWorldRuntime::applyIndoorActorMovementIntegration(
 
     const float desiredVelocityX = movementIntent.desiredMoveX * movementIntentSpeed;
     const float desiredVelocityY = movementIntent.desiredMoveY * movementIntentSpeed;
+    aiState.intendedSpeed = std::hypot(desiredVelocityX, desiredVelocityY);
     std::vector<size_t> contactedActorIndices;
     IndoorMoveDebugInfo moveDebugInfo = {};
     IndoorMoveDebugInfo verticalMoveDebugInfo = {};
@@ -9844,6 +10031,10 @@ std::optional<ActorAiFacts> IndoorWorldRuntime::collectIndoorActorAiFacts(
         pStats->movementType != MonsterTable::MonsterMovementType::Stationary
         && !bolster.immobile;
     facts.movement.movementBlocked = false;
+    // The placement (posts and their facing) for tactics.
+    facts.movement.placedImmobile = actor.immobile;
+    facts.movement.hasHomeYaw = true;
+    facts.movement.homeYawRadians = static_cast<float>(actor.initialYawUnits % 2048u) * (Pi * 2.0f / 2048.0f);
 
     facts.world.listenerPosition = partyFacts.position;
     facts.world.targetZ = actorTargetZ;
@@ -9966,9 +10157,16 @@ int IndoorWorldRuntime::currentHour() const
 
 void IndoorWorldRuntime::advanceGameMinutes(float minutes)
 {
-    if (minutes > 0.0f)
+    if (minutes <= 0.0f)
     {
-        m_gameMinutes += minutes;
+        return;
+    }
+
+    m_gameMinutes += minutes;
+
+    if (m_pParty != nullptr)
+    {
+        m_pParty->updateDaysWithoutRest(m_gameMinutes);
     }
 }
 
@@ -11723,6 +11921,17 @@ void IndoorWorldRuntime::collectWorldItemPresentationStates(
         state.y = float(spriteObject.y);
         state.z = float(spriteObject.z);
         state.sectorId = spriteObject.sectorId;
+        state.moving = spriteObject.velocityX != 0 || spriteObject.velocityY != 0 || spriteObject.velocityZ != 0;
+        state.floating = (pObjectEntry->flags & ObjectDescNoGravity) != 0;
+        InventoryItem item = {};
+        const ItemDefinition *pItemDefinition =
+            m_pItemTable != nullptr ? m_pItemTable->get(state.itemId) : nullptr;
+        if (pItemDefinition != nullptr && readIndoorHeldItemPayload(spriteObject.rawContainingItem, m_pItemTable, item))
+        {
+            state.sparkle = worldItemSparkle(item, *pItemDefinition, ItemEnchantRuntime::itemValue(
+                item, *pItemDefinition, m_pParty != nullptr ? m_pParty->standardItemEnchantTable() : nullptr,
+                m_pParty != nullptr ? m_pParty->specialItemEnchantTable() : nullptr));
+        }
         items.push_back(state);
     }
 }
@@ -11831,6 +12040,9 @@ bool IndoorWorldRuntime::actorRuntimeState(size_t actorIndex, GameplayRuntimeAct
     state.actionSeconds = pAiState != nullptr ? pAiState->actionSeconds : 0.0f;
     state.velocityX = pAiState != nullptr ? pAiState->velocityX : 0.0f;
     state.velocityY = pAiState != nullptr ? pAiState->velocityY : 0.0f;
+    state.intendedSpeed = pAiState != nullptr ? pAiState->intendedSpeed : 0.0f;
+    state.hurrying = pAiState != nullptr && (pAiState->motionState == ActorAiMotionState::Pursuing
+        || pAiState->motionState == ActorAiMotionState::Fleeing);
     state.castingSpell = pAiState != nullptr
         && (pAiState->queuedAttackAbility == GameplayActorAttackAbility::Spell1
             || pAiState->queuedAttackAbility == GameplayActorAttackAbility::Spell2);
@@ -12040,9 +12252,10 @@ bool IndoorWorldRuntime::tryStealFromActor(size_t actorIndex, uint32_t successRo
 
     if (m_pGameplayView != nullptr)
     {
-        const ItemDefinition *pDefinition = m_pItemTable != nullptr ? m_pItemTable->get(stolenItem.itemId) : nullptr;
+        const ItemDefinition *pDefinition =
+            m_pItemTable != nullptr ? m_pItemTable->get(inventoryItem.objectDescriptionId) : nullptr;
         const std::string itemName =
-            pDefinition != nullptr && !pDefinition->name.empty() ? pDefinition->name : "item";
+            pDefinition != nullptr ? ItemRuntime::foundItemName(*pDefinition) : "item";
         m_pGameplayView->setStatusBarEvent("You found an item (" + itemName + ")!");
     }
 
@@ -13290,6 +13503,12 @@ bool IndoorWorldRuntime::summonFriendlyMonsterById(
         return false;
     }
 
+    if (m_pRenderer != nullptr)
+    {
+        m_pRenderer->ensureMonsterVisualResources(monsterId);
+        m_pActorSpriteFrameTable = m_pRenderer->actorSpriteFrameTable();
+    }
+
     const MonsterEntry *pMonsterEntry = m_pMonsterTable->findById(monsterId);
 
     if (pMonsterEntry == nullptr)
@@ -13387,6 +13606,12 @@ bool IndoorWorldRuntime::summonHostileMonsterById(
     if (pStats == nullptr)
     {
         return false;
+    }
+
+    if (m_pRenderer != nullptr)
+    {
+        m_pRenderer->ensureMonsterVisualResources(monsterId);
+        m_pActorSpriteFrameTable = m_pRenderer->actorSpriteFrameTable();
     }
 
     const MonsterEntry *pMonsterEntry = m_pMonsterTable->findById(monsterId);
@@ -13528,18 +13753,21 @@ void IndoorWorldRuntime::spawnMonsterDeathDropsForActor(size_t actorIndex, const
 
     if (!leaveCorpse && actor.carriedItemId != 0)
     {
-        const InventoryItem item =
+        const uint32_t seed = m_sessionChestSeed
+            ^ static_cast<uint32_t>((actorIndex + 1u) * 2654435761u)
+            ^ actor.carriedItemId * 3266489917u
+            ^ timeSeed;
+        InventoryItem item =
             ItemGenerator::makeInventoryItem(actor.carriedItemId, *m_pItemTable, ItemGenerationMode::Generic);
+        std::mt19937 potionRng(seed);
+        ItemGenerator::assignMonsterPotionPower(item, *m_pItemTable, potionRng);
         spawnMonsterDeathDropItem(
             item,
             dropX,
             dropY,
             dropZ,
             actor.sectorId,
-            m_sessionChestSeed
-                ^ static_cast<uint32_t>((actorIndex + 1u) * 2654435761u)
-                ^ actor.carriedItemId * 3266489917u
-                ^ timeSeed);
+            seed);
     }
 
     if (!actor.proceduralDeathLoot)
@@ -13580,8 +13808,9 @@ void IndoorWorldRuntime::spawnMonsterDeathDropsForActor(size_t actorIndex, const
                 + gameplayDebugTraceItemSummary(drop.itemId, m_pItemTable));
         }
 
-        const InventoryItem item =
+        InventoryItem item =
             ItemGenerator::makeInventoryItem(drop.itemId, *m_pItemTable, ItemGenerationMode::Generic);
+        ItemGenerator::assignMonsterPotionPower(item, *m_pItemTable, rng);
         spawnMonsterDeathDropItem(item, dropX, dropY, dropZ, actor.sectorId, seed ^ 0x9e3779b9u);
     }
 }
@@ -14249,7 +14478,7 @@ bool IndoorWorldRuntime::activateWorldHit(const GameplayWorldHit &hit)
         const ItemDefinition *pItemDefinition =
             m_pItemTable != nullptr ? m_pItemTable->get(item.objectDescriptionId) : nullptr;
         const std::string itemName =
-            pItemDefinition != nullptr && !pItemDefinition->name.empty() ? pItemDefinition->name : "item";
+            pItemDefinition != nullptr ? ItemRuntime::foundItemName(*pItemDefinition) : "item";
 
         pMapDeltaData->spriteObjects.erase(
             pMapDeltaData->spriteObjects.begin() + std::ptrdiff_t(hit.worldItem->worldItemIndex));
@@ -16049,32 +16278,20 @@ bool IndoorWorldRuntime::ensureMapActorCorpseView(size_t actorIndex)
         return false;
     }
 
-    std::vector<uint32_t> guaranteedItemIds;
-    if (actor.carriedItemId != 0)
-    {
-        guaranteedItemIds.push_back(actor.carriedItemId);
-    }
-
-    if (m_pEventRuntimeState != nullptr && *m_pEventRuntimeState)
-    {
-        const auto extraItemIterator =
-            (*m_pEventRuntimeState)->actorExtraItemOverrides.find(static_cast<uint32_t>(actorIndex));
-
-        if (extraItemIterator != (*m_pEventRuntimeState)->actorExtraItemOverrides.end())
-        {
-            guaranteedItemIds.insert(
-                guaranteedItemIds.end(),
-                extraItemIterator->second.begin(),
-                extraItemIterator->second.end());
-        }
-    }
-
     const std::string &title = actor.name.empty() ? pStats->name : actor.name;
     const float rewardMultiplier = actorIndex < m_mapActorAiStates.size()
         ? m_mapActorAiStates[actorIndex].bolsterRewardMultiplier
         : 1.0f;
-    CorpseViewState corpse =
-        buildMonsterCorpseView(
+    CorpseViewState corpse = {};
+
+    if (actorIndex < m_mapActorRevealedLoot.size() && m_mapActorRevealedLoot[actorIndex])
+    {
+        corpse = std::move(*m_mapActorRevealedLoot[actorIndex]);
+        m_mapActorRevealedLoot[actorIndex].reset();
+    }
+    else
+    {
+        corpse = rollMonsterCarriedLoot(
             title,
             actor.proceduralDeathLoot
                 ? modCorpseLoot(
@@ -16083,8 +16300,10 @@ bool IndoorWorldRuntime::ensureMapActorCorpseView(size_t actorIndex)
                 : MonsterTable::LootPrototype {},
             m_pItemTable,
             m_pParty,
-            mapWorldId(),
-            guaranteedItemIds);
+            mapWorldId());
+    }
+
+    addGuaranteedCorpseItems(corpse, m_pItemTable, mapActorGuaranteedItemIds(actorIndex));
 
     for (const GameplayChestItemState &item : corpse.items)
     {
@@ -16107,6 +16326,90 @@ bool IndoorWorldRuntime::ensureMapActorCorpseView(size_t actorIndex)
     corpse.sourceIndex = uint32_t(actorIndex);
     m_mapActorCorpseViews[actorIndex] = std::move(corpse);
     return true;
+}
+
+std::vector<uint32_t> IndoorWorldRuntime::mapActorGuaranteedItemIds(size_t actorIndex) const
+{
+    const MapDeltaData *pMapDeltaData = mapDeltaData();
+    std::vector<uint32_t> guaranteedItemIds;
+
+    if (pMapDeltaData == nullptr || actorIndex >= pMapDeltaData->actors.size())
+    {
+        return guaranteedItemIds;
+    }
+
+    if (pMapDeltaData->actors[actorIndex].carriedItemId != 0)
+    {
+        guaranteedItemIds.push_back(pMapDeltaData->actors[actorIndex].carriedItemId);
+    }
+
+    if (m_pEventRuntimeState != nullptr && *m_pEventRuntimeState)
+    {
+        const auto extraItemIterator =
+            (*m_pEventRuntimeState)->actorExtraItemOverrides.find(static_cast<uint32_t>(actorIndex));
+
+        if (extraItemIterator != (*m_pEventRuntimeState)->actorExtraItemOverrides.end())
+        {
+            guaranteedItemIds.insert(
+                guaranteedItemIds.end(),
+                extraItemIterator->second.begin(),
+                extraItemIterator->second.end());
+        }
+    }
+
+    return guaranteedItemIds;
+}
+
+std::optional<IndoorWorldRuntime::CorpseViewState> IndoorWorldRuntime::revealActorLoot(size_t actorIndex)
+{
+    const MapDeltaData *pMapDeltaData = mapDeltaData();
+
+    if (pMapDeltaData == nullptr || actorIndex >= pMapDeltaData->actors.size() || m_pMonsterTable == nullptr)
+    {
+        return std::nullopt;
+    }
+
+    const MapDeltaActor &actor = pMapDeltaData->actors[actorIndex];
+    const MonsterTable::MonsterStatsEntry *pStats = findIndoorActorStats(m_pMonsterTable, actor);
+
+    if (pStats == nullptr
+        || actor.hp <= 0
+        || (actor.attributes & static_cast<uint32_t>(EvtActorAttribute::Invisible)) != 0)
+    {
+        return std::nullopt;
+    }
+
+    // An actor that leaves no corpse drops only its carried item.
+    if (!actorShouldLeaveCorpse(m_pMonsterTable, actor))
+    {
+        CorpseViewState loot = {};
+        addGuaranteedCorpseItems(loot, m_pItemTable, {actor.carriedItemId});
+        return loot;
+    }
+
+    if (actorIndex >= m_mapActorRevealedLoot.size())
+    {
+        m_mapActorRevealedLoot.resize(actorIndex + 1);
+    }
+
+    if (!m_mapActorRevealedLoot[actorIndex])
+    {
+        const float rewardMultiplier = actorIndex < m_mapActorAiStates.size()
+            ? m_mapActorAiStates[actorIndex].bolsterRewardMultiplier
+            : 1.0f;
+        m_mapActorRevealedLoot[actorIndex] = rollMonsterCarriedLoot(
+            actor.name.empty() ? pStats->name : actor.name,
+            actor.proceduralDeathLoot
+                ? gameplayBolsterLootPrototype(pStats->loot, pStats->hitPoints, rewardMultiplier)
+                : MonsterTable::LootPrototype {},
+            m_pItemTable,
+            m_pParty,
+            mapWorldId());
+    }
+
+    CorpseViewState loot = *m_mapActorRevealedLoot[actorIndex];
+    addGuaranteedCorpseItems(loot, m_pItemTable, mapActorGuaranteedItemIds(actorIndex));
+    return loot;
 }
 
 void IndoorWorldRuntime::rollPendingCorpseLoot()
@@ -17535,6 +17838,7 @@ IndoorWorldRuntime::Snapshot IndoorWorldRuntime::snapshot() const
     snapshot.materializedChestViews = m_materializedChestViews;
     snapshot.activeChestView = m_activeChestView;
     snapshot.mapActorCorpseViews = m_mapActorCorpseViews;
+    snapshot.mapActorRevealedLoot = m_mapActorRevealedLoot;
     snapshot.activeCorpseView = m_activeCorpseView;
     snapshot.mapActorAiStates = m_mapActorAiStates;
     snapshot.activatedIndoorSectorMask = m_activatedIndoorSectorMask;
@@ -17561,6 +17865,7 @@ void IndoorWorldRuntime::restoreSnapshot(const Snapshot &snapshot)
     m_materializedChestViews = snapshot.materializedChestViews;
     m_activeChestView = snapshot.activeChestView;
     m_mapActorCorpseViews = snapshot.mapActorCorpseViews;
+    m_mapActorRevealedLoot = snapshot.mapActorRevealedLoot;
     m_activeCorpseView = snapshot.activeCorpseView;
     m_mapActorAiStates = snapshot.mapActorAiStates;
     m_activatedIndoorSectorMask = snapshot.activatedIndoorSectorMask;
@@ -18009,8 +18314,9 @@ void IndoorWorldRuntime::spawnChestTrapVisual(
 
     const std::optional<uint16_t> objectDescriptionId =
         m_pObjectTable->findDescriptionIdByObjectId(static_cast<int16_t>(trapResult.trapObjectId));
+    const ObjectEntry *pTrapObject = m_pObjectTable->findByObjectId(static_cast<int16_t>(trapResult.trapObjectId));
 
-    if (!objectDescriptionId)
+    if (!objectDescriptionId || pTrapObject == nullptr)
     {
         return;
     }
@@ -18018,6 +18324,9 @@ void IndoorWorldRuntime::spawnChestTrapVisual(
     GameplayProjectileService::ProjectileState projectile = {};
     projectile.sourceKind = GameplayProjectileService::ProjectileState::SourceKind::Event;
     projectile.sourceId = EventSpellSourceId;
+    // The trap is the burst's source, so it plays the trap's named effect (engine/effects/projectiles.yml).
+    projectile.objectName = pTrapObject->internalName;
+    projectile.objectSpriteName = pTrapObject->spriteName;
     projectile.impactObjectDescriptionId = *objectDescriptionId;
     projectile.impactSoundIdOverride = static_cast<uint32_t>(SoundId::Fireball);
     projectile.sourceX = point.x;

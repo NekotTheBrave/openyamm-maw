@@ -996,21 +996,23 @@ function support.setMapMetadata(metadata)
         meta[key] = value
     end
 
-    if #existingOnLoad > 0 then
+    -- Merge earlier entries back only where the metadata replaced the list. A field the metadata leaves out keeps
+    -- the existing table, and appending a table to itself while iterating it never ends.
+    if #existingOnLoad > 0 and meta.onLoad ~= existingOnLoad then
         meta.onLoad = meta.onLoad or {}
         for _, eventId in ipairs(existingOnLoad) do
             table.insert(meta.onLoad, eventId)
         end
     end
 
-    if #existingOnLeave > 0 then
+    if #existingOnLeave > 0 and meta.onLeave ~= existingOnLeave then
         meta.onLeave = meta.onLeave or {}
         for _, eventId in ipairs(existingOnLeave) do
             table.insert(meta.onLeave, eventId)
         end
     end
 
-    if #existingTimers > 0 then
+    if #existingTimers > 0 and meta.timers ~= existingTimers then
         meta.timers = meta.timers or {}
         for _, timer in ipairs(existingTimers) do
             table.insert(meta.timers, timer)
@@ -1483,21 +1485,23 @@ function support.setGlobalMetadata(metadata)
         meta[key] = value
     end
 
-    if #existingOnLoad > 0 then
+    -- Merge earlier entries back only where the metadata replaced the list. A field the metadata leaves out keeps
+    -- the existing table, and appending a table to itself while iterating it never ends.
+    if #existingOnLoad > 0 and meta.onLoad ~= existingOnLoad then
         meta.onLoad = meta.onLoad or {}
         for _, eventId in ipairs(existingOnLoad) do
             table.insert(meta.onLoad, eventId)
         end
     end
 
-    if #existingOnLeave > 0 then
+    if #existingOnLeave > 0 and meta.onLeave ~= existingOnLeave then
         meta.onLeave = meta.onLeave or {}
         for _, eventId in ipairs(existingOnLeave) do
             table.insert(meta.onLeave, eventId)
         end
     end
 
-    if #existingTimers > 0 then
+    if #existingTimers > 0 and meta.timers ~= existingTimers then
         meta.timers = meta.timers or {}
         for _, timer in ipairs(existingTimers) do
             table.insert(meta.timers, timer)

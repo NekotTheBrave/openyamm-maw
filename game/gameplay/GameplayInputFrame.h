@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 namespace OpenYAMM::Game
@@ -30,6 +31,9 @@ struct GameplayInputFrame
     bool mobileJoystickActive = false;
     bool turnBasedMovementStep = false;
     bool turnBasedPhysicsStep = false;
+    // Real frame time for keyboard turning and looking, which the original allows even while turn-based movement
+    // time is frozen. Unset means the world movement delta.
+    std::optional<float> cameraDeltaSeconds;
     float movementSpeedScale = 1.0f;
     bool turboMovementEnabled = true;
     float mobileJoystickBaseX = 0.0f;

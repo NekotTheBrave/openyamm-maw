@@ -187,7 +187,7 @@ bool faceIsWalkable(const IndoorFace &face, const bx::Vec3 &normal)
 bool faceCanDefineFloorHeight(const IndoorFaceGeometryData &geometry)
 {
     return geometry.kind == IndoorFaceKind::Floor
-        || (geometry.facetType == 4 && geometry.normal.z > GeometryEpsilon);
+        || (geometry.facetType == 4 && geometry.normal.z >= IndoorMinimumSteepFloorNormalZ);
 }
 
 bool faceCanDefineCeilingHeight(const IndoorFaceGeometryData &geometry)
@@ -198,7 +198,7 @@ bool faceCanDefineCeilingHeight(const IndoorFaceGeometryData &geometry)
 
 bool faceIsSteepFloorCollisionSurface(const IndoorFaceGeometryData &geometry)
 {
-    if (geometry.normal.z <= 0.0f || geometry.normal.z >= WalkableSlopeNormalZ)
+    if (geometry.normal.z < IndoorMinimumSteepFloorNormalZ || geometry.normal.z >= WalkableSlopeNormalZ)
     {
         return false;
     }

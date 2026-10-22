@@ -40,6 +40,8 @@ def parse_args():
     parser.add_argument('--seconds', type=finite_number, default=15, help='Run after warmup; 0 waits until closed')
     parser.add_argument('--warmup', type=finite_number, default=3, help='Seconds after startup save is loaded')
     parser.add_argument('--prepare-only', action='store_true', help='Prepare private settings/save without a GUI launch')
+    parser.add_argument('--visible', action='store_true',
+                        help='Show the window; runs start minimized otherwise, which does not give representative FPS')
     args = parser.parse_args()
     if not re.fullmatch(r'[a-zA-Z0-9_-]{1,60}', args.name):
         parser.error('name must contain 1-60 letters, digits, underscores or hyphens')
@@ -170,6 +172,9 @@ def run_game(args, run, binary, environment, metadata):
                            stderr=subprocess.STDOUT, timeout=15, check=False)
     # Line buffering makes the startup marker and per-second FPS available while the game runs.
     command = ['stdbuf', '-oL', '-eL', str(binary), '--world', args.world]
+    # A minimized window keeps rendering (screenshots, logs, timed exit) without covering the desktop.
+    environment = dict(environment, OPENYAMM_START_MINIMIZED='0' if args.visible else '1')
+    metadata['window'] = 'visible' if args.visible else 'minimized'
     log_path = run / 'game.log'
     with log_path.open('w') as log:
         process = subprocess.Popen(command, cwd=run, env=environment, stdout=log, stderr=subprocess.STDOUT)
@@ -232,7 +237,8 @@ def main():
         (run / name).mkdir()
     metadata = {'request': {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()},
                 'run_directory': str(run), 'status': 'preparing',
-                'timing_note': 'FPS log samples include ordinary simulation/rendering; these are not GPU timer results.'}
+                'timing_note': 'FPS log samples include ordinary simulation/rendering; these are not GPU timer results. '
+                               'Only visible-window runs give representative FPS.'}
     print(f'Isolated run: {run}', flush=True)
     try:
         metadata['binary_sha256'] = digest(binary)

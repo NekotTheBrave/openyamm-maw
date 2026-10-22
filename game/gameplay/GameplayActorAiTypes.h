@@ -249,6 +249,35 @@ struct ActorMovementFacts
     bool movementAllowed = false;
     bool movementBlocked = false;
     bool movementSuppressedByNavigation = false;
+    // The map placed the actor `immobile` (a post) and faces it homeYawRadians. Only tactics read these
+    // (ActorTacticsFacts::holdPost); spawned actors have no home facing.
+    bool placedImmobile = false;
+    bool hasHomeYaw = false;
+    float homeYawRadians = 0.0f;
+};
+
+// Optional combat tactics from world data (worlds/<id>/behaviors.yml `tactics`, keyed by monster id and applied by
+// ActorBehaviorRuntime::applyAiFacts). The defaults leave the native AI unchanged.
+struct ActorTacticsFacts
+{
+    // Turns toward its target at this rate (radians per second) instead of snapping to it, keeps tracking it between
+    // attacks and starts an attack only within fireToleranceRadians of it. 0 keeps the native instant facing.
+    float traverseRadiansPerSecond = 0.0f;
+    float fireToleranceRadians = 0.0f;
+    // A ranged band (edge distance to the target): commits to its ranged attack instead of the native distance roll,
+    // so melee is only chosen against an adjacent target, and between shots backs off inside rangedMinDistance, closes
+    // in beyond rangedMaxDistance and circles the target in between. A maximum of 0 keeps the native choice.
+    float rangedMinDistance = 0.0f;
+    float rangedMaxDistance = 0.0f;
+    // A post: an actor placed `immobile` that may still leave its spot to fight, at most postLeashRadius from home
+    // (0: unlimited), and with no target walks back and faces its placement direction instead of wandering.
+    bool holdPost = false;
+    float postLeashRadius = 0.0f;
+
+    bool keepsRangedBand() const
+    {
+        return rangedMaxDistance > 0.0f;
+    }
 };
 
 struct ActorWorldFacts
@@ -285,6 +314,7 @@ struct ActorAiFacts
     ActorMovementFacts movement = {};
     ActorWorldFacts world = {};
     ActorBehaviorFacts behavior = {};
+    ActorTacticsFacts tactics = {};
 };
 
 struct ActorStateUpdate
@@ -340,6 +370,9 @@ struct ActorMovementIntent
     float targetEdgeDistance = 0.0f;
     bool targetHasAttackLineOfSight = false;
     bool updateYaw = false;
+    // The actor keeps yawRadians while it moves instead of turning to its movement (tactics' back-off: it steps back
+    // still facing its target). Indoors the yaw already follows the AI except along a path.
+    bool keepYawWhileMoving = false;
     bool clearVelocity = false;
     bool applyMovement = false;
     bool meleePursuitActive = false;

@@ -39,6 +39,9 @@ uniform vec4 u_terrainLayerMacro[8];
 // z = scale of the edge fringe noise where it meets another layer, w = 1 when its smoothest texels are standing
 // water (swamp pools).
 uniform vec4 u_terrainLayerVariant[8];
+// Per layer: rgb = glow colour of its emissive texels (0 for every material without library emissive), w = the albedo
+// warmth (red minus blue, untinted) where the glow starts: lava and creep veins glow whatever the light.
+uniform vec4 u_terrainLayerEmissive[8];
 // x = weighted layer count, y = slope layer (negative: none), z/w = slope start/end as 1 - normal.z.
 uniform vec4 u_terrainMaterialControl;
 // xyz = direction toward the baked sun, w = 1 when the bake's direct-only sun page is bound at stage 5.
@@ -194,9 +197,17 @@ vec3 shoreAlbedo(vec3 albedo, vec3 position, float shore)
 // project from above; the slope layer projects onto the vertical planes so cliffs are not stretched. With
 // u_terrainMaterialMisc.z, a second projection (rotated from above, or the other vertical plane) hides the repeat
 // and blends cliff sides; detail scales its share (zero on the plain seabed). That branch is uniform, so
-// anisotropic filtering keeps its implicit derivatives.
-void sampleTerrainLayer(float layer, vec3 tint, vec3 world, vec3 geometric, float variation, float detail,
-    out vec4 albedoHeight, out vec3 normal, out vec2 occlusionRoughness)
+// anisotropic filtering keeps its implicit derivatives. faceUp is the triangle's own normal.z.
+// The glow of a layer's sample: its untinted albedo where it is warm enough, in the layer's glow colour.
+vec3 terrainLayerGlow(vec3 tintedAlbedo, vec3 tint, float layer)
+{
+    vec4 emissive = u_terrainLayerEmissive[int(layer + 0.5)];
+    vec3 albedo = tintedAlbedo / max(tint, vec3_splat(0.02));
+    return albedo * emissive.rgb * smoothstep(emissive.w, emissive.w + 0.25, albedo.r - albedo.b);
+}
+
+void sampleTerrainLayer(float layer, vec3 tint, vec3 world, vec3 geometric, float faceUp, float variation,
+    float detail, out vec4 albedoHeight, out vec3 normal, out vec2 occlusionRoughness)
 {
     vec4 params = u_terrainLayerParams[int(layer + 0.5)];
     vec4 variant = u_terrainLayerVariant[int(layer + 0.5)];
@@ -254,10 +265,25 @@ void sampleTerrainLayer(float layer, vec3 tint, vec3 world, vec3 geometric, floa
     }
     // Ground layers on banks too gentle for the slope layer: the projection from above stretches down the slope, so
     // the steeper part blends to the two vertical planes. The coordinates come before the branch, so their implicit
-    // derivatives hold in it; only bank pixels pay for the extra samples.
+    // derivatives hold in it; only bank pixels pay for the extra samples. A flat triangle is never a bank: along the
+    // foot of an abrupt cliff the smooth normals, taken across the step, tilt the flat strip below it.
     vec2 sideUvX = vec2(world.y, -world.z) * params.x;
     vec2 sideUvY = vec2(world.x, -world.z) * params.x;
-    float bank = slope ? 0.0 : 1.0 - smoothstep(0.72, 0.92, geometric.z);
+    float upward = smoothstep(0.72, 0.92, max(geometric.z, faceUp));
+    // The slope layer follows the broadly smoothed terrain, so it also covers the flat strip at a cliff's foot, where
+    // its vertical projections would smear into streaks: there it projects from above like the ground layers.
+    if (slope && upward > 0.0)
+    {
+        vec4 colorTop = texture2DArray(s_terrainAlbedoHeight, vec3(planar, layer));
+        vec4 detailTop = texture2DArray(s_terrainNormalAoRough, vec3(planar, layer));
+        vec3 tangentTop = detailTangent(detailTop, params.z);
+        colorTop.rgb *= tint;
+        albedoHeight = mix(albedoHeight, colorTop, upward);
+        normal = normalize(mix(normal, normalize(vec3(tangentTop.xy + geometric.xy, tangentTop.z * geometric.z)),
+            upward));
+        occlusionRoughness = mix(occlusionRoughness, detailTop.zw, upward);
+    }
+    float bank = slope ? 0.0 : 1.0 - upward;
     if (bank > 0.0)
     {
         // The plane the bank faces. Without anti-tiling it is the only one, switching at the diagonal like the slope
@@ -308,6 +334,9 @@ void main()
 {
     clipWorldPosition(v_worldPosition);
     vec3 position = v_worldPosition;
+    // The triangle's own normal.z from the screen-space derivatives, taken before any branch.
+    vec3 faceNormal = cross(dFdx(position), dFdy(position));
+    float faceUp = abs(faceNormal.z) * inversesqrt(max(dot(faceNormal, faceNormal), 1.0e-12));
     vec2 mapUv = vec2(position.x + 32768.0, 32768.0 - position.y) / 65536.0;
     vec2 cellCoord = mapUv * 128.0;
     vec2 cell = clamp(floor(cellCoord), vec2_splat(0.0), vec2_splat(126.0));
@@ -337,6 +366,7 @@ void main()
     float layerSpecular = 0.0;
     float layerWetSheen = 1.0;
     float pool = 0.0;
+    vec3 glow = vec3_splat(0.0);
     // Open liquid without a seabed: the liquid renderer draws the whole cell.
     if (waterKind > 0.5 && waterKind < 1.5 && renderedWater && !seabed)
     {
@@ -452,16 +482,16 @@ void main()
         }
         secondLayer = firstLayer;
         secondWeight = 0.0;
-        sampleTerrainLayer(firstLayer, firstTint, position, geometricNormal, variation, 1.0 - plain, firstColor,
-            firstNormal, firstSurface);
+        sampleTerrainLayer(firstLayer, firstTint, position, geometricNormal, faceUp, variation, 1.0 - plain,
+            firstColor, firstNormal, firstSurface);
         secondColor = firstColor;
         secondNormal = firstNormal;
         secondSurface = firstSurface;
 #else
-        sampleTerrainLayer(firstLayer, firstTint, position, geometricNormal, variation, 1.0 - plain, firstColor,
-            firstNormal, firstSurface);
-        sampleTerrainLayer(secondLayer, secondTint, position, geometricNormal, variation, 1.0 - plain, secondColor,
-            secondNormal, secondSurface);
+        sampleTerrainLayer(firstLayer, firstTint, position, geometricNormal, faceUp, variation, 1.0 - plain,
+            firstColor, firstNormal, firstSurface);
+        sampleTerrainLayer(secondLayer, secondTint, position, geometricNormal, faceUp, variation, 1.0 - plain,
+            secondColor, secondNormal, secondSurface);
 #endif
         // Height blend: the taller material shows through first where both are present.
         float total = max(firstWeight + max(secondWeight, 0.0), 0.0001);
@@ -501,6 +531,13 @@ void main()
         float secondPacked = u_terrainLayerCliff[int(secondLayer + 0.5)].w;
         layerSpecular = mix(fract(firstPacked), fract(secondPacked), secondMix) * (1.0 - plain);
         layerWetSheen = mix(floor(firstPacked), floor(secondPacked), secondMix) * 0.25;
+        vec3 firstEmissive = u_terrainLayerEmissive[int(firstLayer + 0.5)].rgb;
+        vec3 secondEmissive = u_terrainLayerEmissive[int(secondLayer + 0.5)].rgb;
+        if (dot(firstEmissive + secondEmissive, vec3_splat(1.0)) > 0.0)
+        {
+            glow = mix(terrainLayerGlow(firstColor.rgb, firstTint, firstLayer),
+                terrainLayerGlow(secondColor.rgb, secondTint, secondLayer), secondMix) * (1.0 - plain);
+        }
         pool = mix(u_terrainLayerVariant[int(firstLayer + 0.5)].w * safeSmoothstep(0.2, 0.12, firstSurface.y),
             u_terrainLayerVariant[int(secondLayer + 0.5)].w * safeSmoothstep(0.2, 0.12, secondSurface.y), secondMix)
             * (1.0 - plain) * safeSmoothstep(0.94, 0.985, geometricNormal.z);
@@ -632,6 +669,12 @@ void main()
         float glint = pow(max(dot(reflect(-toCamera, waterNormal), toSun), 0.0), 160.0) * 0.5;
         vec3 water = mix(litColor * 0.65, u_fogColor.rgb * 0.8, min(fresnel, 0.7)) + vec3(1.0, 0.95, 0.85) * glint;
         litColor = mix(litColor, water, pool);
+    }
+
+    if (dot(glow, vec3_splat(1.0)) > 0.0)
+    {
+        // Emissive ground (library emissive): light of its own on top of the lit colour, fogged like the rest.
+        litColor += glow;
     }
 
     float fogDistance = length(position - u_cameraPosition.xyz);

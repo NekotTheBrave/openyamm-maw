@@ -30,4 +30,13 @@ Engine::ModelMatrix wallMountedPlacement(const DecorationWallContact &wall, floa
 // cage swinging from its top).
 Engine::ModelMatrix swungPlacement(const Engine::ModelMatrix &placement, const std::array<float, 3> &pivot,
     float angleRadians);
+
+// A placement turned by angleRadians about the asset z axis (the model's front axis: a wheel's axle) through the asset
+// point pivot (its x and y).
+Engine::ModelMatrix turnedPlacement(const Engine::ModelMatrix &placement, const std::array<float, 3> &pivot,
+    float angleRadians);
+
+// The angle a one-shot turn of turnRadians over durationSeconds still has to go, elapsedSeconds after it began: it
+// eases in and out and reaches 0 at the end, where the model rests in its own pose.
+float turnRemaining(float turnRadians, float durationSeconds, float elapsedSeconds);
 }

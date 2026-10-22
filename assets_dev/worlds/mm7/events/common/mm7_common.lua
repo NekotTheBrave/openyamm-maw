@@ -15,8 +15,12 @@ MM7.HouseServiceType = {
     Tavern = 4,
 }
 
+MM7.HouseMenu = {
+    Root = 0,
+}
+
 function MM7.FilterTavernTopicsWithoutArcomage(context)
-    if context.houseServiceType ~= MM7.HouseServiceType.Tavern then
+    if context.houseServiceType ~= MM7.HouseServiceType.Tavern or context.menuId ~= MM7.HouseMenu.Root then
         return
     end
 

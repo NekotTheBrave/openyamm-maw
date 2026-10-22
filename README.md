@@ -211,50 +211,23 @@ console command `screenshot [name]`, launch-time capture settings, or a YAML tou
 camera poses in one run. Ready-to-run MM6/MM7/MM8 water viewpoints are in
 [`tools/screenshot_tours/`](tools/screenshot_tours/).
 
-## Nightly Builds
+## Releases and Updates
 
-The [Package builds](https://github.com/pjasicek/openyamm/actions/workflows/nightly.yml) GitHub Actions workflow
-builds unsigned Windows x64, x86_64 Flatpak, and signed Android arm64 packages every day at 03:27 UTC. After all
-packages pass structural and checksum checks, the workflow uploads complete packages to Nextcloud and updates the
-[nightly prerelease](https://github.com/pjasicek/openyamm/releases/tag/nightly) with download links and checksums.
-Public release links are published once a public Nextcloud folder share is configured.
-See [Nextcloud publishing setup](packaging/NEXTCLOUD.md) for the repository secrets and public folder share.
-The same workflow can be run manually,
-with publishing optionally disabled so the packages remain short-lived workflow artifacts.
+Releases are built, checked, signed and published by the
+[Packages](https://github.com/pjasicek/openyamm/actions/workflows/packages.yml) workflow when a `vX.Y` tag is pushed
+(after an approval), to `https://jasicek.net/openyamm/` and GitHub Releases; see [Releases](packaging/RELEASE.md) and
+[Incremental updates](packaging/UPDATER_PLAN.md). Every push to `main` builds and checks the same packages without publishing.
 
-Every push to `main` also gets its own package-build run for Windows x64, x86_64 Flatpak, and Android arm64. Open the
-commit's `Package builds` run on the Actions page to download its SHA-named artifacts. Commit artifacts are retained for
-one day; scheduled builds continue to update the rolling nightly prerelease.
+Players download a small package: `OpenYAMM-X.Y-windows-x64.zip`, `OpenYAMM-X.Y-linux-x64.tar.gz` (any distribution
+with glibc 2.35 or newer; everything else is linked into the game) or the Android APK. The first start downloads the
+game content, and the game updates itself afterwards, downloading only the content packs that changed.
 
-Extract the Windows zip and run `openyamm.exe`. Install or update the Flatpak bundle with:
-
-```sh
-flatpak install --user --reinstall OpenYAMM-nightly-x86_64.flatpak
-```
-
-On an arm64 Android 6.0 or newer device, download `OpenYAMM-nightly-android-arm64.apk` and open it to install or update
-the nightly. Android may ask you to allow installs from the browser or file manager used to open the APK.
-
-Nightly packages are development snapshots and may be unstable. Back up existing saves before using them. Publishing
-packaged game assets remains subject to the asset distribution rights noted in the Windows distribution documentation.
-
-## Tagged Releases
-
-Pushing a canonical `X.Y` tag, such as `1.0`, runs the same validated package builds. With public Nextcloud
-publishing configured, it creates a normal GitHub release for that tag. The release links to versioned
-Windows, Flatpak, and signed Android packages on Nextcloud and contains their SHA256 files.
-The Android version name matches the tag; its monotonically increasing version code is calculated as
-`major * 10000 + minor * 100` (`1.0` becomes `10000`).
-
-Create a release only after the workflow changes are present on the commit being tagged:
-
-```sh
-git tag -a 1.0 -m "OpenYAMM 1.0"
-git push origin 1.0
-```
-
-The workflow rejects non-canonical versions, does not mark tagged releases as prereleases, and does not overwrite an
-existing release with the same tag.
+On Windows and Linux, saves, `settings.ini` and `openyamm.log` live in the extracted folder next to the game, and
+updates never touch them; on Android they live in the app's external storage. `settings.ini` holds only the values a
+player changed; every other setting follows the game's defaults, including defaults a later release changes. The Load
+screen imports saves from another installation folder and opens the data folder. Each run rewrites `openyamm.log` with
+everything the game prints, so a failed start or a crash can be diagnosed without a console; headless commands keep
+no log file.
 
 ## Useful CMake Options
 

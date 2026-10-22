@@ -134,6 +134,9 @@ public:
         GameplayScreenRuntime &runtime,
         const PartySpellCastRequest &request) const;
 
+    // The cast's own report (Telepathy's reveal), or "Cast <spell>"; empty for Telekinesis.
+    static std::string successStatusText(const std::string &spellName, const PartySpellCastResult &result);
+
     void applySuccessFeedback(
         GameplayScreenRuntime &runtime,
         const PartySpellCastRequest &request,

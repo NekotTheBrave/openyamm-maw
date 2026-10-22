@@ -26,6 +26,8 @@ struct IndoorMoveState
     bool landedThisFrame = false;
     float fallStartZ = 0.0f;
     float fallDistance = 0.0f;
+    // Runtime only: movement steps an airborne body that found no recovery position waits before searching again.
+    uint8_t stuckRecoveryCooldownSteps = 0;
 
     float eyeZ() const
     {

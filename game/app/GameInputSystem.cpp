@@ -27,6 +27,7 @@ constexpr float MobileGameplayTapMaxNormalizedDistanceSquared = 0.000225f;
 constexpr float MobileDebugConsoleGestureTopEdgeNormalized = 0.055f;
 constexpr float MobileDebugConsoleGestureMinDragNormalized = 0.14f;
 constexpr float MobileDebugConsoleGestureMaxHorizontalNormalized = 0.09f;
+constexpr uint64_t MobileLongPressInspectNanoseconds = 400'000'000ULL;
 
 GameplayButtonInputState buildButtonState(bool held, bool previousHeld)
 {
@@ -136,6 +137,7 @@ void GameInputSystem::handleSdlEvent(const SDL_Event &event)
         pTouch->fingerId = event.tfinger.fingerID;
         pTouch->startX = event.tfinger.x;
         pTouch->startY = event.tfinger.y;
+        pTouch->startTimestampNanoseconds = event.tfinger.timestamp;
         pTouch->x = event.tfinger.x;
         pTouch->y = event.tfinger.y;
         pTouch->debugConsoleGestureCandidate =
@@ -208,6 +210,17 @@ void GameInputSystem::handleSdlEvent(const SDL_Event &event)
                 m_mobilePendingHudRelease = false;
                 m_mobilePendingHudTap = false;
             }
+            else if (pTouch->role == MobileTouchRole::Hud
+                && pTouch->longPressCandidate
+                && event.type == SDL_EVENT_FINGER_UP)
+            {
+                // A short tap on a long-press screen clicks only now that it has been released.
+                m_mobilePendingHudTap = true;
+                m_mobilePendingHudTapStartX = pTouch->startX;
+                m_mobilePendingHudTapStartY = pTouch->startY;
+                m_mobilePendingHudTapX = event.tfinger.x;
+                m_mobilePendingHudTapY = event.tfinger.y;
+            }
             else if (pTouch->role == MobileTouchRole::Hud)
             {
                 m_mobilePendingHudRelease = true;
@@ -264,6 +277,7 @@ void GameInputSystem::updateFromEngineInput(
     bool mobileJumpGestureEnabled,
     bool mobileFlightControlsEnabled,
     bool mobileInspectControlEnabled,
+    bool mobileLongPressInspectEnabled,
     std::span<const GameplayTouchControl> touchControls)
 {
     m_frame = {};
@@ -374,10 +388,22 @@ void GameInputSystem::updateFromEngineInput(
         }
         else if (binding.kind == InputBindingKind::MouseButton)
         {
-            held =
-                (binding.mouseButton == SDL_BUTTON_LEFT && leftMouseButtonHeld)
-                || (binding.mouseButton == SDL_BUTTON_RIGHT && rightMouseButtonHeld)
-                || (binding.mouseButton == SDL_BUTTON_MIDDLE && middleMouseButtonHeld);
+            if (binding.mouseButton == SDL_BUTTON_LEFT)
+            {
+                held = leftMouseButtonHeld;
+            }
+            else if (binding.mouseButton == SDL_BUTTON_RIGHT)
+            {
+                held = rightMouseButtonHeld;
+            }
+            else if (binding.mouseButton == SDL_BUTTON_MIDDLE)
+            {
+                held = middleMouseButtonHeld;
+            }
+            else
+            {
+                held = !blockGameplayInput && mouseButtonHeldInFlags(mouseButtons, binding.mouseButton);
+            }
         }
         else if (binding.kind == InputBindingKind::MouseWheelUp)
         {
@@ -465,12 +491,31 @@ void GameInputSystem::updateFromEngineInput(
         };
 
     bool inspectModifierHeld = false;
+    bool longPressInspectHeld = false;
+    const uint64_t nowNanoseconds = SDL_GetTicksNS();
 
     for (MobileTouchPoint &touch : m_mobileTouches)
     {
         if (!touch.active)
         {
             continue;
+        }
+
+        // A still finger held on an inspectable overlay becomes the right button at that finger.
+        if (!blockGameplayInput
+            && mobileLongPressInspectEnabled
+            && touch.role == MobileTouchRole::Hud
+            && touch.longPressCandidate
+            && !touch.dragThresholdExceeded
+            && nowNanoseconds >= touch.startTimestampNanoseconds
+            && nowNanoseconds - touch.startTimestampNanoseconds >= MobileLongPressInspectNanoseconds)
+        {
+            touch.role = MobileTouchRole::LongPressInspect;
+        }
+
+        if (touch.role == MobileTouchRole::LongPressInspect)
+        {
+            longPressInspectHeld = true;
         }
 
         if (!blockGameplayInput
@@ -546,6 +591,7 @@ void GameInputSystem::updateFromEngineInput(
         if (!useMobileGameplayTouchControls)
         {
             touch.role = MobileTouchRole::Hud;
+            touch.longPressCandidate = mobileLongPressInspectEnabled && !blockGameplayInput;
         }
         else if (flightControl != MobileTouchRole::None)
         {
@@ -574,9 +620,12 @@ void GameInputSystem::updateFromEngineInput(
 
     bool hasNonHudMobileTouch = false;
     bool hasHudTouch = false;
+    bool hasDeferredHudTouch = false;
     bool hasInspectTargetTouch = false;
     float hudTouchX = 0.0f;
     float hudTouchY = 0.0f;
+    float deferredHudTouchX = 0.0f;
+    float deferredHudTouchY = 0.0f;
     float inspectTargetX = 0.0f;
     float inspectTargetY = 0.0f;
 
@@ -680,18 +729,32 @@ void GameInputSystem::updateFromEngineInput(
         {
             hasNonHudMobileTouch = true;
         }
-        else if (touch.role == MobileTouchRole::InspectTarget && !hasInspectTargetTouch)
+        else if ((touch.role == MobileTouchRole::InspectTarget || touch.role == MobileTouchRole::LongPressInspect)
+            && !hasInspectTargetTouch)
         {
             hasNonHudMobileTouch = true;
             hasInspectTargetTouch = true;
             inspectTargetX = touch.x * static_cast<float>(screenWidth);
             inspectTargetY = touch.y * static_cast<float>(screenHeight);
         }
+        else if (touch.role == MobileTouchRole::Hud
+            && touch.longPressCandidate
+            && !touch.dragThresholdExceeded
+            && !hasHudTouch
+            && !hasDeferredHudTouch)
+        {
+            // Undecided between a tap (clicks on release) and a long press (inspects); only the pointer follows.
+            hasDeferredHudTouch = true;
+            deferredHudTouchX = touch.x * static_cast<float>(screenWidth);
+            deferredHudTouchY = touch.y * static_cast<float>(screenHeight);
+        }
         else if (touch.role == MobileTouchRole::Hud && !hasHudTouch)
         {
             hasHudTouch = true;
-            hudTouchX = touch.x * static_cast<float>(screenWidth);
-            hudTouchY = touch.y * static_cast<float>(screenHeight);
+            // A deferred press reaches the item under the finger's start when its drag begins.
+            const bool pressAtStart = touch.longPressCandidate && !touch.dragStartDelivered;
+            hudTouchX = (pressAtStart ? touch.startX : touch.x) * static_cast<float>(screenWidth);
+            hudTouchY = (pressAtStart ? touch.startY : touch.y) * static_cast<float>(screenHeight);
 
             if (touch.dragThresholdExceeded)
             {
@@ -719,10 +782,10 @@ void GameInputSystem::updateFromEngineInput(
         m_mobilePendingHudDragRelease
         && (!useMobileGameplayTouchControls
             || touchStartsInHudZone(m_mobilePendingHudDragStartX, m_mobilePendingHudDragStartY));
-    const bool hasMobilePointerInput = inspectModifierHeld || hasHudTouch || pendingHudDragIsUiGesture
-        || m_mobilePendingHudTap || m_mobilePendingHudRelease;
+    const bool hasMobilePointerInput = inspectModifierHeld || longPressInspectHeld || hasHudTouch
+        || hasDeferredHudTouch || pendingHudDragIsUiGesture || m_mobilePendingHudTap || m_mobilePendingHudRelease;
 
-    if (inspectModifierHeld)
+    if (inspectModifierHeld || longPressInspectHeld)
     {
         if (hasInspectTargetTouch)
         {
@@ -789,6 +852,12 @@ void GameInputSystem::updateFromEngineInput(
         leftMouseButtonHeld = false;
         m_mobilePendingHudRelease = false;
     }
+    else if (hasDeferredHudTouch)
+    {
+        m_frame.pointerX = deferredHudTouchX;
+        m_frame.pointerY = deferredHudTouchY;
+        leftMouseButtonHeld = false;
+    }
     else if (m_mobilePendingCameraTap)
     {
         if (useMobileJumpGesture)
@@ -830,6 +899,7 @@ void GameInputSystem::updateFromEngineInput(
     static_cast<void>(mobileJumpGestureEnabled);
     static_cast<void>(mobileFlightControlsEnabled);
     static_cast<void>(mobileInspectControlEnabled);
+    static_cast<void>(mobileLongPressInspectEnabled);
     static_cast<void>(touchControls);
 #endif
 

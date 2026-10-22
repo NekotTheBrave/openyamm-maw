@@ -271,7 +271,7 @@ def parse_args() -> argparse.Namespace:
     root = default_root()
     parser = argparse.ArgumentParser()
     parser.add_argument("--maps-directory", type=Path, default=root / "assets_dev/worlds/mm9/maps")
-    parser.add_argument("--output", type=Path, default=root / "MM9_DESTRUCTIBLE_BRUSH_INVENTORY.md")
+    parser.add_argument("--output", type=Path, default=root / "devdocs/mm9/MM9_DESTRUCTIBLE_BRUSH_INVENTORY.md")
     parser.add_argument("--check", action="store_true")
     return parser.parse_args()
 

@@ -3,8 +3,16 @@ add_library(openyamm_engine
     AudioSystem.cpp
     ApplicationConfig.cpp
     AssetFileSystem.cpp
+    AssetPackIndex.cpp
     AssetScaleTier.cpp
     AssetPaths.cpp
+    UserDataPaths.cpp
+    LogFile.cpp
+    update/AppInstallation.cpp
+    update/AppUpdater.cpp
+    update/HttpTransport.cpp
+    update/ReleaseManifest.cpp
+    update/Sha256.cpp
     FontAsset.cpp
     ImageAssetLoader.cpp
     ImageMipmaps.cpp
@@ -58,4 +66,12 @@ target_link_libraries(openyamm_engine
     PRIVATE
         freetype
         libzstd_static
+        openyamm_monocypher
 )
+
+if (WIN32)
+    target_link_libraries(openyamm_engine PRIVATE winhttp)
+elseif (UNIX AND NOT ANDROID AND NOT APPLE)
+    # The updater loads the system's libcurl at runtime (engine/update/HttpTransport.cpp).
+    target_link_libraries(openyamm_engine PRIVATE ${CMAKE_DL_LIBS})
+endif()

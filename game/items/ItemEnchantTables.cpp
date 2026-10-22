@@ -678,4 +678,17 @@ const SpecialItemEnchantEntry *SpecialItemEnchantTable::get(uint16_t enchantId) 
     return index < m_entries.size() ? &m_entries[index] : nullptr;
 }
 
+uint16_t SpecialItemEnchantTable::findId(SpecialItemEnchantKind kind) const
+{
+    for (size_t index = 0; index < m_entries.size(); ++index)
+    {
+        if (m_entries[index].kind == kind)
+        {
+            return static_cast<uint16_t>(index + 1);
+        }
+    }
+
+    return 0;
+}
+
 }

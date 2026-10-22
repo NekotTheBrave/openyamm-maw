@@ -48,4 +48,26 @@ Engine::ModelMatrix swungPlacement(const Engine::ModelMatrix &placement, const s
     swing[14] = pivot[2] - (s * pivot[1] + c * pivot[2]);
     return Engine::multiplyModelMatrices(placement, swing);
 }
+
+Engine::ModelMatrix turnedPlacement(const Engine::ModelMatrix &placement, const std::array<float, 3> &pivot,
+    float angleRadians)
+{
+    // pivot * rotation about z * pivot^-1, in asset space, then the placement.
+    const float c = std::cos(angleRadians);
+    const float s = std::sin(angleRadians);
+    Engine::ModelMatrix turn = {c, s, 0.0f, 0.0f, -s, c, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+    turn[12] = pivot[0] - (c * pivot[0] - s * pivot[1]);
+    turn[13] = pivot[1] - (s * pivot[0] + c * pivot[1]);
+    return Engine::multiplyModelMatrices(placement, turn);
+}
+
+float turnRemaining(float turnRadians, float durationSeconds, float elapsedSeconds)
+{
+    if (durationSeconds <= 0.0f || elapsedSeconds >= durationSeconds)
+    {
+        return 0.0f;
+    }
+    const float t = std::max(elapsedSeconds, 0.0f) / durationSeconds;
+    return -turnRadians * (1.0f - t * t * (3.0f - 2.0f * t));
+}
 }

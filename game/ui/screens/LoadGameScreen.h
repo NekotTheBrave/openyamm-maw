@@ -6,6 +6,8 @@
 
 #include <filesystem>
 #include <functional>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -63,6 +65,7 @@ class LoadGameScreen : public MenuDesignScreen
     uint64_t m_lastClickedSlotTicks = 0;
     size_t m_lastClickedSlotIndex = static_cast<size_t>(-1);
     std::vector<SaveSlotSummary> m_slots;
+    size_t m_newerSaveCount = 0;
     bool m_slotsLoaded = false;
     SaveAction m_saveAction;
     std::string m_saveName;
@@ -80,8 +83,20 @@ class LoadGameScreen : public MenuDesignScreen
     void commitSave();
     void requestLoad();
     void requestDelete();
+    void requestImportSaves();
+    void finishImportSaves();
+
+    // The folder picker may answer on another thread; the screen polls it while drawing.
+    struct FolderPick
+    {
+        std::mutex mutex;
+        bool finished = false;
+        std::optional<std::filesystem::path> folder;
+    };
+    std::shared_ptr<FolderPick> m_folderPick;
 
     static std::vector<SaveSlotSummary> s_cachedSlots;
     static bool s_cachedSlotsValid;
+    static size_t s_cachedNewerSaveCount;
 };
 } // namespace OpenYAMM::Game

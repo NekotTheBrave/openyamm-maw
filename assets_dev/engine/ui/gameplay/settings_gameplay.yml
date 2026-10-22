@@ -139,10 +139,31 @@ elements:
       scale: 0.43333
       pad_x: 8.5333
     notes: Switch section without losing draft values. Selected state follows current section.
+  - id: SettingsGameplayTabInterface
+    anchor: top_left
+    offset_x: 91.7333
+    offset_y: 164.0502
+    width: 97.6
+    height: 34.1333
+    z_index: 10
+    visible: true
+    interactive: true
+    asset:
+      default: hud_x2/menus/omenu_tab.png
+      selected: hud_x2/menus/omenu_tab_selected.png
+    text:
+      value: Interface
+      font: fondamento
+      color: '#f5dfae'
+      align_x: left
+      align_y: middle
+      scale: 0.43333
+      pad_x: 8.5333
+    notes: Switch section without losing draft values. Selected state follows current section.
   - id: SettingsGameplayTabVideo
     anchor: top_left
     offset_x: 91.7333
-    offset_y: 164.0501
+    offset_y: 203.5169
     width: 97.6
     height: 34.1333
     z_index: 10
@@ -154,7 +175,7 @@ elements:
     text:
       value: Video
       font: fondamento
-      color: '#bfc1b2'
+      color: '#f5dfae'
       align_x: left
       align_y: middle
       scale: 0.43333
@@ -163,7 +184,7 @@ elements:
   - id: SettingsGameplayTabAudio
     anchor: top_left
     offset_x: 91.7333
-    offset_y: 203.5168
+    offset_y: 242.9836
     width: 97.6
     height: 34.1333
     z_index: 10
@@ -175,7 +196,7 @@ elements:
     text:
       value: Audio
       font: fondamento
-      color: '#bfc1b2'
+      color: '#f5dfae'
       align_x: left
       align_y: middle
       scale: 0.43333
@@ -184,9 +205,9 @@ elements:
   - id: SettingsGameplayTabControls
     anchor: top_left
     offset_x: 91.7333
-    offset_y: 242.9835
+    offset_y: 282.4503
     width: 97.6
-    height: 53.3333
+    height: 34.1333
     z_index: 10
     visible: true
     interactive: true
@@ -194,9 +215,9 @@ elements:
       default: hud_x2/menus/omenu_tab.png
       selected: hud_x2/menus/omenu_tab_selected.png
     text:
-      value: Mouse & Controls
+      value: Controls
       font: fondamento
-      color: '#bfc1b2'
+      color: '#f5dfae'
       align_x: left
       align_y: middle
       scale: 0.43333
@@ -205,7 +226,7 @@ elements:
   - id: SettingsGameplayTabKeyboard
     anchor: top_left
     offset_x: 91.7333
-    offset_y: 301.6501
+    offset_y: 321.917
     width: 97.6
     height: 34.1333
     z_index: 10
@@ -217,7 +238,7 @@ elements:
     text:
       value: Keyboard
       font: fondamento
-      color: '#bfc1b2'
+      color: '#f5dfae'
       align_x: left
       align_y: middle
       scale: 0.43333
@@ -226,7 +247,7 @@ elements:
   - id: SettingsGameplayTabMod
     anchor: top_left
     offset_x: 91.7333
-    offset_y: 341.1168
+    offset_y: 361.3837
     width: 97.6
     height: 34.1333
     z_index: 10
@@ -238,7 +259,28 @@ elements:
     text:
       value: Mod
       font: fondamento
-      color: '#bfc1b2'
+      color: '#f5dfae'
+      align_x: left
+      align_y: middle
+      scale: 0.43333
+      pad_x: 8.5333
+    notes: Switch section without losing draft values. Selected state follows current section.
+  - id: SettingsGameplayTabUpdates
+    anchor: top_left
+    offset_x: 91.7333
+    offset_y: 400.8504
+    width: 97.6
+    height: 34.1333
+    z_index: 10
+    visible: true
+    interactive: true
+    asset:
+      default: hud_x2/menus/omenu_tab.png
+      selected: hud_x2/menus/omenu_tab_selected.png
+    text:
+      value: Updates
+      font: fondamento
+      color: '#f5dfae'
       align_x: left
       align_y: middle
       scale: 0.43333
@@ -389,7 +431,7 @@ elements:
       visible: true
       interactive: false
       text:
-        value: Challenge
+        value: Difficulty
         font: fondamento
         color: '#e0c990'
         align_x: left
@@ -399,14 +441,14 @@ elements:
     - id: SettingsGameplayGroup1
       anchor: top_left
       offset_x: 0.0
-      offset_y: 185.5669
+      offset_y: 185.5679
       width: 525.3333
       height: 18.1333
       z_index: 10
       visible: true
       interactive: false
       text:
-        value: Exploration
+        value: Combat
         font: fondamento
         color: '#e0c990'
         align_x: left
@@ -416,41 +458,7 @@ elements:
     - id: SettingsGameplayGroup2
       anchor: top_left
       offset_x: 0.0
-      offset_y: 254.3584
-      width: 525.3333
-      height: 18.1333
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Combat feedback
-        font: fondamento
-        color: '#e0c990'
-        align_x: left
-        align_y: middle
-        scale: 0.4
-        pad_x: 0.0
-    - id: SettingsGameplayGroup3
-      anchor: top_left
-      offset_x: 0.0
-      offset_y: 478.8506
-      width: 525.3333
-      height: 18.1333
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Interaction
-        font: fondamento
-        color: '#e0c990'
-        align_x: left
-        align_y: middle
-        scale: 0.4
-        pad_x: 0.0
-    - id: SettingsGameplayGroup4
-      anchor: top_left
-      offset_x: 0.0
-      offset_y: 586.5674
+      offset_y: 293.2852
       width: 525.3333
       height: 18.1333
       z_index: 10
@@ -468,7 +476,7 @@ elements:
       anchor: top_left
       offset_x: 1.6
       offset_y: 25.6
-      width: 281.7248
+      width: 435.7333
       height: 14.0752
       z_index: 10
       visible: true
@@ -485,13 +493,13 @@ elements:
       anchor: top_left
       offset_x: 1.6
       offset_y: 41.8085
-      width: 437.3333
+      width: 435.7333
       height: 11.5168
       z_index: 10
       visible: true
       interactive: false
       text:
-        value: Scale monsters with the party. Apply when entering an area.
+        value: Monsters keep pace with the party's level. Takes effect on entering an area.
         font: menu_lucida
         color: '#aeb5a5'
         align_x: left
@@ -501,7 +509,7 @@ elements:
     - id: SettingsGameplayBolsterMonstersControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 23.3796
+      offset_y: 23.3837
       width: 70.4
       height: 32.158
       z_index: 10
@@ -510,20 +518,10 @@ elements:
       asset:
         default: hud_x2/menus/omenu_toggle_off.png
         selected: hud_x2/menus/omenu_toggle_on.png
-      text:
-        value: '{bolster_monsters}'
-        font: menu_lucida
-        color: '#b8b8a9'
-        align_x: center
-        align_y: middle
-        scale: 0.64
-        pad_x: 3.2
-      notes: Bind to features.bolster_monsters; see contracts/settings.yml. Ranges need a track and thumb renderer; selection
-        controls need native dropdown/focus behavior. Controller supplies live text.
     - id: SettingsGameplayHomingProjectilesLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 64.5248
+      offset_y: 64.5253
       width: 281.7248
       height: 14.0752
       z_index: 10
@@ -540,7 +538,7 @@ elements:
     - id: SettingsGameplayHomingProjectilesDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 80.7333
+      offset_y: 80.7338
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -557,7 +555,7 @@ elements:
     - id: SettingsGameplayHomingProjectilesControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 62.3044
+      offset_y: 62.3049
       width: 70.4
       height: 32.158
       z_index: 10
@@ -579,7 +577,7 @@ elements:
     - id: SettingsGameplayMm6MonsterMissilesLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 103.4501
+      offset_y: 103.4506
       width: 281.7248
       height: 14.0752
       z_index: 10
@@ -596,7 +594,7 @@ elements:
     - id: SettingsGameplayMm6MonsterMissilesDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 119.6586
+      offset_y: 119.6591
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -613,7 +611,7 @@ elements:
     - id: SettingsGameplayMm6MonsterMissilesControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 101.2297
+      offset_y: 101.2302
       width: 70.4
       height: 32.158
       z_index: 10
@@ -635,7 +633,7 @@ elements:
     - id: SettingsGameplayDifficultyLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 142.3749
+      offset_y: 142.3759
       width: 281.7248
       height: 14.0752
       z_index: 10
@@ -652,7 +650,7 @@ elements:
     - id: SettingsGameplayDifficultyDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 158.5834
+      offset_y: 158.5844
       width: 437.3333
       height: 11.5168
       z_index: 10
@@ -669,7 +667,7 @@ elements:
     - id: SettingsGameplayDifficultyControl
       anchor: top_left
       offset_x: 412.8
-      offset_y: 144.5002
+      offset_y: 144.5012
       width: 110.9333
       height: 23.4667
       z_index: 10
@@ -687,44 +685,44 @@ elements:
         pad_x: 3.2
       notes: Bind to features.difficulty; see contracts/settings.yml. Ranges need a track and thumb renderer;
         selection controls need native dropdown/focus behavior. Controller supplies live text.
-    - id: SettingsGameplayQuestMarkersLabel
+    - id: SettingsGameplayMeleeHitFeedbackLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 211.1669
-      width: 242.5915
+      offset_y: 211.1679
+      width: 435.7333
       height: 14.0752
       z_index: 10
       visible: true
       interactive: false
       text:
-        value: Quest markers
+        value: Melee impact feedback
         font: menu_arrus
         color: '#eadfc6'
         align_x: left
         align_y: middle
         scale: 0.74105
         pad_x: 0.0
-    - id: SettingsGameplayQuestMarkersDescription
+    - id: SettingsGameplayMeleeHitFeedbackDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 227.3749
-      width: 437.3333
+      offset_y: 227.3764
+      width: 435.7333
       height: 11.5168
       z_index: 10
       visible: true
       interactive: false
       text:
-        value: Show quest markers where the game provides them.
+        value: Impact sounds by what was struck, and a brief pause of the struck creature.
         font: menu_lucida
         color: '#aeb5a5'
         align_x: left
         align_y: middle
         scale: 0.60235
         pad_x: 0.0
-    - id: SettingsGameplayQuestMarkersControl
+    - id: SettingsGameplayMeleeHitFeedbackControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 208.946
+      offset_y: 208.9515
       width: 70.4
       height: 32.158
       z_index: 10
@@ -733,54 +731,44 @@ elements:
       asset:
         default: hud_x2/menus/omenu_toggle_off.png
         selected: hud_x2/menus/omenu_toggle_on.png
-      text:
-        value: '{quest_markers}'
-        font: menu_lucida
-        color: '#e8d5a1'
-        align_x: center
-        align_y: middle
-        scale: 0.64
-        pad_x: 3.2
-      notes: Bind to gameplay.quest_markers; see contracts/settings.yml. Ranges need a track and thumb renderer; selection
-        controls need native dropdown/focus behavior. Controller supplies live text.
-    - id: SettingsGameplayCombatTextLabel
+    - id: SettingsGameplayMeleeCameraKickLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 279.9584
-      width: 229.3499
+      offset_y: 250.0932
+      width: 435.7333
       height: 14.0752
       z_index: 10
       visible: true
       interactive: false
       text:
-        value: Floating combat text
+        value: Camera kick
         font: menu_arrus
         color: '#eadfc6'
         align_x: left
         align_y: middle
         scale: 0.74105
         pad_x: 0.0
-    - id: SettingsGameplayCombatTextDescription
+    - id: SettingsGameplayMeleeCameraKickDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 296.1669
-      width: 437.3333
+      offset_y: 266.3017
+      width: 435.7333
       height: 11.5168
       z_index: 10
       visible: true
       interactive: false
       text:
-        value: Show damage and combat messages in the world.
+        value: Nudge the view along the blow on critical hits and kills.
         font: menu_lucida
         color: '#aeb5a5'
         align_x: left
         align_y: middle
         scale: 0.60235
         pad_x: 0.0
-    - id: SettingsGameplayCombatTextControl
+    - id: SettingsGameplayMeleeCameraKickControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 277.7375
+      offset_y: 247.8768
       width: 70.4
       height: 32.158
       z_index: 10
@@ -789,354 +777,11 @@ elements:
       asset:
         default: hud_x2/menus/omenu_toggle_off.png
         selected: hud_x2/menus/omenu_toggle_on.png
-      text:
-        value: '{combat_text}'
-        font: menu_lucida
-        color: '#e8d5a1'
-        align_x: center
-        align_y: middle
-        scale: 0.64
-        pad_x: 3.2
-      notes: Bind to gameplay.combat_text; see contracts/settings.yml. Ranges need a track and thumb renderer; selection
-        controls need native dropdown/focus behavior. Controller supplies live text.
-    - id: SettingsGameplayEnemyHealthBarsLabel
-      anchor: top_left
-      offset_x: 1.6
-      offset_y: 318.8832
-      width: 167.9499
-      height: 14.0752
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Enemy health bars
-        font: menu_arrus
-        color: '#eadfc6'
-        align_x: left
-        align_y: middle
-        scale: 0.74105
-        pad_x: 0.0
-    - id: SettingsGameplayEnemyHealthBarsDescription
-      anchor: top_left
-      offset_x: 1.6
-      offset_y: 335.0917
-      width: 397.2
-      height: 11.5168
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Show the target, combatants or nearby enemies.
-        font: menu_lucida
-        color: '#aeb5a5'
-        align_x: left
-        align_y: middle
-        scale: 0.60235
-        pad_x: 0.0
-    - id: SettingsGameplayEnemyHealthBarsControl
-      anchor: top_left
-      offset_x: 412.8
-      offset_y: 321.0085
-      width: 110.9333
-      height: 23.4667
-      z_index: 10
-      visible: true
-      interactive: true
-      asset:
-        default: hud_x2/menus/omenu_text_field.png
-      text:
-        value: '{enemy_health_bars}'
-        font: menu_lucida
-        color: '#e8d5a1'
-        align_x: center
-        align_y: middle
-        scale: 0.64
-        pad_x: 3.2
-      notes: Bind to gameplay.enemy_health_bars; see contracts/settings.yml. Ranges need a track and thumb renderer;
-        selection controls need native dropdown/focus behavior. Controller supplies live text.
-    - id: SettingsGameplayEnemyHealthBarValuesLabel
-      anchor: top_left
-      offset_x: 1.6
-      offset_y: 357.8085
-      width: 143.2752
-      height: 14.0752
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Enemy HP values
-        font: menu_arrus
-        color: '#eadfc6'
-        align_x: left
-        align_y: middle
-        scale: 0.74105
-        pad_x: 0.0
-    - id: SettingsGameplayEnemyHealthBarValuesDescription
-      anchor: top_left
-      offset_x: 1.6
-      offset_y: 374.0165
-      width: 397.2
-      height: 11.5168
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Show current and maximum enemy health.
-        font: menu_lucida
-        color: '#aeb5a5'
-        align_x: left
-        align_y: middle
-        scale: 0.60235
-        pad_x: 0.0
-    - id: SettingsGameplayEnemyHealthBarValuesControl
-      anchor: top_left
-      offset_x: 412.8
-      offset_y: 359.9338
-      width: 110.9333
-      height: 23.4667
-      z_index: 10
-      visible: true
-      interactive: true
-      asset:
-        default: hud_x2/menus/omenu_text_field.png
-      text:
-        value: '{enemy_health_bar_values}'
-        font: menu_lucida
-        color: '#b8b8a9'
-        align_x: center
-        align_y: middle
-        scale: 0.64
-        pad_x: 3.2
-      notes: Bind to gameplay.enemy_health_bar_values; see contracts/settings.yml. Ranges need a track and thumb renderer;
-        selection controls need native dropdown/focus behavior. Controller supplies live text.
-    - id: SettingsGameplayEnemyHealthBarDamageTrailLabel
-      anchor: top_left
-      offset_x: 1.6
-      offset_y: 396.7333
-      width: 270
-      height: 14.0752
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Enemy damage trail
-        font: menu_arrus
-        color: '#eadfc6'
-        align_x: left
-        align_y: middle
-        scale: 0.74105
-        pad_x: 0.0
-    - id: SettingsGameplayEnemyHealthBarDamageTrailDescription
-      anchor: top_left
-      offset_x: 1.6
-      offset_y: 412.9418
-      width: 437.3333
-      height: 11.5168
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Briefly show recently lost health behind the current fill.
-        font: menu_lucida
-        color: '#aeb5a5'
-        align_x: left
-        align_y: middle
-        scale: 0.60235
-        pad_x: 0.0
-    - id: SettingsGameplayEnemyHealthBarDamageTrailControl
-      anchor: top_left
-      offset_x: 453.3333
-      offset_y: 394.5129
-      width: 70.4
-      height: 32.158
-      z_index: 10
-      visible: true
-      interactive: true
-      asset:
-        default: hud_x2/menus/omenu_toggle_off.png
-        selected: hud_x2/menus/omenu_toggle_on.png
-      text:
-        value: '{enemy_health_bar_damage_trail}'
-        font: menu_lucida
-        color: '#e8d5a1'
-        align_x: center
-        align_y: middle
-        scale: 0.64
-        pad_x: 3.2
-      notes: Bind to gameplay.enemy_health_bar_damage_trail. Controller supplies live text.
-    - id: SettingsGameplayShowHitsLabel
-      anchor: top_left
-      offset_x: 1.6
-      offset_y: 435.6586
-      width: 155.9083
-      height: 14.0752
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Hit messages
-        font: menu_arrus
-        color: '#eadfc6'
-        align_x: left
-        align_y: middle
-        scale: 0.74105
-        pad_x: 0.0
-    - id: SettingsGameplayShowHitsDescription
-      anchor: top_left
-      offset_x: 1.6
-      offset_y: 451.8671
-      width: 437.3333
-      height: 11.5168
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Report attacks in the status text.
-        font: menu_lucida
-        color: '#aeb5a5'
-        align_x: left
-        align_y: middle
-        scale: 0.60235
-        pad_x: 0.0
-    - id: SettingsGameplayShowHitsControl
-      anchor: top_left
-      offset_x: 453.3333
-      offset_y: 433.4382
-      width: 70.4
-      height: 32.158
-      z_index: 10
-      visible: true
-      interactive: true
-      asset:
-        default: hud_x2/menus/omenu_toggle_off.png
-        selected: hud_x2/menus/omenu_toggle_on.png
-      text:
-        value: '{show_hits}'
-        font: menu_lucida
-        color: '#e8d5a1'
-        align_x: center
-        align_y: middle
-        scale: 0.64
-        pad_x: 3.2
-      notes: Bind to controls.show_hits; see contracts/settings.yml. Ranges need a track and thumb renderer; selection
-        controls need native dropdown/focus behavior. Controller supplies live text.
-    - id: SettingsGameplayContextActionPopupLabel
-      anchor: top_left
-      offset_x: 1.6
-      offset_y: 504.4506
-      width: 267.8752
-      height: 14.0752
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Context action menu
-        font: menu_arrus
-        color: '#eadfc6'
-        align_x: left
-        align_y: middle
-        scale: 0.74105
-        pad_x: 0.0
-    - id: SettingsGameplayContextActionPopupDescription
-      anchor: top_left
-      offset_x: 1.6
-      offset_y: 520.6586
-      width: 437.3333
-      height: 11.5168
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Offer contextual actions for the object under the pointer.
-        font: menu_lucida
-        color: '#aeb5a5'
-        align_x: left
-        align_y: middle
-        scale: 0.60235
-        pad_x: 0.0
-    - id: SettingsGameplayContextActionPopupControl
-      anchor: top_left
-      offset_x: 453.3333
-      offset_y: 502.2297
-      width: 70.4
-      height: 32.158
-      z_index: 10
-      visible: true
-      interactive: true
-      asset:
-        default: hud_x2/menus/omenu_toggle_off.png
-        selected: hud_x2/menus/omenu_toggle_on.png
-      text:
-        value: '{context_action_popup}'
-        font: menu_lucida
-        color: '#b8b8a9'
-        align_x: center
-        align_y: middle
-        scale: 0.64
-        pad_x: 3.2
-      notes: Bind to gameplay.context_action_popup; see contracts/settings.yml. Ranges need a track and thumb renderer;
-        selection controls need native dropdown/focus behavior. Controller supplies live text.
-    - id: SettingsGameplayClickToInteractLabel
-      anchor: top_left
-      offset_x: 1.6
-      offset_y: 543.3759
-      width: 267.8752
-      height: 14.0752
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Click to interact
-        font: menu_arrus
-        color: '#eadfc6'
-        align_x: left
-        align_y: middle
-        scale: 0.74105
-        pad_x: 0.0
-    - id: SettingsGameplayClickToInteractDescription
-      anchor: top_left
-      offset_x: 1.6
-      offset_y: 559.5839
-      width: 437.3333
-      height: 11.5168
-      z_index: 10
-      visible: true
-      interactive: false
-      text:
-        value: Left click uses what is under the pointer, as in the original; elsewhere it attacks.
-        font: menu_lucida
-        color: '#aeb5a5'
-        align_x: left
-        align_y: middle
-        scale: 0.60235
-        pad_x: 0.0
-    - id: SettingsGameplayClickToInteractControl
-      anchor: top_left
-      offset_x: 453.3333
-      offset_y: 541.155
-      width: 70.4
-      height: 32.158
-      z_index: 10
-      visible: true
-      interactive: true
-      asset:
-        default: hud_x2/menus/omenu_toggle_off.png
-        selected: hud_x2/menus/omenu_toggle_on.png
-      text:
-        value: '{click_to_interact}'
-        font: menu_lucida
-        color: '#b8b8a9'
-        align_x: center
-        align_y: middle
-        scale: 0.64
-        pad_x: 3.2
-      notes: Bind to gameplay.context_action_popup; see contracts/settings.yml. Ranges need a track and thumb renderer;
-        selection controls need native dropdown/focus behavior. Controller supplies live text.
     - id: SettingsGameplaySkipEventCutscenesLabel
       anchor: top_left
       offset_x: 1.6
-      offset_y: 612.1674
-      width: 234.7669
+      offset_y: 318.8852
+      width: 435.7333
       height: 14.0752
       z_index: 10
       visible: true
@@ -1152,8 +797,8 @@ elements:
     - id: SettingsGameplaySkipEventCutscenesDescription
       anchor: top_left
       offset_x: 1.6
-      offset_y: 628.3759
-      width: 437.3333
+      offset_y: 335.0937
+      width: 435.7333
       height: 11.5168
       z_index: 10
       visible: true
@@ -1169,7 +814,7 @@ elements:
     - id: SettingsGameplaySkipEventCutscenesControl
       anchor: top_left
       offset_x: 453.3333
-      offset_y: 609.9465
+      offset_y: 316.6688
       width: 70.4
       height: 32.158
       z_index: 10
@@ -1178,16 +823,6 @@ elements:
       asset:
         default: hud_x2/menus/omenu_toggle_off.png
         selected: hud_x2/menus/omenu_toggle_on.png
-      text:
-        value: '{skip_event_cutscenes}'
-        font: menu_lucida
-        color: '#b8b8a9'
-        align_x: center
-        align_y: middle
-        scale: 0.64
-        pad_x: 3.2
-      notes: Bind to video.skip_event_cutscenes; see contracts/settings.yml. Ranges need a track and thumb renderer;
-        selection controls need native dropdown/focus behavior. Controller supplies live text.
   - id: SettingsGameplayNavigationRule
     anchor: top_left
     offset_x: 201.6

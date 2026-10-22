@@ -50,6 +50,15 @@ public:
     // After an item's kind was changed (a mod rewriting a generated item, a script writing Item.Number): what
     // follows from the kind (size in the backpack, rarity, a wand's charges) is taken from the new kind.
     static void applyItemKind(InventoryItem &item, uint32_t itemId, const ItemTable &itemTable);
+    // MM8 potion power by where the potion comes from: random treasure 2d4 x treasure level, placed on a map or in
+    // a chest 5-19, carried by a monster 2-8. Each leaves anything but a potion without power untouched.
+    static void assignTreasurePotionPower(
+        InventoryItem &item,
+        const ItemTable &itemTable,
+        int treasureLevel,
+        std::mt19937 &rng);
+    static void assignPlacedPotionPower(InventoryItem &item, const ItemTable &itemTable, std::mt19937 &rng);
+    static void assignMonsterPotionPower(InventoryItem &item, const ItemTable &itemTable, std::mt19937 &rng);
     static std::optional<uint32_t> chooseRandomBaseItem(
         const ItemTable &itemTable,
         int treasureLevel,

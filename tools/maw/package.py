@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package OpenYAMM with MAW for players: upstream's Windows release (openyamm_windows_release_zip) with MAW's
+"""Package OpenYAMM with MAW for players: upstream's Windows release (openyamm_release_package) with MAW's
 scripts, the Merge base, the port's scripts and MAW's converted assets beside it, and a mods.yml whose paths are
 relative to it. Writes build/release/OpenYAMM-MAW-<date>-<commit>.zip and its .sha256.
 
@@ -139,7 +139,7 @@ def main():
         print("warning: the fork has uncommitted changes; the README names the last commit")
 
     if not args.no_release:
-        subprocess.run(["cmake", "--build", "build", "--target", "openyamm_windows_release_zip"], cwd=Root,
+        subprocess.run(["cmake", "--build", "build", "--target", "openyamm_release_package"], cwd=Root,
                        check=True)
 
     if not (Stage / "openyamm.exe").is_file():

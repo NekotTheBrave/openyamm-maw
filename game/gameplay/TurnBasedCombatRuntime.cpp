@@ -452,7 +452,7 @@ bool TurnBasedCombatRuntime::update(Party *pParty, IGameplayWorldRuntime *pWorld
     return true;
 }
 
-bool TurnBasedCombatRuntime::noteMovementInput(GameplayInputFrame &input, float deltaSeconds)
+bool TurnBasedCombatRuntime::noteMovementInput(GameplayInputFrame &input, float deltaSeconds, bool classicTurnKeys)
 {
     m_movementStepThisFrame = false;
     m_movementStepSeconds = 0.0f;
@@ -462,10 +462,40 @@ bool TurnBasedCombatRuntime::noteMovementInput(GameplayInputFrame &input, float 
         return false;
     }
 
-    const bool forwardHeld = input.action(KeyboardAction::Forward).held || input.keyboardHeld[SDL_SCANCODE_W];
-    const bool backwardHeld = input.action(KeyboardAction::Backward).held || input.keyboardHeld[SDL_SCANCODE_S];
-    const bool leftHeld = input.action(KeyboardAction::Left).held || input.keyboardHeld[SDL_SCANCODE_A];
-    const bool rightHeld = input.action(KeyboardAction::Right).held || input.keyboardHeld[SDL_SCANCODE_D];
+    if (classicTurnKeys)
+    {
+        // Turning keys pass through untouched; raw W/A/S/D are not movement in the classic scheme (A attacks).
+        const GameplayButtonInputState turnLeft = input.action(KeyboardAction::Left);
+        const GameplayButtonInputState turnRight = input.action(KeyboardAction::Right);
+        const bool movementStep = noteMovementInputHeld(
+            input,
+            deltaSeconds,
+            input.action(KeyboardAction::Forward).held,
+            input.action(KeyboardAction::Backward).held,
+            false,
+            false);
+        input.actions[keyboardActionIndex(KeyboardAction::Left)] = turnLeft;
+        input.actions[keyboardActionIndex(KeyboardAction::Right)] = turnRight;
+        return movementStep;
+    }
+
+    return noteMovementInputHeld(
+        input,
+        deltaSeconds,
+        input.action(KeyboardAction::Forward).held || input.keyboardHeld[SDL_SCANCODE_W],
+        input.action(KeyboardAction::Backward).held || input.keyboardHeld[SDL_SCANCODE_S],
+        input.action(KeyboardAction::Left).held || input.keyboardHeld[SDL_SCANCODE_A],
+        input.action(KeyboardAction::Right).held || input.keyboardHeld[SDL_SCANCODE_D]);
+}
+
+bool TurnBasedCombatRuntime::noteMovementInputHeld(
+    GameplayInputFrame &input,
+    float deltaSeconds,
+    bool forwardHeld,
+    bool backwardHeld,
+    bool leftHeld,
+    bool rightHeld)
+{
     const bool movementHeld = forwardHeld || backwardHeld || leftHeld || rightHeld;
 
     if (m_stage != TurnBasedCombatStage::Movement)

@@ -1891,6 +1891,8 @@ TEST_CASE("NPC More Info expands descriptions for every imported profession")
         OpenYAMM::Tests::HouseDialogueTestHarness harness(gameData);
         harness.eventRuntimeState().npcNameOverrides[1184] = "Gordon";
         harness.eventRuntimeState().npcProfessionOverrides[1184] = profession.id;
+        // Followers see the description whether or not their profession joins on its own.
+        harness.party().addHiredNpcFollower({1184, profession.id, profession.weeklyCost});
         const OpenYAMM::Game::EventDialogContent dialog = harness.openNpcDialogue(1184);
         const std::optional<size_t> infoIndex = findActionIndexByLabel(dialog, "More Info");
         REQUIRE(infoIndex.has_value());
@@ -1898,6 +1900,31 @@ TEST_CASE("NPC More Info expands descriptions for every imported profession")
         CHECK_FALSE(description.lines.empty());
         CHECK_FALSE(dialogContainsText(description, "%"));
         CHECK(dialogContainsText(description, "Gordon"));
+    }
+}
+
+TEST_CASE("non-joining street NPCs offer only their news topic, not More Info")
+{
+    const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
+    for (uint32_t professionId : {24u, 50u}) // Barrister, Duper.
+    {
+        const OpenYAMM::Game::MergedNpcProfessionEntry *pProfession =
+            gameData.mergedNpcProfessionTable.get(professionId);
+        REQUIRE(pProfession != nullptr);
+        REQUIRE_FALSE(pProfession->joins);
+        CAPTURE(pProfession->profession);
+        OpenYAMM::Tests::HouseDialogueTestHarness harness(gameData);
+        harness.eventRuntimeState().npcNameOverrides[1184] = "Gordon";
+        harness.eventRuntimeState().npcProfessionOverrides[1184] = professionId;
+
+        const OpenYAMM::Game::EventDialogContent dialog = harness.openNpcDialogue(1184);
+        CHECK_FALSE(findActionIndexByLabel(dialog, "Join").has_value());
+        CHECK_FALSE(findActionIndexByLabel(dialog, "More Info").has_value());
+        CHECK(std::any_of(dialog.actions.begin(), dialog.actions.end(),
+            [](const OpenYAMM::Game::EventDialogAction &action)
+            {
+                return action.kind == OpenYAMM::Game::EventDialogActionKind::NpcProfessionNews;
+            }));
     }
 }
 
@@ -2321,7 +2348,7 @@ TEST_CASE("gate master town portal uses follower spell power")
     REQUIRE(overlay.active);
     CHECK_EQ(overlay.mode, OpenYAMM::Game::GameplayUiController::UtilitySpellOverlayMode::TownPortal);
     CHECK_EQ(overlay.skillLevelOverride, 10u);
-    CHECK_EQ(overlay.skillMasteryOverride, OpenYAMM::Game::SkillMastery::Master);
+    CHECK_EQ(overlay.skillMasteryOverride, OpenYAMM::Game::SkillMastery::Grandmaster);
     CHECK_FALSE(overlay.spendMana);
     CHECK_FALSE(overlay.applyRecovery);
     CHECK(overlay.bypassGameplayCasterValidation);
@@ -4862,11 +4889,7 @@ TEST_CASE("mastery teacher not enough gold")
     CHECK_EQ(dialog.actions.front().label, "You don't have enough gold!");
 
     constexpr uint32_t MergedMasterIdentifyItemAutonoteId = 162;
-    constexpr uint32_t MergedMasterIdentifyItemAutonoteVariable =
-        (MergedMasterIdentifyItemAutonoteId << 16) | 0x00e1u;
-    const auto noteIt = harness.eventRuntimeState().variables.find(MergedMasterIdentifyItemAutonoteVariable);
-    REQUIRE(noteIt != harness.eventRuntimeState().variables.end());
-    CHECK_EQ(noteIt->second, 1);
+    CHECK(harness.party().hasAutonote(MergedMasterIdentifyItemAutonoteId));
 }
 
 TEST_CASE("teacher topic with explicit autonote also creates merged teacher map note")
@@ -4884,18 +4907,15 @@ TEST_CASE("teacher topic with explicit autonote also creates merged teacher map 
     CHECK(dialogHasActionLabel(dialog, "Master Identify Item"));
 
     constexpr uint32_t MergedMasterIdentifyItemAutonoteId = 162;
-    constexpr uint32_t MergedMasterIdentifyItemAutonoteVariable =
-        (MergedMasterIdentifyItemAutonoteId << 16) | 0x00e1u;
-    const auto variableIt = harness.eventRuntimeState().variables.find(MergedMasterIdentifyItemAutonoteVariable);
-    REQUIRE(variableIt != harness.eventRuntimeState().variables.end());
-    CHECK_EQ(variableIt->second, 1);
+    CHECK(harness.party().hasAutonote(MergedMasterIdentifyItemAutonoteId));
 
     constexpr uint32_t MasterIdentifyItemMapNoteId = 2224;
-    const auto noteIt = harness.eventRuntimeState().runtimeMapNotes.find(MasterIdentifyItemMapNoteId);
-    REQUIRE(noteIt != harness.eventRuntimeState().runtimeMapNotes.end());
-    CHECK(noteIt->second.active);
-    CHECK_EQ(noteIt->second.mapFileName, "7out01.odm");
-    CHECK_EQ(noteIt->second.text, "Identify Item - Master");
+    const OpenYAMM::Game::JournalMapNote *pNote =
+        harness.party().findJournalMapNote("7out01.odm", MasterIdentifyItemMapNoteId);
+    REQUIRE(pNote != nullptr);
+    CHECK_EQ(pNote->text, "Identify Item - Master");
+    // The autonote already lists this teacher with the trainer notes.
+    CHECK_FALSE(pNote->listedWithTrainerNotes);
 }
 
 TEST_CASE("mastery teacher missing skill")
@@ -5371,8 +5391,6 @@ TEST_CASE("mastery teacher topics are identified from merged table and vanilla r
 
 TEST_CASE("vanilla mm8 blaster teacher gap remains a mastery teacher")
 {
-    constexpr uint32_t ExpertBlasterAutonoteVariable = (344u << 16) | 0x00e1u;
-
     const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
     OpenYAMM::Tests::HouseDialogueTestHarness harness(gameData);
 
@@ -5391,9 +5409,7 @@ TEST_CASE("vanilla mm8 blaster teacher gap remains a mastery teacher")
     REQUIRE_FALSE(offerDialog.actions.empty());
     CHECK_EQ(offerDialog.actions.front().label, "Become Expert in Blaster for 2000 gold");
 
-    const auto noteIt = harness.eventRuntimeState().variables.find(ExpertBlasterAutonoteVariable);
-    REQUIRE(noteIt != harness.eventRuntimeState().variables.end());
-    CHECK_NE(noteIt->second, 0);
+    CHECK(harness.party().hasAutonote(344u));
 }
 
 TEST_CASE("teacher topic without explicit autonote creates merged teacher map note")
@@ -5412,17 +5428,17 @@ TEST_CASE("teacher topic without explicit autonote creates merged teacher map no
     CHECK(findActionIndexByLabel(dialog, "Body Magic Expert").has_value());
 
     constexpr uint32_t BodyMagicExpertMapNoteId = 1118;
-    const auto noteIt = harness.eventRuntimeState().runtimeMapNotes.find(BodyMagicExpertMapNoteId);
-    REQUIRE(noteIt != harness.eventRuntimeState().runtimeMapNotes.end());
-    CHECK(noteIt->second.active);
-    CHECK_EQ(noteIt->second.text, "Body Magic - Expert");
+    const OpenYAMM::Game::JournalMapNote *pNote =
+        harness.party().findJournalMapNote("out01.odm", BodyMagicExpertMapNoteId);
+    REQUIRE(pNote != nullptr);
+    CHECK_EQ(pNote->text, "Body Magic - Expert");
+    CHECK(pNote->listedWithTrainerNotes);
 }
 
 TEST_CASE("mm6 guild membership topic opens native guild offer")
 {
     constexpr uint16_t ElementalGuildMembershipVariable = 0x800eu;
     constexpr uint32_t ElementalGuildAutonoteId = 564;
-    constexpr uint32_t ElementalGuildAutonoteVariable = (ElementalGuildAutonoteId << 16) | 0x00e1u;
 
     const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
     OpenYAMM::Tests::HouseDialogueTestHarness harness(gameData);
@@ -5448,9 +5464,7 @@ TEST_CASE("mm6 guild membership topic opens native guild offer")
     CHECK_EQ(harness.party().gold(), initialGold - 100);
     CHECK_EQ(harness.party().eventVariableValue(ElementalGuildMembershipVariable), 1);
 
-    const auto noteIt = harness.eventRuntimeState().variables.find(ElementalGuildAutonoteVariable);
-    REQUIRE(noteIt != harness.eventRuntimeState().variables.end());
-    CHECK_EQ(noteIt->second, 1);
+    CHECK(harness.party().hasAutonote(ElementalGuildAutonoteId));
 }
 
 TEST_CASE("mm7 guild membership topic opens native guild offer")
@@ -5482,7 +5496,6 @@ TEST_CASE("mm6 smuggler guild membership topic opens native guild offer")
 {
     constexpr uint16_t SmugglerGuildMembershipVariable = 0x8012u;
     constexpr uint32_t SmugglerGuildAutonoteId = 631;
-    constexpr uint32_t SmugglerGuildAutonoteVariable = (SmugglerGuildAutonoteId << 16) | 0x00e1u;
 
     const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
     OpenYAMM::Tests::HouseDialogueTestHarness harness(gameData);
@@ -5506,16 +5519,13 @@ TEST_CASE("mm6 smuggler guild membership topic opens native guild offer")
     CHECK_EQ(harness.party().gold(), initialGold - 50);
     CHECK_EQ(harness.party().eventVariableValue(SmugglerGuildMembershipVariable), 1);
 
-    const auto noteIt = harness.eventRuntimeState().variables.find(SmugglerGuildAutonoteVariable);
-    REQUIRE(noteIt != harness.eventRuntimeState().variables.end());
-    CHECK_EQ(noteIt->second, 1);
+    CHECK(harness.party().hasAutonote(SmugglerGuildAutonoteId));
 }
 
 TEST_CASE("mm6 blades end guild membership topic opens native guild offer")
 {
     constexpr uint16_t BladesEndGuildMembershipVariable = 0x8013u;
     constexpr uint32_t BladesEndGuildAutonoteId = 632;
-    constexpr uint32_t BladesEndGuildAutonoteVariable = (BladesEndGuildAutonoteId << 16) | 0x00e1u;
 
     const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
     OpenYAMM::Tests::HouseDialogueTestHarness harness(gameData);
@@ -5539,9 +5549,7 @@ TEST_CASE("mm6 blades end guild membership topic opens native guild offer")
     CHECK_EQ(harness.party().gold(), initialGold - 25);
     CHECK_EQ(harness.party().eventVariableValue(BladesEndGuildMembershipVariable), 1);
 
-    const auto noteIt = harness.eventRuntimeState().variables.find(BladesEndGuildAutonoteVariable);
-    REQUIRE(noteIt != harness.eventRuntimeState().variables.end());
-    CHECK_EQ(noteIt->second, 1);
+    CHECK(harness.party().hasAutonote(BladesEndGuildAutonoteId));
 }
 
 TEST_CASE("actual roster join rohani")
@@ -8127,11 +8135,7 @@ TEST_CASE("event teacher hint sets autonote and note fx")
 
     REQUIRE(harness.executeGlobalEvent(430));
 
-    constexpr uint32_t SpearMasterAutoNoteRawId = (102u << 16) | 0x00e1u;
-    const auto noteIt = harness.eventRuntimeState().variables.find(SpearMasterAutoNoteRawId);
-
-    REQUIRE(noteIt != harness.eventRuntimeState().variables.end());
-    CHECK_NE(noteIt->second, 0);
+    CHECK(harness.party().hasAutonote(102u));
 
     bool sawAutoNoteFx = false;
 

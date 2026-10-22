@@ -73,7 +73,8 @@ public:
     // are turned toward the ray's origin, where the camera sees them.
     bool raycast(size_t billboardIndex, const std::array<float, 3> &origin, const std::array<float, 3> &direction,
         float &distance) const;
-    // Swings the swinging placements (chandeliers, cages) to their pose at timeSeconds.
+    // Swings the swinging placements (chandeliers, cages) to their pose at timeSeconds, and moves the placements
+    // turning into a turn_in model's pose.
     void animate(float timeSeconds);
     // Billboards of wall-mounted bindings without a wall in reach or a free_model; they keep their map facing.
     const std::vector<size_t> &unmountedBillboards() const
@@ -108,6 +109,11 @@ private:
         // swing: [angle degrees, period seconds] about the asset x axis through the model's top.
         float swingRadians = 0.0f;
         float swingPeriod = 0.0f;
+        // turn_in: [angle degrees, seconds]. A placement an event switches to this model during play turns into its
+        // pose by that angle about the asset z axis (a valve wheel's axle) through the model's centre; one placed at
+        // load, or swapped before the first update, simply stands in it.
+        float turnRadians = 0.0f;
+        float turnSeconds = 0.0f;
         // State overlays: the overlay binding drawn for each interactive state (-1 = none). An overlay binding is
         // authored in its decoration's asset space and takes the decoration's placement matrix.
         std::vector<int32_t> stateOverlays;
@@ -127,6 +133,9 @@ private:
         int32_t overlayGroup = -1;
         uint32_t overlayIndex = 0;
         int32_t state = -1;
+        // A turn in progress (turn_in): its start in animate()'s time, negative until its first animate.
+        bool turning = false;
+        float turnStart = -1.0f;
     };
 
     // Ray against the placement's rigid (not camera-facing) triangles; lowers best on a nearer hit.
@@ -158,5 +167,8 @@ private:
     std::vector<size_t> m_unmountedBillboards;
     // Groups of swinging bindings.
     std::vector<uint32_t> m_swingingGroups;
+    // Billboards turning into a turn_in model's pose; m_settled once the first update has placed the map's state.
+    std::vector<size_t> m_turningBillboards;
+    bool m_settled = false;
 };
 }

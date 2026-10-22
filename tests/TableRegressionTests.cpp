@@ -108,31 +108,6 @@ std::string readSourceTextFile(const std::filesystem::path &path)
     return buffer.str();
 }
 
-std::set<std::string> iniSettingKeys(const std::string &text)
-{
-    std::set<std::string> keys;
-    std::istringstream input(text);
-    std::string section;
-    std::string line;
-
-    while (std::getline(input, line))
-    {
-        if (line.size() >= 2 && line.front() == '[' && line.back() == ']')
-        {
-            section = line.substr(1, line.size() - 2);
-            continue;
-        }
-
-        const size_t separator = line.find('=');
-        if (separator != std::string::npos && !section.empty())
-        {
-            keys.insert(section + '.' + line.substr(0, separator));
-        }
-    }
-
-    return keys;
-}
-
 std::vector<uint8_t> readSourceBinaryFile(const std::filesystem::path &path)
 {
     std::ifstream stream(path, std::ios::binary);
@@ -201,8 +176,7 @@ std::string lowercaseFileName(const std::filesystem::path &path)
 void checkFirstSpriteFrameTexture(
     const OpenYAMM::Game::SpriteFrameTable &spriteFrameTable,
     const std::string &spriteName,
-    const std::string &expectedTextureName,
-    const std::string &expectedAssetFileName)
+    const std::string &expectedTextureName)
 {
     const std::optional<uint16_t> spriteFrameIndex = spriteFrameTable.findFrameIndexBySpriteName(spriteName);
     REQUIRE(spriteFrameIndex.has_value());
@@ -212,14 +186,6 @@ void checkFirstSpriteFrameTexture(
 
     const OpenYAMM::Game::ResolvedSpriteTexture texture = OpenYAMM::Game::SpriteFrameTable::resolveTexture(*pFrame, 0);
     CHECK_EQ(texture.textureName, expectedTextureName);
-    // Billboards load the restored engine/decorations_x2/<texture>_p<palette>.png first and fall back to the native
-    // sprite (game/maps/MapDecorationTextures.cpp); either must exist.
-    const std::filesystem::path engineRoot = std::filesystem::path(OPENYAMM_SOURCE_DIR) / "assets_dev/engine";
-    const std::filesystem::path restoredPath = engineRoot / "decorations_x2"
-        / (expectedTextureName + "_p" + std::to_string(pFrame->paletteId) + ".png");
-    CAPTURE(restoredPath.string());
-    CHECK((std::filesystem::exists(restoredPath)
-        || std::filesystem::exists(engineRoot / "sprites" / expectedAssetFileName)));
 }
 }
 
@@ -344,40 +310,20 @@ TEST_CASE("settings debug startup options round trip")
     std::filesystem::remove(path);
 }
 
-TEST_CASE("development and release settings expose the same options")
+TEST_CASE("default settings ship without developer cheats or diagnostic logging")
 {
-    const std::filesystem::path sourceDirectory = OPENYAMM_SOURCE_DIR;
-    const std::set<std::string> developmentKeys =
-        iniSettingKeys(readSourceTextFile(sourceDirectory / "settings.ini"));
-    const std::set<std::string> releaseKeys =
-        iniSettingKeys(readSourceTextFile(sourceDirectory / "settings_release.ini"));
-
-    CHECK(developmentKeys == releaseKeys);
-}
-
-TEST_CASE("android settings profile uses mobile interaction defaults without diagnostic logging")
-{
-    const std::filesystem::path path =
-        std::filesystem::path(OPENYAMM_SOURCE_DIR) / "android/settings.ini";
-    std::string error;
-    const std::optional<OpenYAMM::Game::GameSettings> settings =
-        OpenYAMM::Game::loadGameSettings(path, error);
-
-    REQUIRE_MESSAGE(settings.has_value(), error.c_str());
-    CHECK_EQ(settings->settingsProfileName, "android");
-    CHECK_EQ(settings->settingsProfileVersion, 3);
-    CHECK_EQ(settings->terrainSubdivision, 2);
-    CHECK_FALSE(settings->terrainAntiTiling);
-    CHECK_EQ(settings->terrainAnisotropy, "2x");
-    CHECK_EQ(settings->waterReflectionSize, 256);
-    CHECK(settings->contextActionPopup);
+    const std::optional<OpenYAMM::Game::GameSettings> settings = OpenYAMM::Game::GameSettings::createDefault();
+    CHECK_EQ(settings->settingsProfileName, "desktop");
+    CHECK_EQ(settings->settingsProfileVersion, OpenYAMM::Game::CurrentSettingsProfileVersion);
     CHECK(settings->startInMainMenu);
     CHECK(settings->verticalSync);
     CHECK(settings->lightmaps);
+    CHECK_FALSE(settings->overrideStartPosition);
     CHECK_FALSE(settings->preseedParty);
     CHECK_FALSE(settings->newGameGodLich);
     CHECK_FALSE(settings->allowIncompleteCharacterCreation);
-    CHECK(settings->debugConsole);
+    CHECK_FALSE(settings->debugConsole);
+    CHECK_FALSE(settings->turboMovementEnabled);
     CHECK_FALSE(settings->immortal);
     CHECK_FALSE(settings->unlimitedMana);
     CHECK_FALSE(settings->logIndoorVisibility);
@@ -421,7 +367,7 @@ TEST_CASE("legacy Android settings migration changes platform defaults once and 
 
     REQUIRE(OpenYAMM::Game::migrateLegacyAndroidSettings(settings));
     CHECK_EQ(settings.settingsProfileName, "android");
-    CHECK_EQ(settings.settingsProfileVersion, 3);
+    CHECK_EQ(settings.settingsProfileVersion, 4);
     CHECK(settings.contextActionPopup);
     CHECK(settings.startInMainMenu);
     CHECK(settings.verticalSync);
@@ -464,7 +410,7 @@ TEST_CASE("Android profile version two only migrates character creation defaults
     settings.allowIncompleteCharacterCreation = true;
 
     REQUIRE(OpenYAMM::Game::migrateLegacyAndroidSettings(settings));
-    CHECK_EQ(settings.settingsProfileVersion, 3);
+    CHECK_EQ(settings.settingsProfileVersion, 4);
     CHECK_EQ(settings.soundVolume, 5);
     CHECK_EQ(settings.startWorldId, "mm6");
     CHECK_FALSE(settings.contextActionPopup);
@@ -482,7 +428,7 @@ TEST_CASE("Android profile version three lightens terrain filtering and water re
     settings.waterReflectionSize = 512;
 
     REQUIRE(OpenYAMM::Game::migrateLegacyAndroidSettings(settings));
-    CHECK_EQ(settings.settingsProfileVersion, 3);
+    CHECK_EQ(settings.settingsProfileVersion, 4);
     CHECK_EQ(settings.terrainAnisotropy, "2x");
     CHECK_EQ(settings.waterReflectionSize, 256);
 
@@ -494,12 +440,50 @@ TEST_CASE("Android profile version three lightens terrain filtering and water re
     CHECK_EQ(settings.waterReflectionSize, 1024);
 }
 
-TEST_CASE("settings monster bolster feature defaults off")
+TEST_CASE("Android profile version four and desktop profile version one enable actor models once")
+{
+    OpenYAMM::Game::GameSettings android = OpenYAMM::Game::GameSettings::createDefault();
+    android.settingsProfileName = "android";
+    android.settingsProfileVersion = 3;
+    android.actorModels = false;
+    android.terrainAnisotropy = "4x";
+
+    REQUIRE(OpenYAMM::Game::migrateLegacyAndroidSettings(android));
+    CHECK_EQ(android.settingsProfileVersion, 4);
+    CHECK(android.actorModels);
+    CHECK_EQ(android.terrainAnisotropy, "4x");
+
+    android.actorModels = false;
+    CHECK_FALSE(OpenYAMM::Game::migrateLegacyAndroidSettings(android));
+    CHECK_FALSE(android.actorModels);
+
+    OpenYAMM::Game::GameSettings desktop = OpenYAMM::Game::GameSettings::createDefault();
+    desktop.settingsProfileName.clear();
+    desktop.settingsProfileVersion = 0;
+    desktop.actorModels = false;
+    desktop.soundVolume = 7;
+
+    REQUIRE(OpenYAMM::Game::migrateLegacyDesktopSettings(desktop));
+    CHECK_EQ(desktop.settingsProfileName, "desktop");
+    CHECK_EQ(desktop.settingsProfileVersion, 2);
+    CHECK(desktop.actorModels);
+    CHECK_EQ(desktop.soundVolume, 7);
+
+    desktop.actorModels = false;
+    CHECK_FALSE(OpenYAMM::Game::migrateLegacyDesktopSettings(desktop));
+    CHECK_FALSE(desktop.actorModels);
+
+    // Fresh defaults are current and need no migration.
+    OpenYAMM::Game::GameSettings fresh = OpenYAMM::Game::GameSettings::createDefault();
+    CHECK_FALSE(OpenYAMM::Game::migrateGameSettings(fresh));
+}
+
+TEST_CASE("settings defaults follow the shipped desktop profile when a file omits them")
 {
     CHECK_FALSE(OpenYAMM::Game::GameSettings::createDefault().bolsterMonsters);
     CHECK(
         OpenYAMM::Game::GameSettings::createDefault().blasterSkillScaling
-        == OpenYAMM::Game::BlasterSkillScalingMode::Default);
+        == OpenYAMM::Game::BlasterSkillScalingMode::ScalingDamage);
     CHECK_EQ(OpenYAMM::Game::GameSettings::createDefault().blasterMinimumRecoveryTicks, 0);
 
     const std::filesystem::path path =
@@ -518,8 +502,8 @@ TEST_CASE("settings monster bolster feature defaults off")
 
     REQUIRE(loadedSettings.has_value());
     CHECK_FALSE(loadedSettings->bolsterMonsters);
-    CHECK_FALSE(loadedSettings->outdoorPathfinding);
-    CHECK(loadedSettings->blasterSkillScaling == OpenYAMM::Game::BlasterSkillScalingMode::Default);
+    CHECK(loadedSettings->outdoorPathfinding);
+    CHECK(loadedSettings->blasterSkillScaling == OpenYAMM::Game::BlasterSkillScalingMode::ScalingDamage);
     CHECK_EQ(loadedSettings->blasterMinimumRecoveryTicks, 0);
     CHECK_FALSE(loadedSettings->logIndoorVisibility);
     CHECK_FALSE(loadedSettings->logOutdoorPathfinding);
@@ -531,7 +515,7 @@ TEST_CASE("settings monster bolster feature defaults off")
     CHECK_EQ(loadedSettings->combatTraceFile, "logs/combat_trace.log");
     CHECK(loadedSettings->combatTraceAppend);
     CHECK_EQ(loadedSettings->contextActionPopup, OpenYAMM::Game::GameSettings::createDefault().contextActionPopup);
-    CHECK(loadedSettings->questMarkers);
+    CHECK_FALSE(loadedSettings->questMarkers);
     CHECK(loadedSettings->outdoorBillboardDepthSlice == doctest::Approx(256.0f));
     CHECK_FALSE(loadedSettings->skipEventCutscenes);
     CHECK(loadedSettings->waitForLevelSprites);
@@ -943,12 +927,13 @@ TEST_CASE("monster hostility table follows merged merged party relations")
     CHECK(gameData.monsterTable.isHostileToParty(75));
 }
 
-TEST_CASE("light bolt sprites resolve to existing billboard textures")
+// Light Bolt draws its effects, never these textures (PROJECTILE_VFX_ALL_PROPOSAL.md); the frames stay as data.
+TEST_CASE("light bolt sprite frames resolve their texture names")
 {
     const OpenYAMM::Game::SpriteFrameTable spriteFrameTable = loadCommonSpriteFrameTable();
 
-    checkFirstSpriteFrameTexture(spriteFrameTable, "spell78b", "sp78b", "sp78b.bmp");
-    checkFirstSpriteFrameTexture(spriteFrameTable, "spell78c", "sp78c", "sp78c.bmp");
+    checkFirstSpriteFrameTexture(spriteFrameTable, "spell78b", "sp78b");
+    checkFirstSpriteFrameTexture(spriteFrameTable, "spell78c", "sp78c");
 }
 
 TEST_CASE("directional sprite bases resolve with an octant suffix")

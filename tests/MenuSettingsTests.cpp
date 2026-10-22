@@ -1,5 +1,6 @@
 #include "game/ui/MenuSettingsModel.h"
 #include <doctest/doctest.h>
+#include <algorithm>
 #include <fstream>
 
 using namespace OpenYAMM::Game;
@@ -101,6 +102,39 @@ TEST_CASE("mouse wheel bindings distinguish directions and survive settings save
     std::filesystem::remove(path);
 }
 
+TEST_CASE("extra mouse button bindings are polled and survive settings save and load")
+{
+    const InputBinding mouse4 = mouseButtonInputBinding(SDL_BUTTON_X1);
+    const InputBinding mouse5 = mouseButtonInputBinding(SDL_BUTTON_X2);
+    CHECK(inputBindingDisplayName(mouse5) == "Mouse 5");
+    CHECK(sameMenuBinding(mouse5, parseInputBindingName(inputBindingName(mouse5))));
+    CHECK(sameMenuBinding(mouse5, parseInputBindingName("Mouse 5")));
+    CHECK(sameMenuBinding(
+        mouseButtonInputBinding(SDL_BUTTON_MIDDLE),
+        parseInputBindingName(inputBindingName(mouseButtonInputBinding(SDL_BUTTON_MIDDLE)))));
+    CHECK_FALSE(sameMenuBinding(mouse4, mouse5));
+    CHECK(parseInputBindingName("MouseButton_0").kind == InputBindingKind::None);
+    CHECK(parseInputBindingName("MouseButton_33").kind == InputBindingKind::None);
+
+    CHECK(mouseButtonHeldInFlags(SDL_BUTTON_X2MASK, SDL_BUTTON_X2));
+    CHECK(mouseButtonHeldInFlags(SDL_BUTTON_X1MASK | SDL_BUTTON_LMASK, SDL_BUTTON_X1));
+    CHECK_FALSE(mouseButtonHeldInFlags(SDL_BUTTON_X1MASK, SDL_BUTTON_X2));
+    CHECK_FALSE(mouseButtonHeldInFlags(0, SDL_BUTTON_X2));
+    CHECK_FALSE(mouseButtonHeldInFlags(SDL_BUTTON_X2MASK, 0));
+
+    GameSettings settings = GameSettings::createDefault();
+    settings.keyboard.setBinding(KeyboardAction::DoubleSpeed, mouse5);
+    settings.keyboard.setBinding(KeyboardAction::Jump, mouse4);
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "openyamm-mouse-button-settings.ini";
+    std::string error;
+    REQUIRE(saveGameSettings(path, settings, error));
+    const std::optional<GameSettings> loaded = loadGameSettings(path, error);
+    REQUIRE_MESSAGE(loaded, error);
+    CHECK(sameMenuBinding(mouse5, loaded->keyboard.binding(KeyboardAction::DoubleSpeed)));
+    CHECK(sameMenuBinding(mouse4, loaded->keyboard.binding(KeyboardAction::Jump)));
+    std::filesystem::remove(path);
+}
+
 TEST_CASE("invert mouse Y defaults off and persists menu changes")
 {
     const std::filesystem::path path = std::filesystem::temp_directory_path() / "openyamm-invert-mouse-settings.ini";
@@ -178,8 +212,9 @@ TEST_CASE("enemy health settings migrate legacy toggles and roundtrip the replac
 TEST_CASE("ambient occlusion is optional and its intensity validates and persists")
 {
     GameSettings settings = GameSettings::createDefault();
-    CHECK_FALSE(settings.ambientOcclusion);
-    CHECK(settings.ambientOcclusionStrength == 35);
+    CHECK(settings.ambientOcclusion); // Desktop default.
+    CHECK(settings.ambientOcclusionStrength == 50);
+    REQUIRE(setMenuSettingValue(settings, "ambient_occlusion", "false"));
     REQUIRE(setMenuSettingValue(settings, "ambient_occlusion", "true"));
     REQUIRE(setMenuSettingValue(settings, "ambient_occlusion_strength", "42"));
     CHECK_FALSE(setMenuSettingValue(settings, "ambient_occlusion", "yes"));
@@ -198,7 +233,8 @@ TEST_CASE("ambient occlusion is optional and its intensity validates and persist
     CHECK(loaded->ambientOcclusionStrength == 42);
     {
         std::ofstream file(path);
-        file << "[video]\nambient_occlusion=false\nambient_occlusion_strength=900\n";
+        file << "[profile]\nname=desktop\nversion=5\n"
+             << "[video]\nambient_occlusion=false\nambient_occlusion_strength=900\n";
     }
     const std::optional<GameSettings> bounded = loadGameSettings(path, error);
     REQUIRE_MESSAGE(bounded, error);
@@ -207,10 +243,10 @@ TEST_CASE("ambient occlusion is optional and its intensity validates and persist
     std::filesystem::remove(path);
 }
 
-TEST_CASE("sharpening is off by default and its strength validates and persists")
+TEST_CASE("sharpening defaults to the desktop profile and its strength validates and persists")
 {
     GameSettings settings = GameSettings::createDefault();
-    CHECK(settings.sharpening == 0);
+    CHECK(settings.sharpening == 50);
     REQUIRE(setMenuSettingValue(settings, "sharpening", "40"));
     for (const std::string value : {"-1", "101", "40junk", ""})
     {
@@ -233,11 +269,12 @@ TEST_CASE("sharpening is off by default and its strength validates and persists"
     std::filesystem::remove(path);
 }
 
-TEST_CASE("anti-aliasing is off by default and its sample count validates and persists")
+TEST_CASE("anti-aliasing defaults to 4x on desktop and its sample count validates and persists")
 {
     GameSettings settings = GameSettings::createDefault();
-    CHECK(settings.antialiasing == 0);
-    CHECK(menuSettingValue(settings, "antialiasing") == "off");
+    CHECK(settings.antialiasing == 4);
+    CHECK(menuSettingValue(settings, "antialiasing") == "4x");
+    REQUIRE(setMenuSettingValue(settings, "antialiasing", "off"));
     REQUIRE(setMenuSettingValue(settings, "antialiasing", "4x"));
     for (const std::string value : {"8x", "1x", "4X", "on", ""})
     {
@@ -256,7 +293,7 @@ TEST_CASE("anti-aliasing is off by default and its sample count validates and pe
     }
     const std::optional<GameSettings> invalid = loadGameSettings(path, error);
     REQUIRE_MESSAGE(invalid, error);
-    CHECK(invalid->antialiasing == 0);
+    CHECK(invalid->antialiasing == GameSettings::createDefault().antialiasing);
     {
         std::ofstream file(path);
         file << "[video]\nantialiasing=2X\n";
@@ -267,16 +304,13 @@ TEST_CASE("anti-aliasing is off by default and its sample count validates and pe
     std::filesystem::remove(path);
 }
 
-TEST_CASE("graphics quality presets match the shipped profiles and report custom mixes")
+TEST_CASE("graphics quality presets match the default profile and report custom mixes")
 {
-    const std::filesystem::path root = OPENYAMM_SOURCE_DIR;
-    std::string error;
-    const std::optional<GameSettings> desktop = loadGameSettings(root / "settings_release.ini", error);
-    REQUIRE_MESSAGE(desktop, error);
+    // Desktop defaults are the high preset (Android defaults are the low preset).
+    std::optional<GameSettings> desktop = GameSettings::createDefault();
     CHECK(menuSettingValue(*desktop, "graphics_quality") == "high");
-    const std::optional<GameSettings> android = loadGameSettings(root / "android/settings.ini", error);
-    REQUIRE_MESSAGE(android, error);
-    CHECK(menuSettingValue(*android, "graphics_quality") == "low");
+    desktop->ambientOcclusion = false;
+    CHECK(menuSettingValue(*desktop, "graphics_quality") == "custom");
 
     GameSettings settings = *desktop;
     settings.sharpening = 40;
@@ -284,7 +318,7 @@ TEST_CASE("graphics quality presets match the shipped profiles and report custom
     REQUIRE(setMenuSettingValue(settings, "graphics_quality", "high"));
     CHECK(menuSettingValue(settings, "graphics_quality") == "high");
     CHECK(settings.antialiasing == 4);
-    CHECK_FALSE(settings.ambientOcclusion);
+    CHECK(settings.ambientOcclusion);
     CHECK(settings.terrainAnisotropy == "8x");
     CHECK(settings.waterReflectionSize == 512);
     CHECK(settings.viewDistance == "default");
@@ -305,4 +339,40 @@ TEST_CASE("graphics quality presets match the shipped profiles and report custom
     REQUIRE(setMenuSettingValue(settings, "bloom", "false"));
     CHECK(menuSettingValue(settings, "graphics_quality") == "custom");
     CHECK_FALSE(setMenuSettingValue(settings, "graphics_quality", "ultra"));
+}
+
+TEST_CASE("party portrait frame defaults on and persists menu changes")
+{
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "openyamm-party-frame-settings.ini";
+    std::string error;
+    GameSettings settings = GameSettings::createDefault();
+    CHECK(settings.partyFrame);
+    CHECK(menuSettingValue(settings, "party_frame") == "true");
+
+    for (const std::string value : {"false", "true"})
+    {
+        REQUIRE(setMenuSettingValue(settings, "party_frame", value));
+        CHECK(menuSettingValue(settings, "party_frame") == value);
+        CHECK_FALSE(setMenuSettingValue(settings, "party_frame", "invalid"));
+        CHECK(menuSettingValue(settings, "party_frame") == value);
+        REQUIRE(saveGameSettings(path, settings, error));
+        const std::optional<GameSettings> loaded = loadGameSettings(path, error);
+        REQUIRE_MESSAGE(loaded.has_value(), error.c_str());
+        CHECK(loaded->partyFrame == (value == "true"));
+    }
+
+    settings.partyFrame = false;
+    const std::vector<SettingsEntry> entries = settingsEntriesToSave(settings);
+    CHECK(std::find(entries.begin(), entries.end(), SettingsEntry{"gameplay", "party_frame", "false"})
+        != entries.end());
+
+    {
+        std::ofstream file(path);
+        file << "[gameplay]\nquest_markers=true\n";
+    }
+    const std::optional<GameSettings> loaded = loadGameSettings(path, error);
+    REQUIRE_MESSAGE(loaded.has_value(), error.c_str());
+    CHECK(loaded->partyFrame);
+    CHECK(loaded->questMarkers);
+    std::filesystem::remove(path);
 }

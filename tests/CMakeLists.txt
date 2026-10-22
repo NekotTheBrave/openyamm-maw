@@ -1,5 +1,10 @@
 add_executable(openyamm_unit_tests
     AssetFileSystemTests.cpp
+    UserDataPathsTests.cpp
+    LogFileTests.cpp
+    AssetPackIndexTests.cpp
+    UpdaterTests.cpp
+    SettingsFileTests.cpp
     ItemVisualTests.cpp
     ActorPathRuntimeTests.cpp
     ActorCrowdingTests.cpp
@@ -94,6 +99,7 @@ add_executable(openyamm_unit_tests
     ../game/render/SkyState.cpp
     ../game/outdoor/OutdoorDistantSea.cpp
     WeatherModelTests.cpp
+    WorldItemShapeTests.cpp
     ../game/outdoor/WeatherModel.cpp
     ../game/outdoor/WeatherPresentation.cpp
     ScriptedEventTimerTests.cpp
@@ -119,6 +125,14 @@ add_executable(openyamm_unit_tests
     ../engine/AudioSystem.cpp
     ../engine/AssetFileSystem.cpp
     ../engine/AssetScaleTier.cpp
+    ../engine/UserDataPaths.cpp
+    ../engine/LogFile.cpp
+    ../engine/AssetPackIndex.cpp
+    ../engine/update/AppInstallation.cpp
+    ../engine/update/AppUpdater.cpp
+    ../engine/update/HttpTransport.cpp
+    ../engine/update/ReleaseManifest.cpp
+    ../engine/update/Sha256.cpp
     ../engine/FontAsset.cpp
     ../engine/ImageAssetLoader.cpp
     ../engine/ImageMipmaps.cpp
@@ -170,6 +184,7 @@ add_executable(openyamm_unit_tests
     ../game/gameplay/GameplayDialogController.cpp
     ../game/gameplay/GameplayCombatController.cpp
     ../game/gameplay/GameplaySpeechRules.cpp
+    ../game/gameplay/PartyHostileAlert.cpp
     ../game/gameplay/GameplayWorldItemInteraction.cpp
     ../game/gameplay/InteractiveDecorationRules.cpp
     ../game/gameplay/BountyHuntRuntime.cpp
@@ -222,7 +237,7 @@ add_executable(openyamm_unit_tests
     ../game/fx/ParticleRecipes.cpp
     ../game/fx/ProjectileEffectBindings.cpp
     ../game/fx/ProjectileModelBindings.cpp
-    ../game/fx/ItemModelBindings.cpp
+    ../game/tables/ItemModelBindings.cpp
     ../game/fx/SpellAuraEffectBindings.cpp
     ../game/fx/EffectSystem.cpp
     ../game/fx/import/EffectDefinitionLoader.cpp
@@ -236,6 +251,7 @@ add_executable(openyamm_unit_tests
     ../game/items/ItemGenerator.cpp
     ../game/items/PriceCalculator.cpp
     ../game/items/ItemRuntime.cpp
+    ../game/items/WorldItemShape.cpp
     ../game/party/Party.cpp
     ../game/party/EventSpellBuffs.cpp
     ../game/party/LloydsBeaconRuntime.cpp
@@ -337,6 +353,7 @@ target_link_libraries(openyamm_unit_tests
         ${OPENYAMM_LUA_TARGET}
         yaml-cpp::yaml-cpp
         freetype
+        openyamm_monocypher
 )
 
 target_include_directories(openyamm_unit_tests
@@ -381,6 +398,7 @@ add_executable(openyamm_runtime_tests
     IndoorActorFactionRuntimeTests.cpp
     IndoorDecorationInteractionTests.cpp
     OutdoorLightingProbeRuntimeTests.cpp
+    OutdoorEventSpellProjectileTests.cpp
 )
 
 target_include_directories(openyamm_runtime_tests PRIVATE

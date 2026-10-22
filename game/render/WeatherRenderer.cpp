@@ -37,21 +37,17 @@ constexpr float FarRainWidth = 1.8f;
 // The camera's own motion slants rain streaks and smears snow, but only partly, as the eye tracks them.
 constexpr float RainCameraMotionShare = 0.6f;
 constexpr std::array<float, 3> RainColor = {0.7f, 0.76f, 0.84f};
-// Brighter than the fog behind them, so flakes read against a grey sky.
-constexpr std::array<float, 3> SnowColor = {1.2f, 1.22f, 1.26f};
+// Splash crowns: the colour the engine's snow had before flakes became data (WeatherFlakeLook's default).
+constexpr std::array<float, 3> SplashColor = {1.2f, 1.22f, 1.26f};
 
-// Snow: a near box of flakes drifting with the wind and a sparser far box for depth.
+// Snow and ash flakes: a near box drifting with the wind and a sparser far box for depth. Their colour, fall speed,
+// sizes, opacities and sway are data (WeatherFlakeLook, weather.yml flakes).
 constexpr std::array<float, 3> NearSnowBox = {2600.0f, 2600.0f, 2000.0f};
 constexpr float NearSnowBoxLift = 450.0f;
 constexpr std::array<float, 3> FarSnowBox = {6000.0f, 6000.0f, 3200.0f};
 constexpr float FarSnowBoxLift = 800.0f;
-constexpr float SnowFallSpeed = 150.0f;
-constexpr float NearSnowSize = 3.0f;
-constexpr float FarSnowSize = 6.0f;
 // Flakes are drawn along their motion over this time, so strong wind smears them.
 constexpr float SnowStreakSeconds = 0.03f;
-constexpr float SnowSwayAmplitude = 30.0f;
-constexpr float SnowSwayRate = 1.1f;
 constexpr float NearSnowFade = 180.0f;
 // The far layer only fills in beyond the near box.
 constexpr float FarSnowFade = 1100.0f;
@@ -369,11 +365,18 @@ void WeatherRenderer::render(uint16_t viewId, const WeatherDrawFrame &frame)
     m_hasCamera = true;
     const std::array<float, 3> rainVelocity = {
         frame.windX * RainWindShare, frame.windY * RainWindShare, -RainFallSpeed};
-    const std::array<float, 3> snowVelocity = {frame.windX, frame.windY, -SnowFallSpeed};
+    const std::array<float, 3> snowVelocity = {frame.windX, frame.windY, -frame.snowLook.fallSpeed};
+    const std::array<float, 3> ashVelocity = {frame.windX, frame.windY, -frame.ashLook.fallSpeed};
     advanceLayer(m_rain, rainVelocity, RainBox, dt);
     advanceLayer(m_farRain, rainVelocity, FarRainBox, dt);
     advanceLayer(m_nearSnow, snowVelocity, NearSnowBox, dt);
     advanceLayer(m_farSnow, snowVelocity, FarSnowBox, dt);
+
+    if (frame.ashLevel > 0.0f)
+    {
+        advanceLayer(m_nearAsh, ashVelocity, NearSnowBox, dt);
+        advanceLayer(m_farAsh, ashVelocity, FarSnowBox, dt);
+    }
     // The curtain's streak pattern scrolls down at the rain's fall speed.
     m_curtainPhase = wrapPositive(
         m_curtainPhase + dt * RainFallSpeed / (CurtainTop - CurtainBottom) * CurtainRepeats, 1.0f);
@@ -381,7 +384,8 @@ void WeatherRenderer::render(uint16_t viewId, const WeatherDrawFrame &frame)
     const QualityBudget budget = qualityBudget(frame.quality);
     updateSplashes(frame, std::clamp(frame.rainLevel, 0.0f, 1.0f), budget.splashes);
 
-    if (!isReady() || budget.rain == 0 || (frame.rainLevel <= 0.001f && frame.snowLevel <= 0.001f))
+    if (!isReady() || budget.rain == 0
+        || (frame.rainLevel <= 0.001f && frame.snowLevel <= 0.001f && frame.ashLevel <= 0.001f))
     {
         return;
     }
@@ -453,7 +457,7 @@ void WeatherRenderer::render(uint16_t viewId, const WeatherDrawFrame &frame)
                 }
 
                 setUniforms(frame.camera, {SplashMaxDistance, 0.0f, 0.0f}, 0.0f, {0.0f, 0.0f, 0.0f, SplashSize}, {},
-                    SnowColor, 0.6f + 0.3f * level, {0.0f, 0.0f, 0.0f, frame.pixelWorldSize});
+                    SplashColor, 0.6f + 0.3f * level, {0.0f, 0.0f, 0.0f, frame.pixelWorldSize});
                 bgfx::setVertexBuffer(0, &buffer);
                 bgfx::setState(blendState);
                 bgfx::submit(viewId, m_splashProgram);
@@ -481,28 +485,51 @@ void WeatherRenderer::render(uint16_t viewId, const WeatherDrawFrame &frame)
 
     if (frame.snowLevel > 0.001f)
     {
-        const float level = std::clamp(frame.snowLevel, 0.0f, 1.0f);
-        const std::array<float, 4> sway = {SnowSwayAmplitude, SnowSwayRate, 0.0f, frame.pixelWorldSize};
-        const std::array<float, 4> relativeVelocity = {
-            snowVelocity[0] - m_cameraVelocity[0] * RainCameraMotionShare,
-            snowVelocity[1] - m_cameraVelocity[1] * RainCameraMotionShare,
-            snowVelocity[2] - m_cameraVelocity[2] * RainCameraMotionShare,
-            SnowStreakSeconds};
-
-        if (budget.farSnow > 0)
-        {
-            setUniforms({frame.camera[0], frame.camera[1], frame.camera[2] + FarSnowBoxLift}, FarSnowBox, FarSnowFade,
-                {m_farSnow.offset[0], m_farSnow.offset[1], m_farSnow.offset[2], FarSnowSize}, relativeVelocity,
-                SnowColor, 0.75f, sway);
-            submitDrops(viewId, m_snowProgram, static_cast<uint32_t>(static_cast<float>(budget.farSnow) * level),
-                blendState);
-        }
-
-        setUniforms({frame.camera[0], frame.camera[1], frame.camera[2] + NearSnowBoxLift}, NearSnowBox,
-            NearSnowFade, {m_nearSnow.offset[0], m_nearSnow.offset[1], m_nearSnow.offset[2], NearSnowSize},
-            relativeVelocity, SnowColor, 0.9f, sway);
-        submitDrops(viewId, m_snowProgram, static_cast<uint32_t>(static_cast<float>(budget.nearSnow) * level),
-            blendState);
+        submitFlakes(viewId, frame, frame.snowLook, frame.snowLevel, m_nearSnow, m_farSnow, budget.nearSnow,
+            budget.farSnow, blendState);
     }
+
+    if (frame.ashLevel > 0.001f)
+    {
+        submitFlakes(viewId, frame, frame.ashLook, frame.ashLevel, m_nearAsh, m_farAsh, budget.nearSnow,
+            budget.farSnow, blendState);
+    }
+}
+
+void WeatherRenderer::submitFlakes(uint16_t viewId, const WeatherDrawFrame &frame, const WeatherFlakeLook &look,
+    float shownLevel, const Layer &nearLayer, const Layer &farLayer, uint32_t nearCount, uint32_t farCount,
+    uint64_t state)
+{
+    const float level = std::clamp(shownLevel, 0.0f, 1.0f);
+    const std::array<float, 4> sway = {look.sway, look.swayRate, 0.0f, frame.pixelWorldSize};
+    const std::array<float, 4> relativeVelocity = {
+        frame.windX - m_cameraVelocity[0] * RainCameraMotionShare,
+        frame.windY - m_cameraVelocity[1] * RainCameraMotionShare,
+        -look.fallSpeed - m_cameraVelocity[2] * RainCameraMotionShare,
+        SnowStreakSeconds};
+    const auto setUniforms = [&](const std::array<float, 3> &centre, const std::array<float, 3> &box, float nearFade,
+        const Layer &layer, float size, float alpha)
+    {
+        const std::array<std::array<float, 4>, 6> values = {{
+            {centre[0], centre[1], centre[2], m_timeSeconds},
+            {box[0], box[1], box[2], nearFade},
+            {layer.offset[0], layer.offset[1], layer.offset[2], size},
+            relativeVelocity,
+            {look.color[0] * frame.light[0], look.color[1] * frame.light[1], look.color[2] * frame.light[2], alpha},
+            sway,
+        }};
+        bgfx::setUniform(m_weatherUniform, values.data(), 6);
+    };
+
+    if (farCount > 0)
+    {
+        setUniforms({frame.camera[0], frame.camera[1], frame.camera[2] + FarSnowBoxLift}, FarSnowBox, FarSnowFade,
+            farLayer, look.size[1], look.alpha[1]);
+        submitDrops(viewId, m_snowProgram, static_cast<uint32_t>(static_cast<float>(farCount) * level), state);
+    }
+
+    setUniforms({frame.camera[0], frame.camera[1], frame.camera[2] + NearSnowBoxLift}, NearSnowBox, NearSnowFade,
+        nearLayer, look.size[0], look.alpha[0]);
+    submitDrops(viewId, m_snowProgram, static_cast<uint32_t>(static_cast<float>(nearCount) * level), state);
 }
 }

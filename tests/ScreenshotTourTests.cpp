@@ -148,26 +148,26 @@ TEST_CASE("screenshot launch directives are read but never persisted")
     std::filesystem::remove(path);
 }
 
-TEST_CASE("melee hit blood effects setting is opt-in and persists")
+TEST_CASE("melee hit blood effects setting defaults on as shipped and persists when turned off")
 {
-    CHECK_FALSE(GameSettings{}.meleeHitBloodEffects);
+    CHECK(GameSettings{}.meleeHitBloodEffects);
 
     const std::filesystem::path path =
         std::filesystem::temp_directory_path() / "openyamm-melee-hit-blood-settings-test.ini";
     {
         std::ofstream output(path);
-        output << "[gameplay]\nmelee_hit_blood_effects=true\n";
+        output << "[gameplay]\nmelee_hit_blood_effects=false\n";
     }
 
     std::string error;
     const std::optional<GameSettings> settings = loadGameSettings(path, error);
     REQUIRE(settings);
-    CHECK(settings->meleeHitBloodEffects);
+    CHECK_FALSE(settings->meleeHitBloodEffects);
     REQUIRE(saveGameSettings(path, *settings, error));
 
     const std::optional<GameSettings> reloaded = loadGameSettings(path, error);
     REQUIRE(reloaded);
-    CHECK(reloaded->meleeHitBloodEffects);
+    CHECK_FALSE(reloaded->meleeHitBloodEffects);
 
     std::filesystem::remove(path);
 }

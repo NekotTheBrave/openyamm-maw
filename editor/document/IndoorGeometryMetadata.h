@@ -80,6 +80,8 @@ struct EditorIndoorGeometrySurfaceMetadata
     std::string materialId;
     std::vector<std::string> flags;
     std::optional<EditorIndoorGeometrySurfaceTriggerMetadata> trigger = std::nullopt;
+    // The face's cog number, the id evt.SetFacetBit and evt.SetTexture address it by (0: none).
+    uint16_t cogNumber = 0;
     std::optional<size_t> runtimeFaceIndex = std::nullopt;
 };
 
@@ -114,6 +116,8 @@ struct EditorIndoorGeometryEntityMetadata
     uint16_t decorationListId = 0;
     uint16_t eventIdPrimary = 0;
     uint16_t eventIdSecondary = 0;
+    // Degrees, as the BLV entity stores it; a model decoration bound with yaw: facing turns by it.
+    int facing = 0;
     std::optional<size_t> runtimeEntityIndex = std::nullopt;
 };
 
@@ -125,6 +129,8 @@ struct EditorIndoorGeometryLightMetadata
     int16_t radius = 0;
     int16_t brightness = 0;
     std::string type = "point";
+    // The BLV light id: lights sharing a group switch together with evt.SetLight(group, on) (0: none).
+    int32_t group = 0;
     std::optional<size_t> runtimeLightIndex = std::nullopt;
 };
 

@@ -8,7 +8,10 @@ namespace OpenYAMM::Game
 {
 const std::array<const char *, CharacterBuffCount> GameplayPersonalBuffNames = {{
     "Bless", "Fate", "Preservation", "Regeneration", "Hammerhands", "Pain Reflection",
-    "Fire Aura", "Vampiric Weapon", "Mistform", "Glamour"
+    "Fire Aura", "Vampiric Weapon", "Mistform", "Glamour", "Haste", "Heroism", "Shield", "Stoneskin",
+    "Water Breathing", "Temp Might", "Temp Intellect", "Temp Personality", "Temp Endurance", "Temp Speed",
+    "Temp Accuracy", "Temp Luck", "Fire Resistance", "Air Resistance", "Water Resistance", "Earth Resistance",
+    "Mind Resistance", "Body Resistance"
 }};
 
 namespace

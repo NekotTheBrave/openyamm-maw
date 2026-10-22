@@ -575,7 +575,8 @@ MonsterTable::MonsterMovementType parseMovementType(const std::string &value)
         return MonsterTable::MonsterMovementType::Free;
     }
 
-    if (lower == "stationary")
+    // The MM7 rows (Treants) spell it "stand".
+    if (lower == "stationary" || lower == "stand")
     {
         return MonsterTable::MonsterMovementType::Stationary;
     }

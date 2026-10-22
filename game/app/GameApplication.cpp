@@ -845,6 +845,7 @@ std::string traceItemInstanceSummary(const InventoryItem &item, const ItemTable 
         + " identified=" + (item.identified ? "true" : "false")
         + " broken=" + (item.broken ? "true" : "false")
         + " stolen=" + (item.stolen ? "true" : "false")
+        + " hardened=" + (item.hardened ? "true" : "false")
         + " standard_enchant_id=" + std::to_string(item.standardEnchantId)
         + " special_enchant_id=" + std::to_string(item.specialEnchantId)
         + " artifact_id=" + std::to_string(item.artifactId)
@@ -1381,6 +1382,11 @@ bool savedSelectedMapStateNeedsFreshAssets(
 bool isAutosavePath(const std::filesystem::path &path)
 {
     return toLowerCopy(path.stem().string()) == "autosave";
+}
+
+bool isQuickSavePath(const std::filesystem::path &path)
+{
+    return toLowerCopy(path.stem().string()) == "quicksave";
 }
 
 int effectiveRespawnAreaIdForMap(const MapStatsEntry &mapEntry, const std::string &mapFileName)
@@ -4267,8 +4273,8 @@ void GameApplication::registerDebugConsoleCommands()
 
     m_debugConsole.registerCommand({
         .name = "weather",
-        .description = "Show, force or forecast outdoor rain, snow, wind and storms (not saved).",
-        .usage = "weather [status | rain|snow <0-1|light|medium|heavy|very_heavy> | clear | auto"
+        .description = "Show, force or forecast outdoor rain, snow, ash, wind and storms (not saved).",
+        .usage = "weather [status | rain|snow|ash <0-1|light|medium|heavy|very_heavy> | clear | auto"
             " | wind <degrees> <speed>|auto | storm <on|off|auto> | strike [near|middle|far] | forecast [hours]]",
         .callback = [this, commandResult](const DebugConsole::CommandContext &context)
         {
@@ -4284,7 +4290,7 @@ void GameApplication::registerDebugConsoleCommands()
             const std::string value = context.args.size() >= 2 ? toLowerCopy(context.args[1]) : "";
             bool changed = true;
 
-            if ((action == "rain" || action == "snow") && !value.empty())
+            if ((action == "rain" || action == "snow" || action == "ash") && !value.empty())
             {
                 std::optional<float> intensity = rules.namedIntensity(value);
                 intensity = intensity ? intensity : parseFloatArgument(value);
@@ -4294,7 +4300,8 @@ void GameApplication::registerDebugConsoleCommands()
                     return commandResult(false, "Usage: weather " + action + " <0-1|light|medium|heavy|very_heavy>");
                 }
 
-                overrides.precipitation = action == "rain" ? PrecipitationKind::Rain : PrecipitationKind::Snow;
+                overrides.precipitation = action == "rain" ? PrecipitationKind::Rain
+                    : action == "ash" ? PrecipitationKind::Ash : PrecipitationKind::Snow;
                 overrides.precipitationIntensity = *intensity;
             }
             else if (action == "clear")
@@ -4357,7 +4364,8 @@ void GameApplication::registerDebugConsoleCommands()
                     out << (hour > 0 ? "\n" : "") << "day " << static_cast<int>(minutes / 1440.0) << ' '
                         << (hourOfDay < 10 ? "0" : "") << hourOfDay << ":00 "
                         << (sample.precipitation == PrecipitationKind::Rain ? "rain"
-                            : sample.precipitation == PrecipitationKind::Snow ? "snow" : "dry")
+                            : sample.precipitation == PrecipitationKind::Snow ? "snow"
+                            : sample.precipitation == PrecipitationKind::Ash ? "ash" : "dry")
                         << ' ' << sample.intensity << " cloud=" << sample.cloudCover
                         << (sample.storm ? " storm" : "");
                 }
@@ -4388,9 +4396,11 @@ void GameApplication::registerDebugConsoleCommands()
             std::ostringstream out;
             out << "precipitation="
                 << (atmosphere.precipitation == PrecipitationKind::Rain ? "rain"
-                    : atmosphere.precipitation == PrecipitationKind::Snow ? "snow" : "none")
+                    : atmosphere.precipitation == PrecipitationKind::Snow ? "snow"
+                    : atmosphere.precipitation == PrecipitationKind::Ash ? "ash" : "none")
                 << " intensity=" << atmosphere.precipitationIntensity
                 << " shown_rain=" << shown.rainLevel() << " shown_snow=" << shown.snowLevel()
+                << " shown_ash=" << shown.ashLevel()
                 << " cloud_cover=" << atmosphere.cloudCover << " storm=" << (atmosphere.storm ? 1 : 0)
                 << " wetness=" << atmosphere.wetness << " wind=" << windSpeed << "@" << windDegrees << "deg"
                 << " quality=" << weatherQualityValue(m_settings.weatherQuality)
@@ -4966,6 +4976,61 @@ void GameApplication::registerDebugConsoleCommands()
             }
 
             return commandResult(false, "Usage: qbit get|set|clear <id> [id...] | qbit dump [active|all|filter]");
+        }});
+
+    m_debugConsole.registerCommand({
+        .name = "autonote",
+        .description = "Inspect or mutate the party's journal autonotes.",
+        .usage = "autonote get|set|clear <id> [id...] | autonote all",
+        .callback = [this, activeParty, commandResult](const DebugConsole::CommandContext &context)
+        {
+            const std::string usage = "Usage: autonote get|set|clear <id> [id...] | autonote all";
+            Party *pParty = activeParty();
+
+            if (context.args.empty() || pParty == nullptr)
+            {
+                return commandResult(false, pParty == nullptr ? "No active party." : usage);
+            }
+
+            const std::string action = toLowerCopy(context.args[0]);
+
+            if (action == "all")
+            {
+                const std::vector<JournalAutonoteEntry> &entries = m_gameSession.data().journalAutonoteTable().entries();
+
+                for (const JournalAutonoteEntry &entry : entries)
+                {
+                    pParty->setAutonote(entry.id, true);
+                }
+
+                return commandResult(true, "Unlocked " + std::to_string(entries.size()) + " autonotes.");
+            }
+
+            if ((action != "get" && action != "set" && action != "clear") || context.args.size() < 2)
+            {
+                return commandResult(false, usage);
+            }
+
+            std::ostringstream out;
+
+            for (size_t argumentIndex = 1; argumentIndex < context.args.size(); ++argumentIndex)
+            {
+                const std::optional<int32_t> autonoteId = parseInt32Argument(context.args[argumentIndex]);
+
+                if (!autonoteId || *autonoteId <= 0)
+                {
+                    return commandResult(false, "Invalid autonote id: " + context.args[argumentIndex]);
+                }
+
+                if (action != "get")
+                {
+                    pParty->setAutonote(uint32_t(*autonoteId), action == "set");
+                }
+
+                out << *autonoteId << " [" << (pParty->hasAutonote(uint32_t(*autonoteId)) ? "set" : "clear") << "]\n";
+            }
+
+            return commandResult(true, out.str());
         }});
 
     m_debugConsole.registerCommand({
@@ -5872,7 +5937,8 @@ void GameApplication::registerDebugConsoleCommands()
     m_debugConsole.registerCommand({
         .name = "item",
         .description = "Search for or grant an item to the party, or drop one on the ground (reviewing item models).",
-        .usage = "item search <text> | item give <id|text> [qty] | item add <id> [qty] | item drop <id> [x y z]",
+        .usage = "item search <text> | item give <id|text> [qty] | item add <id> [qty] | item drop <id> [x y z]"
+            " | item read <id>",
         .callback = [this, activeParty, activeGameplayWorld, commandResult](const DebugConsole::CommandContext &context)
         {
             if (context.args.size() < 2)
@@ -5914,6 +5980,25 @@ void GameApplication::registerDebugConsoleCommands()
                     request.sourceZ = *z;
                 }
                 return commandResult(pWorld->dropHeldItemToWorld(request), "Dropped item " + std::to_string(*itemId));
+            }
+
+            if (action == "read")
+            {
+                // Opens a letter or message scroll as reading it from the inventory would (reviewing scroll text).
+                const std::optional<int32_t> itemId = parseInt32Argument(context.args[1]);
+                const ReadableScrollEntry *pEntry =
+                    itemId && *itemId > 0 ? m_gameDataLoader.getReadableScrollTable().get(uint32_t(*itemId)) : nullptr;
+                if (pEntry == nullptr || pEntry->text.empty())
+                {
+                    return commandResult(false, "Usage: item read <id> (the item must be a readable scroll)");
+                }
+                const ItemDefinition *pItem = itemTable.get(uint32_t(*itemId));
+                GameplayUiController::ReadableScrollOverlayState &overlay =
+                    m_gameSession.gameplayUiController().readableScrollOverlay();
+                overlay.active = true;
+                overlay.title = pItem != nullptr && !pItem->name.empty() ? pItem->name : pEntry->itemName;
+                overlay.body = pEntry->text;
+                return commandResult(true, "Reading " + overlay.title);
             }
 
             if (action == "search")
@@ -6840,7 +6925,8 @@ bool GameApplication::applicationTextInputActive() const
 
     return (saveGameScreen.active && saveGameScreen.editActive)
         || gameplayScreenRuntime.houseBankState().inputActive()
-        || GameplayUiController::alchemyBenchSearchActive(gameplayScreenRuntime.characterScreenReadOnly());
+        || GameplayUiController::alchemyBenchSearchActive(gameplayScreenRuntime.characterScreenReadOnly())
+        || GameplayUiController::journalSearchActive(gameplayScreenRuntime.journalScreenStateReadOnly());
 }
 
 bool GameApplication::handlePendingInputPromptSdlEvent(const SDL_Event &event)
@@ -7196,6 +7282,7 @@ void GameApplication::loadOrCreateSettings()
     m_settings = GameSettings::createDefault();
     const std::filesystem::path path = settingsFilePath();
     std::string error;
+    bool loadFailed = false;
 
     if (std::filesystem::exists(path))
     {
@@ -7207,22 +7294,24 @@ void GameApplication::loadOrCreateSettings()
         }
         else
         {
+            // Run on defaults, but keep the player's file for them to fix.
+            loadFailed = true;
             std::cerr << "GameApplication: failed to load " << path.string() << ": " << error << '\n';
         }
     }
 
-#if defined(__ANDROID__)
-    if (migrateLegacyAndroidSettings(m_settings))
+    if (migrateGameSettings(m_settings))
     {
+#if defined(__ANDROID__)
         m_config.activeWorldId = m_settings.startWorldId;
-        std::cout << "GameApplication: migrated legacy settings to Android profile version "
-                  << m_settings.settingsProfileVersion << '\n';
-    }
 #endif
+        std::cout << "GameApplication: migrated settings to " << m_settings.settingsProfileName
+                  << " profile version " << m_settings.settingsProfileVersion << '\n';
+    }
 
     m_settings.startWorldId = normalizeWorldId(m_config.activeWorldId);
 
-    if (!saveGameSettings(path, m_settings, error))
+    if (!loadFailed && !saveGameSettings(path, m_settings, error))
     {
         std::cerr << "GameApplication: failed to write " << path.string() << ": " << error << '\n';
     }
@@ -7264,10 +7353,19 @@ bool GameApplication::syncActorModels(IGameplayWorldRuntime &world, float deltaS
         ? (m_pMapSceneRuntime->kind() == SceneKind::Outdoor
             ? &map->outdoorActorPreviewBillboardSet : &map->indoorActorPreviewBillboardSet) : nullptr;
     const ActorPreviewBillboardSet *pActorSet = pActors != nullptr && *pActors ? &**pActors : nullptr;
+    // The view's actor frames, not the loaded map's: a summoned monster the map did not preload gets its frames there,
+    // and a model sized from a standing sprite (scale_reference) reads them when its binding is built.
+    // Headless runs have no view: the loaded map's frames then.
+    const SpriteFrameTable *pActorFrames = m_pMapSceneRuntime->kind() == SceneKind::Outdoor
+        ? m_outdoorGameView.actorSpriteFrameTable() : m_indoorRenderer.actorSpriteFrameTable();
+    if (pActorFrames == nullptr && pActorSet != nullptr)
+    {
+        pActorFrames = &pActorSet->spriteFrameTable;
+    }
     if (!worldFx.configureActorModels(*m_pAssetFileSystem,
             m_gameDataLoader.actorModelManifest(),
             m_gameDataLoader.getMonsterTable(),
-            pActorSet != nullptr ? &pActorSet->spriteFrameTable : nullptr,
+            pActorFrames,
             pActorSet != nullptr ? std::span<const std::string>(pActorSet->modelDescriptors)
                 : std::span<const std::string>(),
             error))
@@ -7415,6 +7513,7 @@ bool GameApplication::loadGameData(Engine::AssetFileSystem &assetFileSystem)
     m_gameDataLoader.setInitialMapFileName(m_activeWorldManifest.start.mapFileName);
 
     loadOrCreateSettings();
+    m_pUpdater = GameUpdater::create(m_settings.updateUrl);
 
     if (!m_gameAudioSystem.initializeMenuAudio(assetFileSystem))
     {
@@ -8384,6 +8483,7 @@ bool GameApplication::loadCurrentSessionMap(
     const std::function<void(int)> &progressCallback)
 {
     setGameplayProfilingEnabled(false);
+    m_mapMoveAwaitingAutosave.reset();
 
     if (m_pAssetFileSystem == nullptr || !m_gameSession.hasCurrentMapFileName())
     {
@@ -9611,7 +9711,14 @@ bool GameApplication::processPendingQuickSaveInput()
     if (m_pendingQuickSave)
     {
         m_pendingQuickSave = false;
-        return quickSave();
+
+        if (!quickSave())
+        {
+            m_gameSession.gameplayScreenRuntime().setStatusBarEvent("You can't save here!");
+            return false;
+        }
+
+        return true;
     }
 
     return false;
@@ -9683,6 +9790,12 @@ bool GameApplication::quickSaveToPath(
             + " map=\"" + saveData->mapFileName + "\""
             + " reason=\"" + error + "\"");
         reportQuickSaveStatus("Quick save failed: " + error);
+
+        if (isQuickSavePath(path))
+        {
+            m_gameSession.gameplayScreenRuntime().setStatusBarEvent("Quick save failed!");
+        }
+
         return false;
     }
 
@@ -9697,6 +9810,12 @@ bool GameApplication::quickSaveToPath(
         traceSaveDataStateDump("save", path, *saveData, &m_gameDataLoader.getItemTable());
     );
     reportQuickSaveStatus("Quick save written");
+
+    if (isQuickSavePath(path))
+    {
+        m_gameSession.gameplayScreenRuntime().setStatusBarEvent("Game Saved!");
+    }
+
     return true;
 }
 
@@ -9939,8 +10058,14 @@ void GameApplication::openMenuScreen(bool paused)
     const std::string date = m_activeWorldManifest.name + " - Day " + std::to_string(days + 1);
     std::unique_ptr<MainMenuScreen> pScreen =
         std::make_unique<MainMenuScreen>(*m_pAssetFileSystem, m_gameDataRepository, &m_gameAudioSystem, m_settings,
-                                        std::move(actions), paused, location, date);
+                                        std::move(actions), m_settingsMenuSection, paused, location, date,
+                                        m_pUpdater.get());
     pScreen->prepareForFirstFrame();
+    if (!paused && m_pUpdater)
+    {
+        // Reaching the main menu proves an updated version works (packaging/UPDATER_PLAN.md 8.2, health check).
+        m_pUpdater->markHealthy(std::cout);
+    }
     if (SDL_Window *pWindow = SDL_GetKeyboardFocus())
     {
         SDL_SetWindowRelativeMouseMode(pWindow, false);
@@ -10612,6 +10737,10 @@ void GameApplication::renderFrame(int width, int height, float mouseWheelDelta, 
     const bool mobileInspectControlEnabled =
         pActiveScreenForInput == nullptr
         && m_gameSession.gameplayScreenRuntime().mobileInspectControlAvailable();
+    // Off the 3D view, where a held finger steers the camera, a long press inspects like the right button.
+    const bool mobileLongPressInspectEnabled =
+        mobileInspectControlEnabled
+        && m_gameSession.gameplayScreenRuntime().currentHudScreenState() != GameplayHudScreenState::Gameplay;
 
     std::vector<GameplayTouchControl> touchControls;
 #if defined(__ANDROID__)
@@ -10630,9 +10759,14 @@ void GameApplication::renderFrame(int width, int height, float mouseWheelDelta, 
         mobileJumpGestureEnabled,
         mobileFlightControlsEnabled,
         mobileInspectControlEnabled,
+        mobileLongPressInspectEnabled,
         touchControls);
     m_menuInputTour.update(m_settings.menuInputTourPath, m_gameInputSystem.frame(), m_screenManager.activeScreen(),
-                           m_screenshotCaptureService);
+                           m_screenshotCaptureService, m_settings.keyboard.bindings,
+                           [this](const std::string &line)
+                           {
+                               runTourConsoleLine(line, "Menu tour console: ");
+                           });
     m_gameSession.bindCurrentGameplayInputFrame(&m_gameInputSystem.frame());
     recordFrameDiagnostics(m_framePerformanceDiagnostics.inputNanoseconds, inputBeginTickCount);
 
@@ -10883,17 +11017,13 @@ void GameApplication::renderFrame(int width, int height, float mouseWheelDelta, 
         const uint64_t postWorldBeginTickCount = collectFrameDiagnostics ? SDL_GetTicksNS() : 0;
         WorldFxSystem &worldFx = m_pMapSceneRuntime->kind() == SceneKind::Outdoor
             ? m_outdoorGameView.worldFxSystem() : m_indoorRenderer.worldFxSystem();
-        if (m_settings.corpseStyle == CorpseStyle::Satchel)
+        std::string satchelError;
+        if (!worldFx.configureCorpseSatchels(*m_pAssetFileSystem, satchelError))
         {
-            std::string error;
-            if (!worldFx.configureCorpseSatchels(*m_pAssetFileSystem, error))
-            {
-                std::cerr << "Loot satchel load failed: " << error << '\n';
-                requestApplicationQuit();
-                return;
-            }
+            std::cerr << "Loot satchel load failed: " << satchelError << '\n';
+            requestApplicationQuit();
+            return;
         }
-        worldFx.setCorpseSatchels(m_settings.corpseStyle == CorpseStyle::Satchel);
         // Before the models: a corpse whose body is gone has no actor model to update.
         worldFx.syncCorpseSatchels(*pWorldRuntime, gameplayWorldPaused ? 0.0f : scaledGameplayDeltaSeconds);
         worldFx.syncShieldDomes(*pWorldRuntime, gameplayWorldPaused ? 0.0f : scaledGameplayDeltaSeconds);
@@ -11347,6 +11477,20 @@ bool GameApplication::setDebugClockMinute(int targetMinute)
     return delta <= 0.0f || advanceDebugGameMinutes(delta);
 }
 
+void GameApplication::runTourConsoleLine(const std::string &line, std::string_view logPrefix)
+{
+    // Echo the command's console output so tour logs record what each step saw (position, sky status, overrides).
+    const size_t countBefore = m_debugConsole.totalMessageCount();
+    m_debugConsole.executeLine(line);
+    const std::vector<DebugConsole::Message> &messages = m_debugConsole.messages();
+    const size_t added = std::min(m_debugConsole.totalMessageCount() - countBefore, messages.size());
+
+    for (size_t index = messages.size() - added; index < messages.size(); ++index)
+    {
+        std::cout << logPrefix << messages[index].text << '\n';
+    }
+}
+
 bool GameApplication::applyScreenshotTourShotPose(const ScreenshotTourShot &shot)
 {
     if (m_pMapSceneRuntime == nullptr)
@@ -11361,16 +11505,7 @@ bool GameApplication::applyScreenshotTourShotPose(const ScreenshotTourShot &shot
 
     for (const std::string &command : shot.commands)
     {
-        // Echo the command's console output so tour logs record what each shot saw (sky status, overrides).
-        const size_t countBefore = m_debugConsole.totalMessageCount();
-        m_debugConsole.executeLine(command);
-        const std::vector<DebugConsole::Message> &messages = m_debugConsole.messages();
-        const size_t added = std::min(m_debugConsole.totalMessageCount() - countBefore, messages.size());
-
-        for (size_t index = messages.size() - added; index < messages.size(); ++index)
-        {
-            std::cout << "Screenshot tour console: " << messages[index].text << '\n';
-        }
+        runTourConsoleLine(command, "Screenshot tour console: ");
     }
 
     if (m_pMapSceneRuntime->kind() == SceneKind::Outdoor)
@@ -11464,7 +11599,23 @@ bool GameApplication::processPendingMapMove()
         return false;
     }
 
-    std::optional<EventRuntimeState::PendingMapMove> pendingMapMove = m_gameplayController.consumePendingMapMove();
+    std::optional<EventRuntimeState::PendingMapMove> pendingMapMove;
+    const bool autosaveRequested = m_mapMoveAwaitingAutosave.has_value();
+
+    if (autosaveRequested)
+    {
+        if (activeViewSavePreviewCapturePending())
+        {
+            return false;
+        }
+
+        pendingMapMove = std::move(m_mapMoveAwaitingAutosave);
+        m_mapMoveAwaitingAutosave.reset();
+    }
+    else
+    {
+        pendingMapMove = m_gameplayController.consumePendingMapMove();
+    }
 
     if (!pendingMapMove)
     {
@@ -11479,7 +11630,19 @@ bool GameApplication::processPendingMapMove()
         || *pendingMapMove->mapName == "0"
         || *pendingMapMove->mapName == "0."
         || (!pendingMapMove->useMapStartPosition
+            && !pendingMapMove->reloadSameMap
             && sameMapFileName(*pendingMapMove->mapName, m_gameSession.currentMapFileName()));
+
+    // Like the original, autosave on the map being left, before its leave events run. Travel that already spent
+    // its days, food or fare autosaves on arrival instead, so the save never holds a paid trip not yet taken.
+    if (!isSameMapTeleport
+        && !autosaveRequested
+        && !pendingMapMove->travelTimeApplied
+        && requestAutosaveBeforeMapMove())
+    {
+        m_mapMoveAwaitingAutosave = std::move(pendingMapMove);
+        return false;
+    }
 
     const auto applyMapMoveDirection = [this, &pendingMapMove]()
     {
@@ -11646,12 +11809,42 @@ bool GameApplication::processPendingMapMove()
     renderLoadingOverlayProgress(95);
     completeLoadingOverlay();
 
-    if (IGameplayWorldRuntime *pWorldRuntime = m_gameSession.activeWorldRuntime())
+    if (pendingMapMove->travelTimeApplied)
     {
-        pWorldRuntime->requestTravelAutosave();
+        if (IGameplayWorldRuntime *pWorldRuntime = m_gameSession.activeWorldRuntime())
+        {
+            pWorldRuntime->requestTravelAutosave();
+        }
     }
 
     return true;
+}
+
+bool GameApplication::requestAutosaveBeforeMapMove()
+{
+    // The preview needs a rendered frame; the Noop renderer (headless runs) never produces one.
+    if (bgfx::getRendererType() == bgfx::RendererType::Noop)
+    {
+        return false;
+    }
+
+    IGameplayWorldRuntime *pWorldRuntime = m_gameSession.activeWorldRuntime();
+    return pWorldRuntime != nullptr && pWorldRuntime->requestTravelAutosave();
+}
+
+bool GameApplication::activeViewSavePreviewCapturePending() const
+{
+    if (m_pMapSceneRuntime != nullptr && m_pMapSceneRuntime->kind() == SceneKind::Outdoor)
+    {
+        return m_outdoorGameView.savePreviewCapturePending();
+    }
+
+    if (m_pMapSceneRuntime != nullptr && m_pMapSceneRuntime->kind() == SceneKind::Indoor)
+    {
+        return m_indoorGameView.savePreviewCapturePending();
+    }
+
+    return false;
 }
 
 void GameApplication::closeTransientGameplayUiForMapMove()

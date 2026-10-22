@@ -10,7 +10,9 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <set>
 #include <string>
+#include <vector>
 
 namespace OpenYAMM::Game
 {
@@ -33,17 +35,6 @@ enum class ControlScheme
     Modern,
     Classic
 };
-
-// Slain creatures: Satchel sinks the body after its death and leaves a loot satchel sized by what it holds; Keep leaves
-// the bodies on the ground (each one a creature model or sprite to draw).
-enum class CorpseStyle
-{
-    Satchel,
-    Keep
-};
-
-bool parseCorpseStyleValue(const std::string &value, CorpseStyle &result);
-std::string corpseStyleValue(CorpseStyle style);
 
 // Rain and snow particle density; Off hides precipitation (weather, sound and gameplay are unchanged).
 enum class WeatherQuality
@@ -71,6 +62,28 @@ std::string lightGridQualityValue(LightGridQuality quality);
 // Multisample anti-aliasing of the 3D view: "off", "2x" or "4x" as samples 0, 2 or 4.
 bool parseAntialiasingValue(const std::string &value, int &samples);
 std::string antialiasingValue(int samples);
+
+// One key of settings.ini, in the writer's section order.
+struct SettingsEntry
+{
+    std::string section;
+    std::string key;
+    std::string value;
+
+    bool operator==(const SettingsEntry &other) const = default;
+};
+
+// The player's settings.ini holds only the player's own choices; defaults come from GameSettings::createDefault().
+// A key that was in the file stays there (an earlier choice stays a choice, even when it equals today's default); any
+// other key is written only while it differs from the default. A changed default therefore reaches every player who
+// never touched that setting.
+struct SettingsFileState
+{
+    // "section.key" of every key the file held when it was loaded, or that a save wrote.
+    std::set<std::string> storedKeys;
+    // Keys this version does not know (from a newer version or a mod), written back unchanged.
+    std::vector<SettingsEntry> unknownEntries;
+};
 
 struct GameSettings
 {
@@ -133,11 +146,11 @@ struct GameSettings
     std::string settingsProfileName;
     uint32_t settingsProfileVersion = 0;
 
-    int soundVolume = 9;
-    int musicVolume = 9;
-    int voiceVolume = 9;
+    int soundVolume = 3;
+    int musicVolume = 2;
+    int voiceVolume = 3;
 
-    TurnRateMode turnRate = TurnRateMode::X32;
+    TurnRateMode turnRate = TurnRateMode::Smooth;
     bool walksound = true;
     bool showHits = true;
     bool alwaysRun = true;
@@ -147,7 +160,9 @@ struct GameSettings
     ControlScheme controlScheme = ControlScheme::Modern;
     bool bloodSplats = true;
     bool coloredLights = true;
-    bool tinting = true;
+    // Torch Light glows firelight orange instead of the original neutral grey.
+    bool warmTorchLight = false;
+    bool tinting = false;
     bool shadows = false;
     int modelShadowQuality = 2;
     bool modelLods = true;
@@ -159,7 +174,7 @@ struct GameSettings
     bool lightmaps = true;
     // Linear multipliers of the separate baked sun/sky sources; identity preserves the authored bake.
     float bakedSunStrength = 1.0f;
-    float bakedSkyStrength = 3.0f;
+    float bakedSkyStrength = 2.0f;
     std::array<float, 3> bakedSunColor = {1.0f, 1.0f, 1.0f};
     std::array<float, 3> bakedSkyColor = {0.8f, 0.9f, 1.0f};
     bool terrainDecorations = false;
@@ -198,7 +213,7 @@ struct GameSettings
     WindowMode windowMode = WindowMode::Windowed;
     int resolutionWidth = 1600;
     int resolutionHeight = 900;
-    bool verticalSync = false;
+    bool verticalSync = true;
     bool ambientOcclusion = false;
     int ambientOcclusionStrength = 35;
     // Glow around flames, glow cards, emissive surfaces and spell effects (display-space bloom).
@@ -211,7 +226,7 @@ struct GameSettings
     // Multisample anti-aliasing of the 3D view (samples: 0 off, 2 or 4); off costs nothing.
     int antialiasing = 0;
 
-    bool startInMainMenu = false;
+    bool startInMainMenu = true;
     std::string startupSaveFile;
     bool bolsterMonsters = false;
     // Projectiles home on their targets, the party's on the monster aimed at and the monsters' on the party (MAW's
@@ -223,8 +238,8 @@ struct GameSettings
     // the mod's own default. A game keeps its own; the options change the current game's when one is being played.
     std::string difficulty;
     bool indoorPathfinding = true;
-    bool outdoorPathfinding = false;
-    BlasterSkillScalingMode blasterSkillScaling = BlasterSkillScalingMode::Default;
+    bool outdoorPathfinding = true;
+    BlasterSkillScalingMode blasterSkillScaling = BlasterSkillScalingMode::ScalingDamage;
     int blasterMinimumRecoveryTicks = 0;
     bool logIndoorVisibility = false;
     bool logIndoorPathfinding = false;
@@ -239,11 +254,15 @@ struct GameSettings
     bool combatTrace = false;
     bool combatTraceAppend = true;
     std::string combatTraceFile = "logs/combat_trace.log";
-    float hitchThresholdMilliseconds = 8.0f;
+    float hitchThresholdMilliseconds = 40.0f;
     KeyboardSettings keyboard = {};
-    bool preseedParty = true;
+    bool preseedParty = false;
     uint32_t partySeedRosterId = 0;
     std::string assetRoot;
+    // [updates]: whether the self-updating releases (Windows, Android) look for updates: "ask" until the player
+    // answered the first-start question, then "auto" or "off". The URL is the channel's base (packaging/UPDATER_PLAN.md 7.3).
+    std::string updateCheck = "ask";
+    std::string updateUrl = "https://jasicek.net/openyamm/updates/";
     std::string startWorldId = "mm8";
     std::string startMapFile;
     bool overrideStartPosition = false;
@@ -252,9 +271,9 @@ struct GameSettings
     float startZ = 0.0f;
     bool startFlying = false;
     float movementSpeedMultiplier = 1.0f;
-    bool turboMovementEnabled = true;
-    bool immortal = true;
-    bool unlimitedMana = true;
+    bool turboMovementEnabled = false;
+    bool immortal = false;
+    bool unlimitedMana = false;
     bool newGameGodLich = false;
     bool allowIncompleteCharacterCreation = false;
     bool debugConsole = true;
@@ -290,8 +309,10 @@ struct GameSettings
     std::string enemyHealthBarMode = "combat";
     std::string enemyHealthBarValues = "target";
     bool enemyHealthBarDamageTrail = true;
-    bool questMarkers = true;
-    bool meleeHitBloodEffects = false;
+    bool questMarkers = false;
+    // Obsidian basebar frame behind the gameplay party portraits; fullscreen overlays always draw their own strip.
+    bool partyFrame = true;
+    bool meleeHitBloodEffects = true;
     // Melee hit impact sound by struck material and a brief hitstop on the target (GameplayActorHitFeedback).
     bool meleeHitFeedback = true;
     // Slash, thrust or crush effect at the contact point of a landed melee blow.
@@ -303,7 +324,6 @@ struct GameSettings
     bool meleeHitFlash = false;
     // Small camera turn along the blow on critical hits and kills.
     bool meleeCameraKick = false;
-    CorpseStyle corpseStyle = CorpseStyle::Keep;
 #if defined(__ANDROID__)
     bool contextActionPopup = true;
 #else
@@ -312,16 +332,36 @@ struct GameSettings
     // A left click on what can be used (an item, a chest, a door, a house, someone to talk to) uses it, as in the
     // original; elsewhere it attacks as before. Off, only the Use key does.
     bool clickToInteract = true;
+    SettingsFileState fileState;
 
     static GameSettings createDefault();
 };
+
+// The settings profile version the current code writes. Desktop (up to 2) and Android (up to 4) had separate
+// sequences; from 5 on, both share one.
+inline constexpr uint32_t CurrentSettingsProfileVersion = 5;
 
 std::optional<GameSettings> loadGameSettings(const std::filesystem::path &path, std::string &error);
 std::optional<std::string> getBakedLightingSetting(const GameSettings &settings, const std::string &name);
 bool setBakedLightingSetting(
     GameSettings &settings, const std::string &name, const std::string &value, std::string &error);
+std::optional<GameSettings> loadGameSettingsFromText(const std::string &text, std::string &error);
+// Writes the player's choices (SettingsFileState) to settings.ini.tmp, keeps the previous file as settings.ini.bak and
+// renames the new file into place, so an interrupted write never truncates the player's settings.
 bool saveGameSettings(const std::filesystem::path &path, const GameSettings &settings, std::string &error);
+// Every key the writer knows, with its current value, in section order.
+std::vector<SettingsEntry> serializeGameSettings(const GameSettings &settings);
+// The entries a save writes: the profile, the remembered state, the stored keys and the keys that differ from their
+// defaults, followed by the unknown entries.
+std::vector<SettingsEntry> settingsEntriesToSave(const GameSettings &settings);
+// Forgets the player's choice for keys so they follow the defaults again. A name matches that key in any section;
+// "section." matches every key of the section.
+void releaseStoredSettings(GameSettings &settings, const std::vector<std::string> &names);
+// Runs every migration the loaded file needs and returns whether one ran. A file written by a newer version is left
+// alone, so returning to an older build after an update loses nothing.
+bool migrateGameSettings(GameSettings &settings);
 bool migrateLegacyAndroidSettings(GameSettings &settings);
+bool migrateLegacyDesktopSettings(GameSettings &settings);
 CharacterAttackTuning characterAttackTuningFromSettings(const GameSettings &settings);
 uint8_t textureAnisotropyLevel(const GameSettings &settings);
 float resolveViewDistanceSetting(const std::string &value, float defaultDistance);

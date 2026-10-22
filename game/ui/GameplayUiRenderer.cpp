@@ -464,8 +464,9 @@ void GameplayUiRenderer::renderGameplayHudArt(GameplayScreenRuntime &context, in
             }
         }
     }
-    else
+    else if (context.settingsSnapshot().partyFrame || hudScreenState != GameplayHudScreenState::Gameplay)
     {
+        // The frame setting applies to plain gameplay only; dialogues and other screens over the HUD keep it.
         modDrawnHudButtons().clear();
         const std::optional<GameplayResolvedHudLayoutElement> basebar =
             context.resolveHudLayoutElement("OutdoorGameplayBasebar", width, height, 0, 0);

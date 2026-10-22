@@ -405,6 +405,30 @@ TEST_CASE("shared actor mind spell effects are rejected by mind immunity")
     CHECK_EQ(state.fearRemainingSeconds, 0.0f);
 }
 
+TEST_CASE("shared actor fate buffs the monster regardless of its spirit resistance")
+{
+    const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
+    OpenYAMM::Game::GameplayActorService service = {};
+    OpenYAMM::Game::GameplayActorSpellEffectState state = {};
+    service.bindTables(&gameData.monsterTable, &gameData.spellTable);
+
+    const OpenYAMM::Game::GameplayActorService::SharedSpellEffectResult result =
+        service.tryApplySharedSpellEffect(
+            OpenYAMM::Game::spellIdValue(OpenYAMM::Game::SpellId::Fate),
+            5,
+            OpenYAMM::Game::SkillMastery::Master,
+            false,
+            true,
+            200,
+            state);
+
+    CHECK(
+        result.disposition
+        == OpenYAMM::Game::GameplayActorService::SharedSpellDisposition::Applied);
+    CHECK_EQ(state.fatePower, 20);
+    CHECK_EQ(state.fateRemainingSeconds, doctest::Approx(300.0f));
+}
+
 TEST_CASE("shared actor slow doubles recovery at every mastery")
 {
     const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
@@ -479,6 +503,14 @@ TEST_CASE("dispel magic recovery is reduced by light skill")
     REQUIRE(pCaster != nullptr);
     pCaster->skills["LightMagic"] = {"LightMagic", 10, OpenYAMM::Game::SkillMastery::Normal};
     pCaster->spellPoints = 100;
+    party.applyPartyBuff(
+        OpenYAMM::Game::PartyBuffId::Haste,
+        60.0f,
+        0,
+        OpenYAMM::Game::spellIdValue(OpenYAMM::Game::SpellId::Haste),
+        1,
+        OpenYAMM::Game::SkillMastery::Expert,
+        0);
 
     OpenYAMM::Game::PartySpellCastRequest request = {};
     request.casterMemberIndex = 0;
@@ -492,6 +524,41 @@ TEST_CASE("dispel magic recovery is reduced by light skill")
 
     CHECK(result.status == OpenYAMM::Game::PartySpellCastStatus::Succeeded);
     CHECK(result.recoverySeconds == doctest::Approx(1.833333f));
+    CHECK(party.hasPartyBuff(OpenYAMM::Game::PartyBuffId::Haste));
+}
+
+TEST_CASE("turn undead and mass fear spend their mana when no creature is in sight")
+{
+    const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
+    OpenYAMM::Game::Party party = OpenYAMM::Tests::makeSpellRegressionParty(gameData);
+    OpenYAMM::Tests::PartySpellTestWorldRuntime worldRuntime = {};
+    worldRuntime.bindParty(&party);
+
+    OpenYAMM::Game::Character *pCaster = party.member(0);
+    REQUIRE(pCaster != nullptr);
+    pCaster->skills["SpiritMagic"] = {"SpiritMagic", 5, OpenYAMM::Game::SkillMastery::Normal};
+    pCaster->skills["MindMagic"] = {"MindMagic", 7, OpenYAMM::Game::SkillMastery::Master};
+    pCaster->spellPoints = 100;
+
+    for (const OpenYAMM::Game::SpellId spellId : {OpenYAMM::Game::SpellId::TurnUndead,
+             OpenYAMM::Game::SpellId::MassFear})
+    {
+        OpenYAMM::Game::PartySpellCastRequest request = {};
+        request.casterMemberIndex = 0;
+        request.spellId = OpenYAMM::Game::spellIdValue(spellId);
+        request.applyRecovery = false;
+        const int spellPointsBefore = pCaster->spellPoints;
+
+        const OpenYAMM::Game::PartySpellCastResult result = OpenYAMM::Game::PartySpellSystem::castSpell(
+            party,
+            worldRuntime,
+            gameData.spellTable,
+            request);
+
+        CHECK(result.status == OpenYAMM::Game::PartySpellCastStatus::Succeeded);
+        CHECK(worldRuntime.appliedSpellRequests().empty());
+        CHECK_EQ(pCaster->spellPoints, spellPointsBefore - static_cast<int>(result.manaCost));
+    }
 }
 
 TEST_CASE("jump spell uses OpenEnroth vertical impulse")
@@ -1337,8 +1404,7 @@ TEST_CASE("party spell backend supports all defined non utility spells")
         }
 
         if (spellId == OpenYAMM::Game::spellIdValue(OpenYAMM::Game::SpellId::TownPortal)
-            || spellId == OpenYAMM::Game::spellIdValue(OpenYAMM::Game::SpellId::LloydsBeacon)
-            || spellId == OpenYAMM::Game::spellIdValue(OpenYAMM::Game::SpellId::Telepathy))
+            || spellId == OpenYAMM::Game::spellIdValue(OpenYAMM::Game::SpellId::LloydsBeacon))
         {
             return OpenYAMM::Game::PartySpellCastStatus::NeedUtilityUi;
         }
@@ -1414,6 +1480,56 @@ TEST_CASE("party spell backend supports all defined non utility spells")
         CHECK(result.status != OpenYAMM::Game::PartySpellCastStatus::NeedUtilityUi);
         CHECK(result.status != OpenYAMM::Game::PartySpellCastStatus::Unsupported);
     }
+}
+
+TEST_CASE("party spell backend telepathy reveals the target actor's loot")
+{
+    const OpenYAMM::Tests::RegressionGameData &gameData = requireRegressionGameData();
+    OpenYAMM::Game::Party party = OpenYAMM::Tests::makeSpellRegressionParty(gameData);
+    OpenYAMM::Tests::PartySpellTestWorldRuntime worldRuntime = {};
+    worldRuntime.bindParty(&party);
+    const size_t poorActorIndex = seedDefaultSpellTarget(worldRuntime);
+    const size_t richActorIndex = seedDefaultSpellTarget(worldRuntime);
+
+    OpenYAMM::Game::GameplayCorpseViewState loot = {};
+    OpenYAMM::Game::GameplayChestItemState gold = {};
+    gold.isGold = true;
+    gold.goldAmount = 37;
+    loot.items.push_back(gold);
+    worldRuntime.setActorLoot(richActorIndex, loot);
+
+    OpenYAMM::Game::PartySpellCastRequest request = {};
+    request.casterMemberIndex = 0;
+    request.spellId = OpenYAMM::Game::spellIdValue(OpenYAMM::Game::SpellId::Telepathy);
+    request.skillLevelOverride = 1;
+    request.skillMasteryOverride = OpenYAMM::Game::SkillMastery::Normal;
+    request.spendMana = false;
+    request.applyRecovery = false;
+
+    const OpenYAMM::Game::PartySpellCastResult untargeted = OpenYAMM::Game::PartySpellSystem::castSpell(
+        party,
+        worldRuntime,
+        gameData.spellTable,
+        request);
+    CHECK(untargeted.status == OpenYAMM::Game::PartySpellCastStatus::NeedActorTarget);
+
+    request.targetActorIndex = richActorIndex;
+    const OpenYAMM::Game::PartySpellCastResult rich = OpenYAMM::Game::PartySpellSystem::castSpell(
+        party,
+        worldRuntime,
+        gameData.spellTable,
+        request);
+    REQUIRE(rich.succeeded());
+    CHECK_EQ(rich.statusText, "37 gold");
+
+    request.targetActorIndex = poorActorIndex;
+    const OpenYAMM::Game::PartySpellCastResult poor = OpenYAMM::Game::PartySpellSystem::castSpell(
+        party,
+        worldRuntime,
+        gameData.spellTable,
+        request);
+    REQUIRE(poor.succeeded());
+    CHECK_EQ(poor.statusText, "Nothing here");
 }
 
 TEST_CASE("spell table stays within authoritative merged spell ids")

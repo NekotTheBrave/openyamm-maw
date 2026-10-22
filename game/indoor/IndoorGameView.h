@@ -88,6 +88,7 @@ public:
         const std::string &spellName) override;
     GameSettings &mutableSettings();
     bool requestTravelAutosave();
+    bool savePreviewCapturePending() const;
     bool trySaveToSelectedGameSlot() override;
     const GameSettings &settingsSnapshot() const;
     GameplayWorldUiRenderState gameplayUiRenderState(int width, int height) const;

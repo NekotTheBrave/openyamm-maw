@@ -46,6 +46,11 @@ bool GameplayUiController::alchemyBenchSearchActive(const CharacterScreenState &
     return screen.open && screen.alchemyBench.active && screen.alchemyBench.recipeSearchActive;
 }
 
+bool GameplayUiController::journalSearchActive(const JournalScreenState &screen)
+{
+    return screen.active && screen.view == JournalView::Notes && screen.notesSearchActive;
+}
+
 bool GameplayUiController::characterScreenSupportsInspection(const CharacterScreenState &screen)
 {
     return screen.open;

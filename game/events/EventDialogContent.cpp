@@ -1075,9 +1075,10 @@ EventDialogContent buildEventDialogContent(
         dialog.participantVisual = EventDialogParticipantVisual::MapIcon;
         dialog.presentation = EventDialogPresentation::Transition;
         dialog.participantPictureId = 0;
-        const std::optional<MapEdgeTransition> *pTransition = context.transitionMapMove.has_value()
-            ? nullptr
-            : currentMapTransitionForContext(context, pCurrentMap);
+        const std::optional<MapEdgeTransition> *pTransition =
+            context.transitionMapMove.has_value() && !context.boundaryTravel
+                ? nullptr
+                : currentMapTransitionForContext(context, pCurrentMap);
         const std::string transitionMapName =
             context.transitionMapMove.has_value() && context.transitionMapMove->mapName.has_value()
                 ? *context.transitionMapMove->mapName
@@ -1173,7 +1174,7 @@ EventDialogContent buildEventDialogContent(
         {
             dialog.lines.push_back("Do you wish to leave " + dialog.title + "?");
         }
-        else if (context.transitionMapMove.has_value())
+        else if (context.transitionMapMove.has_value() && !context.boundaryTravel)
         {
             dialog.lines.push_back("Do you wish to enter " + dialog.title + "?");
         }
@@ -1772,7 +1773,9 @@ EventDialogContent buildEventDialogContent(
                             }
                         }
 
-                        if (pProfession->descriptionTextId != 0)
+                        // Descriptions read as a hiring pitch with a gold share, so like MMerge only offer them to
+                        // followers; non-joining NPCs keep just their news topics.
+                        if (npcIsHired && pProfession->descriptionTextId != 0)
                         {
                             EventDialogAction action = {};
                             action.kind = EventDialogActionKind::NpcProfessionDescription;

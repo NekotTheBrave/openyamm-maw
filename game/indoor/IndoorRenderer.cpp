@@ -18,10 +18,11 @@
 #include "game/gameplay/GameplayRuntimeInterfaces.h"
 #include "game/gameplay/InteractiveDecorationRules.h"
 #include "game/indoor/IndoorGeometryUtils.h"
+#include "game/items/ItemRuntime.h"
+#include "game/items/WorldItemShape.h"
 #include "game/indoor/IndoorPortalGraph.h"
 #include "game/indoor/IndoorPortalVisibility.h"
 #include "game/indoor/IndoorRenderRevision.h"
-#include "game/maps/MapDecorationTextures.h"
 #include "game/render/BillboardGeometry.h"
 #include "game/render/CombatActorHealthBarPolicy.h"
 #include "game/ui/EnemyHealthBarRenderer.h"
@@ -645,9 +646,21 @@ std::vector<RuntimeSpriteObjectBillboard> buildRuntimeSpriteObjectBillboards(
                 && (pObjectEntry->flags & ObjectDescUnpickable) == 0);
         billboard.containedItemId =
             billboard.hasContainingItem && !spriteObject.semanticLootContainer ? containedItemId : 0;
-        billboard.objectName = pContainedItemDefinition != nullptr && !pContainedItemDefinition->name.empty()
-            ? pContainedItemDefinition->name
-            : pObjectEntry->internalName;
+        const bool containedItemIdentified =
+            spriteObject.rawContainingItem.size() > 0x08 && (spriteObject.rawContainingItem[0x08] & 0x01) != 0;
+
+        if (pContainedItemDefinition != nullptr
+            && !containedItemIdentified
+            && ItemRuntime::requiresIdentification(*pContainedItemDefinition))
+        {
+            billboard.objectName = ItemRuntime::foundItemName(*pContainedItemDefinition);
+        }
+        else
+        {
+            billboard.objectName = pContainedItemDefinition != nullptr && !pContainedItemDefinition->name.empty()
+                ? pContainedItemDefinition->name
+                : pObjectEntry->internalName;
+        }
         billboards.push_back(std::move(billboard));
     }
 
@@ -2698,6 +2711,20 @@ bool IndoorRenderer::initialize(
     m_objectTable = objectTable;
     m_pItemTable = &itemTable;
     m_pIndoorMapData = &indoorMapData;
+    // A resting item model lies on the floor under its footprint; a point whose floor is far from the item's height
+    // (past a ledge) does not support it.
+    m_worldFxSystem.setItemGroundSampler(
+        [this](float x, float y, float z) -> std::optional<float>
+        {
+            constexpr float SupportBand = 24.0f;
+            if (m_pIndoorMapData == nullptr)
+            {
+                return std::nullopt;
+            }
+            const IndoorFloorSample floor =
+                sampleIndoorFloor(*m_pIndoorMapData, m_renderVertices, x, y, z, SupportBand, SupportBand);
+            return floor.hasFloor ? std::optional<float>(floor.height) : std::nullopt;
+        });
     m_billboardLightingCache.clear();
     m_modelSectorCache.clear();
     clearPortalVisibilityCaches();
@@ -4000,6 +4027,7 @@ void IndoorRenderer::render(
     lightingInput.pVisibleSectorFrustums = &renderVisibleSectorFrustums;
     lightingInput.cameraPosition = eye;
     lightingInput.coloredLights = settings.coloredLights;
+    lightingInput.warmTorchLight = settings.warmTorchLight;
     lightingInput.fxClusterThreshold =
         settings.lightGrid == LightGridQuality::Low ? FxLightClusterThresholdLow : FxLightClusterThresholdHigh;
     const IndoorLightingFrame lightingFrame = m_indoorLightingRuntime.buildFrame(lightingInput);
@@ -4294,15 +4322,8 @@ void IndoorRenderer::render(
     modelLighting.environmentScale = roomTint;
     modelLighting.displaySpaceLighting = true;
     modelLighting.pLightGrid = &m_lightGrid;
-    {
-        // Key light from above-front-left of the camera, like the painted light on the original sprites.
-        const bx::Vec3 up = {0.0f, 0.0f, 1.0f};
-        const bx::Vec3 left = bx::normalize(bx::cross(up, viewForward));
-        const bx::Vec3 key = bx::normalize(bx::add(bx::add(bx::mul(viewForward, -0.55f), bx::mul(left, 0.45f)),
-            bx::mul(up, 0.7f)));
-        modelLighting.keyDirection = {key.x, key.y, key.z};
-        modelLighting.keyFraction = IndoorModelKeyFraction;
-    }
+    modelLighting.keyDirection = Engine::spriteKeyLightDirection({viewForward.x, viewForward.y, viewForward.z});
+    modelLighting.keyFraction = IndoorModelKeyFraction;
     if (m_pSceneRuntime != nullptr && runtimeMapDeltaData())
     {
         // Like actor sprites, actor models draw only in the sectors the portals reveal.
@@ -4487,6 +4508,31 @@ WorldFxSystem &IndoorRenderer::worldFxSystem()
 const WorldFxSystem &IndoorRenderer::worldFxSystem() const
 {
     return m_worldFxSystem;
+}
+
+bool IndoorRenderer::ensureMonsterVisualResources(int16_t monsterId)
+{
+    if (m_pAssetFileSystem == nullptr || !m_monsterTable || monsterId <= 0)
+    {
+        return false;
+    }
+
+    if (!m_indoorActorPreviewBillboardSet)
+    {
+        m_indoorActorPreviewBillboardSet.emplace();
+    }
+
+    return ensureMonsterSpriteFramesLoaded(
+        *m_pAssetFileSystem,
+        *m_monsterTable,
+        monsterId,
+        m_indoorActorPreviewBillboardSet->spriteFrameTable,
+        m_indoorActorPreviewBillboardSet->actorModels.get());
+}
+
+const SpriteFrameTable *IndoorRenderer::actorSpriteFrameTable() const
+{
+    return m_indoorActorPreviewBillboardSet ? &m_indoorActorPreviewBillboardSet->spriteFrameTable : nullptr;
 }
 
 const EffectRenderer::Diagnostics &IndoorRenderer::effectRenderDiagnostics() const
@@ -5082,6 +5128,11 @@ GameplayWorldHit IndoorRenderer::translateInspectHitToGameplayWorldHit(
             worldItemHit.objectSpriteId = inspectHit.objectSpriteId;
             worldItemHit.hitPoint = hitPoint;
             worldItemHit.distance = inspectHit.distance;
+            if (inspectHit.containedItemId != 0 && m_pItemTable != nullptr
+                && !m_pItemTable->hasGroundModel(inspectHit.containedItemId))
+            {
+                worldItemHit.missingGroundModelItemId = inspectHit.containedItemId;
+            }
             worldHit.worldItem = worldItemHit;
             return worldHit;
         }
@@ -5608,6 +5659,11 @@ GameplayWorldHit IndoorRenderer::pickKeyboardGameplayWorldHit(const GameplayWorl
             worldItemHit.objectSpriteId = object.objectSpriteId;
             worldItemHit.hitPoint = hitPoint;
             worldItemHit.distance = vecLength(vecSubtract(hitPoint, rayRequest.eye));
+            if (object.containedItemId != 0 && m_pItemTable != nullptr
+                && !m_pItemTable->hasGroundModel(object.containedItemId))
+            {
+                worldItemHit.missingGroundModelItemId = object.containedItemId;
+            }
 
             GameplayWorldHit worldHit = {};
             worldHit.hasHit = true;
@@ -7093,23 +7149,14 @@ const IndoorRenderer::BillboardTextureHandle *IndoorRenderer::ensureSpriteBillbo
 
     int textureWidth = 0;
     int textureHeight = 0;
-    std::optional<OutdoorBitmapTexture> restored = loadRestoredDecorationTexture(
-        *m_pAssetFileSystem, textureName, paletteId);
-    const std::optional<std::vector<uint8_t>> pixels = restored
-        ? std::optional<std::vector<uint8_t>>(std::move(restored->pixels))
-        : GameplayHudCommon::loadSpriteBitmapPixelsBgraCached(
-            m_pAssetFileSystem,
-            m_spriteLoadCache,
-            textureName,
-            paletteId,
-            textureWidth,
-            textureHeight,
-            m_map.has_value() ? m_map->worldId : std::string());
-    if (restored)
-    {
-        textureWidth = restored->physicalWidth;
-        textureHeight = restored->physicalHeight;
-    }
+    const std::optional<std::vector<uint8_t>> pixels = GameplayHudCommon::loadSpriteBitmapPixelsBgraCached(
+        m_pAssetFileSystem,
+        m_spriteLoadCache,
+        textureName,
+        paletteId,
+        textureWidth,
+        textureHeight,
+        m_map.has_value() ? m_map->worldId : std::string());
 
     if (!pixels || textureWidth <= 0 || textureHeight <= 0)
     {
@@ -7120,10 +7167,8 @@ const IndoorRenderer::BillboardTextureHandle *IndoorRenderer::ensureSpriteBillbo
     BillboardTextureHandle billboardTexture = {};
     billboardTexture.textureName = toLowerCopy(textureName);
     billboardTexture.paletteId = paletteId;
-    billboardTexture.width = restored
-        ? restored->width : Engine::scalePhysicalPixelsToLogical(textureWidth, m_assetScaleTier);
-    billboardTexture.height = restored
-        ? restored->height : Engine::scalePhysicalPixelsToLogical(textureHeight, m_assetScaleTier);
+    billboardTexture.width = Engine::scalePhysicalPixelsToLogical(textureWidth, m_assetScaleTier);
+    billboardTexture.height = Engine::scalePhysicalPixelsToLogical(textureHeight, m_assetScaleTier);
     billboardTexture.physicalWidth = textureWidth;
     billboardTexture.physicalHeight = textureHeight;
     billboardTexture.opacityMask.assignFromBgra(*pixels, textureWidth, textureHeight);
@@ -9122,8 +9167,9 @@ void IndoorRenderer::renderSpriteObjectBillboards(
                 continue;
             }
 
-            // A model presents the item: it takes the hover outline, and no sprite is drawn.
-            if (billboard.containedItemId != 0 && m_worldFxSystem.hasItemModel(billboard.containedItemId))
+            // Every item on the ground is a model (the placeholder when it has none): it takes the hover outline, and
+            // no sprite is drawn.
+            if (billboard.containedItemId != 0)
             {
                 const bool contextHighlighted =
                     contextActionHighlightsWorldItem(pContextActionHit, billboard.objectIndex);
@@ -13080,6 +13126,7 @@ IndoorRenderer::InspectHit IndoorRenderer::inspectAtCursor(
                 bestHit.attributes = object.attributes;
                 bestHit.spellId = object.spellId;
                 bestHit.hasContainingItem = object.hasContainingItem;
+                bestHit.containedItemId = object.containedItemId;
             };
 
         const auto hitTestSpriteObjectBillboard =
@@ -13320,6 +13367,24 @@ IndoorRenderer::InspectHit IndoorRenderer::inspectAtCursor(
         {
             if (!isSectorVisible(object.sectorId, visibleSectorMask))
             {
+                continue;
+            }
+
+            if (object.containedItemId != 0 && m_pItemTable != nullptr)
+            {
+                // An item is its model: the model's box, turned as it lies (GROUND_ITEMS_3D_BEHAVIOUR.md section 5).
+                const std::optional<float> itemDistance = intersectWorldItemPickBox(
+                    m_pItemTable->groundModel(object.containedItemId),
+                    worldItemYawRadians(uint32_t(object.objectIndex)),
+                    {float(object.x), float(object.y), float(object.z)},
+                    {rayOrigin.x, rayOrigin.y, rayOrigin.z},
+                    {rayDirection.x, rayDirection.y, rayDirection.z});
+
+                if (itemDistance && (*itemDistance < bestDistance || bestHit.kind == "face"))
+                {
+                    applyObjectHit(object, *itemDistance);
+                }
+
                 continue;
             }
 
@@ -13593,6 +13658,7 @@ void IndoorRenderer::updateCameraFromInput(
         deltaSeconds = std::min(deltaSeconds, 0.05f);
     }
 
+    const float cameraDeltaSeconds = std::min(input.cameraDeltaSeconds.value_or(deltaSeconds), 0.05f);
     const bool *pKeyboardState = input.keyboardState();
 
     const float walkSpeed = 384.0f;
@@ -13657,12 +13723,33 @@ void IndoorRenderer::updateCameraFromInput(
     {
         if (leftPressed)
         {
-            m_cameraYawRadians += keyboardYawSpeed * deltaSeconds;
+            m_cameraYawRadians += keyboardYawSpeed * cameraDeltaSeconds;
         }
 
         if (rightPressed)
         {
-            m_cameraYawRadians -= keyboardYawSpeed * deltaSeconds;
+            m_cameraYawRadians -= keyboardYawSpeed * cameraDeltaSeconds;
+        }
+    }
+
+    // Keyboard look, like outdoors; positive pitch looks up.
+    if (allowWorldInput)
+    {
+        const float keyboardPitchSpeed = 1.25f;
+
+        if (input.action(KeyboardAction::LookUp).held)
+        {
+            m_cameraPitchRadians += keyboardPitchSpeed * cameraDeltaSeconds;
+        }
+
+        if (input.action(KeyboardAction::LookDown).held)
+        {
+            m_cameraPitchRadians -= keyboardPitchSpeed * cameraDeltaSeconds;
+        }
+
+        if (input.action(KeyboardAction::CenterView).held)
+        {
+            m_cameraPitchRadians *= std::max(0.0f, 1.0f - cameraDeltaSeconds * 8.0f);
         }
     }
 
