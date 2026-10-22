@@ -79,3 +79,12 @@ resolves colour only.
 
 `CinematicGrading` uses it to keep ambient occlusion with `video.antialiasing`: the AO passes read the resolved
 D32F depth of the multisampled world target. On other renderers AO is switched off while anti-aliasing is on.
+
+## GLES occlusion query results
+
+`bgfx-gles-occlusion-query-result.patch` reads occlusion query results with `glGetQueryObjectuiv`, core in OpenGL
+1.5 and GLES 3.0, instead of `glGetQueryObjectiv`. GLES 3.0 has no `glGetQueryObjectiv`: Android bgfx looks it up
+with `eglGetProcAddress`, which drivers without `EXT_disjoint_timer_query` answer with null, and upstream calls it
+without a check. The water renderer's reflection occlusion queries then crashed the first frame with water on a
+Samsung Galaxy A34 (Mali-G68, Android 15, 2026-10-22): `SIGSEGV` at pc 0 in `RendererContextGL::submit`, with
+`GL_QUERY_RESULT_AVAILABLE` in `x1`. Timer queries are unaffected: bgfx disables them when that function is null.

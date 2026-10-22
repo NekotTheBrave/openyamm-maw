@@ -317,6 +317,7 @@ function(openyamm_fetch_bgfx_stack)
     openyamm_patch_bgfx("${bgfxSourceDir}" bgfx-d3d11-compressed-updates)
     openyamm_patch_bgfx("${bgfxSourceDir}" bgfx-anisotropy-level)
     openyamm_patch_bgfx("${bgfxSourceDir}" bgfx-gl-msaa-depth-resolve)
+    openyamm_patch_bgfx("${bgfxSourceDir}" bgfx-gles-occlusion-query-result)
 
     if (NOT TARGET openyamm_bgfx_headers)
         add_library(openyamm_bgfx_headers INTERFACE)
