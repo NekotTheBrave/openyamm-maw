@@ -42,7 +42,7 @@ constexpr Sint64 AndroidInputTypeTextFlagNoSuggestions = 0x00080000;
 
 bool startManagedTextInput(SDL_Window *pWindow)
 {
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(OPENYAMM_IOS)
     SDL_PropertiesID properties = SDL_CreateProperties();
 
     if (properties == 0)
@@ -50,12 +50,17 @@ bool startManagedTextInput(SDL_Window *pWindow)
         return SDL_StartTextInput(pWindow);
     }
 
+#if defined(__ANDROID__)
     const Sint64 inputType =
         AndroidInputTypeClassText
         | AndroidInputTypeTextVariationVisiblePassword
         | AndroidInputTypeTextFlagNoSuggestions;
 
     SDL_SetNumberProperty(properties, SDL_PROP_TEXTINPUT_ANDROID_INPUTTYPE_NUMBER, inputType);
+#else
+    // Answers and names are typed as entered, without automatic capitals.
+    SDL_SetNumberProperty(properties, SDL_PROP_TEXTINPUT_CAPITALIZATION_NUMBER, SDL_CAPITALIZE_NONE);
+#endif
     SDL_SetBooleanProperty(properties, SDL_PROP_TEXTINPUT_AUTOCORRECT_BOOLEAN, false);
     SDL_SetBooleanProperty(properties, SDL_PROP_TEXTINPUT_MULTILINE_BOOLEAN, false);
 
