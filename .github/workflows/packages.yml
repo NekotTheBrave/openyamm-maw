@@ -308,6 +308,9 @@ jobs:
             /packaging/
             /tests/
             /third_party/doctest/
+            /tools/LegacyLuaExport.cpp
+            /tools/LegacyLuaExport.h
+            /tools/legacy_events/
             /tools/openyamm_shaderc_stubs.cpp
             /tools/cook_sprite_atlases_main.cpp
             /tools/SpriteAtlasEncode.cpp
@@ -332,11 +335,13 @@ jobs:
         run: |
           sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y g++-13 ninja-build pkg-config \
+          sudo apt-get install --no-install-recommends -y gcc-13 g++-13 ninja-build pkg-config \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev libxkbcommon-dev \
             libwayland-dev libwayland-bin wayland-protocols libdecor-0-dev libegl-dev libgl-dev libgles-dev \
             libdrm-dev libgbm-dev libasound2-dev libpulse-dev libpipewire-0.3-dev libdbus-1-dev libudev-dev \
             libusb-1.0-0-dev libibus-1.0-dev
+          "$CC" --version | head -n 1
+          "$CXX" --version | head -n 1
 
       - name: Build the Linux package
         env:
@@ -369,7 +374,7 @@ jobs:
       - name: Run the installation unit tests
         run: >-
           ./build/tests/openyamm_unit_tests
-          --test-case='*user data*,*update*,*launcher*,*manifest*,*release versions*,*fresh installation*,*sha256*'
+          --source-file='*UpdaterTests.cpp,*UserDataPathsTests.cpp,*LogFileTests.cpp,*AssetPackIndexTests.cpp,*SettingsFileTests.cpp'
 
       - name: Upload the Linux stage
         uses: actions/upload-artifact@v7
