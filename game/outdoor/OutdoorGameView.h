@@ -194,6 +194,8 @@ public:
     float cameraYawRadians() const;
     float cameraPitchRadians() const;
     void setCameraAngles(float yawRadians, float pitchRadians);
+    // Places the party on the map's named start decoration ("north start", ...); false when the map has none.
+    bool movePartyToStartPoint(std::string_view startPointName);
     void syncCameraToParty();
     void setCameraEyeHeight(float eyeHeight);
     void reopenMenuScreen();

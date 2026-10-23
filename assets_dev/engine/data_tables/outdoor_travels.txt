@@ -2,7 +2,7 @@ Key map	Up	Side	Days	Down	Side	Days	Left	Side	Days	Right	Side	Days	StraightTrave
 7out02.odm	7out04.odm	down	5	out11.odm	up	5	7out03.odm	left	5	7out04.odm	down	7		Harmondale	
 7out03.odm	7out05.odm	down	5	7out06.odm	up	5	7out13.odm	left	5	7out02.odm	right	5		Erathia	
 7out04.odm	out14.odm	left	5	7out02.odm	up	5	7out05.odm	left	5					The Tularean Forest	
-7out05.odm	7out04.odm	left	7	7out03.odm	up	5	7out03.odm	up	7	7out04.odm	right	5		Deja	
+7out05.odm	7out04.odm	right	7	7out03.odm	up	5	7out03.odm	up	7	7out04.odm	right	5		Deja	
 7out06.odm	7out03.odm	down	5							out11.odm	right	5		The Bracada Desert	
 out11.odm	7out02.odm	down	5	7out06.odm	up	7	7out06.odm	left	5	7out02.odm	down	7		The Barrow Downs	
 7out13.odm										7out03.odm	right	5		Tatalia	

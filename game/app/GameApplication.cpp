@@ -11770,6 +11770,14 @@ bool GameApplication::processPendingMapMove()
         );
     }
     else if (m_pMapSceneRuntime != nullptr
+             && m_pMapSceneRuntime->kind() == SceneKind::Outdoor
+             && !pendingMapMove->startPointName.empty()
+             && !m_outdoorGameView.movePartyToStartPoint(pendingMapMove->startPointName))
+    {
+        std::cerr << "GameApplication: map " << targetMapName << " has no start point '"
+                  << pendingMapMove->startPointName << "'; using its party start\n";
+    }
+    else if (m_pMapSceneRuntime != nullptr
              && m_pMapSceneRuntime->kind() == SceneKind::Indoor
              && !pendingMapMove->useMapStartPosition)
     {

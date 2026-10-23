@@ -42,6 +42,8 @@ class MenuDesignScreen : public MenuScreenBase
     bool modalOpen() const;
     void closeConfirmation();
     void setModalBody(const std::string &text);
+    // Release notes for the open confirmation: a left-aligned box between its title and body that scrolls when long.
+    void setModalNotes(const std::string &text);
     void setTextEditing(bool editing);
     void setDesignClip(const std::optional<Rect> &rect);
     bool pointerInside(const Rect &rect) const;
@@ -52,6 +54,8 @@ class MenuDesignScreen : public MenuScreenBase
     UiLayoutManager m_designLayouts;
 
   private:
+    std::vector<std::string> wrapParagraph(const std::string &paragraph, const std::string &font, float scale,
+                                           float width);
     std::string m_designScreen;
     std::unordered_set<std::string> m_loadedDesigns;
     std::vector<std::string> m_focusTargets;
@@ -75,6 +79,8 @@ class MenuDesignScreen : public MenuScreenBase
         bool dismissOnOutsideClick = false;
         bool twoColumns = false;
         std::vector<std::string> choiceIcons;
+        std::string notes;
+        float notesScroll = 0;
     };
     std::optional<Confirmation> m_confirmation;
     bool m_drawingConfirmation = false;

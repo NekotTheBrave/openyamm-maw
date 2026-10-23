@@ -57,7 +57,9 @@ struct MapEdgeTransition
     std::optional<int> arrivalY;
     std::optional<int> arrivalZ;
     bool straightTravel = false;
-    std::optional<MapBoundaryEdge> straightTravelSide;
+    // The side of the destination the party enters: its "<side> start" decoration, or the mirrored crossing point
+    // for straight travel.
+    std::optional<MapBoundaryEdge> arrivalSide;
     MapTransitionSurfaceRequirement requiredOriginSurface = MapTransitionSurfaceRequirement::Land;
     std::vector<uint32_t> requiredQuestBitsAny;
 };
@@ -96,6 +98,9 @@ struct MapStatsEntry
     const std::optional<MapEdgeTransition> *edgeTransition(MapBoundaryEdge edge) const;
     std::optional<MapEdgeTransition> *edgeTransition(MapBoundaryEdge edge);
 };
+
+// The start decoration a party entering from the given side uses ("north start", ...); empty without a side.
+std::string mapStartPointName(std::optional<MapBoundaryEdge> side);
 
 class MapStats
 {

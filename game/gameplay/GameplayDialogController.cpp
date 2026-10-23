@@ -654,6 +654,7 @@ bool samePendingMapMove(
         && left.mapName == right.mapName
         && left.directionDegrees == right.directionDegrees
         && left.useMapStartPosition == right.useMapStartPosition
+        && left.startPointName == right.startPointName
         && left.useFullscreenLoading == right.useFullscreenLoading;
 }
 
@@ -2611,6 +2612,7 @@ GameplayDialogController::Result GameplayDialogController::executeActiveDialogAc
             pendingMapMove.mapName = (*pTransition)->destinationMapFileName;
             pendingMapMove.directionDegrees = (*pTransition)->directionDegrees;
             pendingMapMove.useMapStartPosition = (*pTransition)->useMapStartPosition;
+            pendingMapMove.startPointName = mapStartPointName((*pTransition)->arrivalSide);
             assignMapMoveTraceSource(
                 pendingMapMove,
                 dialogueContextKindName(context.eventRuntimeState.pendingDialogueContext->kind),

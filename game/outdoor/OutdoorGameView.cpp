@@ -1805,7 +1805,8 @@ std::optional<bool> parseHudLayoutBool(const std::string &value)
 
 std::optional<OutdoorPartyStartPoint> resolveOutdoorPartyStartPoint(
     const Engine::AssetFileSystem &assetFileSystem,
-    const OutdoorMapData &outdoorMapData)
+    const OutdoorMapData &outdoorMapData,
+    std::string_view startPointName)
 {
     const std::optional<std::string> decorationTableText =
         assetFileSystem.readTextFile(engineDataTablePath("decoration_data.txt"));
@@ -1850,7 +1851,7 @@ std::optional<OutdoorPartyStartPoint> resolveOutdoorPartyStartPoint(
             }
         }
 
-        if (decorationName != PartyStartDecorationName)
+        if (decorationName != startPointName)
         {
             continue;
         }
@@ -1859,7 +1860,9 @@ std::optional<OutdoorPartyStartPoint> resolveOutdoorPartyStartPoint(
         startPoint.x = static_cast<float>(entity.x);
         startPoint.y = static_cast<float>(entity.y);
         startPoint.z = static_cast<float>(entity.z);
-        startPoint.yawRadians = static_cast<float>(entity.facing) * Pi / 180.0f;
+        // Start decorations store the party's view yaw in the original 2048-step angle units, not degrees.
+        const int facingSteps = ((entity.facing % 2048) + 2048) % 2048;
+        startPoint.yawRadians = static_cast<float>(facingSteps) * Pi / 1024.0f;
         return startPoint;
     }
 
@@ -2770,7 +2773,7 @@ bool OutdoorGameView::initialize(
     std::optional<float> initialYawRadians;
 
     if (const std::optional<OutdoorPartyStartPoint> startPoint =
-            resolveOutdoorPartyStartPoint(assetFileSystem, outdoorMapData))
+            resolveOutdoorPartyStartPoint(assetFileSystem, outdoorMapData, PartyStartDecorationName))
     {
         initialX = startPoint->x;
         initialY = startPoint->y;
@@ -4130,6 +4133,32 @@ void OutdoorGameView::syncCameraToParty()
         m_cameraTargetY = state.y;
         m_cameraTargetZ = state.footZ + m_cameraEyeHeight;
     }
+}
+
+bool OutdoorGameView::movePartyToStartPoint(std::string_view startPointName)
+{
+    if (m_pAssetFileSystem == nullptr || m_pOutdoorMapData == nullptr || m_pOutdoorPartyRuntime == nullptr)
+    {
+        return false;
+    }
+
+    const std::optional<OutdoorPartyStartPoint> startPoint =
+        resolveOutdoorPartyStartPoint(*m_pAssetFileSystem, *m_pOutdoorMapData, startPointName);
+
+    if (!startPoint)
+    {
+        return false;
+    }
+
+    m_pOutdoorPartyRuntime->teleportTo(startPoint->x, startPoint->y, startPoint->z);
+
+    if (startPoint->yawRadians)
+    {
+        setCameraAngles(*startPoint->yawRadians, m_cameraPitchRadians);
+    }
+
+    syncCameraToParty();
+    return true;
 }
 
 void OutdoorGameView::setCameraAngles(float yawRadians, float pitchRadians)

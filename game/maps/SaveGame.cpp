@@ -21,7 +21,7 @@ namespace OpenYAMM::Game
 {
 namespace
 {
-constexpr uint32_t SaveVersion = 93;
+constexpr uint32_t SaveVersion = 94;
 constexpr uint32_t SaveVersionAttackSpell = 19;
 constexpr uint32_t SaveVersionIndoorCorpseViews = 21;
 constexpr uint32_t SaveVersionIndoorChestViews = 22;
@@ -103,6 +103,7 @@ constexpr uint32_t SaveVersionPartyDaysWithoutRest = 90;
 constexpr uint32_t SaveVersionActorRevealedLoot = 91;
 constexpr uint32_t SaveVersionHardenedItems = 92;
 constexpr uint32_t SaveVersionPotionCharacterBuffs = 93;
+constexpr uint32_t SaveVersionMapMoveStartPoint = 94;
 constexpr char SaveMagic[8] = {'O', 'Y', 'S', 'A', 'V', 'E', '1', '\0'};
 
 // Mod runtime additions to the save format. They are numbered separately from SaveVersion, in the top byte of the
@@ -1856,6 +1857,7 @@ void writeValue(BinaryWriter &writer, const EventRuntimeState::PendingMapMove &v
     writeValue(writer, value.mapName);
     writeValue(writer, value.directionDegrees);
     writeValue(writer, value.useMapStartPosition);
+    writeValue(writer, value.startPointName);
 }
 
 bool readValue(BinaryReader &reader, EventRuntimeState::PendingMapMove &value)
@@ -1865,7 +1867,8 @@ bool readValue(BinaryReader &reader, EventRuntimeState::PendingMapMove &value)
         && readValue(reader, value.z)
         && readValue(reader, value.mapName)
         && readValue(reader, value.directionDegrees)
-        && readValue(reader, value.useMapStartPosition);
+        && readValue(reader, value.useMapStartPosition)
+        && (reader.version() < SaveVersionMapMoveStartPoint || readValue(reader, value.startPointName));
 }
 
 void writeValue(BinaryWriter &writer, const EventRuntimeState::PendingDialogueContext &value)

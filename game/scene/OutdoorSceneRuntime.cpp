@@ -156,8 +156,9 @@ EventRuntimeState::PendingMapMove buildBoundaryTravelMapMove(
         return move;
     }
 
-    if (!transition.straightTravel || !transition.straightTravelSide.has_value())
+    if (!transition.straightTravel || !transition.arrivalSide.has_value())
     {
+        move.startPointName = mapStartPointName(transition.arrivalSide);
         return move;
     }
 
@@ -167,7 +168,7 @@ EventRuntimeState::PendingMapMove buildBoundaryTravelMapMove(
     move.y = roundedOutdoorCoordinate(y);
     move.z = roundedOutdoorCoordinate(footZ);
 
-    switch (*transition.straightTravelSide)
+    switch (*transition.arrivalSide)
     {
         case MapBoundaryEdge::North:
         case MapBoundaryEdge::South:

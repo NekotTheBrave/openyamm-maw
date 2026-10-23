@@ -1431,6 +1431,102 @@ TEST_CASE("ModelAnimation loader reads colour region masks and ramps and rejects
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("ModelAnimation loader reads emissive textures, strength and creature bloom per material variant")
+{
+    using namespace OpenYAMM::Engine;
+    const std::filesystem::path root = makeTemporaryRoot();
+    std::string json = fixtureGltf();
+    // Three tiers share one emissive mask and glow in their own colours (KHR_materials_variants), as creature tiers do.
+    json.insert(1, R"("extensionsRequired":["KHR_materials_variants"],
+        "extensions":{"KHR_materials_variants":{"variants":[{"name":"a"},{"name":"b"},{"name":"c"}]}},)");
+    json.insert(json.find("\"attributes\""), R"("extensions":{"KHR_materials_variants":{"mappings":[
+        {"material":0,"variants":[0]},{"material":1,"variants":[1]},{"material":2,"variants":[2]}]}},)");
+    const std::string material = R"({"name": "opaque", "pbrMetallicRoughness": {"baseColorFactor": [1, 0.5, 0.25, 1]}})";
+    const size_t materialAt = json.find(material);
+    REQUIRE_NE(materialAt, std::string::npos);
+    json.replace(materialAt, material.size(), R"(
+        {"name":"a","emissiveFactor":[0.5,0.8,0.1],"emissiveTexture":{"index":0}},
+        {"name":"b","emissiveFactor":[0.9,0.8,0.05],"emissiveTexture":{"index":0},
+         "extensions":{"KHR_materials_emissive_strength":{"emissiveStrength":2.5}}},
+        {"name":"c","emissiveFactor":[0.6,0.9,0.1],"emissiveTexture":{"index":0},"extras":{"openyamm_bloom":false}},
+        {"name":"lens","emissiveFactor":[0.3,0.7,1],"extras":{"openyamm_bloom":true,"openyamm_pulse":[0.25,2]}},
+        {"name":"plain","emissiveFactor":[0.95,0.72,0.18]})");
+    json.insert(json.find("\"animations\""), R"("images": [{"uri": "glow.png"}], "textures": [{"source": 0}], )");
+    writeFile(root / "assets_dev/engine/models/fixture.bin", fixtureBuffer());
+    writeFile(root / "assets_dev/engine/models/glow.png", std::string("\x89PNG\r\n\x1a\n", 8));
+    writeFile(root / "assets_dev/engine/models/fixture.gltf", json);
+    AssetFileSystem assets;
+    REQUIRE(assets.initialize(root, root / "assets_dev", AssetScaleTier::X1));
+    const ModelLoadResult loaded = GltfModelLoader().load(assets, "engine/models/fixture.gltf");
+    REQUIRE_MESSAGE(loaded, loaded.error);
+    const std::vector<ModelMaterial> &materials = loaded.asset->materials;
+    REQUIRE_EQ(materials.size(), 5);
+    REQUIRE_EQ(loaded.asset->meshes[0].primitives[0].materialIndices, std::vector<int>{0, 0, 1, 2});
+    for (size_t index = 0; index < 3; ++index)
+    {
+        CHECK_EQ(materials[index].emissiveImageIndex, 0);
+    }
+    CHECK_EQ(materials[0].emissive[1], doctest::Approx(0.8f));
+    CHECK_EQ(materials[1].emissive[0], doctest::Approx(2.25f));   // 0.9 x strength 2.5
+    CHECK(materials[0].bloom);                                      // an emissive texture blooms
+    CHECK(materials[1].bloom);
+    CHECK_FALSE(materials[2].bloom);                                // unless the material opts out
+    CHECK_EQ(materials[3].emissiveImageIndex, -1);
+    CHECK(materials[3].bloom);                                      // a factor-only emitter opts in
+    CHECK_FALSE(materials[4].bloom);                                // and otherwise emits without bloom
+
+    // A creature pulse is 1 without "openyamm_pulse", and swings by its amplitude over its period.
+    CHECK_EQ(modelCreaturePulse(materials[4], 3.7f), 1.0f);
+    CHECK_EQ(modelCreaturePulse(materials[3], 0.0f), doctest::Approx(1.0f));
+    CHECK_EQ(modelCreaturePulse(materials[3], 0.5f), doctest::Approx(1.25f));
+    CHECK_EQ(modelCreaturePulse(materials[3], 1.5f), doctest::Approx(0.75f));
+    ModelMaterial flicker;
+    flicker.pulse = {0.3f, -0.25f};
+    for (float seconds = 0.0f; seconds < 10.0f; seconds += 0.37f)
+    {
+        const float scale = modelCreaturePulse(flicker, seconds);
+        CHECK(scale >= 0.7f - 1.0e-5f);
+        CHECK(scale <= 1.3f + 1.0e-5f);
+    }
+
+    const std::array<std::pair<std::string, std::string>, 2> invalid = {{
+        {R"("emissiveTexture":{"index":0},"extras":{"openyamm_bloom":false})",
+            R"("emissiveTexture":{"index":0,"texCoord":1},"extras":{"openyamm_bloom":false})"},
+        {R"("emissiveStrength":2.5)", R"("emissiveStrength":-1)"},
+    }};
+    for (const auto &[from, to] : invalid)
+    {
+        std::string rejected = json;
+        REQUIRE_NE(rejected.find(from), std::string::npos);
+        rejected.replace(rejected.find(from), from.size(), to);
+        writeFile(root / "assets_dev/engine/models/fixture.gltf", rejected);
+        CHECK_FALSE(GltfModelLoader().load(assets, "engine/models/fixture.gltf"));
+    }
+    assets.shutdown();
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("ModelAnimation installed creatures keep their emission out of the creature bloom")
+{
+    using namespace OpenYAMM::Engine;
+    // The MM6 robot's eye is the only emitting creature material of MM6-MM8 (2026-10-22): it keeps its unbloomed glow.
+    const std::filesystem::path sourceRoot = OPENYAMM_SOURCE_DIR;
+    AssetFileSystem assetFileSystem;
+    REQUIRE(assetFileSystem.initialize(sourceRoot, sourceRoot / "assets_dev", AssetScaleTier::X1));
+    const ModelLoadResult loaded = GltfModelLoader().load(assetFileSystem, "worlds/mm6/models/mm6_rob1.glb");
+    REQUIRE_MESSAGE(loaded, loaded.error);
+    REQUIRE_FALSE(loaded.asset->skins.empty());
+    size_t emitters = 0;
+    for (const ModelMaterial &material : loaded.asset->materials)
+    {
+        CHECK_EQ(material.emissiveImageIndex, -1);
+        CHECK_FALSE(material.bloom);
+        CHECK_EQ(modelCreaturePulse(material, 1.0f), 1.0f);
+        emitters += material.emissive[0] > 0.0f ? 1 : 0;
+    }
+    CHECK(emitters > 0);
+}
+
 TEST_CASE("ModelAnimation loader reads the cooked burn order per vertex")
 {
     using namespace OpenYAMM::Engine;

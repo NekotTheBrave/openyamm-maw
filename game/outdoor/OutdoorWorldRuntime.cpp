@@ -20601,7 +20601,11 @@ void OutdoorWorldRuntime::collectGameplayMinimapMarkers(std::vector<GameplayMini
         const bool hostileToParty =
             pActor->hostileToParty && !outdoorActorIsPartyControlled(pActor->controlMode);
 
-        if (!wizardEyeShowsActorMarker(pActor->isDead, pActor->hasDetectedParty, hostileToParty))
+        if (!wizardEyeShowsActorMarker(
+                pActor->isDead,
+                outdoorMapActorCorpseWasConsumed(m_mapActorCorpseViews, actorIndex),
+                pActor->hasDetectedParty,
+                hostileToParty))
         {
             continue;
         }
