@@ -99,6 +99,8 @@ class PublishTests(unittest.TestCase):
                 (root / name).parent.mkdir(parents=True, exist_ok=True)
                 (root / name).write_text(data)
             (root / "assets").mkdir(exist_ok=True)
+            if platform == "macos-arm64":
+                (root.parent / "OpenYAMM.dmg").write_bytes(b"disk image")
             stages.append(f"{platform}={root.parent}")
         apk = build / "openyamm.apk"
         apk.write_bytes(f"apk {version}".encode())
@@ -151,15 +153,8 @@ class PublishTests(unittest.TestCase):
         with zipfile.ZipFile(linux_app) as app:
             self.assertEqual(app.getinfo("OpenYAMM/app/0.8/openyamm").external_attr >> 16, 0o100755)
 
-        # The macOS download is the signed app bundle alone, unchanged: no index, which the app archive carries.
-        with zipfile.ZipFile(downloads / "OpenYAMM-0.8-macos-arm64.zip") as package:
-            self.assertEqual(sorted(package.namelist()), [
-                "OpenYAMM/LICENSE", "OpenYAMM/OpenYAMM.app/Contents/Info.plist",
-                "OpenYAMM/OpenYAMM.app/Contents/MacOS/OpenYAMM",
-                "OpenYAMM/OpenYAMM.app/Contents/Resources/runtime/shaders/metal/vs_model.bin",
-                "OpenYAMM/OpenYAMM.app/Contents/_CodeSignature/CodeResources"])
-            self.assertEqual(package.getinfo("OpenYAMM/OpenYAMM.app/Contents/MacOS/OpenYAMM").external_attr >> 16,
-                             0o100755)
+        # The macOS download is the macOS job's disk image, unchanged; the app archive carries the index.
+        self.assertEqual((downloads / "OpenYAMM-0.8-macos-arm64.dmg").read_bytes(), b"disk image")
         macos_app = updates / self.manifest(out, "macos-arm64")["app"]["url"]
         with zipfile.ZipFile(macos_app) as app:
             names = app.namelist()
@@ -168,13 +163,13 @@ class PublishTests(unittest.TestCase):
         self.assertIn("OpenYAMM/app/0.8/index.json", names)
         self.assertIn("OpenYAMM/app/0.8/OpenYAMM-launcher", names)
         for package in ("OpenYAMM-0.8-windows-x64.zip", "OpenYAMM-0.8-linux-x64.tar.gz",
-                        "OpenYAMM-0.8-macos-arm64.zip", "OpenYAMM-0.8-android-arm64.apk"):
+                        "OpenYAMM-0.8-macos-arm64.dmg", "OpenYAMM-0.8-android-arm64.apk"):
             self.assertTrue((downloads / f"{package}.sha256").is_file())
 
     def test_packages_are_reproducible(self):
         first = self.prepare("0.8", {"engine.core": b"core"})
         second = self.prepare("0.8", {"engine.core": b"core"}, site="staging")
-        for name in ("OpenYAMM-0.8-windows-x64.zip", "OpenYAMM-0.8-linux-x64.tar.gz", "OpenYAMM-0.8-macos-arm64.zip"):
+        for name in ("OpenYAMM-0.8-windows-x64.zip", "OpenYAMM-0.8-linux-x64.tar.gz", "OpenYAMM-0.8-macos-arm64.dmg"):
             self.assertEqual((first / "site/downloads/0.8" / name).read_bytes(),
                              (second / "site/downloads/0.8" / name).read_bytes())
 
@@ -207,7 +202,7 @@ class PublishTests(unittest.TestCase):
         channels = out / "site/updates/channels/stable"
         self.assertEqual(sorted(path.name for path in channels.glob("*.sig")),
                          ["android-arm64.json.sig", "linux-x64.json.sig", "windows-x64.json.sig"])
-        self.assertFalse((out / "site/downloads/0.8/OpenYAMM-0.8-macos-arm64.zip").exists())
+        self.assertFalse((out / "site/downloads/0.8/OpenYAMM-0.8-macos-arm64.dmg").exists())
 
     def test_signing_needs_the_committed_key(self):
         out = self.prepare("0.8", {"engine.core": b"core"})

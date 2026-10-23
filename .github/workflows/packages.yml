@@ -446,7 +446,12 @@ jobs:
             -DOPENYAMM_BUILD_DESKTOP_EXECUTABLE=ON -DOPENYAMM_BUILD_TESTS=ON -DOPENYAMM_BUILD_EDITOR=OFF \
             -DOPENYAMM_BUILD_TOOLS=OFF -DOPENYAMM_COOK_ON_BUILD=OFF -DOPENYAMM_RELEASE_THIN=ON \
             -DOPENYAMM_RELEASE_VERSION="$VERSION"
-          cmake --build build --target openyamm_release_package openyamm_unit_tests
+          # Compiler errors as annotations: unlike the log, they can be read without signing in.
+          set -o pipefail
+          if ! cmake --build build --target openyamm_release_package openyamm_unit_tests 2>&1 | tee build.log; then
+            grep -E ': (fatal )?error: ' build.log | sort -u | head -n 20 | sed 's/^/::error::/'
+            exit 1
+          fi
 
       - name: Check the macOS package
         env:
@@ -462,6 +467,16 @@ jobs:
           done
           # A downloaded app whose seal is broken is "damaged" to macOS, with no way to open it.
           codesign --verify --strict --verbose=2 "$app"
+          # The players' disk image: the same sealed app and a link to Applications. publish_release.py ships it as
+          # it is.
+          image=build/release/OpenYAMM-macos-arm64-Release.dmg
+          mount="$(mktemp -d)"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$image"
+          codesign --verify --strict "$mount/OpenYAMM.app"
+          test "$(readlink "$mount/Applications")" = /Applications
+          diff -r "$mount/OpenYAMM.app" "$app"
+          hdiutil detach "$mount"
+          mv "$image" build/release/Release/OpenYAMM.dmg
           # Only the system's libraries and frameworks: players install nothing.
           for executable in "$app/Contents/MacOS/OpenYAMM" "$stage/OpenYAMM"; do
             lipo -archs "$executable" | grep -qx arm64 || { echo "::error::$executable is not arm64 only."; exit 1; }
@@ -797,9 +812,10 @@ jobs:
             echo "Extract the package and start OpenYAMM; the first start downloads the game content (about 5 GB)."
             echo "Saves and settings stay in the extracted folder, and the game updates itself."
             echo
-            echo "macOS (Apple silicon, macOS 14 or newer): the app is not notarized. On the first start, allow it in"
-            echo "System Settings, Privacy & Security, Open Anyway. It installs itself and keeps saves and settings in"
-            echo "~/Library/Application Support/OpenYAMM."
+            echo "macOS (Apple silicon, macOS 14 or newer): open the disk image and drag OpenYAMM to Applications."
+            echo "The app is not notarized: run xattr -dr com.apple.quarantine /Applications/OpenYAMM.app once, or"
+            echo "allow it on its first start in System Settings, Privacy & Security, Open Anyway. It installs the game"
+            echo "and keeps saves and settings in ~/Library/Application Support/OpenYAMM."
           } > "$notes"
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "OpenYAMM $VERSION" --notes-file "$notes" publish/site/downloads/"$VERSION"/*

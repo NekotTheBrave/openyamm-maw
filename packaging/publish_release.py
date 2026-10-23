@@ -53,7 +53,7 @@ OFFLINE_MANIFEST_KEY = "manifest-ed25519-offline.key"
 PACKAGE_NAMES = {
     "windows-x64": "OpenYAMM-{version}-windows-x64.zip",
     "linux-x64": "OpenYAMM-{version}-linux-x64.tar.gz",
-    "macos-arm64": "OpenYAMM-{version}-macos-arm64.zip",
+    "macos-arm64": "OpenYAMM-{version}-macos-arm64.dmg",
     "android-arm64": "OpenYAMM-{version}-android-arm64.apk",
 }
 # Files of a desktop installation that must be executable (artifact uploads drop permissions); on macOS the game is
@@ -331,19 +331,6 @@ def write_tar_gz(output, files, directories):
             archive.addfile(info, io.BytesIO(data))
 
 
-def macos_package_files(files, release):
-    """The macOS download: OpenYAMM.app as built and signed in CI, with the licences. Adding the index would break the
-    bundle's signature, so the app carries none: it installs its release from the update channel into the per-user
-    folder and starts it from there (packaging/UPDATER_PLAN.md 9.4)."""
-    bundle = f"OpenYAMM/app/{release}/OpenYAMM.app/"
-    package = {"OpenYAMM/OpenYAMM.app/" + name[len(bundle):]: entry
-               for name, entry in files.items() if name.startswith(bundle)}
-    for name in ("LICENSE", "COPYRIGHT"):
-        if f"OpenYAMM/{name}" in files:
-            package[f"OpenYAMM/{name}"] = files[f"OpenYAMM/{name}"]
-    return package
-
-
 def assemble(platform, stage, index, release, packages_dir, apps_dir):
     """The small download package and the updater's app archive of a desktop platform. Returns (package, app)."""
     files = stage_files(stage, platform, release)
@@ -351,7 +338,13 @@ def assemble(platform, stage, index, release, packages_dir, apps_dir):
     package = packages_dir / PACKAGE_NAMES[platform].format(version=release)
     package.parent.mkdir(parents=True, exist_ok=True)
     if platform == "macos-arm64":
-        write_zip(package, macos_package_files(files, release))
+        # The disk image of the macOS job: OpenYAMM.app as built and signed there. Adding the index would break the
+        # bundle's seal, so the app carries none; it installs its release from the update channel into the per-user
+        # folder and starts it from there (packaging/UPDATER_PLAN.md 9.4).
+        image = Path(stage) / "OpenYAMM.dmg"
+        if not image.is_file():
+            fail(f"the {platform} stage lacks OpenYAMM.dmg")
+        shutil.copyfile(image, package)
     elif package.name.endswith(".tar.gz"):
         directories = {name.rsplit("/", 1)[0] for name in files} | {"OpenYAMM/assets/packs"}
         parents = set()

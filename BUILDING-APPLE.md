@@ -75,8 +75,9 @@ needs a Developer ID signature and notarization, or the user has to allow it in 
 ### Release packages
 
 The GitHub Actions workflow builds the macOS release on `macos-15` like the other desktop platforms
-([packaging/RELEASE.md](packaging/RELEASE.md)). Players download `OpenYAMM-X.Y-macos-arm64.zip`; on its first start the
-app installs its release into `~/Library/Application Support/OpenYAMM` and updates itself there
+([packaging/RELEASE.md](packaging/RELEASE.md)). Players download the disk image `OpenYAMM-X.Y-macos-arm64.dmg` and
+drag the app to Applications; on its first start the app installs its release into
+`~/Library/Application Support/OpenYAMM` and updates itself there
 ([packaging/UPDATER_PLAN.md 9.4](packaging/UPDATER_PLAN.md)). The same build locally:
 
 ```sh
@@ -87,7 +88,7 @@ cmake --build build/macos-release --target openyamm_release_package
 ```
 
 `build/macos-release/release/Release/OpenYAMM` is then the versioned installation (`app/X.Y/OpenYAMM.app`, signed ad
-hoc). A bundle built with a release version installs that release from the update channel when it starts outside an
+hoc), and `build/macos-release/release/OpenYAMM-macos-arm64-Release.dmg` the players' disk image. A bundle built with a release version installs that release from the update channel when it starts outside an
 installation, so test development builds without `OPENYAMM_RELEASE_VERSION`.
 
 ### Unit tests
@@ -196,7 +197,7 @@ xcrun simctl io <udid> screenshot screen.png
 - bgfx creates the Metal swap chain on its render thread, and UIKit logs "Modifying properties of a view's layer off
   the main thread is not allowed" once at startup. The app runs normally.
 - No App Store packaging: the iOS icon uses `CFBundleIconFiles` rather than an asset catalog. macOS releases are
-  signed ad hoc, without notarization or a DMG.
+  signed ad hoc, without notarization.
 - iOS has no updater or first-start content download: `engine/update/HttpTransport.cpp` loads libcurl, which iOS
   apps cannot, so `GameUpdater::create` finds no updater there and the Updates option stays hidden. An NSURLSession
   backend would let iOS download and update the content packs, for example for a small TestFlight build that fetches

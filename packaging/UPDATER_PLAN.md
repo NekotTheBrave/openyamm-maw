@@ -844,11 +844,12 @@ OpenYAMM\
 - **Why not the download folder:** macOS runs a downloaded app that is not notarized from a read-only copy at a random
   path (App Translocation) until the player moves it, so the folder next to the app is neither writable nor stable.
   The per-user folder is both, wherever the player keeps the app.
-- **Download package** `OpenYAMM-X.Y-macos-arm64.zip`: `OpenYAMM/OpenYAMM.app` as the macOS job built and signed it,
-  with the licences. It carries no `index.json`: the publisher writes the index only at publish time (§7, reused
-  packs keep their published file names), and changing a signed bundle breaks its seal, which macOS reports as a
-  damaged app that cannot be opened at all. The app archive of the update channel holds the same bundle in
-  `OpenYAMM/app/<v>/` with the index next to it.
+- **Download package** `OpenYAMM-X.Y-macos-arm64.dmg`: a disk image of `OpenYAMM.app` as the macOS job built and
+  signed it, a link to Applications to drag it to, and the licences (as OpenEnroth ships its macOS build). The
+  publisher ships the image unchanged. The app carries no `index.json`: the publisher writes the index only at publish
+  time (§7, reused packs keep their published file names), and changing a signed bundle breaks its seal, which macOS
+  reports as a damaged app that cannot be opened at all. The app archive of the update channel holds the same bundle
+  in `OpenYAMM/app/<v>/` with the index next to it.
 - **The downloaded app never plays from where it is** (`game/app/AppleBundlePaths.*`). A release bundle outside an
   installation's version folder (`OPENYAMM_APPLE_PACKAGE_VERSION`, set for builds with a release version):
   - when the per-user installation has a current version, starts it in place of itself (`execv`), counting the start
@@ -861,10 +862,11 @@ OpenYAMM\
   (`OpenYAMM.app/Contents/Resources`) to `app/<v>/`, so the index, the updater and the healthy-start cleanup work as on
   Linux. Downloads through libcurl carry no quarantine flag, so updated versions start without Gatekeeper.
 - **Transport:** the libcurl backend of Linux, loaded from `/usr/lib/libcurl.4.dylib`, which every macOS ships.
-- **Signing:** ad hoc only (`codesign --sign -` when the package is built), no Developer ID or notarization. On the
-  first start the player allows the app once in System Settings → Privacy & Security → *Open Anyway*.
-- Not done: Intel Macs, a DMG, notarization, and replacing the downloaded app itself (it only hands over, so an old
-  copy keeps working).
+- **Signing:** ad hoc only (`codesign --sign -` when the package is built), no Developer ID or notarization. The
+  player clears the quarantine flag once (`xattr -dr com.apple.quarantine /Applications/OpenYAMM.app`) or allows the
+  app on its first start in System Settings → Privacy & Security → *Open Anyway*.
+- Not done: Intel Macs, notarization, and replacing the downloaded app itself (it only hands over, so an old copy
+  keeps working).
 
 ## 10. Part G — user experience
 
