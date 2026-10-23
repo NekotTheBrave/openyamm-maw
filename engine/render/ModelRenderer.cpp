@@ -226,7 +226,10 @@ PreparedModelTexture prepareTexture(const ModelImage &image, ImageMipSemantic se
         }
         return prepared;
     }
-    const std::optional<ImagePixelsBgra> decoded = decodeImagePixelsBgra(bytes, image.sourcePath);
+    const std::optional<ImagePixelsBgra> decoded = image.bgraWidth > 0 && image.bgraHeight > 0
+            && bytes.size() == size_t(image.bgraWidth) * size_t(image.bgraHeight) * 4
+        ? std::optional<ImagePixelsBgra>(ImagePixelsBgra{image.bgraWidth, image.bgraHeight, bytes})
+        : decodeImagePixelsBgra(bytes, image.sourcePath);
     if (!decoded || decoded->width <= 0 || decoded->height <= 0
         || decoded->width > bgfx::getCaps()->limits.maxTextureSize
         || decoded->height > bgfx::getCaps()->limits.maxTextureSize)

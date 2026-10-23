@@ -45,6 +45,10 @@ struct ModelImage
     std::vector<uint8_t> bytes;
     const AssetFileSystem *pFileSystem = nullptr;
     bool cooked = false;
+    // Set for a picture built at runtime (an item's icon card): bytes then hold decoded BGRA pixels of this size
+    // instead of a PNG.
+    int bgraWidth = 0;
+    int bgraHeight = 0;
 };
 
 // glTF sampler values; zero filter values request the renderer's linear mip filtering default.

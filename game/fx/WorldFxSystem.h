@@ -793,6 +793,7 @@ private:
         int16_t sectorId = -1;
         bool seen = false;
         bool placeholder = false;
+        bool card = false;
         // The resting pose, fitted once where the item came to rest.
         std::optional<std::array<float, 3>> restPosition;
         WorldItemRestingPose restPose;
@@ -804,18 +805,25 @@ private:
         // Null when the model failed to load (its items draw the placeholder).
         std::shared_ptr<const Engine::ModelAsset> asset;
         float scale = 1.0f;
+        // An icon card: the item's inventory icon standing upright and turned to face the party, as the original
+        // game's ground sprites (MAW gives items icons of its own that have no model).
+        bool card = false;
     };
     const Engine::AssetFileSystem *m_pItemModelAssets = nullptr;
     // By model path, loaded on first use.
     std::unordered_map<std::string, LoadedItemModel> m_loadedItemModels;
+    // By icon (lower case), built on first use; a null asset when the icon cannot be read.
+    std::unordered_map<std::string, LoadedItemModel> m_itemIconCards;
     LoadedItemModel m_missingItemModel;
     // Icons already reported as drawing the placeholder this session.
     std::unordered_set<std::string> m_reportedMissingItemIcons;
+    const LoadedItemModel &itemIconCard(const std::string &icon);
     std::unordered_map<uint32_t, ItemModel> m_itemModels;
     float m_itemModelSeconds = 0.0f;
     const ItemTable *m_pItemTable = nullptr;
     ItemGroundSampler m_itemGroundSampler;
-    // An item's model, or the placeholder (placeholder set) when its icon has none or its model fails to load.
+    // An item's model, or (placeholder set) its icon card when its icon has no model, or the placeholder when the
+    // icon cannot be read either or its model fails to load.
     const LoadedItemModel &loadedItemModel(const GameplayWorldItemPresentationState &item, bool &placeholder);
     void syncItemModels(GameSession &session, float deltaSeconds);
     // The model binding of a projectile's object, or null.

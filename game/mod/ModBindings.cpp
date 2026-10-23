@@ -2316,6 +2316,9 @@ int nativeItemTxtSet(lua_State *pLuaState)
         {
             item.iconName = luaL_checkstring(pLuaState, 3);
         }
+
+        // MAW's crafting items get their pictures here, after the ground models were bound.
+        const_cast<ItemTable &>(pData->getItemTable()).rebindGroundModel(static_cast<uint32_t>(itemId));
     }
     else if (field == "Value")
     {

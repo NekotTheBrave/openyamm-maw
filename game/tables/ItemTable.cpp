@@ -824,27 +824,37 @@ void ItemTable::applyPotionSettings(const MergedPotionSettingTable &potionSettin
 
 void ItemTable::setGroundModels(const ItemModelBindings &bindings)
 {
+    // Every binding is kept, not only those of the items' icons now: a mod may give an item another icon later
+    // (rebindGroundModel), and the list must not grow then, as the world runtimes hold references into it.
     m_groundModels.clear();
+    m_groundModels.reserve(bindings.size());
+    m_groundModelIndexByIcon.clear();
+
+    for (const auto &[icon, binding] : bindings)
+    {
+        m_groundModelIndexByIcon.emplace(icon, int32_t(m_groundModels.size()));
+        m_groundModels.push_back(binding);
+    }
+
     m_groundModelIndexByItemId.assign(m_entries.size(), -1);
-    std::unordered_map<std::string, int32_t> indexByIcon;
 
     for (size_t itemId = 0; itemId < m_entries.size(); ++itemId)
     {
-        const std::string icon = toLowerCopy(m_entries[itemId].iconName);
-        const auto binding = bindings.find(icon);
+        rebindGroundModel(uint32_t(itemId));
+    }
+}
 
-        if (binding == bindings.end())
-        {
-            continue;
-        }
+void ItemTable::rebindGroundModel(uint32_t itemId)
+{
+    if (itemId >= m_entries.size() || itemId >= m_groundModelIndexByItemId.size())
+    {
+        return;
+    }
 
-        const auto [index, inserted] = indexByIcon.try_emplace(icon, int32_t(m_groundModels.size()));
+    const auto index = m_groundModelIndexByIcon.find(toLowerCopy(m_entries[itemId].iconName));
 
-        if (inserted)
-        {
-            m_groundModels.push_back(binding->second);
-        }
-
+    if (index != m_groundModelIndexByIcon.end())
+    {
         m_groundModelIndexByItemId[itemId] = index->second;
     }
 }

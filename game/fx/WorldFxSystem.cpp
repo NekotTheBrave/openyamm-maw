@@ -20,6 +20,8 @@
 #include "game/tables/MonsterTable.h"
 #include "game/tables/SpriteTables.h"
 #include "engine/AssetFileSystem.h"
+#include "engine/AssetScaleTier.h"
+#include "engine/ImageAssetLoader.h"
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
@@ -2875,6 +2877,7 @@ bool WorldFxSystem::loadItemModels(const Engine::AssetFileSystem &assets, std::s
     }
     m_itemModels.clear();
     m_loadedItemModels.clear();
+    m_itemIconCards.clear();
     m_reportedMissingItemIcons.clear();
     m_pItemModelAssets = &assets;
     const ItemModelBinding &placeholder = missingItemModelBinding();
@@ -2894,6 +2897,172 @@ bool WorldFxSystem::loadItemModels(const Engine::AssetFileSystem &assets, std::s
     return true;
 }
 
+const WorldFxSystem::LoadedItemModel &WorldFxSystem::itemIconCard(const std::string &icon)
+{
+    // World units per logical icon pixel, as the models' length (items.yml).
+    constexpr float UnitsPerIconPixel = 0.9f;
+    auto [found, inserted] = m_itemIconCards.try_emplace(icon);
+    if (!inserted || icon.empty() || m_pItemModelAssets == nullptr)
+    {
+        return found->second;
+    }
+    // Decoded as the inventory draws it, with the icons' colour keys.
+    Engine::ImageDecodeOptions options;
+    options.applyPaletteZeroTransparencyKey = true;
+    options.applyMagentaTransparencyKey = true;
+    options.applyTealTransparencyKey = true;
+    Engine::DirectoryAssetPathCache directories;
+    Engine::AssetPathLookupCache paths;
+    Engine::BinaryAssetCache files;
+    const std::optional<Engine::ImagePixelsBgra> image = Engine::loadImageAssetPixelsBgra(
+        *m_pItemModelAssets, "Data/icons", icon, directories, paths, files, options);
+    if (!image || image->width <= 0 || image->height <= 0
+        || image->pixels.size() != size_t(image->width) * size_t(image->height) * 4)
+    {
+        return found->second;
+    }
+    // Cropped to its opaque pixels, so the card stands on its lowest one.
+    int left = image->width;
+    int top = image->height;
+    int right = -1;
+    int bottom = -1;
+    for (int y = 0; y < image->height; ++y)
+    {
+        for (int x = 0; x < image->width; ++x)
+        {
+            if (image->pixels[(size_t(y) * size_t(image->width) + size_t(x)) * 4 + 3] >= 128)
+            {
+                left = std::min(left, x);
+                right = std::max(right, x);
+                top = std::min(top, y);
+                bottom = std::max(bottom, y);
+            }
+        }
+    }
+    if (right < left || bottom < top)
+    {
+        return found->second;
+    }
+    const int width = right - left + 1;
+    const int height = bottom - top + 1;
+    Engine::ModelImage picture;
+    picture.name = icon;
+    picture.sourcePath = "item icon card:" + icon;
+    picture.bgraWidth = width;
+    picture.bgraHeight = height;
+    picture.bytes.resize(size_t(width) * size_t(height) * 4);
+    for (int y = 0; y < height; ++y)
+    {
+        std::copy_n(image->pixels.begin() + (size_t(top + y) * size_t(image->width) + size_t(left)) * 4,
+            size_t(width) * 4, picture.bytes.begin() + size_t(y) * size_t(width) * 4);
+    }
+    // The clear pixels keep their colour key (cyan), which filtering and mips bleed into the edge: they take their
+    // opaque neighbours' colour instead, spreading out a few pixels, and black beyond.
+    std::vector<uint8_t> filled(picture.bytes.size() / 4);
+    for (size_t pixel = 0; pixel < filled.size(); ++pixel)
+    {
+        filled[pixel] = picture.bytes[pixel * 4 + 3] >= 128 ? 1 : 0;
+    }
+    for (int pass = 0; pass < 4; ++pass)
+    {
+        std::vector<uint8_t> next = filled;
+        for (int y = 0; y < height; ++y)
+        {
+            for (int x = 0; x < width; ++x)
+            {
+                const size_t pixel = size_t(y) * size_t(width) + size_t(x);
+                if (filled[pixel] != 0)
+                {
+                    continue;
+                }
+                std::array<int, 3> sum = {};
+                int count = 0;
+                for (int dy = -1; dy <= 1; ++dy)
+                {
+                    for (int dx = -1; dx <= 1; ++dx)
+                    {
+                        const int nx = x + dx;
+                        const int ny = y + dy;
+                        const size_t neighbour = size_t(ny) * size_t(width) + size_t(nx);
+                        if (nx < 0 || ny < 0 || nx >= width || ny >= height || filled[neighbour] == 0)
+                        {
+                            continue;
+                        }
+                        for (size_t channel = 0; channel < 3; ++channel)
+                        {
+                            sum[channel] += picture.bytes[neighbour * 4 + channel];
+                        }
+                        ++count;
+                    }
+                }
+                if (count > 0)
+                {
+                    for (size_t channel = 0; channel < 3; ++channel)
+                    {
+                        picture.bytes[pixel * 4 + channel] = uint8_t(sum[channel] / count);
+                    }
+                    next[pixel] = 1;
+                }
+            }
+        }
+        filled = std::move(next);
+    }
+    for (size_t pixel = 0; pixel < filled.size(); ++pixel)
+    {
+        if (picture.bytes[pixel * 4 + 3] < 128)
+        {
+            picture.bytes[pixel * 4 + 3] = 0;
+            if (filled[pixel] == 0)
+            {
+                std::fill_n(picture.bytes.begin() + pixel * 4, 3, uint8_t(0));
+            }
+        }
+    }
+    const float halfWidth = 0.5f * UnitsPerIconPixel
+        * float(Engine::scalePhysicalPixelsToLogical(width, image->assetScaleTier));
+    const float cardHeight = UnitsPerIconPixel
+        * float(Engine::scalePhysicalPixelsToLogical(height, image->assetScaleTier));
+
+    auto asset = std::make_shared<Engine::ModelAsset>();
+    asset->sourcePath = picture.sourcePath;
+    asset->images.push_back(std::move(picture));
+    Engine::ModelMaterial material;
+    material.name = "item icon card";
+    material.imageIndex = 0;
+    material.metallic = 0.0f;
+    material.alphaMode = Engine::ModelAlphaMode::Mask;
+    material.doubleSided = true;
+    // 9729 = LINEAR, 33071 = CLAMP_TO_EDGE: the icon's edge must not wrap around.
+    material.baseSampler = {0, 9729, 33071, 33071};
+    asset->materials.push_back(material);
+    // Upright in the model's x/up plane, facing glTF +Z (turned toward the party when placed); the texture's top row
+    // at the top.
+    Engine::ModelPrimitive primitive;
+    primitive.vertices = {
+        {{-halfWidth, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+        {{halfWidth, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+        {{halfWidth, cardHeight, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+        {{-halfWidth, cardHeight, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+    };
+    primitive.indices = {0, 1, 2, 0, 2, 3};
+    primitive.materialIndices = {0};
+    Engine::ModelMesh mesh;
+    mesh.name = "card";
+    mesh.primitives.push_back(std::move(primitive));
+    asset->meshes.push_back(std::move(mesh));
+    Engine::ModelNode node;
+    node.name = "card";
+    node.meshIndex = 0;
+    // The pose starts from the node's matrix, which the glTF loader always fills.
+    node.matrix = Engine::identityModelMatrix();
+    asset->nodes.push_back(node);
+    asset->hierarchyOrder = {0};
+    asset->nodeIndicesByName[node.name] = 0;
+    asset->staticBounds = {{-halfWidth, 0.0f, 0.0f}, {halfWidth, cardHeight, 0.0f}, true};
+    found->second = {asset, 1.0f, true};
+    return found->second;
+}
+
 const WorldFxSystem::LoadedItemModel &WorldFxSystem::loadedItemModel(
     const GameplayWorldItemPresentationState &item, bool &placeholder)
 {
@@ -2908,13 +3077,14 @@ const WorldFxSystem::LoadedItemModel &WorldFxSystem::loadedItemModel(
         : pItem != nullptr ? toLowerCopy(pItem->iconName) : std::string();
     if (!item.lootBag && !m_pItemTable->hasGroundModel(itemId))
     {
+        const LoadedItemModel &card = itemIconCard(icon);
         if (m_reportedMissingItemIcons.insert(icon).second)
         {
             std::cerr << "Ground item " << itemId << " \"" << (pItem != nullptr ? pItem->name : std::string())
-                      << "\" (icon " << (icon.empty() ? std::string("none") : icon)
-                      << ") has no 3D model; drawing the placeholder\n";
+                      << "\" (icon " << (icon.empty() ? std::string("none") : icon) << ") has no 3D model; drawing "
+                      << (card.asset != nullptr ? "its icon" : "the placeholder") << '\n';
         }
-        return m_missingItemModel;
+        return card.asset != nullptr ? card : m_missingItemModel;
     }
     const ItemModelBinding &binding = item.lootBag ? lootBagModelBinding() : m_pItemTable->groundModel(itemId);
     auto [found, inserted] = m_loadedItemModels.try_emplace(binding.model);
@@ -2981,7 +3151,7 @@ void WorldFxSystem::syncItemModels(GameSession &session, float deltaSeconds)
         }
         auto [found, inserted] = m_itemModels.try_emplace(item.key);
         ItemModel &model = found->second;
-        if (!inserted && (model.itemId != item.itemId || model.placeholder != placeholder))
+        if (!inserted && (model.itemId != item.itemId || model.placeholder != placeholder || model.card != loaded.card))
         {
             m_models.destroy(model.handle);
             m_namedEffects.stop(model.sparkle, EffectStopMode::Immediate);
@@ -2994,6 +3164,7 @@ void WorldFxSystem::syncItemModels(GameSession &session, float deltaSeconds)
             m_models.setStaticStandIn(model.handle, loaded.asset, MinimumPixels);
             model.itemId = item.itemId;
             model.placeholder = placeholder;
+            model.card = loaded.card;
         }
         model.seen = true;
         model.sectorId = item.sectorId;
@@ -3001,7 +3172,12 @@ void WorldFxSystem::syncItemModels(GameSession &session, float deltaSeconds)
         const ItemModelBinding &binding = placeholder ? missingItemModelBinding()
             : item.lootBag ? lootBagModelBinding() : m_pItemTable->groundModel(item.itemId);
         float yaw = worldItemYawRadians(item.key);
-        if (placeholder)
+        if (loaded.card)
+        {
+            // Its face (glTF +Z, world -sin(yaw), cos(yaw)) toward the party.
+            yaw = std::atan2(-(pWorld->partyX() - item.x), pWorld->partyY() - item.y);
+        }
+        else if (placeholder)
         {
             yaw += m_itemModelSeconds * PlaceholderTurnRadiansPerSecond;
         }
@@ -3033,7 +3209,11 @@ void WorldFxSystem::syncItemModels(GameSession &session, float deltaSeconds)
                 model.restPosition = simulated;
             }
             position[2] = model.restPose.z + GroundLift;
-            up = model.restPose.normal;
+            if (!loaded.card)
+            {
+                // A card stays upright on a slope.
+                up = model.restPose.normal;
+            }
         }
 
         // Shortest arc from up to the ground normal, then the yaw about the tilted up.

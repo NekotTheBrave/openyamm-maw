@@ -1363,13 +1363,8 @@ std::optional<std::string> GameplayInteractionController::resolveHoverStatusText
             ? "Get " + hit.worldItem->displayName
             : hit.worldItem->displayName;
 
-        // An item drawing the missing-model placeholder says so, so that players report it.
-        if (hit.worldItem->missingGroundModelItemId != 0)
-        {
-            text += " [missing 3D model for item " + std::to_string(hit.worldItem->missingGroundModelItemId)
-                + " - please report]";
-        }
-
+        // An item without a 3D model draws its icon (WorldFxSystem::itemIconCard): upstream's "missing 3D model -
+        // please report" note is left out, as MAW's own items have no models to report.
         return text;
     }
 

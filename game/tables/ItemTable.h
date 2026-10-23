@@ -156,6 +156,9 @@ public:
     const std::vector<ItemSetBonusDefinition> &setBonuses() const;
     // Binds every item to its icon's ground model (engine/world_items/items.yml), after the item rows are loaded.
     void setGroundModels(const ItemModelBindings &bindings);
+    // Binds an item to its icon's ground model after a mod changed its icon, when that icon has one; otherwise the
+    // item keeps its model (or its icon card, WorldFxSystem::itemIconCard).
+    void rebindGroundModel(uint32_t itemId);
     // Marks the potions listed in the potion settings, after the item rows are loaded.
     void applyPotionSettings(const MergedPotionSettingTable &potionSettingTable);
     // The model an item draws lying on the ground: its icon's binding, or the missing-model placeholder.
@@ -167,6 +170,8 @@ private:
     std::vector<ItemDefinition> m_entries;
     std::vector<ItemSetBonusDefinition> m_setBonuses;
     std::unordered_map<std::string, uint32_t> m_sourceAliases;
+    // Every binding of items.yml, by icon (lower case) into m_groundModels.
+    std::unordered_map<std::string, int32_t> m_groundModelIndexByIcon;
     std::vector<ItemModelBinding> m_groundModels;
     // By item id: index into m_groundModels, or -1 for the placeholder.
     std::vector<int32_t> m_groundModelIndexByItemId;
