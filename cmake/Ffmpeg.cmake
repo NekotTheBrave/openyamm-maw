@@ -124,14 +124,19 @@ function(openyamm_configure_ffmpeg)
             "--extra-ldflags=-target ${openyammFfmpegIosTarget}"
         )
     elseif (APPLE)
-        # Build for the SDK, architecture and deployment target of the rest of the macOS build.
-        set(openyammFfmpegAppleFlags "-isysroot ${CMAKE_OSX_SYSROOT}")
+        # Build for the SDK, architecture and deployment target of the rest of the macOS build. CMake 4 leaves
+        # CMAKE_OSX_SYSROOT empty unless it is set, and the compiler then uses the default SDK, as for the rest.
+        set(openyammFfmpegAppleFlagList)
+        if (NOT CMAKE_OSX_SYSROOT STREQUAL "")
+            list(APPEND openyammFfmpegAppleFlagList -isysroot ${CMAKE_OSX_SYSROOT})
+        endif()
         if (NOT CMAKE_OSX_ARCHITECTURES STREQUAL "")
-            string(APPEND openyammFfmpegAppleFlags " -arch ${CMAKE_OSX_ARCHITECTURES}")
+            list(APPEND openyammFfmpegAppleFlagList -arch ${CMAKE_OSX_ARCHITECTURES})
         endif()
         if (NOT CMAKE_OSX_DEPLOYMENT_TARGET STREQUAL "")
-            string(APPEND openyammFfmpegAppleFlags " -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+            list(APPEND openyammFfmpegAppleFlagList -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET})
         endif()
+        list(JOIN openyammFfmpegAppleFlagList " " openyammFfmpegAppleFlags)
         list(APPEND openyammFfmpegConfigureArgs
             "--extra-cflags=${openyammFfmpegAppleFlags}"
             "--extra-ldflags=${openyammFfmpegAppleFlags}"
