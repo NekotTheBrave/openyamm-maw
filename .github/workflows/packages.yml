@@ -441,15 +441,19 @@ jobs:
         env:
           VERSION: ${{ needs.meta.outputs.version }}
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
-            -DOPENYAMM_BUILD_DESKTOP_EXECUTABLE=ON -DOPENYAMM_BUILD_TESTS=ON -DOPENYAMM_BUILD_EDITOR=OFF \
-            -DOPENYAMM_BUILD_TOOLS=OFF -DOPENYAMM_COOK_ON_BUILD=OFF -DOPENYAMM_RELEASE_THIN=ON \
-            -DOPENYAMM_RELEASE_VERSION="$VERSION"
-          # Compiler errors as annotations: unlike the log, they can be read without signing in.
           set -o pipefail
-          if ! cmake --build build --target openyamm_release_package openyamm_unit_tests 2>&1 | tee build.log; then
-            grep -E ': (fatal )?error: ' build.log | sort -u | head -n 20 | sed 's/^/::error::/'
+          build() {
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+              -DOPENYAMM_BUILD_DESKTOP_EXECUTABLE=ON -DOPENYAMM_BUILD_TESTS=ON -DOPENYAMM_BUILD_EDITOR=OFF \
+              -DOPENYAMM_BUILD_TOOLS=OFF -DOPENYAMM_COOK_ON_BUILD=OFF -DOPENYAMM_RELEASE_THIN=ON \
+              -DOPENYAMM_RELEASE_VERSION="$VERSION" &&
+              cmake --build build --target openyamm_release_package openyamm_unit_tests
+          }
+          # The errors also go into one annotation: unlike the log, annotations can be read without signing in.
+          if ! build 2>&1 | tee build.log; then
+            errors="$(grep -E -A4 '(: (fatal )?error|CMake Error|FAILED: |ld: |Undefined symbols)' build.log | head -n 80)"
+            echo "::error title=macOS build::${errors//$'\n'/%0A}"
             exit 1
           fi
 
