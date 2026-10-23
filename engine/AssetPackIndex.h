@@ -48,4 +48,16 @@ bool validateAssetPackRecord(const AssetPackRecord &pack, std::string &error);
 std::optional<AssetPackIndex> loadAssetPackIndex(const std::filesystem::path &path, std::string &error);
 // Every pack file exists in the store with the size the index records.
 bool validateAssetPackFiles(const AssetPackIndex &index, const std::filesystem::path &storeRoot, std::string &error);
+// Every pack file exists in the store, whatever its size.
+bool assetPackFilesExist(const AssetPackIndex &index, const std::filesystem::path &storeRoot, std::string &error);
+
+// How the content of a release installation is mounted; changing the game's files is described in
+// packaging/MODDING.md.
+struct InstalledContentOptions
+{
+    // <user data>/mods: its engine/ and worlds/<id>/ folders mount in front of the packs. Empty: no mods.
+    std::filesystem::path modsRoot;
+    // [updates] keep_modified_packs: a pack whose size differs from the index is mounted anyway.
+    bool acceptModifiedPacks = false;
+};
 }

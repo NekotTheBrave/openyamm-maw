@@ -923,6 +923,7 @@ bool EngineApplication::initializeAssetFileSystem(AssetFileSystem &assetFileSyst
         m_config.assetRoot,
         m_config.assetScaleTier,
         m_config.assetScaleProfile,
-        m_config.activeWorldId);
+        m_config.activeWorldId,
+        m_config.installedContent);
 }
 }

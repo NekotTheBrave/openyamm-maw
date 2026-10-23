@@ -1708,6 +1708,16 @@ std::optional<GameSettings> parseGameSettingsDocument(const IniDocument &documen
         }
     }
 
+    if (const std::optional<std::string> value = getIniValue(document, "updates", "keep_modified_packs"))
+    {
+        bool parsed = settings.keepModifiedPacks;
+
+        if (parseBoolValue(*value, parsed))
+        {
+            settings.keepModifiedPacks = parsed;
+        }
+    }
+
     if (const std::optional<std::string> value = getIniValue(document, "debug", "start_world"))
     {
         const std::string trimmed = toLowerCopy(trimCopy(*value));
@@ -2332,6 +2342,7 @@ std::vector<SettingsEntry> serializeGameSettings(const GameSettings &settings)
     serializer.section("updates");
     serializer.add("check_for_updates", settings.updateCheck);
     serializer.add("url", settings.updateUrl);
+    serializer.add("keep_modified_packs", boolValue(settings.keepModifiedPacks));
     serializer.section("debug");
     serializer.add("preseed_party", boolValue(settings.preseedParty));
     serializer.add("party_seed_roster_id", settings.partySeedRosterId);

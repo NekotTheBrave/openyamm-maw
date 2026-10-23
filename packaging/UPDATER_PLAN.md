@@ -21,6 +21,9 @@ Android updaters (phases 4 and 5) exist as well. The server facts in §7.5 were 
 - **User data stays in the installation folder on Windows and Linux** (§4.1): `saves/`, `settings.ini`,
   `openyamm.log` and screenshots live next to the game, as up to 1.5. Updates never touch them; the per-user folder,
   `portable.txt` and the one-time import from the installation are removed.
+- **Changing game files (2026-10-23):** a `mods/` folder in the user data overrides single files and survives updates;
+  `keep_modified_packs=on` keeps edited packs and turns updates off (§11, [Changing the game's files](MODDING.md)).
+  Before, the start check restored an edited pack at every start, whatever `check_for_updates` said.
 - Manifests may name a store file by an absolute https URL whose last segment is its hash (a mirror); relative store
   paths remain the default.
 
@@ -887,8 +890,11 @@ OpenYAMM\
 - **Settings:** sparse player files over code defaults, with versioned migrations only for changes of meaning
   (§4.3); the updater never replaces the user's file.
 - **Binary and content:** always installed together from one manifest; `content_format` guards mismatches.
-- **Mods (future):** user packs go into `<user data>/mods/` with their own `index.json` and mount after the official
-  packs. The updater never touches them. This matches the flat base and world mounting in AGENTS.md.
+- **Mods:** loose files in `<user data>/mods/engine/` and `mods/worlds/<id>/` mount in front of the official packs at
+  the same virtual paths (`AssetFileSystem::mountMods`), only over a release's packs. The start check, the repair and
+  the updater never look at them; each start logs every mod file. `[updates] keep_modified_packs=on` (file only)
+  instead mounts packs whose size differs from the index and turns off the repair and every update check. See
+  [Changing the game's files](MODDING.md).
 - **Optional worlds (future):** packs already carry `package`, so a client could install only `engine` + `mm6`.
   Postponed because MMerge-style cross-world travel expects all worlds mounted.
 

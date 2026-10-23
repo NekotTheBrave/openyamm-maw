@@ -7149,7 +7149,7 @@ bool GameApplication::loadGameData(Engine::AssetFileSystem &assetFileSystem)
     m_gameDataLoader.setInitialMapFileName(m_activeWorldManifest.start.mapFileName);
 
     loadOrCreateSettings();
-    m_pUpdater = GameUpdater::create(m_settings.updateUrl);
+    m_pUpdater = GameUpdater::create(m_settings.updateUrl, m_settings.keepModifiedPacks);
 
     if (!m_gameAudioSystem.initializeMenuAudio(assetFileSystem))
     {

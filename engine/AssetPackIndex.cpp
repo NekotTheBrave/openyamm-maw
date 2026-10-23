@@ -206,4 +206,21 @@ bool validateAssetPackFiles(const AssetPackIndex &index, const std::filesystem::
     error.clear();
     return true;
 }
+
+bool assetPackFilesExist(const AssetPackIndex &index, const std::filesystem::path &storeRoot, std::string &error)
+{
+    for (const AssetPackRecord &pack : index.packs)
+    {
+        std::error_code fileError;
+
+        if (!std::filesystem::is_regular_file(storeRoot / pack.file, fileError))
+        {
+            error = "missing content pack " + pack.file;
+            return false;
+        }
+    }
+
+    error.clear();
+    return true;
+}
 }

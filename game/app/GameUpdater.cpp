@@ -20,15 +20,20 @@ namespace OpenYAMM::Game
 {
 namespace
 {
+const char *KeptPacksMessage =
+    "Updates are off while settings.ini has keep_modified_packs=on: an update would replace the content packs you "
+    "changed.";
+
 // The updater of a versioned installation: this executable runs from app/<version>/.
 class InstallationUpdater final : public GameUpdater
 {
 public:
     InstallationUpdater(Engine::AppInstallation installation, std::string version, const std::string &baseUrl,
-                        std::unique_ptr<Engine::HttpTransport> transport)
+                        std::unique_ptr<Engine::HttpTransport> transport, bool keepModifiedPacks)
         : m_installation(installation)
         , m_version(version)
         , m_updater(installation, version, Engine::releasePlatformName(), baseUrl, std::move(transport))
+        , m_keepModifiedPacks(keepModifiedPacks)
     {
     }
 
@@ -39,17 +44,35 @@ public:
 
     void check() override
     {
+        if (m_keepModifiedPacks)
+        {
+            m_checkRefused = true;
+            return;
+        }
+
         m_updater.check();
     }
 
     Engine::UpdateStatus status() const override
     {
+        if (m_checkRefused)
+        {
+            Engine::UpdateStatus status;
+            status.state = Engine::UpdateState::Failed;
+            status.message = KeptPacksMessage;
+            return status;
+        }
+
         return m_updater.status();
     }
 
     void startUpdate() override
     {
-        m_updater.download();
+        // Only a check offers an update, and with kept packs none ran.
+        if (!m_keepModifiedPacks)
+        {
+            m_updater.download();
+        }
     }
 
     bool updatesInGame() const override
@@ -117,9 +140,11 @@ private:
     Engine::AppInstallation m_installation;
     std::string m_version;
     Engine::AppUpdater m_updater;
+    bool m_keepModifiedPacks = false;
+    bool m_checkRefused = false;
 };
 
-std::unique_ptr<InstallationUpdater> createInstallationUpdater(const std::string &baseUrl)
+std::unique_ptr<InstallationUpdater> createInstallationUpdater(const std::string &baseUrl, bool keepModifiedPacks)
 {
     const char *pBasePath = SDL_GetBasePath();
 
@@ -146,7 +171,8 @@ std::unique_ptr<InstallationUpdater> createInstallationUpdater(const std::string
         return nullptr;
     }
 
-    return std::make_unique<InstallationUpdater>(*installation, version, baseUrl, std::move(transport));
+    return std::make_unique<InstallationUpdater>(*installation, version, baseUrl, std::move(transport),
+                                                 keepModifiedPacks);
 }
 
 #if defined(__ANDROID__)
@@ -290,24 +316,31 @@ private:
 #endif
 }
 
-std::unique_ptr<GameUpdater> GameUpdater::create(const std::string &baseUrl)
+std::unique_ptr<GameUpdater> GameUpdater::create(const std::string &baseUrl, bool keepModifiedPacks)
 {
 #if defined(__ANDROID__)
-    // Development APKs bundle their content and take no updates.
+    // Development APKs bundle their content and take no updates; an APK installs its packs itself.
+    (void)keepModifiedPacks;
     std::unique_ptr<GameUpdater> updater = std::make_unique<AndroidUpdater>(baseUrl);
     return updater->installedVersion().empty() ? nullptr : std::move(updater);
 #else
-    return createInstallationUpdater(baseUrl);
+    return createInstallationUpdater(baseUrl, keepModifiedPacks);
 #endif
 }
 
-int runHeadlessUpdate(const std::string &baseUrl, std::ostream &log)
+int runHeadlessUpdate(const std::string &baseUrl, bool keepModifiedPacks, std::ostream &log)
 {
-    std::unique_ptr<InstallationUpdater> updater = createInstallationUpdater(baseUrl);
+    std::unique_ptr<InstallationUpdater> updater = createInstallationUpdater(baseUrl, keepModifiedPacks);
 
     if (!updater)
     {
         log << "Update: this installation does not update itself\n";
+        return 2;
+    }
+
+    if (keepModifiedPacks)
+    {
+        log << "Update: " << KeptPacksMessage << '\n';
         return 2;
     }
 

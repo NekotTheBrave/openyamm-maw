@@ -325,6 +325,10 @@ void MainMenuScreen::drawUpdates()
                         + m_pUpdater->installedVersion() + " was restored. Your saves are unchanged.",
                     {"OK"}, [](int) {});
         }
+        else if (m_committed.keepModifiedPacks)
+        {
+            // Updates are off and would replace the packs the player changed; Check Now says so (GameUpdater).
+        }
         else if (m_committed.updateCheck == "ask")
         {
             askAboutUpdates();

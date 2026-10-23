@@ -74,6 +74,16 @@ public:
         const AssetScaleProfile &assetScaleProfile,
         const std::string &activeWorldId
     );
+    // The installed content options apply only to a release's packs (assets/index.json), not to Android or
+    // development roots.
+    bool initialize(
+        const std::filesystem::path &basePath,
+        const std::filesystem::path &assetRoot,
+        AssetScaleTier assetScaleTier,
+        const AssetScaleProfile &assetScaleProfile,
+        const std::string &activeWorldId,
+        const InstalledContentOptions &installedContentOptions
+    );
     bool switchActiveWorld(const std::string &activeWorldId);
     bool mountDevelopmentRoot(const std::filesystem::path &assetRoot);
     bool exists(const std::string &virtualPath) const;
@@ -120,6 +130,8 @@ private:
     bool mountPackagedAssetRoot(const std::filesystem::path &assetRoot, const std::string &activeWorldId);
     bool mountAndroidApkAssetRoot(const std::string &activeWorldId);
     bool mountPackageArchiveIfPresent(const std::filesystem::path &archivePath, bool appendToPath);
+    // The engine/ and worlds/<id>/ folders of mods/ in front of every pack; logs each file they bring.
+    bool mountMods(const std::filesystem::path &modsRoot);
     // Mounts the content packs of an index: the active world's in front, then the engine's and the other worlds'.
     bool mountContentPacks(
         const AssetPackIndex &index,
@@ -177,6 +189,7 @@ private:
     std::string m_activeWorldId;
     AssetScaleTier m_assetScaleTier;
     AssetScaleProfile m_assetScaleProfile;
+    InstalledContentOptions m_installedContentOptions;
     // Package-owned icon roots override user scale preferences after a content migration.
     std::vector<std::pair<std::string, AssetScaleTier>> m_iconPackages;
     std::vector<SearchMount> m_searchMounts;

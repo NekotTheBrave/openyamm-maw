@@ -255,6 +255,9 @@ struct GameSettings
     // answered the first-start question, then "auto" or "off". The URL is the channel's base (packaging/UPDATER_PLAN.md 7.3).
     std::string updateCheck = "ask";
     std::string updateUrl = "https://jasicek.net/openyamm/updates/";
+    // [updates] keep_modified_packs, only in the file (packaging/MODDING.md): content packs the player edited load as
+    // they are, and the game neither restores nor updates them, so it does not update at all.
+    bool keepModifiedPacks = false;
     std::string startWorldId = "mm8";
     std::string startMapFile;
     bool overrideStartPosition = false;

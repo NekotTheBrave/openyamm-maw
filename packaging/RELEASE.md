@@ -19,6 +19,9 @@ The macOS app, dragged from the disk image to Applications, installs itself into
 ([UPDATER_PLAN.md 9.4](UPDATER_PLAN.md)). It is signed ad hoc, not notarized: players run
 `xattr -dr com.apple.quarantine /Applications/OpenYAMM.app` once or allow it in System Settings → Privacy & Security.
 
+Players who want to change game files use a `mods` folder or `keep_modified_packs=on`; both are described in
+[Changing the game's files](MODDING.md). An edited pack is otherwise restored at the next start.
+
 ## What the workflow builds
 
 | Job | Runner | Output |

@@ -189,3 +189,27 @@ TEST_CASE("settings saves keep the previous file as a backup")
 }
 
 
+
+TEST_CASE("kept modified packs are a choice of the file only and survive a save")
+{
+    CHECK_FALSE(GameSettings::createDefault().keepModifiedPacks);
+    CHECK_FALSE(
+        loadText("[profile]\nname=desktop\nversion=5\n[updates]\nkeep_modified_packs=maybe\n").keepModifiedPacks);
+
+    const GameSettings kept =
+        loadText("[profile]\nname=desktop\nversion=5\n[updates]\ncheck_for_updates=off\nkeep_modified_packs=on\n");
+    CHECK(kept.keepModifiedPacks);
+    CHECK(contains(savedNames(kept), "updates.keep_modified_packs"));
+
+    const std::filesystem::path path = temporarySettingsPath("settings.ini");
+    std::string error;
+    REQUIRE(OpenYAMM::Game::saveGameSettings(path, kept, error));
+    std::optional<GameSettings> loaded = OpenYAMM::Game::loadGameSettings(path, error);
+    REQUIRE_MESSAGE(loaded, error);
+    CHECK(loaded->keepModifiedPacks);
+
+    // Settings → Updates → Defaults resets the catalogued settings only.
+    OpenYAMM::Game::releaseStoredSettings(*loaded, {"check_for_updates", "update_now"});
+    CHECK(contains(savedNames(*loaded), "updates.keep_modified_packs"));
+    std::filesystem::remove_all(path.parent_path());
+}

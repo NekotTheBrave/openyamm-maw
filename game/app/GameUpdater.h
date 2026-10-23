@@ -14,8 +14,10 @@ namespace OpenYAMM::Game
 class GameUpdater
 {
 public:
-    // Null where this build does not update itself.
-    static std::unique_ptr<GameUpdater> create(const std::string &baseUrl);
+    // Null where this build does not update itself. With keepModifiedPacks (settings.ini [updates]
+    // keep_modified_packs), a check only reports that updates are off and nothing downloads, as an update would
+    // replace the packs the player edited; the start counting of the rollback rule continues.
+    static std::unique_ptr<GameUpdater> create(const std::string &baseUrl, bool keepModifiedPacks = false);
 
     virtual ~GameUpdater() = default;
     virtual std::string installedVersion() const = 0;
@@ -35,5 +37,5 @@ public:
 };
 
 // --headless-update: checks, downloads and installs an update without the menu. 0 when up to date or updated.
-int runHeadlessUpdate(const std::string &baseUrl, std::ostream &log);
+int runHeadlessUpdate(const std::string &baseUrl, bool keepModifiedPacks, std::ostream &log);
 }

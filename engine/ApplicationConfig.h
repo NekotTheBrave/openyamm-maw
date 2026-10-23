@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/AssetPackIndex.h"
 #include "engine/AssetScaleTier.h"
 
 #include <cstddef>
@@ -25,6 +26,7 @@ struct ApplicationConfig
     std::optional<size_t> loadUniqueActorIndex;
     AssetScaleTier assetScaleTier;
     AssetScaleProfile assetScaleProfile;
+    InstalledContentOptions installedContent;
     int windowWidth;
     int windowHeight;
     WindowMode windowMode;
