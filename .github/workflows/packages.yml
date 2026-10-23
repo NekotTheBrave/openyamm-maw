@@ -813,13 +813,24 @@ jobs:
           notes="$RUNNER_TEMP/release-notes.md"
           {
             if [ -s "$RUNNER_TEMP/notes.txt" ]; then cat "$RUNNER_TEMP/notes.txt"; echo; fi
-            echo "Extract the package and start OpenYAMM; the first start downloads the game content (about 5 GB)."
-            echo "Saves and settings stay in the extracted folder, and the game updates itself."
-            echo
-            echo "macOS (Apple silicon, macOS 14 or newer): open the disk image and drag OpenYAMM to Applications."
-            echo "The app is not notarized: run xattr -dr com.apple.quarantine /Applications/OpenYAMM.app once, or"
-            echo "allow it on its first start in System Settings, Privacy & Security, Open Anyway. It installs the game"
-            echo "and keeps saves and settings in ~/Library/Application Support/OpenYAMM."
+            cat <<'EOF'
+          ## How to play
+
+          - **Windows** (64-bit): extract the `windows-x64.zip` and run `OpenYAMM.exe`. If Windows warns about an
+            unknown publisher, choose *More info* → *Run anyway*.
+          - **Linux** (x64, Ubuntu 22.04 or another distribution with glibc 2.35 or newer, and libcurl): extract the
+            `linux-x64.tar.gz` and run `./OpenYAMM`.
+          - **macOS** (Apple silicon, macOS 14 or newer): open the `macos-arm64.dmg` and drag OpenYAMM to
+            Applications. The app is not notarized: run `xattr -dr com.apple.quarantine /Applications/OpenYAMM.app`
+            once in Terminal, or allow it after the first attempt in *System Settings* → *Privacy & Security* →
+            *Open Anyway*.
+          - **Android** (64-bit ARM): install the `android-arm64.apk`, allowing your browser or file manager to install
+            apps when asked.
+
+          The first start downloads the game content (about 5 GB, 3 GB on Android); later updates download only what
+          changed, from inside the game. Saves and settings stay in the extracted folder on Windows and Linux, and in
+          `~/Library/Application Support/OpenYAMM` on macOS.
+          EOF
           } > "$notes"
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "OpenYAMM $VERSION" --notes-file "$notes" publish/site/downloads/"$VERSION"/*
