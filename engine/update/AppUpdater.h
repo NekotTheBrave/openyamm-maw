@@ -117,7 +117,7 @@ private:
 std::string releaseManifestUrl(const std::string &baseUrl, const std::string &platform);
 // The download URL of a manifest's store file: an absolute address as it is, otherwise below the channel.
 std::string releaseFileUrl(const std::string &baseUrl, const std::string &url);
-// The manifest platform of this build ("windows-x64", "linux-x64").
+// The manifest platform of this build ("windows-x64", "linux-x64", "macos-arm64").
 const char *releasePlatformName();
 
 // Copies the files below `prefix` of a zip archive into targetDirectory.

@@ -224,6 +224,8 @@ const char *releasePlatformName()
 {
 #if defined(_WIN32)
     return "windows-x64";
+#elif defined(__APPLE__)
+    return "macos-arm64";
 #else
     return "linux-x64";
 #endif
@@ -386,8 +388,11 @@ void AppUpdater::runCheck()
     }
 
     bool contentOnly = false;
+    // The per-user installation that the downloaded macOS app creates holds no version yet: it installs the published
+    // release, the app's own or a newer one (packaging/UPDATER_PLAN.md 9.4).
+    const bool emptyInstallation = !m_installation.currentVersion();
 
-    if (*comparison == 0)
+    if (*comparison == 0 && !emptyInstallation)
     {
         // The installed version itself: complete when all of its packs are there, else a fresh installation whose
         // small package carries no packs. Its index must name exactly the published packs.
@@ -744,6 +749,24 @@ bool AppUpdater::activate(std::string &error)
     if (!current.contentOnly && !m_installation.switchTo(m_manifest->release, error))
     {
         return false;
+    }
+
+    // The first version of an empty installation brings the launcher that starts it.
+    const std::filesystem::path launcher = m_installation.appDirectory(m_manifest->release) / LauncherCopyName;
+    std::error_code launcherError;
+
+    if (!std::filesystem::exists(m_installation.launcherPath(), launcherError)
+        && std::filesystem::is_regular_file(launcher, launcherError))
+    {
+        std::filesystem::copy_file(launcher, m_installation.launcherPath(), launcherError);
+
+        if (launcherError)
+        {
+            error = "cannot install the launcher: " + launcherError.message();
+            return false;
+        }
+
+        makeExecutable(m_installation.launcherPath());
     }
 
     std::error_code fileError;

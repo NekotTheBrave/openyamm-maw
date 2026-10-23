@@ -26,6 +26,7 @@ using OpenYAMM::Engine::GameExecutableName;
 using OpenYAMM::Engine::LauncherCopyName;
 using OpenYAMM::Engine::LauncherExecutableName;
 using OpenYAMM::Engine::ManifestPublicKey;
+using OpenYAMM::Engine::programDirectory;
 using OpenYAMM::Engine::UpdateState;
 
 constexpr const char *BaseUrl = "https://updates.invalid/openyamm/updates/";
@@ -515,6 +516,15 @@ TEST_CASE("the launcher rolls a version back after two starts that never reached
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("the program folder of a macOS app bundle is the folder that holds the bundle")
+{
+    CHECK(programDirectory("/Users/a/OpenYAMM/app/1.9/OpenYAMM.app/Contents/Resources/")
+          == std::filesystem::path("/Users/a/OpenYAMM/app/1.9"));
+    CHECK(programDirectory("/opt/OpenYAMM/app/1.9/") == std::filesystem::path("/opt/OpenYAMM/app/1.9"));
+    CHECK(programDirectory("/opt/OpenYAMM/app/1.9") == std::filesystem::path("/opt/OpenYAMM/app/1.9"));
+    CHECK(programDirectory("/opt/game/Contents/Resources/") == std::filesystem::path("/opt/game/Contents/Resources"));
+}
+
 TEST_CASE("an update downloads only changed packs, resumes broken transfers and cleans up after a healthy start")
 {
     const std::filesystem::path root = makeTemporaryRoot();
@@ -724,6 +734,64 @@ TEST_CASE("a fresh installation from the small package downloads its own content
     REQUIRE_MESSAGE(updater->status().state == UpdateState::Ready, updater->status().message);
     REQUIRE(updater->activate(error));
     CHECK(AppInstallation(stale).currentVersion() == "1.1");
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("an empty installation installs the downloaded app's release with its launcher, or a newer release")
+{
+    const std::filesystem::path root = makeTemporaryRoot();
+    const std::filesystem::path install = root / "Application Support" / "OpenYAMM";
+    const std::filesystem::path server = root / "server";
+    const TestSigner signer;
+    publishRelease(server, signer, "1.0", ReleaseOnePacks, "game 1.0");
+    auto log = std::make_shared<FolderTransport::Log>();
+    std::unique_ptr<AppUpdater> updater = makeUpdater(install, server, signer, log);
+
+    updater->check();
+    updater->wait();
+    REQUIRE_MESSAGE(updater->status().state == UpdateState::Available, updater->status().message);
+    CHECK_FALSE(updater->status().contentOnly);
+    CHECK(updater->status().packCount == 2);
+    CHECK(updater->status().totalBytes > 75000);
+
+    updater->download();
+    updater->wait();
+    REQUIRE_MESSAGE(updater->status().state == UpdateState::Ready, updater->status().message);
+    std::string error;
+    REQUIRE_MESSAGE(updater->activate(error), error);
+    AppInstallation installation(install);
+    CHECK(installation.currentVersion() == "1.0");
+    CHECK(readFile(installation.gameExecutable("1.0")) == "game 1.0");
+    CHECK(readFile(installation.launcherPath()) == "launcher 1.0");
+    CHECK(readFile(install / "assets" / "packs" / "engine.core-aaaa.zip") == ReleaseOnePacks[0].data);
+
+    // Installed: the same release is up to date.
+    updater = makeUpdater(install, server, signer, log);
+    updater->check();
+    updater->wait();
+    CHECK(updater->status().state == UpdateState::UpToDate);
+
+    // An app newer than the published release finds nothing to install.
+    AppUpdater newer(AppInstallation(root / "newer"), "1.1", "windows-x64", BaseUrl,
+                     std::make_unique<FolderTransport>(server, log));
+    newer.setTrustedKeys({signer.publicKey});
+    newer.check();
+    newer.wait();
+    CHECK(newer.status().state == UpdateState::UpToDate);
+
+    // An older app installs the newer published release.
+    publishRelease(server, signer, "1.1", ReleaseTwoPacks, "game 1.1");
+    const std::filesystem::path other = root / "other";
+    updater = makeUpdater(other, server, signer, log);
+    updater->check();
+    updater->wait();
+    REQUIRE_MESSAGE(updater->status().state == UpdateState::Available, updater->status().message);
+    updater->download();
+    updater->wait();
+    REQUIRE_MESSAGE(updater->status().state == UpdateState::Ready, updater->status().message);
+    REQUIRE_MESSAGE(updater->activate(error), error);
+    CHECK(AppInstallation(other).currentVersion() == "1.1");
+    CHECK(readFile(AppInstallation(other).launcherPath()) == "launcher 1.1");
     std::filesystem::remove_all(root);
 }
 

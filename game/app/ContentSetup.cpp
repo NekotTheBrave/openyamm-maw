@@ -18,6 +18,13 @@ constexpr int ScreenWidth = 640;
 constexpr int ScreenHeight = 360;
 constexpr float Margin = 24.0f;
 constexpr float GlyphSize = float(SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE);
+#if defined(__APPLE__)
+constexpr const char *FirstStartText = "The game installs itself and downloads its content on the first start. Your "
+                                       "saves and settings stay in ~/Library/Application Support/OpenYAMM.";
+#else
+constexpr const char *FirstStartText = "The game downloads its content on the first start. Your saves and settings "
+                                       "stay in this folder.";
+#endif
 
 struct Button
 {
@@ -228,8 +235,7 @@ ContentSetupResult runContentSetup(const std::string &updateChannelUrl)
         const size_t columns = size_t((ScreenWidth - 2.0f * Margin) / GlyphSize);
         float y = Margin + 40.0f;
 
-        for (const std::string &line : wrapText("The game downloads its content on the first start. Your saves and "
-                                                "settings stay in this folder.", columns))
+        for (const std::string &line : wrapText(FirstStartText, columns))
         {
             drawText(pRenderer, Margin, y, 1.0f, line);
             y += GlyphSize + 6.0f;

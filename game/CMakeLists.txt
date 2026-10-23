@@ -281,6 +281,17 @@ add_library(openyamm_game STATIC
     ${OPENYAMM_IMGUI_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp
 )
 
+if (APPLE)
+    target_sources(openyamm_game PRIVATE app/AppleBundlePaths.cpp)
+    # Package builds pass OPENYAMM_RELEASE_VERSION with -D; the top CMakeLists.txt declares it after this file.
+    if (NOT IOS AND DEFINED OPENYAMM_RELEASE_VERSION AND NOT OPENYAMM_RELEASE_VERSION MATCHES "^(dev)?$")
+        # The release the downloaded OpenYAMM.app installs (packaging/UPDATER_PLAN.md 9.4); development bundles install
+        # nothing.
+        set_property(SOURCE app/AppleBundlePaths.cpp APPEND PROPERTY COMPILE_DEFINITIONS
+            "OPENYAMM_APPLE_PACKAGE_VERSION=\"${OPENYAMM_RELEASE_VERSION}\"")
+    endif()
+endif()
+
 target_include_directories(openyamm_game
     PRIVATE
         ${CMAKE_SOURCE_DIR}
@@ -352,7 +363,6 @@ if (OPENYAMM_BUILD_DESKTOP_EXECUTABLE)
     target_compile_features(openyamm PRIVATE cxx_std_20)
 
     if (APPLE)
-        target_sources(openyamm PRIVATE app/AppleBundlePaths.cpp)
         include(AppleBundle)
         openyamm_configure_apple_bundle(openyamm)
     endif()
@@ -401,10 +411,11 @@ if (OPENYAMM_BUILD_DESKTOP_EXECUTABLE)
                 OUTPUT_NAME OpenYAMM
                 RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/launcher"
         )
-    elseif (UNIX AND NOT APPLE)
-        # OpenYAMM of a versioned installation (packaging/UPDATER_PLAN.md 9.1): standard library only.
+    elseif (UNIX AND NOT IOS)
+        # OpenYAMM of a versioned installation on Linux and macOS (packaging/UPDATER_PLAN.md 9.1): standard library
+        # only.
         add_executable(openyamm_launcher
-            launcher/LinuxLauncher.cpp
+            launcher/UnixLauncher.cpp
             ${CMAKE_SOURCE_DIR}/engine/update/AppInstallation.cpp
         )
         target_include_directories(openyamm_launcher PRIVATE ${CMAKE_SOURCE_DIR})

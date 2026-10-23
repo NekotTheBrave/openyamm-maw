@@ -3,6 +3,10 @@
 #include "engine/AssetScaleTier.h"
 #include "engine/LogFile.h"
 #include "engine/UserDataPaths.h"
+#include "engine/update/AppInstallation.h"
+#if defined(__APPLE__)
+#include "game/app/AppleBundlePaths.h"
+#endif
 #include "game/app/ContentSetup.h"
 #include "game/app/GameApplication.h"
 #include "game/app/GameSettings.h"
@@ -233,7 +237,7 @@ std::filesystem::path executableDirectory()
 {
     const char *pBasePath = SDL_GetBasePath();
     std::error_code error;
-    return pBasePath != nullptr ? std::filesystem::path(pBasePath) : std::filesystem::current_path(error);
+    return pBasePath != nullptr ? OpenYAMM::Engine::programDirectory(pBasePath) : std::filesystem::current_path(error);
 }
 
 // Makes the user data folder the working directory: a release installation keeps saves, settings.ini and screenshots
@@ -685,11 +689,20 @@ int runGame(int argc, char **argv, OpenYAMM::Engine::LogFile &logFile)
     }
 
 #if !defined(__ANDROID__)
-    // A fresh installation from the small download package carries no content yet.
-    if (!assetRootArgumentProvided && OpenYAMM::Engine::isReleaseInstallation(installRoot)
-        && OpenYAMM::Game::installedContentMissing(config.assetRoot))
+    // A fresh installation from the small download package carries no content yet; the downloaded macOS app installs
+    // its whole release into the per-user folder and never plays itself.
+    bool installRelease = false;
+#if defined(__APPLE__)
+    installRelease = OpenYAMM::Game::applePackageInstallation().has_value();
+#endif
+
+    if (!assetRootArgumentProvided
+        && (installRelease
+            || (OpenYAMM::Engine::isReleaseInstallation(installRoot)
+                && OpenYAMM::Game::installedContentMissing(config.assetRoot))))
     {
-        if (OpenYAMM::Game::runContentSetup(updateChannelUrl()) != OpenYAMM::Game::ContentSetupResult::Ready)
+        if (OpenYAMM::Game::runContentSetup(updateChannelUrl()) != OpenYAMM::Game::ContentSetupResult::Ready
+            || installRelease)
         {
             return 0;
         }

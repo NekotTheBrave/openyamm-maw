@@ -6,7 +6,7 @@
 
 #include <algorithm>
 #include <vector>
-#elif defined(__linux__) && !defined(__ANDROID__)
+#elif (defined(__linux__) && !defined(__ANDROID__)) || (defined(__APPLE__) && !defined(OPENYAMM_IOS))
 #include <dlfcn.h>
 
 #include <algorithm>
@@ -208,12 +208,13 @@ std::unique_ptr<HttpTransport> createPlatformHttpTransport()
 {
     return std::make_unique<WinHttpTransport>();
 }
-#elif defined(__linux__) && !defined(__ANDROID__)
+#elif (defined(__linux__) && !defined(__ANDROID__)) || (defined(__APPLE__) && !defined(OPENYAMM_IOS))
 namespace
 {
 // libcurl is loaded when the updater first runs, not linked: the game starts without it, uses the system's TLS,
 // certificates and proxy settings, and ships no TLS library to patch. Every desktop distribution carries libcurl
-// (Debian and Ubuntu also as the GnuTLS build). The option numbers are libcurl's stable ABI (curl/curl.h).
+// (Debian and Ubuntu also as the GnuTLS build), and so does macOS. The option numbers are libcurl's stable ABI
+// (curl/curl.h).
 constexpr int CurlOptionWriteData = 10001;
 constexpr int CurlOptionUrl = 10002;
 constexpr int CurlOptionRange = 10007;
@@ -244,7 +245,11 @@ struct CurlLibrary
     {
         void *pLibrary = nullptr;
 
+#if defined(__APPLE__)
+        for (const char *pName : {"/usr/lib/libcurl.4.dylib"})
+#else
         for (const char *pName : {"libcurl.so.4", "libcurl-gnutls.so.4"})
+#endif
         {
             pLibrary = pLibrary != nullptr ? pLibrary : dlopen(pName, RTLD_NOW | RTLD_LOCAL);
         }

@@ -47,12 +47,26 @@ else()
 endif()
 
 file(MAKE_DIRECTORY "${OPENYAMM_RELEASE_STAGE_DIR}/assets")
-file(MAKE_DIRECTORY "${openyammReleaseAppDir}/runtime")
 
-file(COPY "${OPENYAMM_RELEASE_EXECUTABLE}" DESTINATION "${openyammReleaseAppDir}")
-file(COPY "${OPENYAMM_RELEASE_SHADER_DIR}" DESTINATION "${openyammReleaseAppDir}/runtime"
-    PATTERN "dxbc" EXCLUDE
-)
+if (DEFINED OPENYAMM_RELEASE_BUNDLE AND NOT OPENYAMM_RELEASE_BUNDLE STREQUAL "")
+    # macOS: the game is OpenYAMM.app with its shaders inside. The ad-hoc signature seals the copied bundle (the
+    # linker signs only the executable); macOS refuses to open a downloaded bundle whose seal is broken.
+    file(COPY "${OPENYAMM_RELEASE_BUNDLE}" DESTINATION "${openyammReleaseAppDir}")
+    get_filename_component(openyammReleaseBundleName "${OPENYAMM_RELEASE_BUNDLE}" NAME)
+    execute_process(
+        COMMAND "${OPENYAMM_RELEASE_CODESIGN}" --force --sign - "${openyammReleaseAppDir}/${openyammReleaseBundleName}"
+        RESULT_VARIABLE codesignResult
+    )
+    if (NOT codesignResult EQUAL 0)
+        message(FATAL_ERROR "Failed to sign ${openyammReleaseBundleName}")
+    endif()
+else()
+    file(MAKE_DIRECTORY "${openyammReleaseAppDir}/runtime")
+    file(COPY "${OPENYAMM_RELEASE_EXECUTABLE}" DESTINATION "${openyammReleaseAppDir}")
+    file(COPY "${OPENYAMM_RELEASE_SHADER_DIR}" DESTINATION "${openyammReleaseAppDir}/runtime"
+        PATTERN "dxbc" EXCLUDE
+    )
+endif()
 file(COPY
     "${CMAKE_CURRENT_LIST_DIR}/../LICENSE"
     "${CMAKE_CURRENT_LIST_DIR}/../COPYRIGHT"
@@ -156,7 +170,8 @@ endif()
 get_filename_component(openyammReleaseParentDir "${OPENYAMM_RELEASE_STAGE_DIR}" DIRECTORY)
 get_filename_component(openyammReleaseFolderName "${OPENYAMM_RELEASE_STAGE_DIR}" NAME)
 
-# Windows players get a zip; Linux players a tar.gz, which keeps the executables' permissions.
+# Windows and macOS players get a zip; Linux players a tar.gz, which keeps the executables' permissions. On macOS the
+# player's package is OpenYAMM.app alone (packaging/publish_release.py); this archive holds the whole stage.
 if (OPENYAMM_RELEASE_ARCHIVE_PATH MATCHES "\\.tar\\.gz$")
     set(openyammReleaseTarArguments czf "${OPENYAMM_RELEASE_ARCHIVE_PATH}" --format=gnutar)
 else()

@@ -1,5 +1,9 @@
 #include "game/app/GameUpdater.h"
 
+#if defined(__APPLE__)
+#include "game/app/AppleBundlePaths.h"
+#endif
+
 #include <SDL3/SDL_filesystem.h>
 #include <SDL3/SDL_process.h>
 #include <SDL3/SDL_system.h>
@@ -124,15 +128,17 @@ std::unique_ptr<InstallationUpdater> createInstallationUpdater(const std::string
         return nullptr;
     }
 
-    std::filesystem::path executableDirectory = std::filesystem::path(pBasePath).lexically_normal();
-
-    if (!executableDirectory.has_filename())
+    const std::filesystem::path executableDirectory = Engine::programDirectory(pBasePath);
+    std::optional<Engine::AppInstallation> installation = Engine::AppInstallation::containing(executableDirectory);
+    std::string version = executableDirectory.filename().string();
+#if defined(__APPLE__)
+    // The downloaded app installs its release into the per-user installation.
+    if (!installation)
     {
-        executableDirectory = executableDirectory.parent_path();
+        installation = applePackageInstallation();
+        version = applePackageVersion();
     }
-
-    const std::optional<Engine::AppInstallation> installation =
-        Engine::AppInstallation::containing(executableDirectory);
+#endif
     std::unique_ptr<Engine::HttpTransport> transport = Engine::createPlatformHttpTransport();
 
     if (!installation || !transport)
@@ -140,8 +146,7 @@ std::unique_ptr<InstallationUpdater> createInstallationUpdater(const std::string
         return nullptr;
     }
 
-    return std::make_unique<InstallationUpdater>(*installation, executableDirectory.filename().string(), baseUrl,
-                                                 std::move(transport));
+    return std::make_unique<InstallationUpdater>(*installation, version, baseUrl, std::move(transport));
 }
 
 #if defined(__ANDROID__)

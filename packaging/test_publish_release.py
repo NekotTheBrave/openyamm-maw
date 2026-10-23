@@ -82,12 +82,19 @@ class PublishTests(unittest.TestCase):
                  "store": "packs", "packs": records}))
             contents.append(f"{profile}={build / f'content-{profile}'}")
         stages = []
-        for platform, suffix in (("windows-x64", ".exe"), ("linux-x64", "")):
+        game_files = {
+            "windows-x64": {"openyamm.exe": f"game {version}", "runtime/shaders/glsl/vs_model.bin": "shader"},
+            "linux-x64": {"openyamm": f"game {version}", "runtime/shaders/glsl/vs_model.bin": "shader"},
+            "macos-arm64": {"OpenYAMM.app/Contents/MacOS/OpenYAMM": f"game {version}",
+                            "OpenYAMM.app/Contents/Info.plist": "plist",
+                            "OpenYAMM.app/Contents/Resources/runtime/shaders/metal/vs_model.bin": "shader",
+                            "OpenYAMM.app/Contents/_CodeSignature/CodeResources": "seal"},
+        }
+        for platform, suffix in (("windows-x64", ".exe"), ("linux-x64", ""), ("macos-arm64", "")):
             root = build / f"stage-{platform}" / "OpenYAMM"
+            files = {f"app/{version}/{name}": data for name, data in game_files[platform].items()}
             for name, data in ((f"OpenYAMM{suffix}", "launcher"), ("app/current", f"{version}\n"),
-                               (f"app/{version}/openyamm{suffix}", f"game {version}"),
-                               (f"app/{version}/OpenYAMM-launcher{suffix}", "launcher"),
-                               (f"app/{version}/runtime/shaders/glsl/vs_model.bin", "shader"),
+                               (f"app/{version}/OpenYAMM-launcher{suffix}", "launcher"), *files.items(),
                                ("LICENSE", "license")):
                 (root / name).parent.mkdir(parents=True, exist_ok=True)
                 (root / name).write_text(data)
@@ -97,12 +104,12 @@ class PublishTests(unittest.TestCase):
         apk.write_bytes(f"apk {version}".encode())
         return contents, stages, apk
 
-    def prepare(self, version, packs, site="stable", replace=False):
+    def prepare(self, version, packs, site="stable", replace=False, without=None):
         contents, stages, apk = self.artifacts(version, packs)
         out = self.root / f"publish-{version}-{site}"
         publish_release.prepare(argparse.Namespace(
             version=version, site=site, content=contents, stage=stages, apk=str(apk), notes=None, notes_url=None,
-            replace=replace, out=str(out), public_url="https://example.invalid"))
+            replace=replace, without=without, out=str(out), public_url="https://example.invalid"))
         publish_release.sign(argparse.Namespace(out=str(out), key=str(self.key)))
         return out
 
@@ -143,14 +150,31 @@ class PublishTests(unittest.TestCase):
         linux_app = updates / self.manifest(out, "linux-x64")["app"]["url"]
         with zipfile.ZipFile(linux_app) as app:
             self.assertEqual(app.getinfo("OpenYAMM/app/0.8/openyamm").external_attr >> 16, 0o100755)
+
+        # The macOS download is the signed app bundle alone, unchanged: no index, which the app archive carries.
+        with zipfile.ZipFile(downloads / "OpenYAMM-0.8-macos-arm64.zip") as package:
+            self.assertEqual(sorted(package.namelist()), [
+                "OpenYAMM/LICENSE", "OpenYAMM/OpenYAMM.app/Contents/Info.plist",
+                "OpenYAMM/OpenYAMM.app/Contents/MacOS/OpenYAMM",
+                "OpenYAMM/OpenYAMM.app/Contents/Resources/runtime/shaders/metal/vs_model.bin",
+                "OpenYAMM/OpenYAMM.app/Contents/_CodeSignature/CodeResources"])
+            self.assertEqual(package.getinfo("OpenYAMM/OpenYAMM.app/Contents/MacOS/OpenYAMM").external_attr >> 16,
+                             0o100755)
+        macos_app = updates / self.manifest(out, "macos-arm64")["app"]["url"]
+        with zipfile.ZipFile(macos_app) as app:
+            names = app.namelist()
+            self.assertEqual(app.getinfo("OpenYAMM/app/0.8/OpenYAMM.app/Contents/MacOS/OpenYAMM").external_attr >> 16,
+                             0o100755)
+        self.assertIn("OpenYAMM/app/0.8/index.json", names)
+        self.assertIn("OpenYAMM/app/0.8/OpenYAMM-launcher", names)
         for package in ("OpenYAMM-0.8-windows-x64.zip", "OpenYAMM-0.8-linux-x64.tar.gz",
-                        "OpenYAMM-0.8-android-arm64.apk"):
+                        "OpenYAMM-0.8-macos-arm64.zip", "OpenYAMM-0.8-android-arm64.apk"):
             self.assertTrue((downloads / f"{package}.sha256").is_file())
 
     def test_packages_are_reproducible(self):
         first = self.prepare("0.8", {"engine.core": b"core"})
         second = self.prepare("0.8", {"engine.core": b"core"}, site="staging")
-        for name in ("OpenYAMM-0.8-windows-x64.zip", "OpenYAMM-0.8-linux-x64.tar.gz"):
+        for name in ("OpenYAMM-0.8-windows-x64.zip", "OpenYAMM-0.8-linux-x64.tar.gz", "OpenYAMM-0.8-macos-arm64.zip"):
             self.assertEqual((first / "site/downloads/0.8" / name).read_bytes(),
                              (second / "site/downloads/0.8" / name).read_bytes())
 
@@ -177,6 +201,13 @@ class PublishTests(unittest.TestCase):
             self.prepare("0.7", {"engine.core": b"core"})
         with self.assertRaisesRegex(SystemExit, "staging site only"):
             self.prepare("0.8", {"engine.core": b"core"}, replace=True)
+
+    def test_a_rehearsal_may_leave_a_desktop_platform_out(self):
+        out = self.prepare("0.8", {"engine.core": b"core"}, without=["macos-arm64"])
+        channels = out / "site/updates/channels/stable"
+        self.assertEqual(sorted(path.name for path in channels.glob("*.sig")),
+                         ["android-arm64.json.sig", "linux-x64.json.sig", "windows-x64.json.sig"])
+        self.assertFalse((out / "site/downloads/0.8/OpenYAMM-0.8-macos-arm64.zip").exists())
 
     def test_signing_needs_the_committed_key(self):
         out = self.prepare("0.8", {"engine.core": b"core"})

@@ -261,6 +261,8 @@ def publish(work, args):
                      "--content", f"desktop={out / 'content-desktop'}", "--content", f"android={out / 'content-android'}",
                      "--stage", f"windows-x64={out / 'stage-windows-x64'}",
                      "--stage", f"linux-x64={out / 'stage-linux-x64'}",
+                     # This PC cannot build the macOS app; the workflow's macOS job checks it.
+                     "--without", "macos-arm64",
                      "--apk", out / "openyamm.apk", "--notes", notes, "--out", tree])
     log(f"{version}: sign with {MANIFEST_KEY}")
     run(publisher + ["sign", "--out", tree, "--key", args.key])

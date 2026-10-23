@@ -3,6 +3,7 @@
 #if defined(__APPLE__)
 #include "game/app/AppleBundlePaths.h"
 
+#include <optional>
 #include <vector>
 #endif
 
@@ -20,6 +21,11 @@ int main(int argc, char **argv)
     SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
 #endif
 #if defined(__APPLE__)
+    if (const std::optional<int> exitCode = OpenYAMM::Game::startInstalledApplePackage(argc, argv))
+    {
+        return *exitCode;
+    }
+
     std::vector<char *> arguments = OpenYAMM::Game::appleBundleArguments(argc, argv);
     return OpenYAMM::Game::runApplication(static_cast<int>(arguments.size()) - 1, arguments.data());
 #else

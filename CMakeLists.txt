@@ -134,6 +134,9 @@ set(OPENYAMM_RELEASE_VERSION "dev" CACHE STRING
 if (WIN32)
     set(openyammReleasePlatform "windows-x64")
     set(openyammReleaseArchiveSuffix ".zip")
+elseif (APPLE)
+    set(openyammReleasePlatform "macos-arm64")
+    set(openyammReleaseArchiveSuffix ".zip")
 else()
     set(openyammReleasePlatform "linux-x64")
     set(openyammReleaseArchiveSuffix ".tar.gz")
@@ -145,12 +148,19 @@ set(OPENYAMM_RELEASE_ARCHIVE_PATH
 
 # iOS packages its assets into the app bundle instead (packaging/apple/build_ios.sh).
 if (OPENYAMM_BUILD_DESKTOP_EXECUTABLE AND NOT IOS)
-    # The versioned installation of packaging/UPDATER_PLAN.md 9.1 as a zip (Windows) or tar.gz (Linux).
+    set(openyammReleaseCodesign "")
+    if (APPLE)
+        find_program(openyammReleaseCodesign codesign REQUIRED)
+    endif()
+
+    # The versioned installation of packaging/UPDATER_PLAN.md 9.1 as a zip (Windows, macOS) or tar.gz (Linux).
     add_custom_target(openyamm_release_package
         COMMAND "${CMAKE_COMMAND}"
             "-DOPENYAMM_RELEASE_STAGE_DIR=${OPENYAMM_RELEASE_STAGE_DIR}"
             "-DOPENYAMM_RELEASE_ARCHIVE_PATH=${OPENYAMM_RELEASE_ARCHIVE_PATH}"
             "-DOPENYAMM_RELEASE_EXECUTABLE=$<TARGET_FILE:openyamm>"
+            "-DOPENYAMM_RELEASE_BUNDLE=$<$<BOOL:${APPLE}>:$<TARGET_BUNDLE_DIR:openyamm>>"
+            "-DOPENYAMM_RELEASE_CODESIGN=${openyammReleaseCodesign}"
             "-DOPENYAMM_RELEASE_RUNTIME_DLLS=$<JOIN:$<TARGET_RUNTIME_DLLS:openyamm>,|>"
             "-DOPENYAMM_RELEASE_SYSTEM_RUNTIME_DLLS=${OPENYAMM_RELEASE_SYSTEM_RUNTIME_DLLS}"
             "-DOPENYAMM_RELEASE_COLLECT_RUNTIME_DEPENDENCIES=${OPENYAMM_RELEASE_COLLECT_RUNTIME_DEPENDENCIES}"

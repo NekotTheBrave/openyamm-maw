@@ -72,6 +72,24 @@ The bundle then runs on another Mac without the checkout. It is signed ad hoc on
 needs a Developer ID signature and notarization, or the user has to allow it in System Settings. Set
 `-DOPENYAMM_APPLE_BUNDLE_IDENTIFIER` to use another bundle identifier.
 
+### Release packages
+
+The GitHub Actions workflow builds the macOS release on `macos-15` like the other desktop platforms
+([packaging/RELEASE.md](packaging/RELEASE.md)). Players download `OpenYAMM-X.Y-macos-arm64.zip`; on its first start the
+app installs its release into `~/Library/Application Support/OpenYAMM` and updates itself there
+([packaging/UPDATER_PLAN.md 9.4](packaging/UPDATER_PLAN.md)). The same build locally:
+
+```sh
+cmake -S . -B build/macos-release -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 -DOPENYAMM_COOK_ON_BUILD=OFF \
+    -DOPENYAMM_RELEASE_THIN=ON -DOPENYAMM_RELEASE_VERSION=X.Y
+cmake --build build/macos-release --target openyamm_release_package
+```
+
+`build/macos-release/release/Release/OpenYAMM` is then the versioned installation (`app/X.Y/OpenYAMM.app`, signed ad
+hoc). A bundle built with a release version installs that release from the update channel when it starts outside an
+installation, so test development builds without `OPENYAMM_RELEASE_VERSION`.
+
 ### Unit tests
 
 ```sh
@@ -177,10 +195,10 @@ xcrun simctl io <udid> screenshot screen.png
 - iOS keeps the desktop texture cache sizes; Android uses smaller ones.
 - bgfx creates the Metal swap chain on its render thread, and UIKit logs "Modifying properties of a view's layer off
   the main thread is not allowed" once at startup. The app runs normally.
-- No App Store packaging: the iOS icon uses `CFBundleIconFiles` rather than an asset catalog, and there is no macOS
-  release target, notarization or DMG.
-- The updater and the first-start content download are not available yet. `engine/update/HttpTransport.cpp` has
-  WinHTTP and libcurl backends only, so `GameUpdater::create` finds no updater on Apple platforms and the Updates
-  option stays hidden. An NSURLSession backend would let macOS and iOS download and update the content packs, for
-  example for a small TestFlight build that fetches its assets from the release server.
+- No App Store packaging: the iOS icon uses `CFBundleIconFiles` rather than an asset catalog. macOS releases are
+  signed ad hoc, without notarization or a DMG.
+- iOS has no updater or first-start content download: `engine/update/HttpTransport.cpp` loads libcurl, which iOS
+  apps cannot, so `GameUpdater::create` finds no updater there and the Updates option stays hidden. An NSURLSession
+  backend would let iOS download and update the content packs, for example for a small TestFlight build that fetches
+  its assets from the release server.
 - The editor and `tools/run_game.sh` are not adapted to macOS.
