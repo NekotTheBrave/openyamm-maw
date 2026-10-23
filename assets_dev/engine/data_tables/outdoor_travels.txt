@@ -23,3 +23,10 @@ oute1.odm													x	Eel Infested Waters
 oute2.odm													x	Misty Islands	
 oute3.odm							outd3.odm	left	5				x	New Sorpigal	
 7out15.odm	out14.odm	right	1	out14.odm	right	1	out14.odm	left	1	out14.odm	right	1		Shoals	
+out02.odm	out03.odm	down	5	out06.odm	right	10	out05.odm	left	5	out06.odm	right	5		Ravenshore	
+out03.odm	out04.odm	right	10	out02.odm	up	5	out07.odm	left	5	out04.odm	right	5		Alvar	
+out04.odm	out03.odm	up	10	out06.odm	up	5	out03.odm	left	5	out06.odm	left	10		Ironsand Desert	
+out05.odm	out07.odm	down	5	out08.odm	up	5	out08.odm	up	10	out02.odm	right	5		Garrote Gorge	
+out06.odm	out04.odm	down	5	out02.odm	left	10	out02.odm	left	5	out04.odm	down	10		Shadowspire	
+out07.odm	out03.odm	up	10	out05.odm	up	5	out05.odm	right	10	out03.odm	right	5		Murmurwoods	
+out08.odm	out05.odm	down	5	out05.odm	down	15	out05.odm	down	10	out05.odm	down	10		Ravage Roaming	
