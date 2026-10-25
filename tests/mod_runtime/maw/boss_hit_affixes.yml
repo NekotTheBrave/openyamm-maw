@@ -1,0 +1,104 @@
+id: mod_runtime.maw.boss_hit_affixes
+title: MAW's Swapper, Puller and Summoner bosses act when they hit the party
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW's boss affixes on a hit on the party (MawCore/Damage.lua, pstage_bossAffixesPlayer): a Swapper trades places
+# with the party, a Puller throws the party at itself (evt.Jump, the original's command 0x42, aimed with
+# math.atan2), a Summoner calls one of its kind (on every physical hit, 40 % of the others). Players found them
+# doing nothing; the Puller stopped at math.atan2 (not in Lua 5.4) and evt.Jump was not bound. A Goblin is made
+# each boss next to the party (oute3, its guards removed); a boss does not hit every few seconds (MAW's hit rolls),
+# so each gets a while. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+- advance_runtime: {seconds: 1}
+# evt.Jump as MAW calls it throws the party up.
+- mod_lua:
+    code: |
+      StartZ = Party.Z
+      evt.Jump{Direction = 0, ZAngle = 128, Speed = 1000}
+      return "jumped"
+    expect: "jumped"
+- advance_runtime: {seconds: 0.5}
+- mod_lua:
+    code: return Party.Z - StartZ > 50, ModRT.totalErrorCount
+    expect: "true\t0"
+- advance_runtime: {seconds: 4}
+# The town's guards fight hostile monsters and would kill a boss before it hits; they go.
+- mod_lua:
+    code: |
+      for i = 0, Map.Monsters.High do
+        local m = Map.Monsters[i]
+        if Game.MonstersTxt[m.Id].Name:find("Guard") then m.AIState = const.AIState.Removed end
+      end
+      Used = {}
+      Jumps, Summoned, Swaps, SwapMove = 0, 0, 0, 0
+      -- A Swapper's hit says "*Swap*" and then moves the party; how far it went is measured after MAW's damage
+      -- handler (each hit swaps again, so the party may end up where it started).
+      local showStatusText = Game.ShowStatusText
+      rawset(Game, "ShowStatusText", function(text, ...)
+        if text == "*Swap*" then
+          Swaps = Swaps + 1
+          SwapFromX, SwapFromY = Party.X, Party.Y
+        end
+        return showStatusText(text, ...)
+      end)
+      function events.CalcDamageToPlayer(t)
+        if SwapFromX then
+          SwapMove = math.max(SwapMove, math.sqrt((Party.X - SwapFromX)^2 + (Party.Y - SwapFromY)^2))
+          SwapFromX = nil
+        end
+      end
+      local jump = evt.Jump
+      rawset(evt, "Jump", function(...)
+        Jumps = Jumps + 1
+        return jump(...)
+      end)
+      local spawn = pseudoSpawnpoint
+      pseudoSpawnpoint = function(...)
+        local spawned = spawn(...)
+        Summoned = Summoned + (type(spawned) == "table" and #spawned or 0)
+        return spawned
+      end
+      function Arm(skill)
+        for i = 0, Map.Monsters.High do
+          local m = Map.Monsters[i]
+          if not Used[i] and Game.MonstersTxt[m.Id].Name:find("Goblin") and m.HP > 0 then
+            Used[i] = true
+            generateBoss(i, false, skill)
+            local a = Party.Direction * math.pi / 1024
+            m.X, m.Y, m.Z = Party.X + math.cos(a) * 120, Party.Y + math.sin(a) * 120, Party.Z
+            m.Hostile = true
+            m.ShowAsHostile = true
+            StartX, StartY = Party.X, Party.Y
+            -- No other boss acting meanwhile.
+            if Boss then Map.Monsters[Boss].HP = 0 Map.Monsters[Boss].AIState = const.AIState.Removed end
+            Boss = i
+            return getBossSkill(m)
+          end
+        end
+      end
+      return Arm("Swapper")
+    expect: "Swapper"
+- advance_runtime: {seconds: 10}
+- mod_lua:
+    code: return Swaps > 0, SwapMove >= 50, ModRT.totalErrorCount
+    expect: "true\ttrue\t0"
+- mod_lua:
+    code: return Arm("Puller")
+    expect: "Puller"
+- advance_runtime: {seconds: 15}
+- mod_lua:
+    code: return Jumps > 0, ModRT.totalErrorCount
+    expect: "true\t0"
+# The summoned monsters are counted as MAW's spawner returns them (a removed boss's slot may be reused).
+- mod_lua:
+    code: return Arm("Summoner")
+    expect: "Summoner"
+- advance_runtime: {seconds: 15}
+- mod_lua:
+    code: return Summoned > 0, ModRT.totalErrorCount
+    expect: "true\t0"

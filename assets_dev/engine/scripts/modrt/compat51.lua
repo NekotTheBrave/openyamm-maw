@@ -61,6 +61,8 @@ function table.foreachi(t, callback)
 end
 
 math.pow = function(base, exponent) return base ^ exponent end
+-- MAW's Puller bosses aim their pull with it (calculateDirection).
+math.atan2 = function(y, x) return math.atan(y, x) end
 math.mod = math.fmod
 math.log10 = function(value) return math.log(value, 10) end
 math.ldexp = function(mantissa, exponent) return mantissa * 2.0 ^ exponent end

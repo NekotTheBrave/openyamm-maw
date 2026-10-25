@@ -305,6 +305,15 @@ function commands.MoveToMap(...)
         number(v[7]), number(v[8]), v[9] ~= nil and tostring(v[9]) or nil)
 end
 
+-- evt.Jump{Direction, ZAngle, Speed}: the original's command 0x42, the engine's special jump (MAW's Puller bosses
+-- throw the party at themselves with it). MMExtension's names are not what the command does: its first two words are
+-- the direction (2048 a turn) and, above it, the horizontal speed; the last is the vertical speed (mm8's elemf).
+function commands.Jump(...)
+    local v = parameters({"Direction", "ZAngle", "Speed"}, ...)
+    local encoded = (math.floor(number(v[1])) & 0xFFFF) | ((math.floor(number(v[2])) & 0xFFFF) << 16)
+    return call("_SpecialJump", encoded, math.floor(number(v[3])))
+end
+
 function commands.ForPlayer(...)
     local v = parameters({"Player"}, ...)
     forPlayer = player(v[1])
