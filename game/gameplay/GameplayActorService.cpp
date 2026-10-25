@@ -799,6 +799,21 @@ float GameplayActorService::effectiveActorMoveSpeed(
     return baseMoveSpeed * slowMoveMultiplier * (darkGraspActive ? 0.5f : 1.0f);
 }
 
+bool GameplayActorService::actorWithinPartyRangedTargeting(const IGameplayWorldRuntime &world, size_t actorIndex)
+{
+    const std::optional<bx::Vec3> target = world.spellActionActorTargetPoint(actorIndex);
+
+    if (!target)
+    {
+        return false;
+    }
+
+    const float dx = target->x - world.partyX();
+    const float dy = target->y - world.partyY();
+    const float dz = target->z - world.partyFootZ();
+    return dx * dx + dy * dy + dz * dz <= PartyRangedTargetingRange * PartyRangedTargetingRange;
+}
+
 float GameplayActorService::effectiveRecoveryProgressMultiplier(const GameplayActorSpellEffectState &state) const
 {
     float multiplier = 1.0f / std::max(1.0f, state.slowRecoveryMultiplier);

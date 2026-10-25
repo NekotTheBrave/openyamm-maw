@@ -17,6 +17,12 @@ class GameplayActorService
 {
 public:
     static constexpr float MaximumPartyEngagementRange = 10240.0f;
+    // How far the party may pick a monster as the target of a ranged attack or a spell, as the original (its ranged
+    // attack depth): a monster further away is not aimed at, whatever is under the cursor.
+    static constexpr float PartyRangedTargetingRange = 5120.0f;
+
+    // Whether the actor's target point is within PartyRangedTargetingRange of the party.
+    static bool actorWithinPartyRangedTargeting(const IGameplayWorldRuntime &world, size_t actorIndex);
 
     enum class SharedSpellDisposition : uint8_t
     {

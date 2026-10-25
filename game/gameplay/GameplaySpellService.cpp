@@ -3,6 +3,7 @@
 #include "game/app/GameSession.h"
 #include "game/audio/GameAudioSystem.h"
 #include "game/gameplay/GameMechanics.h"
+#include "game/gameplay/GameplayActorService.h"
 #include "game/gameplay/GameplayHeldItemController.h"
 #include "game/gameplay/GameplayScreenRuntime.h"
 #include "game/gameplay/TurnBasedCombatRuntime.h"
@@ -283,11 +284,22 @@ bool GameplaySpellService::tryResolveQuickCastRequest(
     {
         if (pWorldRuntime != nullptr)
         {
+            // Only a monster within the party's ranged targeting range is aimed at, as in the original.
+            const auto inRange = [pWorldRuntime](const std::optional<size_t> &actorIndex)
+            {
+                return actorIndex.has_value()
+                    && GameplayActorService::actorWithinPartyRangedTargeting(*pWorldRuntime, *actorIndex);
+            };
             request.targetActorIndex = pWorldRuntime->spellActionHoveredActorIndex();
 
-            if (!request.targetActorIndex)
+            if (!inRange(request.targetActorIndex))
             {
                 request.targetActorIndex = pWorldRuntime->spellActionClosestVisibleHostileActorIndex();
+            }
+
+            if (!inRange(request.targetActorIndex))
+            {
+                request.targetActorIndex.reset();
             }
         }
 
@@ -324,7 +336,8 @@ bool GameplaySpellService::tryResolveQuickCastRequest(
         {
             const std::optional<size_t> hoveredActorIndex = pWorldRuntime->spellActionHoveredActorIndex();
 
-            if (hoveredActorIndex)
+            if (hoveredActorIndex
+                && GameplayActorService::actorWithinPartyRangedTargeting(*pWorldRuntime, *hoveredActorIndex))
             {
                 targetPoint = pWorldRuntime->spellActionActorTargetPoint(*hoveredActorIndex);
             }

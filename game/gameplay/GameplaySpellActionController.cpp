@@ -1,5 +1,6 @@
 #include "game/gameplay/GameplaySpellActionController.h"
 
+#include "game/gameplay/GameplayActorService.h"
 #include "game/gameplay/GameplayRuntimeInterfaces.h"
 #include "game/gameplay/GameplayScreenRuntime.h"
 #include "game/party/SpellIds.h"
@@ -249,7 +250,7 @@ bool GameplaySpellActionController::resolvePendingActorTarget(
 
     if (pWorldRuntime != nullptr
         && !isSpellId(request.spellId, SpellId::Reanimate)
-        && !pWorldRuntime->spellActionActorTargetPoint(worldHit.actor->actorIndex))
+        && !GameplayActorService::actorWithinPartyRangedTargeting(*pWorldRuntime, worldHit.actor->actorIndex))
     {
         return false;
     }

@@ -569,6 +569,17 @@ std::optional<GameplayActionController::PartyAttackActorFacts> resolveUsableActo
         return std::nullopt;
     }
 
+    // A monster under the cursor beyond the ranged attack range is not aimed at, as in the original (the shot goes
+    // straight ahead or at the nearest monster in range).
+    const float dx = actor->position.x - config.partyPosition.x;
+    const float dy = actor->position.y - config.partyPosition.y;
+    const float dz = actor->position.z - config.partyPosition.z;
+
+    if (std::sqrt(dx * dx + dy * dy + dz * dz) - static_cast<float>(actor->radius) > CharacterRangedAttackDistance)
+    {
+        return std::nullopt;
+    }
+
     return GameplayActionController::PartyAttackActorFacts{
         .actorIndex = actor->actorIndex,
         .monsterId = actor->monsterId,
