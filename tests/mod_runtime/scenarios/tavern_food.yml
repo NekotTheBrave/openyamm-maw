@@ -1,0 +1,38 @@
+id: mod_runtime.tavern_food
+title: A tavern fills the packs to its own number of days
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+steps:
+# The original fills the packs to the tavern's Val in the house table (house_data.txt, 6 to 60 days), the number its
+# food price is made of; OpenYAMM filled every tavern's to 14. Black Company (233) gives 50.
+- new_game_flow:
+    start_map: oute3.odm
+    party:
+      gold: 100000
+      food: 2
+      members:
+      - name: Eater
+        class: Knight
+        level: 5
+        skills:
+        - name: Sword
+          level: 1
+          mastery: 1
+        equipment: {}
+- mod_lua:
+    code: |
+      evt.EnterHouse(233)
+      return "entered"
+    expect: "entered"
+- advance_runtime: {seconds: 1}
+- select_topic:
+    kind: house_service
+    source_id: 233
+    action_id: 4
+    secondary_id: 0
+    selection_index: 0
+- mod_lua:
+    code: return Party.Food
+    expect: "50"

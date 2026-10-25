@@ -23,7 +23,6 @@ namespace OpenYAMM::Game
 {
 namespace
 {
-constexpr int TavernFoodTarget = 14;
 constexpr int MinutesPerDay = 24 * 60;
 constexpr uint32_t LorettaPriceQuestBit = 1140;
 constexpr uint32_t LorettaPriceCompleteBit = 1141;
@@ -46,6 +45,13 @@ constexpr const char *pLorettaPriceFixingLabel = "Price Fixing";
 constexpr const char *pLorettaPriceFixingMessage =
     "Well, If Loretta's got a new scheme, count me in!\n"
     "But you better get all the other companies to sign up!";
+
+// The days of food a tavern fills the packs to: its house row's Val (priceMultiplier, 6 to 60), which its food
+// price is also made of, as in the original.
+int tavernFoodTarget(const HouseEntry &houseEntry)
+{
+    return std::max(1, static_cast<int>(houseEntry.priceMultiplier));
+}
 
 int effectiveReputationForWorld(const IGameplayWorldRuntime *pWorldRuntime);
 
@@ -1242,7 +1248,7 @@ std::vector<HouseActionOption> buildHouseActionOptions(
 
         HouseActionOption food = makeOption(
             HouseActionId::TavernBuyFood,
-            "Fill packs to " + std::to_string(TavernFoodTarget) + " days for "
+            "Fill packs to " + std::to_string(tavernFoodTarget(houseEntry)) + " days for "
                 + std::to_string(PriceCalculator::tavernFoodPrice(
                     pMember,
                     houseEntry,
@@ -1251,7 +1257,7 @@ std::vector<HouseActionOption> buildHouseActionOptions(
             closedReason
         );
 
-        if (food.enabled && pParty != nullptr && pParty->food() >= TavernFoodTarget)
+        if (food.enabled && pParty != nullptr && pParty->food() >= tavernFoodTarget(houseEntry))
         {
             food.enabled = false;
             food.disabledReason = "Your packs are already full enough.";
@@ -1778,7 +1784,7 @@ HouseActionResult performHouseAction(
 
         case HouseActionId::TavernBuyFood:
         {
-            if (party.food() >= TavernFoodTarget)
+            if (party.food() >= tavernFoodTarget(houseEntry))
             {
                 result.messages.push_back("Your packs are already full enough.");
                 result.speechId = SpeechId::TavernPacksFull;
@@ -1799,8 +1805,9 @@ HouseActionResult performHouseAction(
             }
 
             party.addGold(-price);
-            party.addFood(TavernFoodTarget - party.food());
-            result.messages.push_back("The innkeeper fills your packs to " + std::to_string(TavernFoodTarget) + " days.");
+            party.addFood(tavernFoodTarget(houseEntry) - party.food());
+            result.messages.push_back(
+                "The innkeeper fills your packs to " + std::to_string(tavernFoodTarget(houseEntry)) + " days.");
             result.succeeded = true;
             result.soundType = HouseSoundType::TavernBuyFood;
             return result;
