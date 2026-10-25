@@ -793,7 +793,8 @@ bool isWeaponItem(const ItemDefinition &itemDefinition)
 bool requiresLearnedSkillToEquip(const ItemDefinition &itemDefinition)
 {
     const std::string skillName = canonicalSkillName(itemDefinition.skillGroup);
-    return !skillName.empty() && skillName != "Misc";
+    // Clubs are anyone's in MM6-MM8: "Club" names no skill a character can learn.
+    return !skillName.empty() && skillName != "Misc" && skillName != "Club";
 }
 
 bool isRestrictedByDollType(const ItemDefinition &itemDefinition, const CharacterDollTypeEntry *pCharacterDollType)
