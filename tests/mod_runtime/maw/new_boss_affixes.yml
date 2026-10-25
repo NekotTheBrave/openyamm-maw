@@ -1,0 +1,50 @@
+id: mod_runtime.maw.new_boss_affixes
+title: MAW's Unstoppable, Berserker, Cryptic and Skilled bosses
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# MAW (2026-10-25) added four boss affixes (zzMaw-Monsters.lua): Unstoppable takes no crowd control, Berserker hits
+# harder as its health falls, Cryptic has another affix in secret, Skilled cannot be dodged and drops four of item 656.
+# Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+- mod_lua:
+    code: |
+      function MakeBoss(skill)
+        for i = 0, Map.Monsters.High do
+          local mon = Map.Monsters[i]
+          if mon.NameId == 0 and not mon.IsDead and mon.HP > 0 then
+            generateBoss(i, false, skill)
+            return mon
+          end
+        end
+      end
+      local unstoppable = MakeBoss("Unstoppable")
+      local cc = {Debuff = const.MonsterBuff.Paralyze}
+      return getBossSkill(unstoppable), calcDebuffDuration(unstoppable, cc, 100), checkDebuffDuration(unstoppable, cc, 100)
+    expect: "Unstoppable\t0\t0"
+- mod_lua:
+    code: |
+      local skilled = MakeBoss("Skilled")
+      return getBossSkill(skilled), MawRollDodge(skilled, Party[0])
+    expect: "Skilled\ttrue"
+- mod_lua:
+    code: |
+      local cryptic = MakeBoss("Cryptic")
+      local skill = getBossSkill(cryptic)
+      local known = false
+      for _, s in ipairs(SkillList) do known = known or s == skill end
+      return skill ~= "Cryptic", known, Game.PlaceMonTxt[cryptic.NameId]:match("^Cryptic ") ~= nil
+    expect: "true\ttrue\ttrue"
+- mod_lua:
+    code: |
+      local berserker = MakeBoss("Berserker")
+      local full = getMonsterDamage(berserker)
+      -- An early boss's health fits the engine's field (no MonsterHP ledger), so a quarter of it is set there.
+      berserker.HP = math.max(1, math.floor(berserker.FullHP / 4))
+      local low = getMonsterDamage(berserker)
+      return getBossSkill(berserker), low > full, ModRT.totalErrorCount
+    expect: "Berserker\ttrue\t0"

@@ -59,8 +59,8 @@ steps:
       local kept = vars.oldPlayerMasteries[p:GetIndex()][const.Skills.Sword]
       return level, GoldBefore - Party.Gold, p.SkillPoints >= 14, kept, ModRT.totalErrorCount
     expect: "1\t10000\ttrue\t2\t0"
-# Dimensional Maps: below level 100 the Oracle sends the party away; at 100 it gives a map (into the hand), and once
-# the map's dungeon is cleared, a reward and the next tier.
+# Dimensional Maps: below level 80 the Oracle sends the party away; from 80 it gives a map (into the hand), and once
+# the map's dungeon is cleared, a reward and the next tier (MAW: 80, then 110, the steps shrinking to 10).
 - select_topic:
     action_id: 999
 - mod_lua:
@@ -79,7 +79,7 @@ steps:
       local q = vars.dimensionalMapsQuest
       local it = Mouse.Item
       return it.Number, it.BonusStrength == q.Map.BonusStrength, it.MaxCharges, q.TierLevel, ModRT.totalErrorCount
-    expect: "290\ttrue\t8\t100\t0"
+    expect: "290\ttrue\t6\t80\t0"
 - mod_lua:
     code: |
       Mouse.Item.Number = 0
@@ -95,4 +95,4 @@ steps:
       local q = vars.dimensionalMapsQuest
       return Party.Gold - GoldBefore >= 50000, Party[0].Experience > ExpBefore, tostring(q.Map), q.TierLevel,
         ModRT.totalErrorCount
-    expect: "true\ttrue\tnil\t120\t0"
+    expect: "true\ttrue\tnil\t110\t0"
