@@ -8825,8 +8825,11 @@ void GameplayPartyOverlayRenderer::renderCharacterOverlay(
         }
     }
 
+    // The left hand grips a two-handed weapon only when it holds nothing else: a mod may allow a shield with one
+    // (MAW's Seraph), and the hand then holds the shield, under it.
     const bool leftHandDisabled =
         pMainHandItem != nullptr
+        && pOffHandItem == nullptr
         && (pMainHandItem->equipStat == "Weapon2"
             || (canonicalSkillName(pMainHandItem->skillGroup) == "Spear" && spearMastery < SkillMastery::Master));
     const bool offHandWeaponGripAbove =
