@@ -11706,6 +11706,30 @@ bool GameApplication::processPendingMapMove()
     beginLoadingOverlay(loadingPresentation);
     closeTransientGameplayUiForMapMove();
 
+    // The item on the mouse goes along to the next map, as in the original; the map's renderer, which shuts down
+    // and starts again, would drop it. MAW gives a solo party's Town Portal and Lloyd's Beacon scroll back there
+    // just before the move.
+    const GameplayUiController::HeldInventoryItemState heldBeforeMove =
+        m_gameSession.gameplayScreenRuntime().heldInventoryItem();
+    const auto restoreHeldItem = [this, &heldBeforeMove]()
+    {
+        GameplayUiController::HeldInventoryItemState &held = m_gameSession.gameplayScreenRuntime().heldInventoryItem();
+
+        if (!heldBeforeMove.active || held.active)
+        {
+            return;
+        }
+
+        held = heldBeforeMove;
+        Party *pParty = m_pMapSceneRuntime != nullptr ? &m_pMapSceneRuntime->party()
+            : m_gameSession.partyState() ? &*m_gameSession.partyState() : nullptr;
+
+        if (pParty != nullptr)
+        {
+            pParty->setHeldItemForQueries(held.item);
+        }
+    };
+
     EventRuntimeState *pLeavingRuntimeState =
         m_pMapSceneRuntime != nullptr ? m_pMapSceneRuntime->eventRuntimeState() : nullptr;
     executeCurrentMapOnLeaveEvents();
@@ -11746,9 +11770,12 @@ bool GameApplication::processPendingMapMove()
             }
         }
 
+        restoreHeldItem();
         cancelLoadingOverlay();
         return false;
     }
+
+    restoreHeldItem();
 
     EventRuntimeState *pArrivingRuntimeState =
         m_pMapSceneRuntime != nullptr ? m_pMapSceneRuntime->eventRuntimeState() : nullptr;
