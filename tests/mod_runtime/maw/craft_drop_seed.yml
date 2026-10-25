@@ -1,0 +1,27 @@
+id: mod_runtime.maw.craft_drop_seed
+title: MAW's crafting drops on a kill run (Game.RandSeed is a number)
+world: mm8
+mode: faithful
+tags:
+- mod_runtime
+- maw
+steps:
+# On every kill MAW rolls its special crafting drops (items 1061-1070, with pity counters) by advancing
+# Game.RandSeed (zzAlchemy.lua, MonsterKilled). The port had no RandSeed until a script set one, so the roll stopped
+# with "arithmetic on a nil value" on every kill and those drops never came. Run with the MAW mods.yml.
+- new_game_flow:
+    start_map: oute3.odm
+- advance_runtime: {seconds: 1}
+- mod_lua:
+    code: |
+      local before = ModRT.totalErrorCount
+      local seed = Game.RandSeed
+      for i = 0, Map.Monsters.High do
+        local m = Map.Monsters[i]
+        if Game.MonstersTxt[m.Id].Name:find("Goblin") then
+          ModRT.fire("MonsterKilled", m)
+          break
+        end
+      end
+      return type(seed), ModRT.totalErrorCount - before, Game.RandSeed ~= seed
+    expect: "number\t0\ttrue"

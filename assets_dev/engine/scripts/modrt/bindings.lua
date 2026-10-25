@@ -1961,9 +1961,14 @@ function GetCurrentHouse()
     return Bindings.pricingHouse or modrt.gameGet("CurrentHouse") or 0
 end
 
+-- Game.RandSeed: the original's random number seed, a number from the start. Scripts seed with it and advance it
+-- (MAW's crafting drops by their pity counters, its madness spawns); the engine's own rolls do not follow it.
+local randSeed = math.random(0, 0x7FFFFFFF)
+
 Game = boundObject("Game", {
     owned = "Game",
     bound = {
+        RandSeed = true,
         ItemsTxt = true, MonstersTxt = true, CharacterPortraits = true, MapStats = true, PlaceMonTxt = true,
         SpcItemsTxt = true, StdItemsTxt = true, Spells = true, CurrentScreen = true,
         SkillNames = true, SkillDescriptions = true, SkillDesNormal = true, SkillDesExpert = true,
@@ -1975,7 +1980,9 @@ Game = boundObject("Game", {
         HostileTxt = true, MonListBin = true, Party = true,
     },
     get = function(key)
-        if key == "ItemsTxt" then
+        if key == "RandSeed" then
+            return randSeed
+        elseif key == "ItemsTxt" then
             return itemsTxt
         elseif key == "SpcItemsTxt" then
             return spcItemsTxt
@@ -2091,6 +2098,11 @@ Game = boundObject("Game", {
         end,
     },
     set = function(key, value)
+        if key == "RandSeed" then
+            randSeed = math.floor(tonumber(value) or 0) % 4294967296
+            return true
+        end
+
         -- Setting the phase away from 3 ends the party's turn-based walk (MAW's Doom limits it so); the engine moves
         -- through its other phases itself.
         if key == "TurnBasedPhase" then
