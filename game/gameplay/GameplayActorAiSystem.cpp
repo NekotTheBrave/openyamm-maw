@@ -29,8 +29,10 @@ constexpr float ActorMeleeRange = 307.2f;
 constexpr float HostilityLongRange = GameplayActorService::MaximumPartyEngagementRange;
 constexpr float IdleStandSeconds = 1.5f;
 constexpr float IdleBoredSeconds = 2.0f;
-// The original doubles monster speed while pursuing or fleeing; OpenYAMM pursues at 1.75x (user choice, 2026-10-22).
-constexpr float PursueMoveSpeedMultiplier = 1.75f;
+// The original doubles monster speed while pursuing or fleeing. Upstream pursues at 1.75x (its user's choice,
+// 2026-10-22); the MAW port keeps the original's 2x, which MAW's monster speeds are balanced for (players found
+// monsters slower than in MAW).
+constexpr float PursueMoveSpeedMultiplier = 2.0f;
 constexpr float FleeMoveSpeedMultiplier = 2.0f;
 // 16 of the original 2048 angle units.
 constexpr float RangedOrbitStepRadians = Pi / 64.0f;
