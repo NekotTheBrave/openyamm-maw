@@ -11,9 +11,16 @@ Releases are built, checked, signed and published by GitHub Actions
 | Actions → Packages → Run workflow with a version | The same, then publishes a test release to `https://jasicek.net/openyamm-staging/`. |
 
 Players download a small package of tens of MB (the game without its content): `OpenYAMM-X.Y-windows-x64.zip`,
-`OpenYAMM-X.Y-linux-x64.tar.gz` or the APK. The first start downloads the content packs (about 5 GB on the desktop,
-3 GB on Android), and every later release downloads only the packs that changed. On Windows and Linux everything,
-including `saves/`, `settings.ini` and `openyamm.log`, stays in the extracted folder.
+`OpenYAMM-X.Y-linux-x64.tar.gz`, `OpenYAMM-X.Y-macos-arm64.dmg` or the APK. The first start downloads the content packs
+(about 5 GB on the desktop, 3 GB on Android), and every later release downloads only the packs that changed. On
+Windows and Linux everything, including `saves/`, `settings.ini` and `openyamm.log`, stays in the extracted folder.
+The macOS app, dragged from the disk image to Applications, installs itself into
+`~/Library/Application Support/OpenYAMM` on its first start and keeps the player's data there
+([UPDATER_PLAN.md 9.4](UPDATER_PLAN.md)). It is signed ad hoc, not notarized: players run
+`xattr -dr com.apple.quarantine /Applications/OpenYAMM.app` once or allow it in System Settings → Privacy & Security.
+
+Players who want to change game files use a `mods` folder or `keep_modified_packs=on`; both are described in
+[Changing the game's files](MODDING.md). An edited pack is otherwise restored at the next start.
 
 ## What the workflow builds
 
@@ -22,8 +29,9 @@ including `saves/`, `settings.ini` and `openyamm.log`, stays in the extracted fo
 | Content packs (desktop, android) | ubuntu-24.04 | `index.json` and `packs/` per profile (`tools/package_runtime_assets.py`); the Android checkout leaves out the desktop-only BC7 textures |
 | Windows x64 | ubuntu-24.04 | MinGW-w64 cross build: launcher, game and shaders (`openyamm_release_package`, thin) |
 | Linux x64 | ubuntu-22.04 | GCC 13 with static libstdc++: needs only glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36, any current Arch); checked by `packaging/check_linux_binary.sh` |
+| macOS arm64 | macos-15 | Apple silicon, macOS 14 or newer: `OpenYAMM.app` (Metal) signed ad hoc, the launcher and the players' disk image; checks the bundle's seal and that only system libraries are linked |
 | Android arm64 | ubuntu-24.04 | Thin APK (no assets checked out), signed with a throwaway key |
-| Scenarios | ubuntu-24.04, windows-latest | The release scenarios (`tests/scenarios/release/scenarios.txt`) with the built game and the desktop packs |
+| Scenarios | ubuntu-24.04, windows-latest, macos-15 | The release scenarios (`tests/scenarios/release/scenarios.txt`) with the built game and the desktop packs |
 | Publish | ubuntu-24.04, environment `release` | Only for tags and staging runs; see below |
 
 The publish job (`packaging/publish_release.py`):

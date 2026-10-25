@@ -538,9 +538,12 @@ std::string itemCannotBeUsedStatusText(const ItemDefinition &itemDefinition)
 
 bool isFoodItem(const InventoryItem &item, const ItemDefinition &itemDefinition)
 {
+    // Whole names only: "Labyrinth Grapple" is a polearm, not an apple.
     return item.objectDescriptionId == GreenAppleItemId
-        || itemNameContains(itemDefinition, "apple")
-        || itemNameContains(itemDefinition, "tobersk fruit");
+        || itemNameEquals(itemDefinition, "apple")
+        || itemNameEquals(itemDefinition, "red apple")
+        || itemNameEquals(itemDefinition, "green apple")
+        || itemNameEquals(itemDefinition, "tobersk fruit");
 }
 
 std::optional<SoundId> instrumentSoundId(const ItemDefinition &itemDefinition)

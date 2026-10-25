@@ -73,7 +73,7 @@ namespace OpenYAMM::Game
 {
 namespace
 {
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(OPENYAMM_IOS)
 constexpr bool IncludeGodLichCharacterCreationCandidate = true;
 #else
 constexpr bool IncludeGodLichCharacterCreationCandidate = false;
@@ -137,7 +137,7 @@ const char *gameplayUiAssetLoadKindName(GameplayUiAssetLoadKind kind)
     return "unknown";
 }
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(OPENYAMM_IOS)
 bool isAndroidFingerEvent(const SDL_Event &event)
 {
     return event.type == SDL_EVENT_FINGER_DOWN
@@ -6799,7 +6799,7 @@ void GameApplication::handleSdlEvent(const SDL_Event &event)
     if (m_debugConsoleRendererInitialized)
     {
         ImGui_ImplSDL3_ProcessEvent(&event);
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(OPENYAMM_IOS)
         const bool debugConsoleConsumedAndroidTouch =
             m_debugConsole.enabled() && submitAndroidFingerEventToImGui(event);
 #else
@@ -6827,7 +6827,7 @@ void GameApplication::handleSdlEvent(const SDL_Event &event)
                 || event.type == SDL_EVENT_MOUSE_BUTTON_UP
                 || event.type == SDL_EVENT_MOUSE_WHEEL
                 || debugConsoleConsumedAndroidTouch
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(OPENYAMM_IOS)
                 || isAndroidFingerEvent(event)
 #endif
                 || io.WantCaptureKeyboard
@@ -6854,7 +6854,7 @@ void GameApplication::handleSdlEvent(const SDL_Event &event)
 
     m_gameInputSystem.handleSdlEvent(event);
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(OPENYAMM_IOS)
     const bool activeScreenHandlesTouchDirectly =
         pActiveScreen != nullptr
         && (dynamic_cast<CutsceneVideoScreen *>(pActiveScreen) != nullptr
@@ -6989,7 +6989,7 @@ bool GameApplication::handlePendingInputPromptSdlEvent(const SDL_Event &event)
 
 void GameApplication::clearPendingInputPromptUi(bool clearStatusBar)
 {
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) && !defined(OPENYAMM_IOS)
     if (m_pendingInputTextActive)
     {
         SDL_Window *pWindow = SDL_GetKeyboardFocus();
@@ -7058,7 +7058,7 @@ void GameApplication::updatePendingInputPrompt()
 
     if (!m_pendingInputTextActive)
     {
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) && !defined(OPENYAMM_IOS)
         SDL_Window *pWindow = SDL_GetKeyboardFocus();
 
         if (pWindow != nullptr)
@@ -7513,7 +7513,7 @@ bool GameApplication::loadGameData(Engine::AssetFileSystem &assetFileSystem)
     m_gameDataLoader.setInitialMapFileName(m_activeWorldManifest.start.mapFileName);
 
     loadOrCreateSettings();
-    m_pUpdater = GameUpdater::create(m_settings.updateUrl);
+    m_pUpdater = GameUpdater::create(m_settings.updateUrl, m_settings.keepModifiedPacks);
 
     if (!m_gameAudioSystem.initializeMenuAudio(assetFileSystem))
     {
@@ -10743,7 +10743,7 @@ void GameApplication::renderFrame(int width, int height, float mouseWheelDelta, 
         && m_gameSession.gameplayScreenRuntime().currentHudScreenState() != GameplayHudScreenState::Gameplay;
 
     std::vector<GameplayTouchControl> touchControls;
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(OPENYAMM_IOS)
     if (pActiveScreenForInput == nullptr)
     {
         touchControls = m_gameSession.gameplayScreenRuntime().mobileTouchControls(width, height);

@@ -374,6 +374,111 @@ TEST_CASE("AssetFileSystem mounts the content packs of an index")
     std::filesystem::remove_all(temporaryRoot);
 }
 
+TEST_CASE("AssetFileSystem mounts mods in front of the packs only when mods/ holds files")
+{
+    using namespace OpenYAMM::Engine;
+    const std::filesystem::path temporaryRoot = makeTemporaryRoot();
+    const std::filesystem::path assetRoot = temporaryRoot / "assets";
+    const std::filesystem::path modsRoot = temporaryRoot / "mods";
+    writeZipFile(assetRoot / "packs/engine.core.zip", {
+        {"data_tables/house_data.txt", "game-houses"},
+        {"data_tables/spells.txt", "game-spells"}
+    });
+    writeZipFile(assetRoot / "packs/mm6.core.zip", {{"textures/shared.bmp", "game-texture"}});
+    writeZipFile(assetRoot / "packs/mm8.core.zip", {{"textures/shared.bmp", "game-mm8-texture"}});
+    writeCorePackIndex(assetRoot, {"engine", "mm6", "mm8"});
+    const AssetScaleProfile profile = createUniformAssetScaleProfile(AssetScaleTier::X1);
+    InstalledContentOptions options;
+    options.modsRoot = modsRoot;
+
+    const auto searchPaths = [&](const InstalledContentOptions &contentOptions)
+    {
+        AssetFileSystem fs;
+        REQUIRE(fs.initialize(temporaryRoot, assetRoot, AssetScaleTier::X1, profile, "mm6", contentOptions));
+        CHECK(fs.readTextFile("engine/data_tables/house_data.txt") == std::optional<std::string>("game-houses"));
+        return fs.getSearchPaths();
+    };
+
+    // No mods folder, or one without files, mounts exactly what no options mount.
+    const std::vector<std::string> gameOnly = searchPaths({});
+    CHECK(searchPaths(options) == gameOnly);
+    std::filesystem::create_directories(modsRoot / "engine" / "data_tables");
+    std::filesystem::create_directories(modsRoot / "worlds" / "mm6");
+    CHECK(searchPaths(options) == gameOnly);
+
+    writeTextFile(modsRoot / "engine" / "data_tables" / "house_data.txt", "mod-houses");
+    writeTextFile(modsRoot / "engine" / "data_tables" / "new_table.txt", "mod-new");
+    writeTextFile(modsRoot / "worlds" / "mm6" / "textures" / "shared.bmp", "mod-texture");
+    // Neither a package root nor a world folder: ignored.
+    writeTextFile(modsRoot / "data_tables" / "spells.txt", "misplaced");
+    writeTextFile(modsRoot / "readme.txt", "notes");
+    {
+        AssetFileSystem fs;
+        REQUIRE(fs.initialize(temporaryRoot, assetRoot, AssetScaleTier::X1, profile, "mm6", options));
+        CHECK(fs.readTextFile("engine/data_tables/house_data.txt") == std::optional<std::string>("mod-houses"));
+        CHECK(fs.readTextFile("data_tables/house_data.txt") == std::optional<std::string>("mod-houses"));
+        CHECK(fs.readTextFile("engine/data_tables/new_table.txt") == std::optional<std::string>("mod-new"));
+        CHECK(fs.readTextFile("engine/data_tables/spells.txt") == std::optional<std::string>("game-spells"));
+        CHECK(fs.readTextFile("Data/bitmaps/shared.bmp") == std::optional<std::string>("mod-texture"));
+        CHECK(fs.readTextFile("worlds/mm8/textures/shared.bmp")
+            == std::optional<std::string>("game-mm8-texture"));
+        CHECK_FALSE(fs.exists("readme.txt"));
+
+        // A world switch mounts again with the same mods.
+        REQUIRE(fs.switchActiveWorld("mm8"));
+        CHECK(fs.readTextFile("engine/data_tables/house_data.txt") == std::optional<std::string>("mod-houses"));
+        CHECK(fs.readTextFile("Data/bitmaps/shared.bmp") == std::optional<std::string>("game-mm8-texture"));
+    }
+
+    // Only a release's packs take mods, not a development tree.
+    writeTextFile(temporaryRoot / "assets_dev" / "engine" / "data_tables" / "house_data.txt", "dev-houses");
+    writeTextFile(temporaryRoot / "assets_dev" / "engine" / "textures" / "dev.bmp", "dev-texture");
+    writeTextFile(temporaryRoot / "assets_dev" / "engine" / "icons" / "dev.bmp", "dev-icon");
+    {
+        AssetFileSystem fs;
+        REQUIRE(fs.initialize(temporaryRoot, temporaryRoot / "assets_dev", AssetScaleTier::X1, profile, "mm6",
+                              options));
+        CHECK(fs.readTextFile("engine/data_tables/house_data.txt") == std::optional<std::string>("dev-houses"));
+    }
+
+    std::filesystem::remove_all(temporaryRoot);
+}
+
+TEST_CASE("AssetFileSystem mounts changed packs only when they are kept on purpose")
+{
+    using namespace OpenYAMM::Engine;
+    const std::filesystem::path temporaryRoot = makeTemporaryRoot();
+    const std::filesystem::path assetRoot = temporaryRoot / "assets";
+    writeZipFile(assetRoot / "packs/engine.core.zip", {{"data_tables/house_data.txt", "game-houses"}});
+    writeCorePackIndex(assetRoot, {"engine"});
+    // The player rebuilt the pack with an edited table, so it no longer has the size of the index.
+    writeZipFile(assetRoot / "packs/engine.core.zip", {{"data_tables/house_data.txt", "edited houses, longer"}});
+    const AssetScaleProfile profile = createUniformAssetScaleProfile(AssetScaleTier::X1);
+    InstalledContentOptions kept;
+    kept.acceptModifiedPacks = true;
+
+    {
+        AssetFileSystem fs;
+        CHECK_FALSE(fs.initialize(temporaryRoot, assetRoot, AssetScaleTier::X1, profile, "mm6", {}));
+    }
+
+    {
+        AssetFileSystem fs;
+        REQUIRE(fs.initialize(temporaryRoot, assetRoot, AssetScaleTier::X1, profile, "mm6", kept));
+        CHECK(fs.readTextFile("engine/data_tables/house_data.txt")
+            == std::optional<std::string>("edited houses, longer"));
+    }
+
+    // A missing pack still makes the content unusable.
+    std::filesystem::remove(assetRoot / "packs/engine.core.zip");
+    {
+        AssetFileSystem fs;
+        CHECK_FALSE(fs.initialize(temporaryRoot, assetRoot, AssetScaleTier::X1, profile, "mm6", kept));
+    }
+
+    std::filesystem::remove_all(temporaryRoot);
+}
+
 TEST_CASE("AssetFileSystem reads aliased package files case-insensitively")
 {
     const std::filesystem::path temporaryRoot = makeTemporaryRoot();

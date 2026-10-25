@@ -5,8 +5,10 @@
 
 #include <SDL3/SDL.h>
 
+#include <cstdint>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace OpenYAMM::Game
@@ -18,6 +20,44 @@ constexpr int ScreenWidth = 640;
 constexpr int ScreenHeight = 360;
 constexpr float Margin = 24.0f;
 constexpr float GlyphSize = float(SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE);
+#if defined(__APPLE__)
+constexpr const char *FirstStartText = "The game installs itself and downloads its content on the first start. Your "
+                                       "saves and settings stay in ~/Library/Application Support/OpenYAMM.";
+#else
+constexpr const char *FirstStartText = "The game downloads its content on the first start. Your saves and settings "
+                                       "stay in this folder.";
+#endif
+
+// What the window says it is doing: the first start of a new installation, or restoring the packs of one that
+// lost or changed some.
+std::string setupIntro(const std::filesystem::path &assetRoot)
+{
+    std::string error;
+    const std::optional<Engine::AssetPackIndex> index =
+        Engine::loadAssetPackIndex(assetRoot / Engine::AssetPackIndexFileName, error);
+    std::string restoredPack;
+    bool anyPackPresent = false;
+
+    for (const Engine::AssetPackRecord &pack : index ? index->packs : std::vector<Engine::AssetPackRecord>())
+    {
+        std::error_code sizeError;
+        const uintmax_t size = std::filesystem::file_size(assetRoot / index->store / pack.file, sizeError);
+        anyPackPresent = anyPackPresent || !sizeError;
+
+        if (restoredPack.empty() && (sizeError || size != pack.size))
+        {
+            restoredPack = pack.file;
+        }
+    }
+
+    if (!anyPackPresent)
+    {
+        return FirstStartText;
+    }
+
+    return "Some game content is missing or was changed (" + restoredPack + "), so the game downloads it again. "
+        "Your saves and settings stay as they are. To change game files, put them into the mods folder.";
+}
 
 struct Button
 {
@@ -97,8 +137,29 @@ bool installedContentMissing(const std::filesystem::path &assetRoot)
     return index && !Engine::validateAssetPackFiles(*index, assetRoot / index->store, error);
 }
 
-ContentSetupResult runContentSetup(const std::string &updateChannelUrl)
+bool modifiedContentComplete(const std::filesystem::path &assetRoot)
 {
+    std::string error;
+    const std::optional<Engine::AssetPackIndex> index =
+        Engine::loadAssetPackIndex(assetRoot / Engine::AssetPackIndexFileName, error);
+
+    if (!index || Engine::assetPackFilesExist(*index, assetRoot / index->store, error))
+    {
+        return true;
+    }
+
+    const std::string message = "The game cannot start: " + error + ".\n\nsettings.ini has keep_modified_packs=on, "
+        "so the game does not download it again. Put the pack back, or set keep_modified_packs=off: the game then "
+        "restores it, and also replaces every pack you changed.";
+    std::cerr << message << '\n';
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "OpenYAMM", message.c_str(), nullptr);
+    return false;
+}
+
+ContentSetupResult runContentSetup(const std::string &updateChannelUrl, const std::filesystem::path &assetRoot)
+{
+    const std::string intro = setupIntro(assetRoot);
+
     std::unique_ptr<GameUpdater> pUpdater = GameUpdater::create(updateChannelUrl);
 
     if (!pUpdater || !pUpdater->updatesInGame())
@@ -228,8 +289,7 @@ ContentSetupResult runContentSetup(const std::string &updateChannelUrl)
         const size_t columns = size_t((ScreenWidth - 2.0f * Margin) / GlyphSize);
         float y = Margin + 40.0f;
 
-        for (const std::string &line : wrapText("The game downloads its content on the first start. Your saves and "
-                                                "settings stay in this folder.", columns))
+        for (const std::string &line : wrapText(intro, columns))
         {
             drawText(pRenderer, Margin, y, 1.0f, line);
             y += GlyphSize + 6.0f;

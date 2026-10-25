@@ -98,6 +98,13 @@ constexpr const char *MapsDirectoryName = "maps";
 constexpr const char *EventsDirectoryName = "events";
 constexpr const char *TexturesDirectoryName = "textures";
 constexpr const char *SpritesDirectoryName = "sprites";
+
+// PhysFS paths and the log are UTF-8, with forward slashes.
+std::string utf8String(const std::filesystem::path &path)
+{
+    const std::u8string text = path.generic_u8string();
+    return std::string(text.begin(), text.end());
+}
 constexpr const char *SkyTextureDirectoryName = "sky_textures";
 constexpr const char *LegacyDirectoryName = "_legacy";
 constexpr const char *SingleAssetPackageName = "assets.zip";
@@ -507,6 +514,17 @@ bool AssetFileSystem::initialize(
     const AssetScaleProfile &assetScaleProfile,
     const std::string &activeWorldId)
 {
+    return initialize(basePath, assetRoot, assetScaleTier, assetScaleProfile, activeWorldId, {});
+}
+
+bool AssetFileSystem::initialize(
+    const std::filesystem::path &basePath,
+    const std::filesystem::path &assetRoot,
+    AssetScaleTier assetScaleTier,
+    const AssetScaleProfile &assetScaleProfile,
+    const std::string &activeWorldId,
+    const InstalledContentOptions &installedContentOptions)
+{
     shutdown();
 
     if (!initializePhysicsFs(basePath))
@@ -523,6 +541,7 @@ bool AssetFileSystem::initialize(
     m_basePath = basePath;
     m_assetScaleTier = assetScaleTier;
     m_assetScaleProfile = assetScaleProfile;
+    m_installedContentOptions = installedContentOptions;
     m_activeWorldId = normalizePackageId(activeWorldId, DefaultActiveWorldId);
 
     const bool androidApkAssetRoot = isAndroidApkAssetRoot(assetRoot);
@@ -557,6 +576,12 @@ bool AssetFileSystem::initialize(
         }
 
         if (!validateTierDirectoriesInMountedPackages())
+        {
+            shutdown();
+            return false;
+        }
+
+        if (!mountMods(m_installedContentOptions.modsRoot))
         {
             shutdown();
             return false;
@@ -689,8 +714,9 @@ bool AssetFileSystem::switchActiveWorld(const std::string &activeWorldId)
     const std::filesystem::path assetRoot = m_developmentRoot;
     const AssetScaleTier assetScaleTier = m_assetScaleTier;
     const AssetScaleProfile assetScaleProfile = m_assetScaleProfile;
+    const InstalledContentOptions installedContentOptions = m_installedContentOptions;
 
-    return initialize(basePath, assetRoot, assetScaleTier, assetScaleProfile, activeWorldId);
+    return initialize(basePath, assetRoot, assetScaleTier, assetScaleProfile, activeWorldId, installedContentOptions);
 }
 
 bool AssetFileSystem::mountDevelopmentRoot(const std::filesystem::path &assetRoot)
@@ -961,7 +987,10 @@ bool AssetFileSystem::mountPackagedAssetRoot(
     const std::optional<AssetPackIndex> index = loadAssetPackIndex(assetRoot / AssetPackIndexFileName, error);
     const std::filesystem::path storeRoot = assetRoot / (index ? index->store : std::string());
 
-    if (!index || !validateAssetPackFiles(*index, storeRoot, error))
+    // Kept modified packs have sizes of their own; only a missing one still makes the content unusable.
+    if (!index
+        || !(m_installedContentOptions.acceptModifiedPacks ? assetPackFilesExist(*index, storeRoot, error)
+                                                           : validateAssetPackFiles(*index, storeRoot, error)))
     {
         std::cerr << "Installed content is unusable (" << error << "); reinstall or verify the game files.\n";
         return false;
@@ -1024,6 +1053,127 @@ bool AssetFileSystem::mountPackageArchiveIfPresent(
     }
 
     return mountSearchRoot(archivePath, appendToPath);
+}
+
+bool AssetFileSystem::mountMods(const std::filesystem::path &modsRoot)
+{
+    std::error_code error;
+
+    if (modsRoot.empty() || !std::filesystem::is_directory(modsRoot, error))
+    {
+        return true;
+    }
+
+    // Each folder mirrors a package root as the packs mount it: mods/engine/data_tables/x.txt replaces
+    // engine/data_tables/x.txt. Unreadable entries are skipped, never thrown at the start.
+    std::vector<std::pair<std::filesystem::path, std::string>> folders;
+
+    for (std::filesystem::directory_iterator entry(modsRoot, error), end; !error && entry != end;
+         entry.increment(error))
+    {
+        const std::string name = utf8String(entry->path().filename());
+        std::error_code typeError;
+
+        if (name == EngineDevelopmentRootName && entry->is_directory(typeError))
+        {
+            folders.emplace_back(entry->path(), EngineDevelopmentRootName);
+            continue;
+        }
+
+        if (name == WorldsDevelopmentRootName && entry->is_directory(typeError))
+        {
+            std::error_code worldError;
+
+            for (std::filesystem::directory_iterator world(entry->path(), worldError); !worldError && world != end;
+                 world.increment(worldError))
+            {
+                if (world->is_directory(typeError))
+                {
+                    folders.emplace_back(world->path(), name + "/" + utf8String(world->path().filename()));
+                }
+                else
+                {
+                    std::cout << "Mods: ignoring " << utf8String(world->path())
+                              << ": mods/worlds holds one folder per world\n";
+                }
+            }
+
+            continue;
+        }
+
+        std::cout << "Mods: ignoring " << utf8String(entry->path()) << ": mods holds only engine and worlds\n";
+    }
+
+    std::sort(folders.begin(), folders.end());
+    // Enough to recognise a mod in a log; someone who extracted a whole pack learns the count.
+    constexpr size_t LoggedFileCount = 100;
+    size_t fileCount = 0;
+
+    for (const auto &[folder, package] : folders)
+    {
+        std::vector<std::string> files;
+        std::error_code fileError;
+
+        for (std::filesystem::recursive_directory_iterator file(folder, fileError), end; !fileError && file != end;
+             file.increment(fileError))
+        {
+            std::error_code typeError;
+
+            if (file->is_regular_file(typeError))
+            {
+                files.push_back(package + "/" + utf8String(file->path().lexically_relative(folder)));
+            }
+        }
+
+        if (files.empty())
+        {
+            continue;
+        }
+
+        std::sort(files.begin(), files.end());
+
+        // Before mounting, so the game's own files are what the mod files are compared with.
+        for (size_t index = 0; index < files.size() && fileCount + index < LoggedFileCount; ++index)
+        {
+            const std::string &file = files[index];
+            const bool replaces = PHYSFS_exists(file.c_str()) != 0;
+            const std::optional<std::string> spelling = replaces ? std::nullopt : findCaseInsensitiveVirtualPath(file);
+            std::cout << "Mods: " << file;
+
+            if (replaces)
+            {
+                std::cout << " replaces the game's file\n";
+            }
+            else if (spelling)
+            {
+                std::cout << " may be ignored: name it exactly like the game's file, " << *spelling << '\n';
+            }
+            else
+            {
+                std::cout << " is a new file\n";
+            }
+        }
+
+        fileCount += files.size();
+
+        if (!mountSearchRootAt(folder, "/" + package, false))
+        {
+            return false;
+        }
+    }
+
+    if (fileCount > LoggedFileCount)
+    {
+        std::cout << "Mods: and " << fileCount - LoggedFileCount << " more files\n";
+    }
+
+    if (fileCount > 0)
+    {
+        std::cout << "Mods: " << fileCount << (fileCount == 1 ? " file" : " files") << " from " << utf8String(modsRoot)
+                  << '\n';
+    }
+
+    return true;
 }
 
 bool AssetFileSystem::mountSearchRoot(const std::filesystem::path &assetRoot, bool appendToPath)
@@ -1592,6 +1742,7 @@ void AssetFileSystem::shutdown()
     m_activeWorldId = DefaultActiveWorldId;
     m_assetScaleTier = AssetScaleTier::X1;
     m_assetScaleProfile = createUniformAssetScaleProfile(AssetScaleTier::X1);
+    m_installedContentOptions = {};
     m_iconPackages.clear();
     m_searchMounts.clear();
     m_androidApkAssetRoot = false;

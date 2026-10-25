@@ -179,7 +179,7 @@ void GameplayHeldItemController::applyGrantedEventItemsToHeldInventory(
                     static_cast<uint16_t>(std::clamp(std::atoi(modRule("event_potion_power").c_str()), 0, 65535));
             }
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(OPENYAMM_IOS)
             Party *pParty = runtime.party();
             size_t recipientMemberIndex = 0;
 

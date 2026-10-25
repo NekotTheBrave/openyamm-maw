@@ -225,6 +225,26 @@ std::vector<std::string> AppInstallation::otherVersions() const
     return versions;
 }
 
+std::filesystem::path programDirectory(const std::filesystem::path &basePath)
+{
+    std::filesystem::path directory = basePath.lexically_normal();
+
+    if (!directory.has_filename())
+    {
+        directory = directory.parent_path();
+    }
+
+    const std::filesystem::path contents = directory.parent_path();
+    const std::filesystem::path bundle = contents.parent_path();
+
+    if (directory.filename() == "Resources" && contents.filename() == "Contents" && bundle.extension() == ".app")
+    {
+        return bundle.parent_path();
+    }
+
+    return directory;
+}
+
 bool isValidAppVersionName(const std::string &version)
 {
     if (version.empty() || version.size() > 32 || version.front() == '.' || version == "..")

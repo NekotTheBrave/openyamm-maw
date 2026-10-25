@@ -3,6 +3,10 @@
 #include "engine/AssetScaleTier.h"
 #include "engine/LogFile.h"
 #include "engine/UserDataPaths.h"
+#include "engine/update/AppInstallation.h"
+#if defined(__APPLE__)
+#include "game/app/AppleBundlePaths.h"
+#endif
 #include "game/app/ContentSetup.h"
 #include "game/app/GameApplication.h"
 #include "game/app/GameSettings.h"
@@ -234,7 +238,7 @@ std::filesystem::path executableDirectory()
 {
     const char *pBasePath = SDL_GetBasePath();
     std::error_code error;
-    return pBasePath != nullptr ? std::filesystem::path(pBasePath) : std::filesystem::current_path(error);
+    return pBasePath != nullptr ? OpenYAMM::Engine::programDirectory(pBasePath) : std::filesystem::current_path(error);
 }
 
 // Makes the user data folder the working directory: a release installation keeps saves, settings.ini and screenshots
@@ -320,16 +324,22 @@ void applySettingsConfigOverridesIfConfigured(
     config.hitchTrace = settings->hitchTrace;
     config.hitchThresholdMilliseconds = settings->hitchThresholdMilliseconds;
     config.verticalSync = settings->verticalSync;
+    config.installedContent.acceptModifiedPacks = settings->keepModifiedPacks;
 }
 
-// The update channel of settings.ini in the user data folder (the working directory by then).
-std::string updateChannelUrl()
+// settings.ini in the user data folder (the working directory by then), or the defaults.
+OpenYAMM::Game::GameSettings savedSettings()
 {
     std::string error;
     const std::optional<OpenYAMM::Game::GameSettings> settings = std::filesystem::exists("settings.ini")
         ? OpenYAMM::Game::loadGameSettings("settings.ini", error)
         : std::nullopt;
-    return settings ? settings->updateUrl : OpenYAMM::Game::GameSettings::createDefault().updateUrl;
+    return settings ? *settings : OpenYAMM::Game::GameSettings::createDefault();
+}
+
+std::string updateChannelUrl()
+{
+    return savedSettings().updateUrl;
 }
 
 int runGame(int argc, char **argv, OpenYAMM::Engine::LogFile &logFile)
@@ -377,6 +387,12 @@ int runGame(int argc, char **argv, OpenYAMM::Engine::LogFile &logFile)
     {
         return 2;
     }
+
+#if !defined(__ANDROID__)
+    // Mounted only over a release's packs (packaging/MODDING.md).
+    std::error_code currentPathError;
+    config.installedContent.modsRoot = std::filesystem::current_path(currentPathError) / "mods";
+#endif
 
     const bool headlessCommand = !arguments.empty() && arguments[0].rfind("--headless-", 0) == 0;
 
@@ -439,7 +455,7 @@ int runGame(int argc, char **argv, OpenYAMM::Engine::LogFile &logFile)
     if ((arguments.size() == 1 || arguments.size() == 2) && arguments[0] == "--headless-update")
     {
         return OpenYAMM::Game::runHeadlessUpdate(arguments.size() == 2 ? arguments[1] : updateChannelUrl(),
-                                                 std::cout);
+                                                 savedSettings().keepModifiedPacks, std::cout);
     }
 
     if ((arguments.size() == 3 || arguments.size() == 4) && arguments[0] == "--headless-open-event")
@@ -699,11 +715,34 @@ int runGame(int argc, char **argv, OpenYAMM::Engine::LogFile &logFile)
     }
 
 #if !defined(__ANDROID__)
-    // A fresh installation from the small download package carries no content yet.
-    if (!assetRootArgumentProvided && OpenYAMM::Engine::isReleaseInstallation(installRoot)
-        && OpenYAMM::Game::installedContentMissing(config.assetRoot))
+    // The downloaded macOS app installs its whole release into the per-user folder and never plays itself.
+    bool installRelease = false;
+#if defined(__APPLE__)
+    installRelease = OpenYAMM::Game::applePackageInstallation().has_value();
+#endif
+    const bool releaseContent = !assetRootArgumentProvided && OpenYAMM::Engine::isReleaseInstallation(installRoot);
+
+    if (!assetRootArgumentProvided && installRelease)
     {
-        if (OpenYAMM::Game::runContentSetup(updateChannelUrl()) != OpenYAMM::Game::ContentSetupResult::Ready)
+        OpenYAMM::Game::runContentSetup(updateChannelUrl(), config.assetRoot);
+        return 0;
+    }
+
+    // Packs the player changed on purpose are neither checked nor restored, and no update replaces them.
+    if (releaseContent && config.installedContent.acceptModifiedPacks)
+    {
+        std::cout << "Content: keep_modified_packs is on; the game neither checks, restores nor updates its packs\n";
+
+        if (!OpenYAMM::Game::modifiedContentComplete(config.assetRoot))
+        {
+            return 1;
+        }
+    }
+    // A fresh installation from the small download package carries no content yet.
+    else if (releaseContent && OpenYAMM::Game::installedContentMissing(config.assetRoot))
+    {
+        if (OpenYAMM::Game::runContentSetup(updateChannelUrl(), config.assetRoot)
+            != OpenYAMM::Game::ContentSetupResult::Ready)
         {
             return 0;
         }

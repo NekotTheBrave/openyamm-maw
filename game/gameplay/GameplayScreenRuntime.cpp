@@ -1637,7 +1637,7 @@ void GameplayScreenRuntime::closeCharacterScreen()
     {
         modPlayerAction(Mm8Action::Exit);
     }
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(OPENYAMM_IOS)
     GameplayUiController::HeldInventoryItemState &heldItem = heldInventoryItem();
     Party *pParty = party();
     if (characterScreen.open && heldItem.active && pParty != nullptr)

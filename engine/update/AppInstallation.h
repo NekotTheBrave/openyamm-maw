@@ -13,6 +13,11 @@ constexpr const char *LauncherExecutableName = "OpenYAMM.exe";
 constexpr const char *GameExecutableName = "openyamm.exe";
 // Each version folder carries its launcher; the game installs it as the launcher after its first healthy start.
 constexpr const char *LauncherCopyName = "OpenYAMM-launcher.exe";
+#elif defined(__APPLE__)
+constexpr const char *LauncherExecutableName = "OpenYAMM";
+// The game is an app bundle, so macOS shows its name and icon; its shaders are bundle resources.
+constexpr const char *GameExecutableName = "OpenYAMM.app/Contents/MacOS/OpenYAMM";
+constexpr const char *LauncherCopyName = "OpenYAMM-launcher";
 #else
 constexpr const char *LauncherExecutableName = "OpenYAMM";
 constexpr const char *GameExecutableName = "openyamm";
@@ -72,6 +77,10 @@ public:
 private:
     std::filesystem::path m_root;
 };
+
+// The folder of the running version's files from SDL_GetBasePath(): the executable's folder, or for a macOS app bundle,
+// whose base path is OpenYAMM.app/Contents/Resources, the folder that holds the bundle (app/<version>/).
+std::filesystem::path programDirectory(const std::filesystem::path &basePath);
 
 // Version folder names are plain release names; never a path.
 bool isValidAppVersionName(const std::string &version);

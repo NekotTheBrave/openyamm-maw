@@ -47,12 +47,26 @@ else()
 endif()
 
 file(MAKE_DIRECTORY "${OPENYAMM_RELEASE_STAGE_DIR}/assets")
-file(MAKE_DIRECTORY "${openyammReleaseAppDir}/runtime")
 
-file(COPY "${OPENYAMM_RELEASE_EXECUTABLE}" DESTINATION "${openyammReleaseAppDir}")
-file(COPY "${OPENYAMM_RELEASE_SHADER_DIR}" DESTINATION "${openyammReleaseAppDir}/runtime"
-    PATTERN "dxbc" EXCLUDE
-)
+if (DEFINED OPENYAMM_RELEASE_BUNDLE AND NOT OPENYAMM_RELEASE_BUNDLE STREQUAL "")
+    # macOS: the game is OpenYAMM.app with its shaders inside. The ad-hoc signature seals the copied bundle (the
+    # linker signs only the executable); macOS refuses to open a downloaded bundle whose seal is broken.
+    file(COPY "${OPENYAMM_RELEASE_BUNDLE}" DESTINATION "${openyammReleaseAppDir}")
+    get_filename_component(openyammReleaseBundleName "${OPENYAMM_RELEASE_BUNDLE}" NAME)
+    execute_process(
+        COMMAND "${OPENYAMM_RELEASE_CODESIGN}" --force --sign - "${openyammReleaseAppDir}/${openyammReleaseBundleName}"
+        RESULT_VARIABLE codesignResult
+    )
+    if (NOT codesignResult EQUAL 0)
+        message(FATAL_ERROR "Failed to sign ${openyammReleaseBundleName}")
+    endif()
+else()
+    file(MAKE_DIRECTORY "${openyammReleaseAppDir}/runtime")
+    file(COPY "${OPENYAMM_RELEASE_EXECUTABLE}" DESTINATION "${openyammReleaseAppDir}")
+    file(COPY "${OPENYAMM_RELEASE_SHADER_DIR}" DESTINATION "${openyammReleaseAppDir}/runtime"
+        PATTERN "dxbc" EXCLUDE
+    )
+endif()
 file(COPY
     "${CMAKE_CURRENT_LIST_DIR}/../LICENSE"
     "${CMAKE_CURRENT_LIST_DIR}/../COPYRIGHT"
@@ -155,6 +169,40 @@ endif()
 
 get_filename_component(openyammReleaseParentDir "${OPENYAMM_RELEASE_STAGE_DIR}" DIRECTORY)
 get_filename_component(openyammReleaseFolderName "${OPENYAMM_RELEASE_STAGE_DIR}" NAME)
+
+if (DEFINED OPENYAMM_RELEASE_BUNDLE AND NOT OPENYAMM_RELEASE_BUNDLE STREQUAL "")
+    # macOS players get a disk image: the signed OpenYAMM.app, unchanged (an added index would break its seal), with a
+    # link to Applications to drag it to. On its first start the app installs its release into the per-user folder
+    # (packaging/UPDATER_PLAN.md 9.4). packaging/publish_release.py publishes the image as it is.
+    set(openyammReleaseImageDir "${openyammReleaseParentDir}/disk-image")
+    file(REMOVE_RECURSE "${openyammReleaseImageDir}")
+    file(MAKE_DIRECTORY "${openyammReleaseImageDir}")
+    file(COPY "${openyammReleaseAppDir}/${openyammReleaseBundleName}"
+        "${OPENYAMM_RELEASE_STAGE_DIR}/LICENSE" "${OPENYAMM_RELEASE_STAGE_DIR}/COPYRIGHT"
+        DESTINATION "${openyammReleaseImageDir}")
+    file(CREATE_LINK "/Applications" "${openyammReleaseImageDir}/Applications" SYMBOLIC)
+
+    # hdiutil fails now and then with "Resource busy" on build machines; a second attempt succeeds.
+    foreach(attempt RANGE 1 3)
+        execute_process(
+            COMMAND "${OPENYAMM_RELEASE_HDIUTIL}" create -volname OpenYAMM -srcfolder "${openyammReleaseImageDir}"
+                -format UDZO -ov "${OPENYAMM_RELEASE_ARCHIVE_PATH}"
+            RESULT_VARIABLE releaseArchiveResult
+        )
+        if (releaseArchiveResult EQUAL 0)
+            break()
+        endif()
+        execute_process(COMMAND "${CMAKE_COMMAND}" -E sleep 5)
+    endforeach()
+    file(REMOVE_RECURSE "${openyammReleaseImageDir}")
+
+    if (NOT releaseArchiveResult EQUAL 0)
+        message(FATAL_ERROR "Failed to create the disk image: ${OPENYAMM_RELEASE_ARCHIVE_PATH}")
+    endif()
+
+    message(STATUS "Created OpenYAMM release package: ${OPENYAMM_RELEASE_ARCHIVE_PATH}")
+    return()
+endif()
 
 # Windows players get a zip; Linux players a tar.gz, which keeps the executables' permissions.
 if (OPENYAMM_RELEASE_ARCHIVE_PATH MATCHES "\\.tar\\.gz$")

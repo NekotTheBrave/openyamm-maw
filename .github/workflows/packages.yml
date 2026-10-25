@@ -1,5 +1,6 @@
 # Packages and releases (packaging/RELEASE.md, packaging/UPDATER_PLAN.md 7.4):
-#   push to main          builds every package and plays the release scenarios; publishes nothing
+#   push to main          builds every package (Windows, Linux, macOS, Android) and plays the release scenarios;
+#                         publishes nothing
 #   tag vX.Y              the same, then publishes release X.Y to https://jasicek.net/openyamm/ and GitHub Releases
 #   Run workflow + X.Y    the same, then publishes a test release to https://jasicek.net/openyamm-staging/
 # Only the publish job holds secrets: the GitHub environment "release" (tags v* and main only) carries the manifest
@@ -384,6 +385,127 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+  macos:
+    name: macOS arm64
+    needs: meta
+    # Apple silicon; the game needs macOS 14 or newer (CMAKE_OSX_DEPLOYMENT_TARGET).
+    runs-on: macos-15
+    timeout-minutes: 180
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /CMakeLists.txt
+            /LICENSE
+            /COPYRIGHT
+            /cmake/
+            /engine/
+            /game/
+            /packaging/
+            /tests/
+            /third_party/doctest/
+            /tools/LegacyLuaExport.cpp
+            /tools/LegacyLuaExport.h
+            /tools/legacy_events/
+            /tools/openyamm_shaderc_stubs.cpp
+            /tools/cook_sprite_atlases_main.cpp
+            /tools/SpriteAtlasEncode.cpp
+            /tools/SpriteAtlasEncode.h
+            /tools/TextureBlockEncode.cpp
+            /tools/TextureBlockEncode.h
+            /tools/cook_model_textures_main.cpp
+            /tools/CookModelGeometry.cpp
+            /tools/CookModelGeometry.h
+            /tools/package_runtime_assets.py
+            /tools/runtime_packs.py
+            /tools/packaging/
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install the build tools
+        run: |
+          brew install ninja
+          xcodebuild -version
+          cmake --version | head -n 1
+
+      - name: Build the macOS package
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          set -o pipefail
+          build() {
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+              -DOPENYAMM_BUILD_DESKTOP_EXECUTABLE=ON -DOPENYAMM_BUILD_TESTS=ON -DOPENYAMM_BUILD_EDITOR=OFF \
+              -DOPENYAMM_BUILD_TOOLS=OFF -DOPENYAMM_COOK_ON_BUILD=OFF -DOPENYAMM_RELEASE_THIN=ON \
+              -DOPENYAMM_RELEASE_VERSION="$VERSION" &&
+              cmake --build build --target openyamm_release_package openyamm_unit_tests
+          }
+          # The errors also go into one annotation: unlike the log, annotations can be read without signing in.
+          if ! build 2>&1 | tee build.log; then
+            errors="$(grep -E -A4 '(: (fatal )?error|CMake Error|FAILED: |ld: |Undefined symbols)' build.log | head -n 80)"
+            echo "::error title=macOS build::${errors//$'\n'/%0A}"
+            exit 1
+          fi
+
+      - name: Check the macOS package
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          stage=build/release/Release/OpenYAMM
+          app="$stage/app/$VERSION/OpenYAMM.app"
+          for entry in OpenYAMM app/current "app/$VERSION/OpenYAMM-launcher" \
+            "app/$VERSION/OpenYAMM.app/Contents/MacOS/OpenYAMM" "app/$VERSION/OpenYAMM.app/Contents/Info.plist" \
+            "app/$VERSION/OpenYAMM.app/Contents/Resources/runtime/shaders/metal/vs_model.bin" \
+            "app/$VERSION/OpenYAMM.app/Contents/Resources/runtime/shaders/metal/fs_sprite_atlas.bin"; do
+            test -f "$stage/$entry" || { echo "::error::The macOS package lacks $entry"; exit 1; }
+          done
+          # A downloaded app whose seal is broken is "damaged" to macOS, with no way to open it.
+          codesign --verify --strict --verbose=2 "$app"
+          # The players' disk image: the same sealed app and a link to Applications. publish_release.py ships it as
+          # it is.
+          image=build/release/OpenYAMM-macos-arm64-Release.dmg
+          mount="$(mktemp -d)"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$image"
+          codesign --verify --strict "$mount/OpenYAMM.app"
+          test "$(readlink "$mount/Applications")" = /Applications
+          diff -r "$mount/OpenYAMM.app" "$app"
+          hdiutil detach "$mount"
+          mv "$image" build/release/Release/OpenYAMM.dmg
+          # Only the system's libraries and frameworks: players install nothing.
+          for executable in "$app/Contents/MacOS/OpenYAMM" "$stage/OpenYAMM"; do
+            lipo -archs "$executable" | grep -qx arm64 || { echo "::error::$executable is not arm64 only."; exit 1; }
+            libraries="$(otool -L "$executable" | tail -n +2 | awk '{print $1}')"
+            echo "$executable: $(tr '\n' ' ' <<< "$libraries")"
+            if grep -Ev '^(/usr/lib/|/System/Library/)' <<< "$libraries" | grep -q .; then
+              echo "::error::$executable links libraries outside the system."
+              exit 1
+            fi
+          done
+
+      # The tests that need no game content: updater, installation layout and user data.
+      - name: Run the installation unit tests
+        run: >-
+          ./build/tests/openyamm_unit_tests
+          --source-file='*UpdaterTests.cpp,*UserDataPathsTests.cpp,*LogFileTests.cpp,*AssetPackIndexTests.cpp,*SettingsFileTests.cpp'
+
+      - name: Upload the macOS stage
+        uses: actions/upload-artifact@v7
+        with:
+          name: stage-macos-arm64
+          path: build/release/Release/
+          if-no-files-found: error
+          retention-days: 3
+
   android:
     name: Android arm64
     needs: meta
@@ -499,7 +621,7 @@ jobs:
 
   checks:
     name: Scenarios (${{ matrix.platform }})
-    needs: [meta, content, windows, linux]
+    needs: [meta, content, windows, linux, macos]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     strategy:
@@ -512,6 +634,9 @@ jobs:
           - platform: windows-x64
             os: windows-latest
             game: openyamm.exe
+          - platform: macos-arm64
+            os: macos-15
+            game: OpenYAMM.app/Contents/MacOS/OpenYAMM
     defaults:
       run:
         shell: bash
@@ -557,7 +682,7 @@ jobs:
 
   publish:
     name: Publish ${{ needs.meta.outputs.version }} (${{ needs.meta.outputs.site }})
-    needs: [meta, content, windows, linux, android, checks]
+    needs: [meta, content, windows, linux, macos, android, checks]
     if: needs.meta.outputs.site != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 240
@@ -646,6 +771,7 @@ jobs:
           python3 packaging/publish_release.py prepare --version "$VERSION" --site "$SITE" \
             --content desktop=artifacts/content-desktop --content android=artifacts/content-android \
             --stage windows-x64=artifacts/stage-windows-x64 --stage linux-x64=artifacts/stage-linux-x64 \
+            --stage macos-arm64=artifacts/stage-macos-arm64 \
             --apk "$RUNNER_TEMP/openyamm.apk" "${notes[@]}" "${replace[@]}" --out publish
 
       - name: Sign the manifests
@@ -687,8 +813,24 @@ jobs:
           notes="$RUNNER_TEMP/release-notes.md"
           {
             if [ -s "$RUNNER_TEMP/notes.txt" ]; then cat "$RUNNER_TEMP/notes.txt"; echo; fi
-            echo "Extract the package and start OpenYAMM; the first start downloads the game content (about 5 GB)."
-            echo "Saves and settings stay in the extracted folder, and the game updates itself."
+            cat <<'EOF'
+          ## How to play
+
+          - **Windows** (64-bit): extract the `windows-x64.zip` and run `OpenYAMM.exe`. If Windows warns about an
+            unknown publisher, choose *More info* → *Run anyway*.
+          - **Linux** (x64, Ubuntu 22.04 or another distribution with glibc 2.35 or newer, and libcurl): extract the
+            `linux-x64.tar.gz` and run `./OpenYAMM`.
+          - **macOS** (Apple silicon, macOS 14 or newer): open the `macos-arm64.dmg` and drag OpenYAMM to
+            Applications. The app is not notarized: run `xattr -dr com.apple.quarantine /Applications/OpenYAMM.app`
+            once in Terminal, or allow it after the first attempt in *System Settings* → *Privacy & Security* →
+            *Open Anyway*.
+          - **Android** (64-bit ARM): install the `android-arm64.apk`, allowing your browser or file manager to install
+            apps when asked.
+
+          The first start downloads the game content (about 5 GB, 3 GB on Android); later updates download only what
+          changed, from inside the game. Saves and settings stay in the extracted folder on Windows and Linux, and in
+          `~/Library/Application Support/OpenYAMM` on macOS.
+          EOF
           } > "$notes"
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "OpenYAMM $VERSION" --notes-file "$notes" publish/site/downloads/"$VERSION"/*

@@ -21,8 +21,14 @@ Android updaters (phases 4 and 5) exist as well. The server facts in §7.5 were 
 - **User data stays in the installation folder on Windows and Linux** (§4.1): `saves/`, `settings.ini`,
   `openyamm.log` and screenshots live next to the game, as up to 1.5. Updates never touch them; the per-user folder,
   `portable.txt` and the one-time import from the installation are removed.
+- **Changing game files (2026-10-23):** a `mods/` folder in the user data overrides single files and survives updates;
+  `keep_modified_packs=on` keeps edited packs and turns updates off (§11, [Changing the game's files](MODDING.md)).
+  Before, the start check restored an edited pack at every start, whatever `check_for_updates` said.
 - Manifests may name a store file by an absolute https URL whose last segment is its hash (a mirror); relative store
   paths remain the default.
+
+**Revision 2026-10-23:** macOS (Apple silicon) is a fourth desktop platform, `macos-arm64`, with the same versioned
+installation in `~/Library/Application Support/OpenYAMM` (§9.4).
 
 ## Implementation status
 
@@ -677,7 +683,7 @@ to "the game crashes on start after my disk filled up".
 ### 9.1 Windows and Linux: launcher plus versioned app directories
 
 *Since 2026-10-21* Linux uses the same layout with `OpenYAMM`, `openyamm` and `OpenYAMM-launcher` without `.exe`:
-`game/launcher/LinuxLauncher.cpp` replaces itself with the game (`execv`), staged executables get their permission
+`game/launcher/UnixLauncher.cpp` replaces itself with the game (`execv`), staged executables get their permission
 bits back after extraction, and `HttpTransport` loads `libcurl.so.4` (or Debian's `libcurl-gnutls.so.4`) at runtime.
 The player-facing packages are small: no `assets/packs/`, only `app/<version>/index.json`. When that index names
 missing packs, `ContentSetup` downloads them through `AppUpdater`'s content-only mode (same release, no app archive,
@@ -824,6 +830,47 @@ OpenYAMM\
     `build_release_local.sh` builds release APKs with `download`.
   - Not done yet: Export/Import saves (uninstalling still deletes saves), a Wi-Fi-only setting, notifications.
 
+### 9.4 macOS: the downloaded app installs itself into Application Support
+
+*Since 2026-10-23.* macOS uses the layout of §9.1 in the per-user folder, the same folder as the player's data:
+
+```
+~/Library/Application Support/OpenYAMM/
+  OpenYAMM                     launcher (game/launcher/UnixLauncher.cpp)
+  app/current, app/previous
+  app/<v>/OpenYAMM.app         the game; its shaders are bundle resources
+  app/<v>/OpenYAMM-launcher, index.json
+  assets/packs/*.zip
+  saves/, settings.ini, openyamm.log
+```
+
+- **Why not the download folder:** macOS runs a downloaded app that is not notarized from a read-only copy at a random
+  path (App Translocation) until the player moves it, so the folder next to the app is neither writable nor stable.
+  The per-user folder is both, wherever the player keeps the app.
+- **Download package** `OpenYAMM-X.Y-macos-arm64.dmg`: a disk image of `OpenYAMM.app` as the macOS job built and
+  signed it, a link to Applications to drag it to, and the licences (as OpenEnroth ships its macOS build). The
+  publisher ships the image unchanged. The app carries no `index.json`: the publisher writes the index only at publish
+  time (§7, reused packs keep their published file names), and changing a signed bundle breaks its seal, which macOS
+  reports as a damaged app that cannot be opened at all. The app archive of the update channel holds the same bundle
+  in `OpenYAMM/app/<v>/` with the index next to it.
+- **The downloaded app never plays from where it is** (`game/app/AppleBundlePaths.*`). A release bundle outside an
+  installation's version folder (`OPENYAMM_APPLE_PACKAGE_VERSION`, set for builds with a release version):
+  - when the per-user installation has a current version, starts it in place of itself (`execv`), counting the start
+    as the launcher does;
+  - otherwise opens the content setup window, whose updater installs the published release (the app's own or a newer
+    one) into the empty installation: app archive and packs. `AppUpdater` treats an installation without
+    `app/current` as empty, and its first activation also installs the version's launcher, which *Restart Now* then
+    starts. A channel older than the app offers nothing, as for a stale small package.
+- Inside an installation the bundle is an ordinary version: `programDirectory()` maps its base path
+  (`OpenYAMM.app/Contents/Resources`) to `app/<v>/`, so the index, the updater and the healthy-start cleanup work as on
+  Linux. Downloads through libcurl carry no quarantine flag, so updated versions start without Gatekeeper.
+- **Transport:** the libcurl backend of Linux, loaded from `/usr/lib/libcurl.4.dylib`, which every macOS ships.
+- **Signing:** ad hoc only (`codesign --sign -` when the package is built), no Developer ID or notarization. The
+  player clears the quarantine flag once (`xattr -dr com.apple.quarantine /Applications/OpenYAMM.app`) or allows the
+  app on its first start in System Settings → Privacy & Security → *Open Anyway*.
+- Not done: Intel Macs, notarization, and replacing the downloaded app itself (it only hands over, so an old copy
+  keeps working).
+
 ## 10. Part G — user experience
 
 - Main menu: a quiet "Update available — 0.8 (152 MB)" line with **Update** and **Release notes**. Never a modal
@@ -843,8 +890,11 @@ OpenYAMM\
 - **Settings:** sparse player files over code defaults, with versioned migrations only for changes of meaning
   (§4.3); the updater never replaces the user's file.
 - **Binary and content:** always installed together from one manifest; `content_format` guards mismatches.
-- **Mods (future):** user packs go into `<user data>/mods/` with their own `index.json` and mount after the official
-  packs. The updater never touches them. This matches the flat base and world mounting in AGENTS.md.
+- **Mods:** loose files in `<user data>/mods/engine/` and `mods/worlds/<id>/` mount in front of the official packs at
+  the same virtual paths (`AssetFileSystem::mountMods`), only over a release's packs. The start check, the repair and
+  the updater never look at them; each start logs every mod file. `[updates] keep_modified_packs=on` (file only)
+  instead mounts packs whose size differs from the index and turns off the repair and every update check. See
+  [Changing the game's files](MODDING.md).
 - **Optional worlds (future):** packs already carry `package`, so a client could install only `engine` + `mm6`.
   Postponed because MMerge-style cross-world travel expects all worlds mounted.
 

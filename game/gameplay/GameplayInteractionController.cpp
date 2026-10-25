@@ -101,7 +101,7 @@ void resolveWorldItemHoverName(
     }
 }
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(OPENYAMM_IOS)
 bool usesMobileGroundTargetConfirm(uint32_t spellId)
 {
     return isSpellId(spellId, SpellId::MeteorShower)
@@ -1482,7 +1482,7 @@ GameplayInteractionController::updateWorldInteractionFrame(
 
     if (worldInputBlocked)
     {
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(OPENYAMM_IOS)
         const bool preserveHeldItemDropAction =
             heldItemActive
             && overlayInteractionState.gameplayHudClickLatch
@@ -1491,7 +1491,7 @@ GameplayInteractionController::updateWorldInteractionFrame(
             && overlayInteractionState.gameplayHudPressedContextActionActive;
 #endif
         clearWorldInteractionFrameState(screenState, overlayInteractionState, runtime);
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(OPENYAMM_IOS)
         if (preserveHeldItemDropAction)
         {
             setHeldItemDropContextAction(runtime);
@@ -1570,7 +1570,7 @@ GameplayInteractionController::updateWorldInteractionFrame(
             overlayInteractionState.gameplayHudSpellTargetConfirmRequested;
         overlayInteractionState.gameplayHudSpellTargetConfirmRequested = false;
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(OPENYAMM_IOS)
         const bool mobileGroundTargetConfirmSpell = usesMobileGroundTargetConfirm(pendingSpellCast.spellId);
 #else
         const bool mobileGroundTargetConfirmSpell = false;
@@ -1602,7 +1602,7 @@ GameplayInteractionController::updateWorldInteractionFrame(
         }
 
         bool confirmFromPointer = pointerPolicy.leftMousePressed;
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(OPENYAMM_IOS)
         if (mobileGroundTargetConfirmSpell)
         {
             confirmFromPointer = false;
@@ -1717,7 +1717,7 @@ GameplayInteractionController::updateWorldInteractionFrame(
 
     if (heldItemActive)
     {
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(OPENYAMM_IOS)
         if (overlayInteractionState.gameplayHudDropHeldItemRequested)
         {
             overlayInteractionState.gameplayHudDropHeldItemRequested = false;
@@ -1736,7 +1736,7 @@ GameplayInteractionController::updateWorldInteractionFrame(
         GameplayWorldHit heldItemWorldHit = {};
         bool hasHeldItemWorldHit = false;
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(OPENYAMM_IOS)
         const bool heldItemPointerPressed = false;
         worldInteractionInputState.heldInventoryDropLatch = false;
 #else

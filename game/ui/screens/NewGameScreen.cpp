@@ -1145,7 +1145,7 @@ void NewGameScreen::beginNameEditing()
     resetNameBackspaceRepeat();
     m_state.nameEditing = true;
     m_state.nameEditBuffer = m_state.name;
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) && !defined(OPENYAMM_IOS)
     SDL_Window *pWindow = SDL_GetKeyboardFocus();
 
     if (pWindow != nullptr)
@@ -1175,7 +1175,7 @@ void NewGameScreen::endNameEditing(bool commitEdit)
     }
 
     m_state.nameEditing = false;
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) && !defined(OPENYAMM_IOS)
     SDL_Window *pWindow = SDL_GetKeyboardFocus();
 
     if (pWindow != nullptr)

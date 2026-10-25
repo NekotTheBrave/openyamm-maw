@@ -39,8 +39,8 @@ CHANNEL = "stable"
 MANIFEST_SCHEMA = 1
 MIN_UPDATER_SCHEMA = 1
 # Every platform's manifest and the content profile its packs come from.
-PLATFORMS = {"windows-x64": "desktop", "linux-x64": "desktop", "android-arm64": "android"}
-DESKTOP_PLATFORMS = ("windows-x64", "linux-x64")
+PLATFORMS = {"windows-x64": "desktop", "linux-x64": "desktop", "macos-arm64": "desktop", "android-arm64": "android"}
+DESKTOP_PLATFORMS = ("windows-x64", "linux-x64", "macos-arm64")
 # Site folders below the server's web root; the staging site serves test releases with the same layout.
 SITES = {"stable": "openyamm", "staging": "openyamm-staging"}
 # Packs and apps of the newest releases stay on the server (players mid-update, rollbacks); downloads of the newest two.
@@ -53,10 +53,21 @@ OFFLINE_MANIFEST_KEY = "manifest-ed25519-offline.key"
 PACKAGE_NAMES = {
     "windows-x64": "OpenYAMM-{version}-windows-x64.zip",
     "linux-x64": "OpenYAMM-{version}-linux-x64.tar.gz",
+    "macos-arm64": "OpenYAMM-{version}-macos-arm64.dmg",
     "android-arm64": "OpenYAMM-{version}-android-arm64.apk",
 }
-# Files of a desktop installation that must be executable (artifact uploads drop permissions).
+# Files of a desktop installation that must be executable (artifact uploads drop permissions); on macOS the game is
+# OpenYAMM.app/Contents/MacOS/OpenYAMM.
 EXECUTABLE_NAMES = {"OpenYAMM", "openyamm", "OpenYAMM-launcher"}
+# Files a desktop stage's version folder (app/<version>/) must have: the game, one of its shaders and, on macOS, the
+# bundle's signature, without which macOS refuses to open the downloaded app.
+APP_FILES = {
+    "windows-x64": ("openyamm.exe", "runtime/shaders/glsl/vs_model.bin"),
+    "linux-x64": ("openyamm", "runtime/shaders/glsl/vs_model.bin"),
+    "macos-arm64": ("OpenYAMM.app/Contents/MacOS/OpenYAMM",
+                    "OpenYAMM.app/Contents/Resources/runtime/shaders/metal/vs_model.bin",
+                    "OpenYAMM.app/Contents/_CodeSignature/CodeResources"),
+}
 # Fixed timestamps make the archives reproducible from the same files.
 ARCHIVE_TIME = (1980, 1, 1, 0, 0, 0)
 
@@ -271,11 +282,10 @@ def stage_files(stage, platform, release):
     root = Path(stage) / "OpenYAMM"
     if not root.is_dir():
         fail(f"{stage} holds no OpenYAMM folder")
-    windows = platform == "windows-x64"
-    suffix = ".exe" if windows else ""
+    suffix = ".exe" if platform == "windows-x64" else ""
     app = f"app/{release}"
-    required = [f"OpenYAMM{suffix}", "app/current", f"{app}/openyamm{suffix}", f"{app}/OpenYAMM-launcher{suffix}",
-                f"{app}/runtime/shaders/glsl/vs_model.bin"]
+    required = [f"OpenYAMM{suffix}", "app/current", f"{app}/OpenYAMM-launcher{suffix}",
+                *(f"{app}/{name}" for name in APP_FILES[platform])]
     for name in required:
         if not (root / name).is_file():
             fail(f"the {platform} stage lacks OpenYAMM/{name}")
@@ -327,7 +337,15 @@ def assemble(platform, stage, index, release, packages_dir, apps_dir):
     files[f"OpenYAMM/app/{release}/index.json"] = ((json.dumps(index, indent=1) + "\n").encode(), 0o644)
     package = packages_dir / PACKAGE_NAMES[platform].format(version=release)
     package.parent.mkdir(parents=True, exist_ok=True)
-    if package.name.endswith(".tar.gz"):
+    if platform == "macos-arm64":
+        # The disk image of the macOS job: OpenYAMM.app as built and signed there. Adding the index would break the
+        # bundle's seal, so the app carries none; it installs its release from the update channel into the per-user
+        # folder and starts it from there (packaging/UPDATER_PLAN.md 9.4).
+        image = Path(stage) / "OpenYAMM.dmg"
+        if not image.is_file():
+            fail(f"the {platform} stage lacks OpenYAMM.dmg")
+        shutil.copyfile(image, package)
+    elif package.name.endswith(".tar.gz"):
         directories = {name.rsplit("/", 1)[0] for name in files} | {"OpenYAMM/assets/packs"}
         parents = set()
         for directory in directories:
@@ -428,8 +446,9 @@ def prepare(args):
         fail("--replace is for the staging site only")
     contents = parse_pairs(args.content, ("desktop", "android"), "content")
     stages = parse_pairs(args.stage, DESKTOP_PLATFORMS, "stage")
+    desktops = [platform for platform in DESKTOP_PLATFORMS if platform not in (args.without or [])]
     missing = [name for name in ("desktop", "android") if name not in contents] \
-        + [platform for platform in DESKTOP_PLATFORMS if platform not in stages] + ([] if args.apk else ["--apk"])
+        + [platform for platform in desktops if platform not in stages] + ([] if args.apk else ["--apk"])
     if missing:
         fail("prepare needs every platform's artifacts; missing: " + ", ".join(missing))
 
@@ -467,7 +486,7 @@ def prepare(args):
     published_at = utc_now()
     notes = read_notes(args.notes)
     manifests = {}
-    for platform in DESKTOP_PLATFORMS:
+    for platform in desktops:
         package, app = assemble(platform, stages[platform], indexes["desktop"], release, downloads, scratch)
         record = file_record(app, "apps", app.name, ".zip")
         place(app, updates / record["url"])
@@ -493,6 +512,7 @@ def prepare(args):
         "release": release,
         "site": args.site,
         "site_url": site.url,
+        "platforms": sorted(manifests),
         "published": published_at,
         "previous": published,
         "keep_store": protected_store_files(site, releases, manifests.values()),
@@ -508,12 +528,15 @@ def sign(args):
     if committed_public_keys().get(1) != public_key_hex(key):
         fail("packaging/keys/manifest-ed25519-1.pub does not match the signing key; the game would reject manifests")
     channels = out / "site" / "updates" / "channels" / CHANNEL
-    for platform in PLATFORMS:
+    if not (out / "plan.json").is_file():
+        fail(f"missing {out / 'plan.json'}; run prepare first")
+    platforms = json.loads((out / "plan.json").read_text())["platforms"]
+    for platform in platforms:
         path = channels / f"{platform}.json"
         if not path.is_file():
             fail(f"missing {path}; run prepare first")
         (channels / f"{platform}.json.sig").write_bytes(sign_manifest(path.read_bytes(), key))
-    log(f"signed {len(PLATFORMS)} manifests")
+    log(f"signed {len(platforms)} manifests")
 
 
 # The install check
@@ -626,12 +649,12 @@ def upload(args):
     out = Path(args.out)
     plan = json.loads((out / "plan.json").read_text())
     channels = out / "site" / "updates" / "channels" / CHANNEL
-    for platform in PLATFORMS:
+    for platform in plan["platforms"]:
         if not (channels / f"{platform}.json.sig").is_file():
             fail(f"{platform}.json is not signed")
     # The removal pass must keep everything the new manifests reference; refuse a plan that would not.
     keep = set(plan["keep_store"])
-    for platform in PLATFORMS:
+    for platform in plan["platforms"]:
         manifest = json.loads((channels / f"{platform}.json").read_text())
         urls = {manifest["app"]["url"], *(pack["url"] for pack in manifest["packs"])}
         if not urls <= keep:
@@ -706,6 +729,8 @@ def main():
     prepare_parser.add_argument("--notes", help="Text file of short release notes, shown in the update question")
     prepare_parser.add_argument("--notes-url")
     prepare_parser.add_argument("--replace", action="store_true", help="Publish the staged release again (staging)")
+    prepare_parser.add_argument("--without", action="append", choices=DESKTOP_PLATFORMS,
+                                help="Leave a desktop platform out: rehearsals on a machine that cannot build it")
     prepare_parser.add_argument("--out", required=True)
 
     sign_parser = commands.add_parser("sign", help="Sign the manifests of a publish tree")
